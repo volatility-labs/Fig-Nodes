@@ -3,7 +3,7 @@ name = "hl-bot-v2"
 version = "0.1.0"
 description = "Hyperliquid Trading Bot V2"
 authors = [
-    {name = "Guan Zhi Ma"}
+    {name = "Guanzhi Ma"}
 ]
 readme = "README.md"
 requires-python = "^3.11"
@@ -15,7 +15,11 @@ dependencies = [
     "requests (>=2.32.4,<3.0.0)",
     "websockets (>=15.0.1,<16.0.0)",
     "hyperliquid (>=0.4.66,<0.5.0)",
-    "hyperliquid-python-sdk (==0.16.0)"
+    "hyperliquid-python-sdk (==0.16.0)",
+    "fastapi (>=0.116.1,<0.117.0)",
+    "pydantic (>=2.11.7,<3.0.0)",
+    "uvicorn (>=0.35.0,<0.36.0)",
+    "networkx (>=3.5,<4.0)"
 ]
 
 [tool.poetry]

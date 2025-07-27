@@ -1,0 +1,19 @@
+{
+  "name": "static",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "rete": "^2.0.6",
+    "rete-area-plugin": "^2.1.3",
+    "rete-connection-plugin": "^2.0.5",
+    "rete-render-utils": "^2.0.3"
+  }
+}

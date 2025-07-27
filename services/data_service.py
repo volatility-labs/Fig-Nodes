@@ -8,7 +8,7 @@ import time
 import websockets
 from websockets.exceptions import ConnectionClosed
 
-from ..data_provider.data_provider import BinanceDataProvider
+from data_provider.data_provider import BinanceDataProvider
 
 logger = logging.getLogger(__name__)
 

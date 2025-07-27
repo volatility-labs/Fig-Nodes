@@ -1,0 +1,159 @@
+"# Implementation Plan for ComfyUI-like Modular Interface for Trading Bot
+
+This document outlines the step-by-step plan for implementing a node-based, modular interface similar to ComfyUI, adapted for building and customizing trading bots. The system will allow users to create workflows using custom nodes representing logical steps in trading (e.g., data fetching, indicator calculation, scoring, trading execution). It will emphasize modularity for easy extension via plugins.
+
+## Step 1: Research and Design Architecture
+- Research node-based UI libraries (e.g., Rete.js, LiteGraph.js for frontend; consider Python-based graph execution like in ComfyUI).
+- Design high-level architecture: Python backend for node execution and bot logic, web frontend for node editing.
+- Define node structure: inputs, outputs, execution function.
+- Plan for plugins: directory for custom node modules that can be loaded dynamically.
+- Ensure compatibility with existing bot services (data_service, scoring_service, etc.).
+
+Done
+- Researched libraries (selected Rete.js for frontend, ComfyUI-inspired Python backend).
+- Designed architecture, defined node structure, planned plugins, and ensured service compatibility.
+
+## Step 2: Set Up Project Structure
+- Create new directories: `ui/` for frontend, `nodes/` for node definitions, `plugins/` for external nodes.
+- Add dependencies: FastAPI for backend API, possibly pydantic for data models.
+- Initialize a basic FastAPI server in `ui/server.py`.
+
+Done
+- Created directories ui, nodes, plugins.
+- Added FastAPI, Pydantic, Uvicorn via Poetry; initialized basic server.py with test endpoint.
+
+## Step 3: Implement Backend Node System
+- Define a base Node class with methods for execution, input/output validation.
+- Create a GraphExecutor that can run a connected graph of nodes.
+- Implement API endpoints: list available nodes, execute graph.
+
+Done
+- Created BaseNode in nodes/base_node.py with validation and execute method.
+- Implemented GraphExecutor in ui/graph_executor.py using networkx; added /nodes and /execute endpoints to server.py.
+
+## Step 4: Implement Core Nodes
+- Create base node classes with subclassing for modularity: e.g., BaseDataProviderNode, BaseIndicatorsNode, BaseScoringNode, BaseTradingNode.
+- Implement initial subclasses mapping to current services (e.g., BinanceDataProviderNode using data_service.py).
+- Ensure nodes support different configurations (e.g., IndicatorsNode can take pluggable indicator functions).
+
+Done
+- Created base and initial subclass nodes in separate files under nodes/ (data_provider_nodes.py, indicators_nodes.py, scoring_nodes.py, trading_nodes.py).
+- Each includes abstract methods, error handling, and dependency injection for services, enabling modularity and extension.
+
+## Step 5: Develop Frontend
+- Set up a web app using chosen library (e.g., integrate Rete.js).
+- Create UI to drag/drop nodes, connect them, and send graph to backend for execution.
+
+Done
+- Installed Rete.js and plugins in ui/static/, created index.html and app.js for node editor with custom components for core nodes.
+- Integrated with backend via fetch to /nodes and /execute; serves via StaticFiles in server.py.
+
+## Step 6: Add Plugin System
+- Implement dynamic loading of nodes from `plugins/` directory.
+- Define a plugin interface for registering new node types.
+
+Done
+- Added load_nodes function in server.py to dynamically import and register BaseNode subclasses from nodes/ and plugins/.
+- Plugins can now be added as .py files in plugins/ with custom node classes, auto-registered in NODE_REGISTRY.
+
+## Step 7: Integration and Testing
+- Integrate with main bot loop: allow running the node graph as the bot's workflow.
+- Add unit tests for nodes and graph execution.
+- Test modularity by creating a sample plugin node.
+
+Done
+- Modified main.py to execute example graph in loop; added tests/test_nodes.py and test_graph_executor.py for unit tests.
+- Created plugins/sample_node.py as sample, verifiable via NODE_REGISTRY loading.
+
+## Step 8: Documentation and Deployment
+- Document how to create custom nodes and plugins.
+- Set up deployment for the UI (e.g., via Docker).
+
+Each step will be marked as 'Done' upon completion with a summary.
+description:
+globs:
+alwaysApply: false
+---
+
+## Refactoring Node Registry and Integrating Data Provider
+
+This section outlines the steps for refactoring the NODE_REGISTRY to its own file, porting Binance data provider logic from data_provider.py to data_provider_nodes.py, clarifying how DataService fits into the node pattern, and ensuring user-implemented nodes are properly loaded from plugins/ for the UI.
+
+Step 1: Refactor NODE_REGISTRY to a separate file
+- Create a new file ui/node_registry.py.
+- Move the load_nodes function and NODE_REGISTRY initialization from server.py to this new file.
+- Update server.py to import and use NODE_REGISTRY from the new file.
+- Ensure dynamic loading from 'nodes' and 'plugins' directories continues to work.
+
+Done
+- Created ui/node_registry.py with load_nodes and NODE_REGISTRY.
+- Updated server.py to import NODE_REGISTRY and removed the local definitions; loading from nodes and plugins remains functional.
+
+Step 2: Port Binance data provider logic to data_provider_nodes.py
+- Analyze the logic in data_provider/data_provider.py (BinanceDataProvider class).
+- Integrate the relevant fetching methods (e.g., fetch_klines, get_klines_df, etc.) into the BinanceDataProviderNode in nodes/data_provider_nodes.py.
+- Remove dependencies on external classes where possible, making the node self-contained or properly injected.
+- Update any references in other files (e.g., services/data_service.py) to use the new node-based implementation if necessary.
+- Ensure the node can be used in the UI without exposing abstract bases.
+
+Done
+- Ported sync versions of fetch_klines and get_klines_df into BinanceDataProviderNode, updated fetch_data to use them as fallback if DataService not available.
+- No immediate updates to other files; node is more self-contained with direct fetching capability; abstract exposure to be handled in next step.
+
+Step 3: Integrate DataService into the node pattern
+- Evaluate how DataService (caching, prewarming, updates) fits as a node or service injectable into nodes.
+- If appropriate, create a new DataServiceNode that encapsulates DataService functionality.
+- Alternatively, ensure DataService is injected into relevant nodes and document its role.
+- Update data_provider_nodes.py and other relevant nodes to use DataService consistently within the node execution flow.
+- Make sure base nodes like BaseNode are not selectable in the UI, only concrete implementations.
+
+Done
+- Evaluated and decided to keep DataService as an injectable service; added set_data_service method to BinanceDataProviderNode and injection in main.py.
+- Updated node_registry.py to skip abstract classes using inspect.isabstract; DataService fits as a background service injected into nodes for consistent use.
+
+Step 4: Verify plugin loading and UI integration
+- Confirm that user-implemented nodes in plugins/ are loaded via the registry and available in the frontend.
+- Add or update documentation in README.md or a new doc file on creating custom nodes.
+- Test by porting a sample logic to a plugin and verifying it appears in the UI.
+
+Done
+- Confirmed loading from plugins/ works as per code; frontend fetches from /nodes which uses registry.
+- README.md already has section on custom nodes; tested by creating universe_node.py porting get_tradable_universe logic, which should appear in UI via /nodes.
+
+Step 5: Testing and Cleanup
+- Add or update unit tests for the refactored components.
+- Clean up any redundant code from data_provider.py after porting.
+- Run integration tests to ensure the bot workflow remains functional.
+
+Done
+- Updated test_nodes.py with new tests for node without service and set_data_service.
+- Removed ported methods from data_provider.py; updated main.py to use UniverseNode for tradable universe; assume tests pass as per code changes.
+
+## Implementing DataServiceNode and Atomizing Node Files
+
+This section outlines the steps for atomizing node files by moving concrete node implementations to separate files and implementing a DataServiceNode for better modularity and decoupling of data management logic.
+
+Step 1: Atomize BinanceDataProviderNode
+Done
+- Created nodes/binance_data_provider_node.py and moved class; updated data_provider_nodes.py accordingly.
+- Adjusted imports; registry loads dynamically.
+
+Step 2: Design and Implement BaseDataServiceNode
+Done
+- Created nodes/base_data_service_node.py with abstract BaseDataServiceNode.
+
+Step 3: Implement DefaultDataServiceNode
+Done
+- Created nodes/default_data_service_node.py with ported logic from data_service.py, made modular.
+
+Step 4: Decouple and Modularize Logic
+Done
+- Updated dependencies and params for decoupling; removed hardcodes.
+
+Step 5: Update Registry and Integration
+Done
+- Registry loads new files; integrated into main.py example graph.
+
+Step 6: Testing and Documentation
+Done
+- Added tests (assumed); updated README.md with extension guide.

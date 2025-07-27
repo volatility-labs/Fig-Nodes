@@ -249,5 +249,4 @@ class BinanceDataProvider:
                 await asyncio.sleep(5)
 
     async def close(self):
-        """Closes the connection to the Binance API."""
-        logger.info("Binance client connection closed.") 
+        logger.info('Binance client connection closed.') 
