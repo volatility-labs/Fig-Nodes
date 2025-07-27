@@ -11,6 +11,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../.
 from hl_bot_v2.services.data_service import DataService
 from hl_bot_v2.data_provider.data_provider import BinanceDataProvider
 import websockets
+from websockets.exceptions import ConnectionClosed
 
 # ---------------------------------------------------------------------------
 # Fixtures to accelerate tests (remove built-in 0.5-second sleeps in production
@@ -187,43 +188,45 @@ async def test_websocket_reconnection(mock_provider):
         def __init__(self):
             self.called = 0
 
-        async def __call__(self, streams):
-            if self.called == 0:
-                yield {'data': {
-                    'e': 'kline',
-                    'k': {
-                        's': 'BTCUSDT',
-                        'i': '1h',
-                        't': int((datetime.now(timezone.utc) - timedelta(minutes=1)).timestamp() * 1000),
-                        'o': '102.0',
-                        'h': '103.0',
-                        'l': '101.0',
-                        'c': '102.5',
-                        'v': '500.0',
-                        'x': True
-                    }
-                }}
-                await asyncio.sleep(0.01)
-                self.called += 1
-                raise websockets.ConnectionClosed(1000, "Test close")
-            else:
-                yield {'data': {
-                    'e': 'kline',
-                    'k': {
-                        's': 'BTCUSDT',
-                        'i': '1h',
-                        't': int(datetime.now(timezone.utc).timestamp() * 1000),
-                        'o': '103.0',
-                        'h': '104.0',
-                        'l': '102.0',
-                        'c': '103.5',
-                        'v': '600.0',
-                        'x': True
-                    }
-                }}
-                await asyncio.sleep(0.01)
-                while True:
-                    await asyncio.sleep(1)  # Simulate ongoing stream after reconnection
+        def __call__(self, streams):
+            async def inner():
+                if self.called == 0:
+                    yield {'data': {
+                        'e': 'kline',
+                        'k': {
+                            's': 'BTCUSDT',
+                            'i': '1h',
+                            't': int((datetime.now(timezone.utc) - timedelta(minutes=1)).timestamp() * 1000),
+                            'o': '102.0',
+                            'h': '103.0',
+                            'l': '101.0',
+                            'c': '102.5',
+                            'v': '500.0',
+                            'x': True
+                        }
+                    }}
+                    await asyncio.sleep(0.15)
+                    self.called += 1
+                    raise ConnectionClosed(1000, "Test close")
+                else:
+                    yield {'data': {
+                        'e': 'kline',
+                        'k': {
+                            's': 'BTCUSDT',
+                            'i': '1h',
+                            't': int(datetime.now(timezone.utc).timestamp() * 1000),
+                            'o': '103.0',
+                            'h': '104.0',
+                            'l': '102.0',
+                            'c': '103.5',
+                            'v': '600.0',
+                            'x': True
+                        }
+                    }}
+                    await asyncio.sleep(0.15)
+                    while True:
+                        await asyncio.sleep(1)  # Simulate ongoing stream after reconnection
+            return inner()
 
     mock_provider.stream_klines = MockStreamWithClose()
     

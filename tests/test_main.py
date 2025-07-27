@@ -12,6 +12,7 @@ from hl_bot_v2.main import get_hyperliquid_universe, main
 from datetime import datetime, timezone
 import pandas as pd
 import websockets
+from websockets.exceptions import ConnectionClosed
 
 @pytest.mark.asyncio
 async def test_get_hyperliquid_universe():
@@ -41,7 +42,8 @@ async def test_main_websocket_reconnection():
     original_sleep = asyncio.sleep
     with patch('hl_bot_v2.main.get_hyperliquid_universe', new=AsyncMock(return_value={'BTC'})) as mock_universe, \
          patch('hl_bot_v2.main.BinanceDataProvider') as mock_provider, \
-         patch('hl_bot_v2.main.asyncio.sleep') as mock_sleep:
+         patch('hl_bot_v2.main.asyncio.sleep') as mock_sleep, \
+         patch('hl_bot_v2.services.data_service.asyncio.sleep') as mock_data_sleep:
 
         mock_provider.return_value.get_tradable_universe = AsyncMock(return_value={'BTC'})
         mock_provider.return_value.close = AsyncMock()
@@ -55,8 +57,8 @@ async def test_main_websocket_reconnection():
 
         async def mock_stream(*args):
             yield {'data': {}}
-            await original_sleep(0.05)
-            raise websockets.ConnectionClosed(1000, "Test disconnect")
+            await original_sleep(0.2)
+            raise ConnectionClosed(1000, "Test disconnect")
 
         mock_provider.return_value.stream_klines = mock_stream
 
@@ -64,6 +66,7 @@ async def test_main_websocket_reconnection():
             await original_sleep(0)
 
         mock_sleep.side_effect = instant_sleep
+        mock_data_sleep.side_effect = instant_sleep
 
         with patch('hl_bot_v2.main.ScoringService') as mock_scoring, \
              patch('hl_bot_v2.main.TradingService') as mock_trading, \

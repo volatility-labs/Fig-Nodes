@@ -95,7 +95,7 @@ async def main():
                     logger.info(f"Data for {symbol} on {tf}: {len(df)} klines, from {df.index.min()} to {df.index.max()}")
                     # Check for gaps
                     diffs = df.index.to_series().diff().dropna()
-                    expected_diff = pd.Timedelta(tf.replace('m', 'T').replace('h', 'H'))  # e.g., '1m' -> 1 minute
+                    expected_diff = pd.Timedelta(tf.replace('m', 'min'))  # e.g., '1m' -> 1 minute
                     gaps = diffs[diffs > expected_diff]
                     if not gaps.empty:
                         logger.warning(f"Gaps detected for {symbol} on {tf}: {len(gaps)} instances")

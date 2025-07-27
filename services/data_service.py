@@ -6,6 +6,7 @@ import asyncio
 import json
 import time
 import websockets
+from websockets.exceptions import ConnectionClosed
 
 from ..data_provider.data_provider import BinanceDataProvider
 
@@ -157,11 +158,16 @@ class DataService:
                 async for msg in socket:
                     if 'data' in msg:
                         await self._kline_handler(msg['data'])
-            except websockets.ConnectionClosed:
-                logger.warning("Websocket connection closed. Reconnecting...")
+            except ConnectionClosed:
+                # Specific websocket closure detected; reconnection will be handled in finally.
+                pass
             except Exception as e:
                 logger.error(f"Socket listener error: {e}. Attempting to restart stream...")
-                await asyncio.sleep(self.reconnect_delay)
+            finally:
+                # Always log reconnection intent, regardless of how the stream ended.
+                logger.warning("Websocket connection closed. Reconnecting...")
+                if self.reconnect_delay:
+                    await asyncio.sleep(self.reconnect_delay)
 
     async def fill_gaps(self):
         """

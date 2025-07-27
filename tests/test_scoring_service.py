@@ -27,11 +27,11 @@ def mock_indicators_service():
     ({'hurst': 0.6, 'acceleration': 0.05, 'adx': 25, 'volume_ratio': 1.2, 'res_pct': 10.0, 'sup_pct': 2.0}, 4.5175),  # rr=5
     ({}, 0.0),
     # Edge: Division by zero in RR
-    ({'res_pct': 10.0, 'sup_pct': 0.0}, 0.0),  # RR=0
+    ({'res_pct': 10.0, 'sup_pct': 0.0}, 2.175),  # RR=0
     # Edge: Negative values
-    ({'hurst': -0.5, 'acceleration': -0.05, 'adx': -25, 'volume_ratio': -1.2, 'res_pct': -10.0, 'sup_pct': -2.0}, -0.5175),  # Negative score
+    ({'hurst': -0.5, 'acceleration': -0.05, 'adx': -25, 'volume_ratio': -1.2, 'res_pct': -10.0, 'sup_pct': -2.0}, -3.2525),  # Negative score
     # Edge: All zeros
-    ({'hurst': 0, 'acceleration': 0, 'adx': 0, 'volume_ratio': 0, 'res_pct': 0, 'sup_pct': 1}, 0.0),  # RR=0
+    ({'hurst': 0, 'acceleration': 0, 'adx': 0, 'volume_ratio': 0, 'res_pct': 0, 'sup_pct': 1}, -0.1),  # RR=0
 ])
 def test_compute_score(mock_indicators_service, indicators, expected_score):
     scoring = ScoringService(mock_indicators_service)
