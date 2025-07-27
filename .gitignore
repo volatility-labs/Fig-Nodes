@@ -52,6 +52,7 @@ Thumbs.db
 logs/
 temp/
 tmp/
+node_modules
 
 # Application specific
 .coverage
