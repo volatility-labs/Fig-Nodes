@@ -15,6 +15,8 @@ from nodes.base_data_service_node import BaseDataServiceNode
 logger = logging.getLogger(__name__)
 
 class DefaultDataServiceNode(BaseDataServiceNode):
+    default_params = {'provider_type': 'binance', 'prewarm_days': 30}
+
     def __init__(self, id: str, params: Dict[str, Any] = None):
         super().__init__(id, params)
         provider_type = params.get('provider_type', 'binance')

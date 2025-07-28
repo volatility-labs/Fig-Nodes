@@ -5,21 +5,34 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Trading Bot Workflow Editor</title>
-    <script src="node_modules/rete/build/rete.min.js"></script>
-    <script src="node_modules/rete-area-plugin/build/area.min.js"></script>
-    <script src="node_modules/rete-connection-plugin/build/connection.min.js"></script>
-    <script src="node_modules/rete-render-utils/build/render-utils.min.js"></script>
-    <style>
-        #rete {
-            height: 100vh;
-        }
-    </style>
+    <link rel="stylesheet" href="/style.css">
 </head>
 
 <body>
-    <div id="rete"></div>
-    <button id="execute">Execute Graph</button>
-    <script src="app.js"></script>
+    <div class="app-container">
+        <div id="main-content">
+            <canvas id="litegraph-canvas"></canvas>
+            <div id="menu">
+                <h3>Available Nodes</h3>
+                <ul id="node-list"></ul>
+            </div>
+        </div>
+        <div id="footer">
+            <div class="controls">
+                <button id="execute">Execute Graph</button>
+                <button id="save">Save Graph</button>
+                <button id="load">Load Graph</button>
+            </div>
+            <div id="status-indicator" class="status-indicator"></div>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loading-overlay" style="display: none;">
+        <span>Loading...</span>
+    </div>
+
+    <script type="module" src="/app.ts"></script>
 </body>
 
 </html>

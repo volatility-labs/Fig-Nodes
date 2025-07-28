@@ -1,9 +1,11 @@
 from typing import Dict, Any, List
 
 class BaseNode:
+    default_params: Dict[str, Any] = {}
+
     def __init__(self, id: str, params: Dict[str, Any] = None):
         self.id = id
-        self.params = params or {}
+        self.params = {**self.default_params, **(params or {})}
 
     @property
     def inputs(self) -> List[str]:

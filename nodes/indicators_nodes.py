@@ -32,6 +32,8 @@ class BaseIndicatorsNode(BaseNode, ABC):
             raise RuntimeError(f"Error in {self.id} execution: {str(e)}") from e
 
 class DefaultIndicatorsNode(BaseIndicatorsNode):
+    default_params = {'timeframe': '1h'}
+
     def __init__(self, id: str, params: Dict[str, Any] = None, indicators_service: IndicatorsService = None):
         super().__init__(id, params)
         self.indicators_service = indicators_service or IndicatorsService()  # Default instance if not provided

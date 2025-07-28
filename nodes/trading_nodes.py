@@ -30,6 +30,8 @@ class BaseTradingNode(BaseNode, ABC):
             raise RuntimeError(f"Error in {self.id} execution: {str(e)}") from e
 
 class DefaultTradingNode(BaseTradingNode):
+    default_params = {'side': 'buy'}
+
     def __init__(self, id: str, params: Dict[str, Any] = None, trading_service: TradingService = None):
         super().__init__(id, params)
         self.trading_service = trading_service or TradingService()  # Default instance

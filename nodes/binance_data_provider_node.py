@@ -16,6 +16,8 @@ import logging
 logger = logging.getLogger(__name__)
 
 class BinanceDataProviderNode(BaseDataProviderNode):
+    default_params = {'symbol': 'BTCUSDT', 'timeframe': '1m'}
+
     _INTERVALS = {
         ('minute', 1): '1m',
         ('minute', 5): '5m',

@@ -8,20 +8,29 @@ from ui.graph_executor import GraphExecutor
 from nodes.base_node import BaseNode
 import importlib.util
 from fastapi.staticfiles import StaticFiles
-
-from ui.node_registry import NODE_REGISTRY  # Import the registry
+from fastapi.responses import FileResponse
+from ui.node_registry import NODE_REGISTRY
 
 app = FastAPI()
 
-app.mount("/static", StaticFiles(directory=os.path.join(os.path.dirname(__file__), "static")), name="static")
+# Serve Vite's build output
+app.mount("/static", StaticFiles(directory=os.path.join(os.path.dirname(__file__), "static/dist")), name="static")
 
 @app.get("/")
 def read_root():
-    return {"message": "Hello from the Trading Bot UI Backend"}
+    return FileResponse(os.path.join(os.path.dirname(__file__), "static/dist", "index.html"))
 
 @app.get("/nodes")
 def list_nodes():
-    return {"nodes": list(NODE_REGISTRY.keys())}
+    nodes_meta = {}
+    for name, cls in NODE_REGISTRY.items():
+        instance = cls("dummy", {})  # Dummy instance to get properties
+        nodes_meta[name] = {
+            "inputs": instance.inputs,
+            "outputs": instance.outputs,
+            "params": list(cls.default_params.keys())
+        }
+    return {"nodes": nodes_meta}
 
 @app.post("/execute")
 def execute_graph(graph: Dict[str, Any] = Body(...)):

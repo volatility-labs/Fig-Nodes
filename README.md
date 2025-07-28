@@ -42,3 +42,11 @@ docker build -t hl-bot .
 docker run -d -p 8000:8000 hl-bot
 ```
 Access UI at http://localhost:8000/static/index.html 
+
+## Using the UI Features
+- **Saving and Loading Graphs**: Use the "Save Graph" and "Load Graph" buttons to store and retrieve workflows in local storage.
+- **Right Menu Bar**: Lists available nodes; click "Add" or drag to canvas to add.
+- **Canvas Drag and Drop**: Drag nodes around, connect outputs to inputs.
+- **Editable Node Inputs**: Click text boxes on nodes to edit parameters.
+- **Executing the Graph**: Click "Execute Graph" to send to backend; check console for results. 
+- **Context Menus**: Right-click on a node for options like Clone, Remove, Properties. Right-click on the canvas background to access a menu for adding nodes by category. 

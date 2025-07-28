@@ -1,0 +1,149 @@
+body,
+html {
+    margin: 0;
+    padding: 0;
+    font-family: Arial, sans-serif;
+    background-color: #1e1e1e;
+    color: #ffffff;
+    overflow: hidden;
+    width: 100%;
+    height: 100%;
+}
+
+.app-container {
+    display: flex;
+    height: 100vh;
+    width: 100vw;
+}
+
+#litegraph-canvas {
+    flex: 1;
+    background: #1a1a1a;
+    background-image:
+        linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+    background-size: 20px 20px;
+}
+
+#menu {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    width: 250px;
+    max-height: calc(100% - 20px);
+    background-color: #2c2c2c;
+    border: 1px solid #1a1a1a;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+    padding: 10px;
+    overflow-y: auto;
+    z-index: 10;
+}
+
+#menu h3 {
+    margin-top: 0;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #444;
+    color: #e0e0e0;
+    font-size: 16px;
+}
+
+#node-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+#node-list li {
+    margin: 8px 0;
+}
+
+#node-list button {
+    width: 100%;
+    padding: 10px;
+    background-color: #383838;
+    border: 1px solid #484848;
+    color: #e0e0e0;
+    cursor: pointer;
+    text-align: left;
+    border-radius: 4px;
+    font-size: 14px;
+    transition: background-color 0.2s, border-color 0.2s;
+}
+
+#node-list button:hover {
+    background-color: #484848;
+    border-color: #5a9fd4;
+}
+
+.node-category {
+    font-weight: bold;
+    margin: 15px 0 8px;
+    color: #a0a0a0;
+    text-transform: uppercase;
+    font-size: 12px;
+}
+
+.controls {
+    position: absolute;
+    bottom: 10px;
+    right: 10px;
+    display: flex;
+    gap: 10px;
+    z-index: 10;
+}
+
+.controls button {
+    padding: 10px 20px;
+    background-color: #3a3a3a;
+    border: 1px solid #4a4a4a;
+    color: #e0e0e0;
+    cursor: pointer;
+    border-radius: 4px;
+    font-size: 14px;
+    transition: background-color 0.2s, border-color 0.2s;
+}
+
+.controls button:hover {
+    background-color: #4a4a4a;
+    border-color: #5a9fd4;
+}
+
+#status-indicator {
+    position: absolute;
+    bottom: 10px;
+    left: 10px;
+    padding: 6px 12px;
+    border-radius: 4px;
+    font-size: 12px;
+    color: white;
+    z-index: 10;
+}
+
+.status-indicator.connected {
+    background-color: #28a745;
+}
+
+.status-indicator.disconnected {
+    background-color: #dc3545;
+}
+
+.status-indicator.loading {
+    background-color: #ffc107;
+    color: #111;
+}
+
+#loading-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.7);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    color: #ffffff;
+    font-size: 24px;
+    z-index: 1000;
+}
