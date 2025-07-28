@@ -6,9 +6,10 @@ from nodes.indicators_nodes import BaseIndicatorsNode, DefaultIndicatorsNode
 from nodes.scoring_nodes import BaseScoringNode, DefaultScoringNode
 from nodes.trading_nodes import BaseTradingNode, DefaultTradingNode
 from services.data_service import DataService
-from indicators.indicators_service import IndicatorsService
+from hl_bot_v2.services.indicators_service import IndicatorsService
 from services.scoring_service import ScoringService
 from services.trading_service import TradingService
+from nodes.base_node import BaseNode
 
 class TestNodes(unittest.TestCase):
 
@@ -58,6 +59,23 @@ class TestNodes(unittest.TestCase):
         result = node.execute({'symbol': 'BTC', 'score': 80.0})
         self.assertIn('trade_result', result)
         mock_service.execute_trade.assert_called_with('BTC', 'buy', 80.0)
+
+    def test_base_node_validation_with_types(self):
+        class TestNode(BaseNode):
+            inputs = {"num": int, "text": str}
+            def execute(self, inputs):
+                return {}
+
+        node = TestNode("test")
+        valid_inputs = {"num": 42, "text": "hello"}
+        self.assertTrue(node.validate_inputs(valid_inputs))
+
+        invalid_type = {"num": "not_int", "text": "hello"}
+        with self.assertRaises(TypeError):
+            node.validate_inputs(invalid_type)
+
+        missing_key = {"num": 42}
+        self.assertFalse(node.validate_inputs(missing_key))
 
 if __name__ == '__main__':
     unittest.main() 

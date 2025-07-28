@@ -37,7 +37,8 @@ function createCustomNode(name: string, data: any) {
 
             // Add inputs with proper types
             if (data.inputs) {
-                data.inputs.forEach((inp: string) => {
+                let inputNames = Array.isArray(data.inputs) ? data.inputs : Object.keys(data.inputs);
+                inputNames.forEach((inp: string) => {
                     const inputType = this.inferInputType(inp);
                     this.addInput(inp, inputType);
                 });
@@ -45,7 +46,8 @@ function createCustomNode(name: string, data: any) {
 
             // Add outputs with proper types
             if (data.outputs) {
-                data.outputs.forEach((out: string) => {
+                let outputNames = Array.isArray(data.outputs) ? data.outputs : Object.keys(data.outputs);
+                outputNames.forEach((out: string) => {
                     const outputType = this.inferOutputType(out);
                     this.addOutput(out, outputType);
                 });
@@ -296,26 +298,30 @@ async function createEditor(container: HTMLElement) {
             extra: {},
             version: 0.4
         };
-        const saved = localStorage.getItem('savedGraph');
-        if (saved) {
-            try {
-                graph.configure(JSON.parse(saved));
-                updateStatus('connected', 'Graph loaded');
-            } catch (e) {
-                console.warn('Failed to load saved graph:', e);
-                graph.configure(defaultGraph as any);
-                updateStatus('connected', 'Default graph loaded');
+        graph.configure(defaultGraph as any);
+        updateStatus('connected', 'Ready');
+
+        // Add keyboard support for deleting selected nodes
+        document.addEventListener('keydown', (e: KeyboardEvent) => {
+            if (e.key === 'Delete' || e.key === 'Backspace') {
+                const selected = canvas.selected_nodes || {};
+                Object.values(selected).forEach((node: LGraphNode) => {
+                    graph.remove(node);
+                });
             }
-        } else {
-            graph.configure(defaultGraph as any);
-            updateStatus('connected', 'Ready');
-        }
+        });
 
         // Enhanced event handlers
         document.getElementById('save')?.addEventListener('click', () => {
             try {
                 const graphData = graph.serialize();
-                localStorage.setItem('savedGraph', JSON.stringify(graphData));
+                const blob = new Blob([JSON.stringify(graphData, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'graph.json';
+                a.click();
+                URL.revokeObjectURL(url);
                 updateStatus('connected', 'Graph saved');
                 console.log('Graph saved successfully');
             } catch (e) {
@@ -324,20 +330,30 @@ async function createEditor(container: HTMLElement) {
             }
         });
 
-        document.getElementById('load')?.addEventListener('click', () => {
-            try {
-                const savedGraph = localStorage.getItem('savedGraph');
-                if (savedGraph) {
-                    graph.configure(JSON.parse(savedGraph));
-                    updateStatus('connected', 'Graph loaded');
-                    console.log('Graph loaded successfully');
-                } else {
-                    updateStatus('disconnected', 'No saved graph');
-                }
-            } catch (e) {
-                console.error('Failed to load graph:', e);
-                updateStatus('disconnected', 'Load failed');
+        const fileInput = document.getElementById('graph-file') as HTMLInputElement;
+        fileInput.addEventListener('change', (e: Event) => {
+            const target = e.target as HTMLInputElement;
+            const file = target.files?.[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (ev) => {
+                    try {
+                        const data = JSON.parse(ev.target?.result as string);
+                        graph.configure(data);
+                        updateStatus('connected', 'Graph loaded');
+                        console.log('Graph loaded successfully');
+                    } catch (err) {
+                        console.error('Failed to load graph:', err);
+                        updateStatus('disconnected', 'Load failed');
+                    }
+                };
+                reader.readAsText(file);
+                target.value = ''; // Reset input
             }
+        });
+
+        document.getElementById('load')?.addEventListener('click', () => {
+            fileInput.click();
         });
 
         document.getElementById('execute')?.addEventListener('click', async () => {
@@ -411,11 +427,44 @@ async function createEditor(container: HTMLElement) {
     }
 }
 
+function makeDraggable(element: HTMLElement, handle: HTMLElement) {
+    let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
+
+    handle.onmousedown = (e: MouseEvent) => {
+        e.preventDefault();
+        pos3 = e.clientX;
+        pos4 = e.clientY;
+        document.onmouseup = closeDragElement;
+        document.onmousemove = elementDrag;
+    };
+
+    function elementDrag(e: MouseEvent) {
+        e.preventDefault();
+        pos1 = pos3 - e.clientX;
+        pos2 = pos4 - e.clientY;
+        pos3 = e.clientX;
+        pos4 = e.clientY;
+
+        element.style.top = (element.offsetTop - pos2) + "px";
+        element.style.left = (element.offsetLeft - pos1) + "px";
+    }
+
+    function closeDragElement() {
+        document.onmouseup = null;
+        document.onmousemove = null;
+    }
+}
+
 // Initialize the editor when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
     const container = document.querySelector('.app-container') as HTMLElement;
     if (container) {
         createEditor(container);
+        const menu = document.getElementById('menu') as HTMLElement;
+        const menuHeader = menu.querySelector('h3') as HTMLElement;
+        if (menu && menuHeader) {
+            makeDraggable(menu, menuHeader);
+        }
     } else {
         console.error('Canvas container not found');
     }

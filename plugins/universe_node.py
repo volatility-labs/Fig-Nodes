@@ -7,13 +7,8 @@ import time
 logger = logging.getLogger(__name__)
 
 class UniverseNode(BaseNode):
-    @property
-    def inputs(self) -> List[str]:
-        return []
-
-    @property
-    def outputs(self) -> List[str]:
-        return ['universe']
+    inputs = {}
+    outputs = {"universe": set}
 
     def execute(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
         attempts = 0
