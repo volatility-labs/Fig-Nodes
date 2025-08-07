@@ -29,7 +29,9 @@ def list_nodes():
         nodes_meta[name] = {
             "inputs": inputs_meta,
             "outputs": outputs_meta,
-            "params": list(cls.default_params.keys())
+            "params": list(cls.default_params.keys()),
+            "category": "data_source" if "Universe" in name or "Data" in name else "logic",
+            "uiModule": "LoggingNodeUI" if name == "LoggingNode" else None
         }
     return {"nodes": nodes_meta}
 

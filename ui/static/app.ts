@@ -1,4 +1,5 @@
-import { LGraph, LGraphCanvas, LGraphNode, LiteGraph, IContextMenuValue, ContextMenu, LGraphGroup } from '@comfyorg/litegraph';
+import { LGraph, LGraphCanvas, LGraphNode, LiteGraph, IContextMenuValue, ContextMenu, } from '@comfyorg/litegraph';
+import BaseCustomNode from './nodes/BaseCustomNode';
 
 // Node categories for better organization
 const NODE_CATEGORIES = {
@@ -28,133 +29,11 @@ function showLoading(show: boolean) {
     }
 }
 
-function createCustomNode(name: string, data: any) {
-    class CustomNode extends LGraphNode {
-        constructor() {
-            super(name);
-            this.title = name;
-            this.size = [200, 100];
+// Replace the previous incomplete BaseCustomNode with full definition
 
-            // Add inputs with proper types
-            if (data.inputs) {
-                let inputNames = Array.isArray(data.inputs) ? data.inputs : Object.keys(data.inputs);
-                inputNames.forEach((inp: string) => {
-                    const inputType = this.inferInputType(inp);
-                    this.addInput(inp, inputType);
-                });
-            }
+// In createEditor, update the loop to handle dynamic imports
 
-            // Add outputs with proper types
-            if (data.outputs) {
-                let outputNames = Array.isArray(data.outputs) ? data.outputs : Object.keys(data.outputs);
-                outputNames.forEach((out: string) => {
-                    const outputType = this.inferOutputType(out);
-                    this.addOutput(out, outputType);
-                });
-            }
-
-            // Add parameters as widgets
-            if (data.params) {
-                data.params.forEach((param: string) => {
-                    this.addParameterWidget(param);
-                });
-            }
-
-            // Initialize properties
-            this.properties = this.properties || {};
-            if (data.params) {
-                data.params.forEach((param: any) => {
-                    if (!(param in this.properties)) {
-                        this.properties[param] = this.getDefaultValue(param);
-                    }
-                });
-            }
-        }
-
-        inferInputType(inputName: string): string {
-            const lowerName = inputName.toLowerCase();
-            if (lowerName.includes('data') || lowerName.includes('price')) return 'data';
-            if (lowerName.includes('signal') || lowerName.includes('indicator')) return 'signal';
-            if (lowerName.includes('config') || lowerName.includes('param')) return 'config';
-            return 'string';
-        }
-
-        inferOutputType(outputName: string): string {
-            const lowerName = outputName.toLowerCase();
-            if (lowerName.includes('data') || lowerName.includes('price')) return 'data';
-            if (lowerName.includes('signal') || lowerName.includes('indicator')) return 'signal';
-            if (lowerName.includes('result') || lowerName.includes('output')) return 'result';
-            return 'string';
-        }
-
-        addParameterWidget(param: string) {
-            const paramLower = param.toLowerCase();
-
-            if (paramLower.includes('enable') || paramLower.includes('active')) {
-                this.addWidget('toggle', param, false, (value: boolean) => {
-                    this.properties[param] = value;
-                });
-            } else if (paramLower.includes('amount') || paramLower.includes('size') || paramLower.includes('threshold')) {
-                this.addWidget('number', param, 0, (value: number) => {
-                    this.properties[param] = value;
-                });
-            } else if (paramLower.includes('symbol') || paramLower.includes('pair')) {
-                this.addWidget('combo', param, 'BTC/USDT', (value: string) => {
-                    this.properties[param] = value;
-                }, { values: ['BTC/USDT', 'ETH/USDT', 'ADA/USDT', 'SOL/USDT'] });
-            } else {
-                this.addWidget('text', param, '', (value: any) => {
-                    this.properties[param] = value;
-                });
-            }
-        }
-
-        getDefaultValue(param: string): any {
-            const paramLower = param.toLowerCase();
-            if (paramLower.includes('enable') || paramLower.includes('active')) return false;
-            if (paramLower.includes('days') || paramLower.includes('period')) return 30;
-            if (paramLower.includes('amount') || paramLower.includes('size')) return 100;
-            if (paramLower.includes('threshold')) return 0.5;
-            if (paramLower.includes('symbol') || paramLower.includes('pair')) return 'BTC/USDT';
-            return '';
-        }
-
-        onExecute() {
-            // Override in specific node implementations
-        }
-
-        onConnectionsChange() {
-            // Override for validation logic
-        }
-
-        // Right-click context menu
-        getExtraMenuOptions(graphcanvas: LGraphCanvas): IContextMenuValue[] {
-            const options: (IContextMenuValue | null)[] = [
-                {
-                    content: "Clone",
-                    callback: () => {
-                        const newNode = LiteGraph.createNode(this.type);
-                        if (newNode && this.graph) {
-                            newNode.pos = [this.pos[0] + 30, this.pos[1] + 30];
-                            newNode.properties = { ...this.properties };
-                            this.graph.add(newNode as any);
-                        }
-                    }
-                },
-                {
-                    content: "Remove",
-                    callback: () => {
-                        if (this.graph) {
-                            this.graph.remove(this);
-                        }
-                    }
-                }
-            ];
-            return options.filter(o => o) as IContextMenuValue[];
-        }
-    }
-    return CustomNode;
-}
+// In execute handler, use if (node && node.displayResults)
 
 // ComfyUI style context menu for the canvas
 function getCanvasMenuOptions(canvas: LGraphCanvas, graph: LGraph, categorizedNodes: { [key: string]: string[] }): (e: MouseEvent) => void {
@@ -223,8 +102,22 @@ async function createEditor(container: HTMLElement) {
         // Register custom nodes with enhanced features
         for (const name in meta.nodes) {
             const data = meta.nodes[name];
-            const CustomNodeClass = createCustomNode(name, data);
-            LiteGraph.registerNodeType(name, CustomNodeClass);
+            let NodeClass = BaseCustomNode;
+
+            if (data.uiModule) {
+                const module = await import(`./nodes/${data.uiModule}.ts`);
+                NodeClass = module.default;
+            }
+
+            // Apply metadata flags
+            const CustomClass = class extends NodeClass {
+                constructor() {
+                    super(name, data);
+                }
+            };
+
+            // @ts-ignore: Dynamic class extension
+            LiteGraph.registerNodeType(name, CustomClass);
         }
 
         // Populate menu with categories
@@ -372,14 +265,43 @@ async function createEditor(container: HTMLElement) {
                 const result = await res.json();
                 updateStatus('connected', 'Execution complete');
                 console.log('Execution result:', result);
-                // Highlight executed nodes
+
                 if (result.results) {
                     for (const nodeId in result.results) {
-                        const node = graph.getNodeById(parseInt(nodeId));
-                        if (node) {
+                        const node: any = graph.getNodeById(parseInt(nodeId));
+                        if (node && node.displayResults) {
+                            node.result = result.results[nodeId];
+                            let text = JSON.stringify(node.result, null, 2);
+                            if (node.type === 'LoggingNode' && node.result.output) {
+                                text = node.result.output;
+                            } else if (node.type === 'BinancePerpsUniverseNode' && node.result.symbols) {
+                                text = node.result.symbols.map((s: any) => s.ticker).join('\n');
+                            }
+                            node.displayText = text;
+                            const maxLineWidth = 50 * 7;
+                            const tempCtx = document.createElement('canvas').getContext('2d')!;
+                            tempCtx.font = "12px Arial";
+                            let lines = (node as any).wrapText(text, maxLineWidth, tempCtx);
+                            if (lines.length > 20) {
+                                lines = lines.slice(0, 20);
+                                lines.push('... (truncated)');
+                            }
+                            const lineHeight = 15;
+                            const padding = 10;
+                            const textHeight = lines.length * lineHeight + padding * 2;
+                            const textWidth = Math.max(...lines.map((line: string) => tempCtx.measureText(line).width)) + padding * 2;
+                            let baseHeight = LiteGraph.NODE_TITLE_HEIGHT + 4;
+                            if (node.widgets) {
+                                baseHeight += node.widgets.length * LiteGraph.NODE_WIDGET_HEIGHT;
+                            }
+                            node.size = [
+                                Math.max(node.size[0] || 200, textWidth, 200),
+                                baseHeight + textHeight
+                            ];
+                            node.displayText = lines.join('\n');
+                            node.color = "#3a533a";
+                            node.bgcolor = "#2a422a";
                             node.setDirtyCanvas(true, true);
-                            (node as any).color = "#3a533a";
-                            (node as any).bgcolor = "#2a422a";
                         }
                     }
                 }

@@ -1,4 +1,3 @@
-
 import networkx as nx
 from typing import Dict, Any, List
 from nodes.base_node import BaseNode
@@ -95,11 +94,13 @@ class GraphExecutor:
                     input_slot = link[4]
                     
                     pred_node = self.nodes[pred_id]
-                    if output_slot < len(pred_node.outputs):
-                        output_key = pred_node.outputs[output_slot]
+                    pred_outputs = list(pred_node.outputs.keys())
+                    if output_slot < len(pred_outputs):
+                        output_key = pred_outputs[output_slot]
                         if pred_id in results and output_key in results[pred_id]:
                             value = results[pred_id][output_key]
-                            if input_slot < len(self.nodes[node_id].inputs):
-                                input_key = self.nodes[node_id].inputs[input_slot]
+                            node_inputs = list(self.nodes[node_id].inputs.keys())
+                            if input_slot < len(node_inputs):
+                                input_key = node_inputs[input_slot]
                                 inputs[input_key] = value
         return inputs 

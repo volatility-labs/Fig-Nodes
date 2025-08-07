@@ -14,24 +14,31 @@ Alternatively, run directly with `poetry run python main.py` or `poetry run pyte
 To extend the bot with custom nodes:
 1. Create a new .py file in `plugins/` (or subclass in `nodes/` for core).
 2. Define a class subclassing `BaseNode` from `nodes.base_node`.
-3. Implement `inputs`, `outputs`, and `execute` method.
-4. Optionally, add params in `__init__`.
+3. Specify `inputs` and `outputs` using types from `core.types_registry` (e.g., `get_type("AssetSymbol")` for symbols).
+4. Optionally set `required_asset_class` to enforce asset types (e.g., `AssetClass.CRYPTO`).
+5. Implement `async execute(self, inputs: Dict[str, Any]) -> Dict[str, Any]`.
+6. Optionally, add params in `__init__`.
 
 Example (`plugins/custom.py`):
 ```python
 from nodes.base_node import BaseNode
-from typing import Dict, Any, List
+from typing import Dict, Any
+from core.types_registry import get_type, AssetClass
 
 class CustomNode(BaseNode):
-    @property
-    def inputs(self) -> List[str]:
-        return ['in']
-    @property
-    def outputs(self) -> List[str]:
-        return ['out']
-    def execute(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
-        return {'out': inputs['in'] + '_transformed'}
+    inputs = {"symbol": get_type("AssetSymbol")}
+    outputs = {"result": str}
+    required_asset_class = AssetClass.CRYPTO
+
+    async def execute(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        symbol = inputs["symbol"]
+        return {"result": f"Processed {str(symbol)}"}
 ```
+
+Use `AssetSymbol` for all tickers:
+- Crypto: `AssetSymbol("BTC", AssetClass.CRYPTO, "USDT", "binance")`
+- Stocks: `AssetSymbol("AAPL", AssetClass.STOCK, exchange="nyse")`
+
 The node will auto-register on startup.
 
 ## Deployment

@@ -14,7 +14,8 @@
   "license": "ISC",
   "type": "module",
   "dependencies": {
-    "@comfyorg/litegraph": "^0.16.18"
+    "@comfyorg/litegraph": "^0.16.18",
+    "canvas": "^2.11.2"
   },
   "devDependencies": {
     "@types/node": "^20.12.12",

@@ -5,14 +5,51 @@ import logging
 import asyncio
 import json
 import websockets
-from decimal import Decimal
-from datetime import datetime, timezone
 import requests
 import pandas as pd
+from core.types_registry import AssetSymbol, AssetClass
 
 logger = logging.getLogger(__name__)
 
-class BinanceDataProvider:
+class BaseDataProvider:
+    async def fetch_klines(
+        self,
+        symbol: AssetSymbol,
+        timespan: str,
+        multiplier: int = 1,
+        limit: int = 1000,
+        start: Optional[datetime] = None,
+        end: Optional[datetime] = None,
+    ) -> List[Tuple[int, Decimal, Decimal, Decimal, Decimal, Decimal]]:
+        raise NotImplementedError
+
+    async def get_klines_df(
+        self,
+        symbol: AssetSymbol,
+        timespan: str,
+        multiplier: int = 1,
+        limit: int = 1000,
+        start: Optional[datetime] = None,
+        end: Optional[datetime] = None,
+    ) -> Optional[pd.DataFrame]:
+        klines = await self.fetch_klines(symbol, timespan, multiplier, limit, start, end)
+        if not klines:
+            return None
+        df = pd.DataFrame(klines, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+        df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms', utc=True)
+        df.set_index('timestamp', inplace=True)
+        return df
+
+    async def get_tradable_universe(self) -> List[AssetSymbol]:
+        raise NotImplementedError
+
+    async def stream_klines(self, streams: list[str]) -> AsyncGenerator[dict, None]:
+        raise NotImplementedError
+
+    async def close(self):
+        pass
+
+class BinanceDataProvider(BaseDataProvider):
     """
     Provides historical and real-time market data from Binance.
     """
@@ -32,7 +69,7 @@ class BinanceDataProvider:
 
     async def fetch_klines(
         self,
-        symbol: str,
+        symbol: AssetSymbol,
         timespan: str,
         multiplier: int = 1,
         limit: int = 1000,
@@ -54,7 +91,9 @@ class BinanceDataProvider:
             A list of tuples, each representing a k-line with
             (timestamp_ms, open, high, low, close, volume).
         """
-        pair = f"{symbol.upper()}USDT"
+        if symbol.asset_class != AssetClass.CRYPTO:
+            raise ValueError("BinanceDataProvider supports only CRYPTO assets")
+        pair = str(symbol)
         interval_key = (timespan, multiplier)
         if interval_key not in self._INTERVALS:
             raise ValueError(f"Unsupported interval: {timespan} x{multiplier}")
@@ -166,28 +205,7 @@ class BinanceDataProvider:
         
         return all_klines
     
-    async def get_klines_df(
-        self,
-        symbol: str,
-        timespan: str,
-        multiplier: int = 1,
-        limit: int = 1000,
-        start: Optional[datetime] = None,
-        end: Optional[datetime] = None,
-    ) -> Optional[pd.DataFrame]:
-        """
-        Fetches historical k-lines and returns them as a pandas DataFrame.
-        """
-        klines = await self.fetch_klines(symbol, timespan, multiplier, limit, start, end)
-        if not klines:
-            return None
-        
-        df = pd.DataFrame(klines, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-        df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms', utc=True)
-        df.set_index('timestamp', inplace=True)
-        return df
-
-    async def get_tradable_universe(self) -> set[str]:
+    async def get_tradable_universe(self) -> List[AssetSymbol]:
         """
         Fetches the set of baseAsset symbols that trade against USDT on Binance.
 
@@ -202,25 +220,25 @@ class BinanceDataProvider:
                 response = await asyncio.to_thread(requests.get, 'https://fapi.binance.com/fapi/v1/exchangeInfo')
                 if response.status_code == 200:
                     info = response.json()
-                    return {
-                        sym["baseAsset"].upper()
+                    return [
+                        AssetSymbol(sym["baseAsset"].upper(), AssetClass.CRYPTO)
                         for sym in info["symbols"]
                         if sym.get("quoteAsset") == "USDT" and sym.get("contractType") == "PERPETUAL" and sym.get("status") == "TRADING"
-                    }
+                    ]
                 elif response.status_code == 429:
                     logger.warning(f"Rate limit hit for exchange info. Retrying after {backoff} seconds...")
                     await asyncio.sleep(backoff)
                     backoff *= 2
                 else:
                     logger.error(f"Failed to fetch exchange info: HTTP {response.status_code} - {response.text}")
-                    return set()
+                    return []
                 attempts += 1
             else:
                 logger.error("Max attempts reached for exchange info. Giving up.")
-                return set()
+                return []
         except Exception as e:
             logger.error(f"Failed to fetch tradable universe from Binance: {e}")
-            return set()
+            return []
 
     async def stream_klines(self, streams: list[str]) -> AsyncGenerator[dict, None]:
         url = "wss://fstream.binance.com/stream"
