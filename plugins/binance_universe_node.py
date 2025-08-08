@@ -1,18 +1,12 @@
-from typing import Dict, Any
+from typing import Dict, Any, List
 import asyncio
 import requests
 import logging
-from nodes.base_node import BaseNode
+from nodes.data_source_nodes import UniverseNode
 from core.types_registry import get_type, AssetSymbol, AssetClass
-
 logger = logging.getLogger(__name__)
-
-class BinancePerpsUniverseNode(BaseNode):
-    inputs = {}
-    outputs = {"symbols": get_type("AssetSymbolList")}
-    required_asset_class = AssetClass.CRYPTO
-
-    async def execute(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
+class BinancePerpsUniverseNode(UniverseNode):
+    async def _fetch_symbols(self) -> List[AssetSymbol]:
         attempts = 0
         max_attempts = 5
         backoff = 1
@@ -31,14 +25,14 @@ class BinancePerpsUniverseNode(BaseNode):
                     for sym in info["symbols"]
                     if sym.get("quoteAsset") == "USDT" and sym.get("contractType") == "PERPETUAL" and sym.get("status") == "TRADING"
                 ]
-                return {"symbols": symbols}
+                return symbols
             elif response.status_code == 429:
                 logger.warning(f"Rate limit hit for exchange info. Retrying after {backoff} seconds...")
                 await asyncio.sleep(backoff)
                 backoff *= 2
             else:
                 logger.error(f"Failed to fetch exchange info: HTTP {response.status_code} - {response.text}")
-                return {"symbols": []}
+                return []
             attempts += 1
         logger.error("Max attempts reached for exchange info. Giving up.")
-        return {"symbols": []} 
+        return [] 

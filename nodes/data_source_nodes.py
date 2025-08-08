@@ -1,9 +1,10 @@
 from typing import Dict, Any, List
 import pandas as pd
-from services.data_service import DataService
 from data_provider.data_provider import BinanceDataProvider
+from services.data_service import DataService
 from .base_node import BaseNode
 from core.types_registry import get_type, AssetSymbol, AssetClass
+from abc import ABC, abstractmethod
 
 class DataServiceNode(BaseNode):
     """
@@ -20,19 +21,8 @@ class DataServiceNode(BaseNode):
 
     async def execute(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
         if not self.data_service:
-            symbols: List[AssetSymbol] = self.params.get("symbols")
-            if not symbols:
-                raise ValueError("No symbols provided for DataServiceNode")
-            
-            data_provider = BinanceDataProvider()  # TODO: Make dynamic based on symbol.exchange
-            self.data_service = DataService(
-                data_provider,
-                [str(s) for s in symbols],  # Convert to str for legacy provider
-                self.params.get("prewarm_days")
-            )
-            await self.data_service.prewarm_data()
-            await self.data_service.fill_gaps()
-            await self.data_service.start_continuous_updates()
+            # TODO: Reimplement DataService after services removal
+            self.data_service = None  # Placeholder
 
         return {"data_service": self.data_service}
 
@@ -59,3 +49,20 @@ class KlinesNode(BaseNode):
         klines_df = data_service.get_data(str(symbol), timeframe)
         
         return {"klines_df": klines_df} 
+
+class UniverseNode(BaseNode, ABC):
+    inputs = {"filter_symbols": get_type("AssetSymbolList")}
+    outputs = {"symbols": get_type("AssetSymbolList")}
+    optional_inputs = ["filter_symbols"]
+
+    async def execute(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        symbols = await self._fetch_symbols()
+        filter_symbols = inputs.get("filter_symbols", [])
+        if filter_symbols:
+            filter_set = {str(s) for s in filter_symbols}
+            symbols = [s for s in symbols if str(s) in filter_set]
+        return {"symbols": symbols}
+    
+    @abstractmethod
+    async def _fetch_symbols(self) -> List[AssetSymbol]:
+        pass 

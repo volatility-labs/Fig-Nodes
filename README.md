@@ -57,3 +57,17 @@ Access UI at http://localhost:8000/static/index.html
 - **Editable Node Inputs**: Click text boxes on nodes to edit parameters.
 - **Executing the Graph**: Click "Execute Graph" to send to backend; check console for results. 
 - **Context Menus**: Right-click on a node for options like Clone, Remove, Properties. Right-click on the canvas background to access a menu for adding nodes by category. 
+
+## Extending Types and Colors
+
+To add custom types and colors for better UI visualization:
+
+1. Edit `ui/static/types.ts`:
+   - Add to `TYPE_COLORS` map: e.g., `'MyCustomType': '#ABCDEF'`
+   - Or use `registerType('MyCustomType', '#ABCDEF')` in your code.
+
+2. For custom nodes, use `registerExternalNode(name, data, uiModule)` from `app.ts` to register them dynamically.
+
+3. Ensure your backend nodes send compatible type info via the /nodes endpoint.
+
+This makes the package extensible for open-source users to customize without core changes. 

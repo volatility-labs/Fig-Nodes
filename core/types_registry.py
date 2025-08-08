@@ -8,12 +8,19 @@ class AssetClass(Enum):
     CRYPTO = auto()
     STOCK = auto()
 
+class InstrumentType(Enum):
+    SPOT = auto()
+    PERPETUAL = auto()
+    FUTURE = auto()
+    OPTION = auto()
+
 @dataclass(frozen=True)
 class AssetSymbol:
     ticker: str
     asset_class: AssetClass
     quote_currency: Optional[str] = None
     exchange: Optional[str] = None
+    instrument_type: InstrumentType = InstrumentType.SPOT
     metadata: Dict[str, Any] = field(default_factory=dict)
 
     def __str__(self) -> str:
@@ -42,8 +49,6 @@ TYPE_REGISTRY: Dict[str, Type] = {
     "OHLCV": pd.DataFrame,
     "OHLCVBundle": Dict[AssetSymbol, pd.DataFrame],
     "Score": float,
-    "TradeSignal": Dict[str, Any],
-    "TradeResult": Dict[str, Any],
 }
 
 def get_type(type_name: str) -> Type:

@@ -1,4 +1,5 @@
 import { LGraphNode, LiteGraph } from '@comfyorg/litegraph';
+import { getTypeColor } from '../types';
 
 export default class BaseCustomNode extends LGraphNode {
     displayResults: boolean = true;
@@ -11,45 +12,90 @@ export default class BaseCustomNode extends LGraphNode {
         this.size = [200, 100];
 
         if (data.inputs) {
-            let inputNames = Array.isArray(data.inputs) ? data.inputs : Object.keys(data.inputs);
-            inputNames.forEach((inp: string) => {
-                const inputType = this.inferInputType(inp);
-                this.addInput(inp, inputType);
+            const isArray = Array.isArray(data.inputs);
+            // For inputs map
+            const inputEntries = isArray ? data.inputs.map((name: string) => [name, null]) : Object.entries(data.inputs);
+            inputEntries.forEach(([inp, typeInfo]: [string, any], index: number) => {
+                const typeStr = this.parseType(typeInfo);
+                this.addInput(inp, typeStr);
+                if (typeInfo) {
+                    const color = getTypeColor(typeInfo);
+                    // @ts-ignore: Custom color property
+                    this.inputs[index].color = color;  // Set color on input slot
+                }
             });
         }
 
         if (data.outputs) {
-            let outputNames = Array.isArray(data.outputs) ? data.outputs : Object.keys(data.outputs);
-            outputNames.forEach((out: string) => {
-                const outputType = this.inferOutputType(out);
-                this.addOutput(out, outputType);
+            const isArray = Array.isArray(data.outputs);
+            // For outputs map
+            const outputEntries = isArray ? data.outputs.map((name: string) => [name, null]) : Object.entries(data.outputs);
+            outputEntries.forEach(([out, typeInfo]: [string, any], index: number) => {
+                const typeStr = this.parseType(typeInfo);
+                this.addOutput(out, typeStr);
+                if (typeInfo) {
+                    const color = getTypeColor(typeInfo);
+                    // @ts-ignore: Custom color property
+                    this.outputs[index].color = color;  // Set color on output slot
+                }
             });
         }
 
         this.properties = {};
 
         if (data.params) {
-            data.params.forEach((param: string) => {
-                this.addParameterWidget(param);
-                this.properties[param] = this.getDefaultValue(param);
+            data.params.forEach((param: any) => {
+                let paramType = param.type;
+                if (!paramType) {
+                    paramType = this.determineParamType(param.name);
+                }
+                const defaultValue = param.default !== undefined ? param.default : this.getDefaultValue(param.name);
+                this.properties[param.name] = defaultValue;
+
+                if (paramType === 'text') {
+                    // Single-line values via popup prompt (ideal for secrets like API keys)
+                    const initialLabel = `${param.name}: ${defaultValue}`;
+                    const widget = this.addWidget('button', initialLabel, defaultValue, () => {
+                        const newVal = prompt(`Enter value for ${param.name}`, this.properties[param.name]);
+                        if (newVal !== null) {
+                            this.properties[param.name] = newVal;
+                            widget.name = `${param.name}: ${newVal}`;
+                        }
+                    }, {});
+                } else if (paramType === 'textarea') {
+                    // Multi-line input directly in the node UI (e.g., long prompts)
+                    this.addWidget('text', param.name, defaultValue, (v) => {
+                        this.properties[param.name] = v;
+                    }, { multiline: true });
+                } else {
+                    const widgetOpts = paramType === 'combo' ? { values: param.options || [] } : {};
+                    this.addWidget(paramType as any, param.name, this.properties[param.name], (v: any) => {
+                        this.properties[param.name] = v;
+                    }, widgetOpts);
+                }
             });
         }
 
         this.displayResults = data.category !== 'data_source';
+
+        // Auto-resize node if it has a textarea widget
+        if (data.params && data.params.some((p: any) => p.type === 'textarea')) {
+            this.size[1] = 120; // Default height for nodes with a textarea
+        }
     }
 
-    inferInputType(inputName: string): string {
-        const lowerName = inputName.toLowerCase();
-        if (lowerName.includes('symbol')) return 'AssetSymbol';
-        if (lowerName.includes('data')) return 'data';
-        return 'any';
-    }
-
-    inferOutputType(outputName: string): string {
-        const lowerName = outputName.toLowerCase();
-        if (lowerName.includes('symbols')) return 'AssetSymbolList';
-        if (lowerName.includes('result')) return 'result';
-        return 'any';
+    parseType(typeInfo: any): string | number {
+        if (!typeInfo || typeInfo.base === 'Any' || typeInfo.base === 'typing.Any') {
+            return 0; // LiteGraph wildcard for "accept any"
+        }
+        let type = typeInfo.base;
+        if (typeInfo.subtype) {
+            const sub = this.parseType(typeInfo.subtype);
+            if (type === 'list' && sub === 'AssetSymbol') return 'AssetSymbolList';
+            // Add more mappings as needed for extensibility
+            return `${type}<${sub}>`;
+        }
+        return type;
     }
 
     getDefaultValue(param: string): any {
@@ -59,13 +105,10 @@ export default class BaseCustomNode extends LGraphNode {
         return '';
     }
 
-    addParameterWidget(param: string) {
-        const paramLower = param.toLowerCase();
-        if (paramLower.includes('period') || paramLower.includes('days')) {
-            this.addWidget('number', param, this.properties[param] || 14, (v) => this.properties[param] = v);
-        } else {
-            this.addWidget('text', param, this.properties[param] || '', (v) => this.properties[param] = v);
-        }
+    determineParamType(name: string): string {
+        const lower = name.toLowerCase();
+        if (lower.includes('period') || lower.includes('days')) return 'number';
+        return 'text';
     }
 
     wrapText(text: string, maxWidth: number, ctx: CanvasRenderingContext2D): string[] {

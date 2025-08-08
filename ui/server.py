@@ -10,6 +10,18 @@ import importlib.util
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from core.node_registry import NODE_REGISTRY
+import typing
+
+# Update _type_name to return a dict with base and subtype
+def _parse_type(t):
+    origin = typing.get_origin(t)
+    if origin:
+        base = origin.__name__
+        args = typing.get_args(t)
+        subtype = _parse_type(args[0]) if args else None
+        return {"base": base, "subtype": subtype}
+    else:
+        return {"base": getattr(t, "__name__", str(t))}
 
 app = FastAPI()
 
@@ -24,14 +36,26 @@ def read_root():
 def list_nodes():
     nodes_meta = {}
     for name, cls in NODE_REGISTRY.items():
-        inputs_meta = cls.inputs if isinstance(cls.inputs, list) else {k: v.__name__ for k, v in cls.inputs.items()}
-        outputs_meta = cls.outputs if isinstance(cls.outputs, list) else {k: v.__name__ for k, v in cls.outputs.items()}
+        inputs_meta = cls.inputs if isinstance(cls.inputs, list) else {k: _parse_type(v) for k, v in cls.inputs.items()}
+        outputs_meta = cls.outputs if isinstance(cls.outputs, list) else {k: _parse_type(v) for k, v in cls.outputs.items()}
+        params = []
+        if hasattr(cls, 'params_meta'):
+            params = cls.params_meta
+        elif hasattr(cls, 'default_params'):
+            for k, v in cls.default_params.items():
+                param_type = 'number' if any(word in k.lower() for word in ['day', 'period']) else 'text'
+                default_val = v if isinstance(v, (int, float, str, bool)) else None
+                params.append({
+                    "name": k,
+                    "type": param_type,
+                    "default": default_val
+                })
         nodes_meta[name] = {
             "inputs": inputs_meta,
             "outputs": outputs_meta,
-            "params": list(cls.default_params.keys()),
+            "params": params,
             "category": "data_source" if "Universe" in name or "Data" in name else "logic",
-            "uiModule": "LoggingNodeUI" if name == "LoggingNode" else None
+            "uiModule": "TextInputNodeUI" if name == "TextInputNode" else "LoggingNodeUI" if name == "LoggingNode" else None
         }
     return {"nodes": nodes_meta}
 

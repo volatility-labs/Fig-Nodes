@@ -1,13 +1,14 @@
 import { LGraph, LGraphCanvas, LGraphNode, LiteGraph, IContextMenuValue, ContextMenu, } from '@comfyorg/litegraph';
 import BaseCustomNode from './nodes/BaseCustomNode';
+import { registerType } from './types';
 
 // Node categories for better organization
 const NODE_CATEGORIES = {
-    'Data': ['DefaultDataServiceNode', 'BinanceDataProviderNode'],
+    'Data': ['DefaultDataServiceNode', 'BinancePerpsUniverseNode', 'PolygonUniverseNode'],
     'Indicators': ['DefaultIndicatorsNode'],
     'Trading': ['DefaultTradingNode'],
     'Scoring': ['DefaultScoringNode'],
-    'Utilities': ['SampleNode', 'UniverseNode']  // Assuming plugins
+    'Utilities': ['SampleNode', 'InstrumentResolverNode', 'TextInputNode']
 };
 
 // Assuming LiteGraph is loaded globally or imported correctly
@@ -196,6 +197,12 @@ async function createEditor(container: HTMLElement) {
 
         // Add keyboard support for deleting selected nodes
         document.addEventListener('keydown', (e: KeyboardEvent) => {
+            // @ts-ignore
+            if (canvas.editingNode && canvas.editingNode.onKeyDown) {
+                // @ts-ignore
+                canvas.editingNode.onKeyDown(e);
+                return;
+            }
             if (e.key === 'Delete' || e.key === 'Backspace') {
                 const selected = canvas.selected_nodes || {};
                 Object.values(selected).forEach((node: LGraphNode) => {
@@ -274,8 +281,8 @@ async function createEditor(container: HTMLElement) {
                             let text = JSON.stringify(node.result, null, 2);
                             if (node.type === 'LoggingNode' && node.result.output) {
                                 text = node.result.output;
-                            } else if (node.type === 'BinancePerpsUniverseNode' && node.result.symbols) {
-                                text = node.result.symbols.map((s: any) => s.ticker).join('\n');
+                            } else if (['BinancePerpsUniverseNode', 'PolygonUniverseNode'].includes(node.type) && node.result.symbols) {
+                                text = node.result.symbols.map((s: any) => `${s.ticker}${s.quote_currency ? s.quote_currency : ''}`).join('\n');
                             }
                             node.displayText = text;
                             const maxLineWidth = 50 * 7;
@@ -347,6 +354,23 @@ async function createEditor(container: HTMLElement) {
     } finally {
         showLoading(false);
     }
+}
+
+export async function registerExternalNode(name: string, data: any, uiModule?: string) {
+    let NodeClass = BaseCustomNode;
+    if (uiModule) {
+        const module = await import(`./nodes/${uiModule}.ts`);
+        NodeClass = module.default;
+    }
+    const CustomClass = class extends NodeClass {
+        constructor() {
+            super(name, data);
+        }
+    };
+    // @ts-ignore
+    LiteGraph.registerNodeType(name, CustomClass);
+    // Optionally register types from data
+    // e.g., extract types and call registerType
 }
 
 function makeDraggable(element: HTMLElement, handle: HTMLElement) {

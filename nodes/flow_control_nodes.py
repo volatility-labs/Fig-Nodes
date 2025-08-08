@@ -16,7 +16,5 @@ class ForEachNode(BaseNode):
         super().__init__(node_id, params)
 
     async def execute(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
-        # This node's logic is primarily handled by the GraphExecutor.
-        # It just passes the list through.
         item_list = inputs.get("list", [])
         return {"list": item_list} 

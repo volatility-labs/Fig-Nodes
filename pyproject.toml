@@ -1,34 +1,30 @@
-[project]
+[tool.poetry]
 name = "hl-bot-v2"
 version = "0.1.0"
 description = "Hyperliquid Trading Bot V2"
-authors = [
-    {name = "Guanzhi Ma"}
-]
+authors = ["Guanzhi Ma"]
 readme = "README.md"
-requires-python = "^3.11"
-dependencies = [
-    "python-dotenv (>=1.1.1,<2.0.0)",
-    "pandas (>=2.3.1,<3.0.0)",
-    "numpy (>=2.3.2,<3.0.0)",
-    "scipy (>=1.16.0,<2.0.0)",
-    "requests (>=2.32.4,<3.0.0)",
-    "websockets (>=15.0.1,<16.0.0)",
-    "hyperliquid (>=0.4.66,<0.5.0)",
-    "hyperliquid-python-sdk (==0.16.0)",
-    "fastapi (>=0.116.1,<0.117.0)",
-    "pydantic (>=2.11.7,<3.0.0)",
-    "uvicorn (>=0.35.0,<0.36.0)",
-    "networkx (>=3.5,<4.0)"
-]
+packages = [{ include = "hl_bot_v2" }]
 
-[tool.poetry]
-package-mode = false
+[tool.poetry.dependencies]
+python = "^3.11"
+python-dotenv = "^1.0.1"
+pandas = "^2.3.1"
+numpy = "^1.26.4"
+scipy = "^1.11.0"
+requests = "^2.32.4"
+websockets = "^10.0"
+hyperliquid-python-sdk = "^0.17.0"
+fastapi = "^0.116.1"
+pydantic = "^2.11.7"
+uvicorn = "^0.35.0"
+networkx = "^3.5"
+httpx = "^0.27.2"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.4.1"
 pytest-asyncio = "^1.1.0"
 
 [build-system]
-requires = ["poetry-core>=2.0.0,<3.0.0"]
+requires = ["poetry-core>=1.8.0"]
 build-backend = "poetry.core.masonry.api"
