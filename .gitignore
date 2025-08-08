@@ -26,6 +26,7 @@ var/
 venv/
 env/
 ENV/
+.venv
 
 # IDE files
 .idea/
@@ -74,4 +75,4 @@ dmypy.json
 .pyre/
 .pytype/
 
-# End Generation Here
+cursor_project_rules
