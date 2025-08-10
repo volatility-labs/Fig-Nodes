@@ -10,7 +10,7 @@ export default class TextInputNodeUI extends BaseCustomNode {
     constructor(title: string, data: any) {
         super(title, data);
         this.resizable = true;
-        this.size = [280, 160];
+        this.size = [300, 180];
 
         // Remove default widget to handle custom editing
         this.widgets = [];
@@ -19,6 +19,10 @@ export default class TextInputNodeUI extends BaseCustomNode {
         if (!this.properties.value) {
             this.properties.value = '';
         }
+
+        // Set colors for text input styling
+        this.color = "#2c2c2c";
+        this.bgcolor = "#1e1e1e";
     }
 
     getLines(): string[] {
@@ -29,14 +33,70 @@ export default class TextInputNodeUI extends BaseCustomNode {
         this.properties.value = lines.join('\n');
     }
 
+    wrapLine(text: string, maxWidth: number, ctx: CanvasRenderingContext2D): string[] {
+        if (!text) return [''];
+
+        const words = text.split(' ');
+        const lines: string[] = [];
+        let currentLine = '';
+
+        for (const word of words) {
+            const testLine = currentLine ? `${currentLine} ${word}` : word;
+            const metrics = ctx.measureText(testLine);
+
+            if (metrics.width <= maxWidth) {
+                currentLine = testLine;
+            } else {
+                if (currentLine) {
+                    lines.push(currentLine);
+                    currentLine = word;
+                } else {
+                    // Word is too long, force break
+                    lines.push(word);
+                }
+            }
+        }
+
+        if (currentLine) {
+            lines.push(currentLine);
+        }
+
+        return lines.length > 0 ? lines : [''];
+    }
+
+    getWrappedLines(ctx: CanvasRenderingContext2D): string[] {
+        const textAreaWidth = this.size[0] - 30; // Account for padding and border
+        const rawLines = this.getLines();
+        const wrappedLines: string[] = [];
+
+        for (const line of rawLines) {
+            const wrapped = this.wrapLine(line, textAreaWidth, ctx);
+            wrappedLines.push(...wrapped);
+        }
+
+        return wrappedLines;
+    }
+
     onMouseDown(event: MouseEvent, pos: [number, number], graphcanvas: LGraphCanvas) {
         if (this.flags?.collapsed) return false;
         if (pos[1] < LiteGraph.NODE_TITLE_HEIGHT) return false;
 
+        const padding = 10;
+        const textAreaX = padding;
+        const textAreaY = LiteGraph.NODE_TITLE_HEIGHT + padding;
+        const textAreaWidth = this.size[0] - (padding * 2);
+        const textAreaHeight = this.size[1] - LiteGraph.NODE_TITLE_HEIGHT - (padding * 2);
+
+        // Check if click is within text area bounds
+        if (pos[0] < textAreaX || pos[0] > textAreaX + textAreaWidth ||
+            pos[1] < textAreaY || pos[1] > textAreaY + textAreaHeight) {
+            return false;
+        }
+
         // Calculate cursor position based on click
-        const localY = pos[1] - LiteGraph.NODE_TITLE_HEIGHT - 10;
-        const localX = pos[0] - 10;
-        const lineHeight = 15;
+        const localY = pos[1] - textAreaY - padding;
+        const localX = pos[0] - textAreaX - padding;
+        const lineHeight = 16;
         const line = Math.floor(localY / lineHeight);
         const lines = this.getLines();
 
@@ -133,32 +193,70 @@ export default class TextInputNodeUI extends BaseCustomNode {
     onDrawForeground(ctx: CanvasRenderingContext2D) {
         if (this.flags?.collapsed) return;
 
-        let y = LiteGraph.NODE_TITLE_HEIGHT + 10;
-        const lineHeight = 15;
+        const padding = 10;
+        const borderWidth = 2;
+        const lineHeight = 16;
+        const textAreaX = padding;
+        const textAreaY = LiteGraph.NODE_TITLE_HEIGHT + padding;
+        const textAreaWidth = this.size[0] - (padding * 2);
+        const textAreaHeight = this.size[1] - LiteGraph.NODE_TITLE_HEIGHT - (padding * 2);
+
+        // Draw text area background and border
+        ctx.fillStyle = this.editing ? '#2a2a2a' : '#1a1a1a';
+        ctx.fillRect(textAreaX, textAreaY, textAreaWidth, textAreaHeight);
+
+        // Draw border
+        ctx.strokeStyle = this.editing ? '#5a9fd4' : '#444444';
+        ctx.lineWidth = borderWidth;
+        ctx.strokeRect(textAreaX, textAreaY, textAreaWidth, textAreaHeight);
+
+        // Set up text rendering
         ctx.font = '12px monospace';
         ctx.textAlign = 'left';
         ctx.fillStyle = '#ffffff';
 
-        const lines = this.getLines();
-        lines.forEach((lineText: string) => {
-            ctx.fillText(lineText, 10, y);
-            y += lineHeight;
+        // Get wrapped lines and render
+        const wrappedLines = this.getWrappedLines(ctx);
+        let y = textAreaY + padding + 12; // Start position for text
+
+        // Clip text to text area bounds
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(textAreaX + borderWidth, textAreaY + borderWidth,
+            textAreaWidth - (borderWidth * 2), textAreaHeight - (borderWidth * 2));
+        ctx.clip();
+
+        wrappedLines.forEach((lineText: string, index: number) => {
+            if (y <= textAreaY + textAreaHeight - padding) {
+                ctx.fillText(lineText, textAreaX + padding, y);
+                y += lineHeight;
+            }
         });
+
+        ctx.restore();
 
         // Draw cursor if editing
         if (this.editing && (Date.now() - this.cursorBlink) % 1000 < 500) {
             const { line, col } = this.cursorPos;
-            if (line < lines.length) {
-                const cursorX = 10 + ctx.measureText(lines[line].substring(0, col)).width;
-                const cursorY = LiteGraph.NODE_TITLE_HEIGHT + 10 + line * lineHeight;
-                ctx.fillRect(cursorX, cursorY - 12, 1, lineHeight);
+            const rawLines = this.getLines();
+            if (line < rawLines.length) {
+                const cursorText = rawLines[line].substring(0, col);
+                const cursorX = textAreaX + padding + ctx.measureText(cursorText).width;
+                const cursorY = textAreaY + padding + (line * lineHeight);
+
+                if (cursorY >= textAreaY && cursorY <= textAreaY + textAreaHeight - padding) {
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillRect(cursorX, cursorY, 1, lineHeight);
+                }
             }
         }
 
-        // Adjust node size based on content
-        const requiredHeight = LiteGraph.NODE_TITLE_HEIGHT + lines.length * lineHeight + 20;
-        if (this.size[1] < requiredHeight) {
-            this.size[1] = requiredHeight;
+        // Auto-adjust node size based on content
+        const minHeight = LiteGraph.NODE_TITLE_HEIGHT + 80;
+        const contentHeight = Math.max(wrappedLines.length * lineHeight + (padding * 3) + LiteGraph.NODE_TITLE_HEIGHT, minHeight);
+
+        if (this.size[1] < contentHeight) {
+            this.size[1] = contentHeight;
         }
     }
 

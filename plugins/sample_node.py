@@ -1,5 +1,5 @@
 from typing import Dict, Any, List
-from nodes.base_node import BaseNode
+from nodes.base.base_node import BaseNode
 
 class SampleCustomNode(BaseNode):
     inputs = {"input_data": Any}

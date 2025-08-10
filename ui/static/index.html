@@ -21,6 +21,7 @@
             <div id="status-indicator" class="status-indicator"></div>
             <div class="controls">
                 <button id="execute">Execute Graph</button>
+                <button id="stop" style="display: none;">Stop</button>
                 <button id="save">Save Graph</button>
                 <button id="load">Load Graph</button>
             </div>
@@ -29,7 +30,7 @@
 
     <!-- Loading Overlay -->
     <div id="loading-overlay" style="display: none;">
-        <span>Loading...</span>
+        <span>Executing...</span>
     </div>
 
     <input type="file" id="graph-file" accept=".json" style="display: none;">

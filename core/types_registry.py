@@ -1,12 +1,12 @@
-from typing import List, Dict, Any, Type, Optional
+from typing import List, Dict, Any, Type, Optional, AsyncGenerator
 import pandas as pd
 from datetime import datetime
 from dataclasses import dataclass, field
 from enum import Enum, auto
 
-class AssetClass(Enum):
-    CRYPTO = auto()
-    STOCK = auto()
+class AssetClass:
+    CRYPTO = "CRYPTO"
+    STOCKS = "STOCKS"
 
 class InstrumentType(Enum):
     SPOT = auto()
@@ -17,7 +17,7 @@ class InstrumentType(Enum):
 @dataclass(frozen=True)
 class AssetSymbol:
     ticker: str
-    asset_class: AssetClass
+    asset_class: str
     quote_currency: Optional[str] = None
     exchange: Optional[str] = None
     instrument_type: InstrumentType = InstrumentType.SPOT
@@ -29,7 +29,7 @@ class AssetSymbol:
         return self.ticker.upper()
 
     @staticmethod
-    def from_string(s: str, asset_class: AssetClass, exchange: Optional[str] = None, metadata: Dict[str, Any] = None) -> "AssetSymbol":
+    def from_string(s: str, asset_class: str, exchange: Optional[str] = None, metadata: Dict[str, Any] = None) -> "AssetSymbol":
         if asset_class == AssetClass.CRYPTO:
             if "USDT" in s.upper():
                 ticker, quote = s.upper().split("USDT")
@@ -37,6 +37,16 @@ class AssetSymbol:
             else:
                 return AssetSymbol(s.upper(), asset_class, exchange=exchange, metadata=metadata or {})
         return AssetSymbol(s.upper(), asset_class, exchange=exchange, metadata=metadata or {})
+    
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "ticker": self.ticker,
+            "asset_class": self.asset_class,
+            "quote_currency": self.quote_currency,
+            "exchange": self.exchange,
+            "instrument_type": self.instrument_type.name,
+            "metadata": self.metadata
+        }
 
 TYPE_REGISTRY: Dict[str, Type] = {
     "AssetSymbol": AssetSymbol,
@@ -49,6 +59,7 @@ TYPE_REGISTRY: Dict[str, Type] = {
     "OHLCV": pd.DataFrame,
     "OHLCVBundle": Dict[AssetSymbol, pd.DataFrame],
     "Score": float,
+    "OHLCVStream": AsyncGenerator[Dict[AssetSymbol, pd.DataFrame], None],
 }
 
 def get_type(type_name: str) -> Type:
@@ -61,7 +72,8 @@ def register_type(type_name: str, type_obj: Type):
         raise ValueError(f"Type {type_name} already registered")
     TYPE_REGISTRY[type_name] = type_obj
 
-def register_asset_class(name: str) -> AssetClass:
-    # Dynamically add to Enum (note: Enums are immutable, so this creates a new member)
-    setattr(AssetClass, name.upper(), auto())
-    return getattr(AssetClass, name.upper()) 
+def register_asset_class(name: str) -> str:
+    upper = name.upper()
+    if not hasattr(AssetClass, upper):
+        setattr(AssetClass, upper, upper)
+    return getattr(AssetClass, upper) 

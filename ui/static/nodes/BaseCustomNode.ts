@@ -6,6 +6,7 @@ export default class BaseCustomNode extends LGraphNode {
     result: any;
     displayText: string = '';
     properties: { [key: string]: any } = {};
+    error: string = '';
 
     constructor(title: string, data: any) {
         super(title);
@@ -53,14 +54,17 @@ export default class BaseCustomNode extends LGraphNode {
                 this.properties[param.name] = defaultValue;
 
                 if (paramType === 'text') {
-                    // Single-line values via popup prompt (ideal for secrets like API keys)
-                    const initialLabel = `${param.name}: ${defaultValue}`;
+                    const isSecret = param.name.toLowerCase().includes('key') || param.name.toLowerCase().includes('password');
+                    let displayValue = isSecret ? (defaultValue ? '********' : 'Not set') : defaultValue;
+                    const initialLabel = `${param.name}: ${displayValue}`;
                     const widget = this.addWidget('button', initialLabel, defaultValue, () => {
-                        const newVal = prompt(`Enter value for ${param.name}`, this.properties[param.name]);
-                        if (newVal !== null) {
-                            this.properties[param.name] = newVal;
-                            widget.name = `${param.name}: ${newVal}`;
-                        }
+                        this.showCustomPrompt('Value', this.properties[param.name], isSecret, (newVal: string | null) => {
+                            if (newVal !== null) {
+                                this.properties[param.name] = newVal;
+                                displayValue = isSecret ? (newVal ? '********' : 'Not set') : newVal.substring(0, 15) + (newVal.length > 15 ? '...' : '');
+                                widget.name = `${param.name}: ${displayValue}`;
+                            }
+                        });
                     }, {});
                 } else if (paramType === 'textarea') {
                     // Multi-line input directly in the node UI (e.g., long prompts)
@@ -85,10 +89,14 @@ export default class BaseCustomNode extends LGraphNode {
     }
 
     parseType(typeInfo: any): string | number {
-        if (!typeInfo || typeInfo.base === 'Any' || typeInfo.base === 'typing.Any') {
+        if (!typeInfo) {
             return 0; // LiteGraph wildcard for "accept any"
         }
-        let type = typeInfo.base;
+        const baseName = typeof typeInfo.base === 'string' ? typeInfo.base : String(typeInfo.base);
+        if (baseName === 'Any' || baseName === 'typing.Any' || baseName.toLowerCase() === 'any') {
+            return 0; // LiteGraph wildcard
+        }
+        let type = baseName;
         if (typeInfo.subtype) {
             const sub = this.parseType(typeInfo.subtype);
             if (type === 'list' && sub === 'AssetSymbol') return 'AssetSymbolList';
@@ -133,22 +141,99 @@ export default class BaseCustomNode extends LGraphNode {
         return lines;
     }
 
+    setError(message: string) {
+        this.error = message;
+        this.color = '#FF0000'; // Red border for error
+        this.setDirtyCanvas(true, true);
+    }
+
     onDrawForeground(ctx: CanvasRenderingContext2D) {
         if (this.flags.collapsed || !this.displayResults || !this.displayText) {
             return;
         }
+
+        const maxWidth = this.size[0] - 20;
+
+        // Create temporary canvas context for measurement
+        const tempCanvas = document.createElement('canvas');
+        const tempCtx = tempCanvas.getContext('2d');
+        if (!tempCtx) return;
+
+        tempCtx.font = '12px Arial';
+        const lines = this.wrapText(this.displayText, maxWidth, tempCtx);
+
+        // Calculate needed height
         let y = LiteGraph.NODE_TITLE_HEIGHT + 4;
         if (this.widgets) {
             y += this.widgets.length * LiteGraph.NODE_WIDGET_HEIGHT;
         }
         y += 10;
+        const contentHeight = lines.length * 15;
+        const neededHeight = y + contentHeight + 10;
+
+        // Resize if necessary
+        if (Math.abs(this.size[1] - neededHeight) > 1) {
+            this.size[1] = neededHeight;
+            this.setDirtyCanvas(true, true);
+            return; // Skip drawing this frame to avoid flicker
+        }
+
+        // Draw the text
         ctx.font = '12px Arial';
         ctx.fillStyle = '#ffffff';
         ctx.textAlign = 'left';
-        const lines = this.wrapText(this.displayText, this.size[0] - 20, ctx);
-        lines.forEach(line => {
-            ctx.fillText(line, 10, y);
-            y += 15;
+
+        lines.forEach((line, index) => {
+            ctx.fillText(line, 10, y + index * 15);
         });
+
+        // Draw error if present
+        if (this.error) {
+            ctx.fillStyle = '#FF0000';
+            ctx.font = 'bold 12px Arial';
+            const errorY = y + lines.length * 15 + 10;
+            ctx.fillText(`Error: ${this.error}`, 10, errorY);
+            this.size[1] = Math.max(this.size[1], errorY + 20);
+        }
+    }
+
+    updateDisplay(result: any) {
+        this.result = result;
+        if (this.displayResults) {
+            const outputs = Object.values(result);
+            const primaryOutput = outputs.length === 1 ? outputs[0] : result;
+            this.displayText = typeof primaryOutput === 'string' ? primaryOutput : JSON.stringify(primaryOutput, null, 2);
+        }
+        this.setDirtyCanvas(true, true);
+    }
+
+    showCustomPrompt(title: string, defaultValue: string, isPassword: boolean, callback: (value: string | null) => void) {
+        const dialog = document.createElement('div');
+        dialog.className = 'custom-input-dialog';
+
+        const label = document.createElement('label');
+        label.className = 'dialog-label';
+        label.textContent = title;
+
+        const input = document.createElement('input');
+        input.className = 'dialog-input';
+        input.type = isPassword ? 'password' : 'text';
+        input.value = defaultValue;
+
+        const okButton = document.createElement('button');
+        okButton.className = 'dialog-button';
+        okButton.textContent = 'OK';
+        okButton.onclick = () => {
+            callback(input.value);
+            document.body.removeChild(dialog);
+        };
+
+        dialog.appendChild(label);
+        dialog.appendChild(input);
+        dialog.appendChild(okButton);
+
+        document.body.appendChild(dialog);
+        input.focus();
+        input.select();
     }
 }

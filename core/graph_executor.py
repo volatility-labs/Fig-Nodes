@@ -1,7 +1,10 @@
 import networkx as nx
-from typing import Dict, Any, List
-from nodes.base_node import BaseNode
-from nodes.flow_control_nodes import ForEachNode
+from typing import Dict, Any, List, AsyncGenerator
+from nodes.base.base_node import BaseNode
+from nodes.impl.flow_control_nodes import ForEachNode
+import asyncio
+from nodes.base.streaming_node import StreamingNode
+from collections import defaultdict
 
 class GraphExecutor:
     def __init__(self, graph: Dict[str, Any], node_registry: Dict[str, type]):
@@ -9,6 +12,8 @@ class GraphExecutor:
         self.node_registry = node_registry
         self.nodes: Dict[int, BaseNode] = {}
         self.dag = nx.DiGraph()
+        self.is_streaming = False
+        self.streaming_tasks: List[asyncio.Task] = []
         self._build_graph()
 
     def _build_graph(self):
@@ -27,72 +32,161 @@ class GraphExecutor:
 
         if not nx.is_directed_acyclic_graph(self.dag):
             raise ValueError("Graph contains cycles")
+        
+        self.is_streaming = any(isinstance(node, StreamingNode) for node in self.nodes.values())
 
     async def execute(self) -> Dict[str, Any]:
+        if self.is_streaming:
+            raise RuntimeError("Cannot use execute() on a streaming graph. Use stream() instead.")
+
         results: Dict[int, Dict[str, Any]] = {}
         sorted_nodes = list(nx.topological_sort(self.dag))
 
         for node_id in sorted_nodes:
+            if self.dag.in_degree(node_id) == 0 and self.dag.out_degree(node_id) == 0:
+                continue
             node = self.nodes[node_id]
-            
             if isinstance(node, ForEachNode):
-                # Special handling for ForEachNode
                 await self._execute_foreach_subgraph(node, results)
             else:
-                # Standard node execution
                 inputs = self._get_node_inputs(node_id, results)
                 if not node.validate_inputs(inputs):
                     raise ValueError(f"Missing inputs for node {node_id}: {set(node.inputs) - set(inputs.keys())}")
-                
                 outputs = await node.execute(inputs)
                 results[node_id] = outputs
         
         return results
 
+    async def _execute_subgraph_for_tick(self, subgraph_nodes: List[int], context: Dict[str, Any]) -> Dict[str, Any]:
+        tick_results = {}
+        for sub_node_id in subgraph_nodes:
+            # Important: The context for the current tick can be updated by previous nodes in the same tick
+            current_context = {**context, **tick_results}
+            sub_node = self.nodes[sub_node_id]
+            sub_inputs = self._get_node_inputs(sub_node_id, current_context)
+            
+            if not sub_node.validate_inputs(sub_inputs):
+                # TODO: Handle errors more gracefully
+                print(f"Skipping node {sub_node_id} due to missing inputs in stream.")
+                continue
+                
+            sub_outputs = await sub_node.execute(sub_inputs)
+            tick_results[sub_node_id] = sub_outputs
+        return tick_results
+
+    async def _run_streaming_source(self, source_id: int, initial_results: Dict[int, Any], result_queue: asyncio.Queue):
+        source_node = self.nodes[source_id]
+        
+        # Define the subgraph that depends on this source
+        downstream_nodes = list(nx.dfs_preorder_nodes(self.dag, source=source_id))
+        downstream_nodes.remove(source_id)
+
+        source_inputs = self._get_node_inputs(source_id, initial_results)
+        
+        async for source_output in source_node.start(source_inputs):
+            # The context for this tick includes all initial results plus the new output from the stream source
+            tick_context = {**initial_results, source_id: source_output}
+            
+            # Execute the downstream nodes for this tick
+            subgraph_results = await self._execute_subgraph_for_tick(downstream_nodes, tick_context)
+            
+            # Combine all results for this tick and put them in the queue
+            final_tick_results = {source_id: source_output, **subgraph_results}
+            await result_queue.put(final_tick_results)
+
+    async def stream(self) -> AsyncGenerator[Dict[str, Any], None]:
+        static_results: Dict[int, Dict[str, Any]] = {}
+        
+        streaming_pipeline_nodes = set()
+        streaming_sources = []
+        for node_id in self.dag.nodes:
+            if isinstance(self.nodes[node_id], StreamingNode) and self.dag.degree(node_id) > 0:
+                streaming_sources.append(node_id)
+                streaming_pipeline_nodes.add(node_id)
+                for descendant in nx.descendants(self.dag, node_id):
+                    streaming_pipeline_nodes.add(descendant)
+
+        # First, execute all nodes that are NOT part of any streaming pipeline
+        sorted_nodes = list(nx.topological_sort(self.dag))
+        for node_id in sorted_nodes:
+            if node_id not in streaming_pipeline_nodes:
+                if self.dag.in_degree(node_id) == 0 and self.dag.out_degree(node_id) == 0:
+                    continue
+                node = self.nodes[node_id]
+                inputs = self._get_node_inputs(node_id, static_results)
+                outputs = await node.execute(inputs)
+                static_results[node_id] = outputs
+        
+        # Yield the initial results from the static part of the graph
+        yield static_results
+
+        # If there are no streaming sources, we are done
+        if not streaming_sources:
+            return
+
+        # Start the streaming sources and their pipelines
+        final_results_queue = asyncio.Queue()
+        self.streaming_tasks = []
+        for source_id in streaming_sources:
+            task = asyncio.create_task(self._run_streaming_source(source_id, static_results.copy(), final_results_queue))
+            self.streaming_tasks.append(task)
+            
+        # Main loop to pull from the queue and yield to the websocket
+        while any(not task.done() for task in self.streaming_tasks):
+            try:
+                final_result = await asyncio.wait_for(final_results_queue.get(), timeout=1.0)
+                yield final_result
+            except asyncio.TimeoutError:
+                # This allows us to check if the tasks are done
+                continue
+        
+        # Clean up any remaining tasks
+        results = await asyncio.gather(*self.streaming_tasks, return_exceptions=True)
+        exceptions = [r for r in results if isinstance(r, Exception)]
+        if exceptions:
+            raise exceptions[0]
+
+        for task in self.streaming_tasks:
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(*self.streaming_tasks, return_exceptions=True)
+        self.streaming_tasks = []
+
+    async def stop(self):
+        for task in self.streaming_tasks:
+            if not task.done():
+                task.cancel()
+                node = next((n for n in self.nodes.values() if isinstance(n, StreamingNode)), None)
+                if node:
+                    node.stop()
+        if self.streaming_tasks:
+            await asyncio.gather(*self.streaming_tasks, return_exceptions=True)
+        self.streaming_tasks = []
+
     async def _execute_foreach_subgraph(self, foreach_node: ForEachNode, results: Dict[str, Any]):
         inputs = self._get_node_inputs(foreach_node.id, results)
         item_list = inputs.get("list", [])
         
-        # Identify the subgraph connected to the ForEachNode's "item" output
         subgraph_nodes = list(nx.dfs_preorder_nodes(self.dag, source=foreach_node.id))
-        subgraph_nodes.remove(foreach_node.id) # Exclude the ForEachNode itself
+        subgraph_nodes.remove(foreach_node.id)
 
         foreach_results = []
         for item in item_list:
-            # For each item, run the subgraph
-            subgraph_results = {}
-            # Provide the current item as an output of the ForEachNode
-            results[foreach_node.id] = {"item": item}
+            subgraph_context = {**results, foreach_node.id: {"item": item}}
+            subgraph_results = await self._execute_subgraph_for_tick(subgraph_nodes, subgraph_context)
             
-            for sub_node_id in subgraph_nodes:
-                sub_node = self.nodes[sub_node_id]
-                sub_inputs = self._get_node_inputs(sub_node_id, {**results, **subgraph_results})
-                
-                if not sub_node.validate_inputs(sub_inputs):
-                     raise ValueError(f"Missing inputs for node {sub_node_id} in ForEach loop: {set(sub_node.inputs) - set(sub_inputs.keys())}")
-
-                sub_outputs = await sub_node.execute(sub_inputs)
-                subgraph_results[sub_node_id] = sub_outputs
-            
-            # You might want to collect results from the subgraph execution
-            # For now, we'll just store the final result of the last node in the subgraph
             if subgraph_nodes:
                 last_node_id = subgraph_nodes[-1]
                 foreach_results.append(subgraph_results.get(last_node_id, {}))
 
-        # Store the collected results from all iterations
         results[foreach_node.id] = {"results": foreach_results}
-
 
     def _get_node_inputs(self, node_id: int, results: Dict[int, Any]) -> Dict[str, Any]:
         inputs: Dict[str, Any] = {}
         for pred_id in self.dag.predecessors(node_id):
-            # Find the specific link to get slot information
             for link in self.graph.get('links', []):
                 if link[1] == pred_id and link[3] == node_id:
-                    output_slot = link[2]
-                    input_slot = link[4]
-                    
+                    output_slot, input_slot = link[2], link[4]
                     pred_node = self.nodes[pred_id]
                     pred_outputs = list(pred_node.outputs.keys())
                     if output_slot < len(pred_outputs):
@@ -103,4 +197,4 @@ class GraphExecutor:
                             if input_slot < len(node_inputs):
                                 input_key = node_inputs[input_slot]
                                 inputs[input_key] = value
-        return inputs 
+        return inputs

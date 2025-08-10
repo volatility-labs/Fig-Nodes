@@ -1,7 +1,7 @@
 from typing import Dict, Any, List, Optional
 import asyncio
 import requests
-from .base_node import BaseNode
+from nodes.base.base_node import BaseNode
 from core.types_registry import AssetSymbol, InstrumentType, AssetClass
 
 class InstrumentResolverNode(BaseNode):

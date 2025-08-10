@@ -1,7 +1,7 @@
 from typing import Dict, Any, List
 import httpx
 import logging
-from nodes.data_source_nodes import UniverseNode
+from nodes.base.universe_node import UniverseNode
 from core.types_registry import AssetSymbol, AssetClass, register_asset_class
 logger = logging.getLogger(__name__)
 class PolygonUniverseNode(UniverseNode):

@@ -1,5 +1,5 @@
 from typing import Dict, Any
-from .base_node import BaseNode
+from nodes.base.base_node import BaseNode
 
 class ScoreNode(BaseNode):
     """

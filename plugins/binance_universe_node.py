@@ -2,7 +2,7 @@ from typing import Dict, Any, List
 import asyncio
 import requests
 import logging
-from nodes.data_source_nodes import UniverseNode
+from nodes.base.universe_node import UniverseNode
 from core.types_registry import get_type, AssetSymbol, AssetClass
 logger = logging.getLogger(__name__)
 class BinancePerpsUniverseNode(UniverseNode):

@@ -1,6 +1,6 @@
 
 from typing import Dict, Any, List
-from .base_node import BaseNode
+from nodes.base.base_node import BaseNode
 from core.types_registry import AssetSymbol
 
 class LoggingNode(BaseNode):

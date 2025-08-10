@@ -1,6 +1,6 @@
 from typing import Dict, Any
 import pandas as pd
-from .base_node import BaseNode
+from nodes.base.base_node import BaseNode
 
 class IndicatorsBundleNode(BaseNode):
     """

@@ -1,45 +1,64 @@
 // types.ts - Extensible type registry for frontend
 
-// Map of base type names to colors (hex or LiteGraph color names)
+// Update TypeInfo interface
+export interface TypeInfo {
+    base: string;
+    subtype?: TypeInfo;
+    key_type?: TypeInfo;
+    value_type?: TypeInfo;
+    subtypes?: TypeInfo[];
+    isStream?: boolean;
+}
+
+// Add function to construct type string
+export function constructTypeString(typeInfo: TypeInfo): string {
+    let typeStr = typeInfo.base;
+    if (typeInfo.isStream) {
+        typeStr = `stream<${typeStr}>`;
+    }
+    if (typeInfo.key_type && typeInfo.value_type) {
+        return `dict<${constructTypeString(typeInfo.key_type)}, ${constructTypeString(typeInfo.value_type)}>`;
+    } else if (typeInfo.subtype) {
+        return `${typeStr}<${constructTypeString(typeInfo.subtype)}>`;
+    } else if (typeInfo.subtypes && typeInfo.subtypes.length > 0) {
+        return `${typeStr}<${typeInfo.subtypes.map(constructTypeString).join(', ')}>`;
+    }
+    return typeStr;
+}
+
+// Update getTypeColor to use constructTypeString
+export function getTypeColor(typeInfo: TypeInfo): string {
+    const typeString = constructTypeString(typeInfo);
+    return TYPE_COLORS[typeString] || '#FFFFFF';
+}
+
+// Update TYPE_COLORS with constructed strings and add more from backend registry
 export const TYPE_COLORS: { [type: string]: string } = {
-    'AssetSymbol': '#FF6D00',      // Orange for single symbols
-    'AssetSymbolList': '#22A7F0',  // Blue for lists
-    'str': '#E74C3C',             // Red for strings
-    'int': '#2ECC71',             // Green for numbers
+    'AssetSymbol': '#FF6D00',
+    'list<AssetSymbol>': '#22A7F0',
+    'str': '#E74C3C',
+    'int': '#2ECC71',
     'float': '#2ECC71',
-    'dict': '#9B59B6',            // Purple for dicts
-    'list': '#3498DB',            // Blue for generic lists
-    'data': '#BDC3C7',            // Gray for generic data
+    'dict<str, float>': '#9B59B6',  // For IndicatorDict
+    'list<any>': '#3498DB',         // For AnyList
+    'dict<str, any>': '#9B59B6',    // For ConfigDict
+    'DataFrame': '#BDC3C7',         // For OHLCV
+    'dict<AssetSymbol, DataFrame>': '#BDC3C7',  // For OHLCVBundle
+    'any': '#FFFFFF',
     // Add more as needed
 };
 
-// Function to register a new type and color
-export function registerType(typeName: string, color: string) {
-    if (typeName in TYPE_COLORS) {
-        console.warn(`Overwriting color for type ${typeName}`);
+// Update registerType to use constructed strings if needed
+export function registerType(typeString: string, color: string) {
+    if (typeString in TYPE_COLORS) {
+        console.warn(`Overwriting color for type ${typeString}`);
     }
-    TYPE_COLORS[typeName] = color;
+    TYPE_COLORS[typeString] = color;
 }
 
-// Example registrations from backend types
+// Example registrations
 registerType('AssetSymbol', TYPE_COLORS['AssetSymbol']);
-registerType('AssetSymbolList', TYPE_COLORS['AssetSymbolList']);
-// ... existing code ...
-
-// Interface for backend-parsed type info (from server.py _parse_type)
-export interface TypeInfo {
-    base: string;
-    subtype?: TypeInfo | null;
-}
-
-// Update getTypeColor to use TypeInfo
-export function getTypeColor(typeInfo: TypeInfo): string {
-    let baseType = typeInfo.base;
-    let current = typeInfo;
-    while (current.subtype) {
-        baseType = `${baseType}<${current.subtype.base}>`;
-        current = current.subtype;
-    }
-    return TYPE_COLORS[baseType] || '#FFFFFF';
-}
+registerType('list<AssetSymbol>', TYPE_COLORS['list<AssetSymbol>']);
+registerType('stream<OHLCVBundle>', '#FF00FF'); // Example for OHLCVStream
+// Add registrations for other types if necessary
 
