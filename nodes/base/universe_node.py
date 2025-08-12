@@ -4,6 +4,11 @@ from nodes.base.base_node import BaseNode
 from core.types_registry import get_type
 
 class UniverseNode(BaseNode, ABC):
+    """
+    Abstract base for nodes that provide lists of AssetSymbols (e.g., from exchanges).
+    
+    Subclasses must implement _fetch_symbols().
+    """
     inputs = {"filter_symbols": get_type("AssetSymbolList")}
     outputs = {"symbols": get_type("AssetSymbolList")}
     optional_inputs = ["filter_symbols"]
@@ -18,5 +23,6 @@ class UniverseNode(BaseNode, ABC):
     
     @abstractmethod
     async def _fetch_symbols(self) -> List[Any]:
+        """Fetch the list of symbols from the data source."""
         pass
 

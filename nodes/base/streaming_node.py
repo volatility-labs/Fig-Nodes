@@ -3,6 +3,13 @@ from abc import ABC, abstractmethod
 from .base_node import BaseNode
 
 class StreamingNode(BaseNode, ABC):
+    """
+    Base class for streaming nodes that produce continuous outputs.
+    
+    Subclasses must implement:
+    - start(self, inputs) -> AsyncGenerator[Dict[str, Any], None]
+    - stop(self)
+    """
     is_streaming = True
 
     @abstractmethod

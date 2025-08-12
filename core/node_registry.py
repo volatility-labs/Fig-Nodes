@@ -1,3 +1,7 @@
+# core/node_registry.py
+# This module handles dynamic loading of node classes from specified directories.
+# It allows for easy extension by placing new node implementations in 'nodes/impl' or 'plugins'.
+
 from typing import Dict, List
 import os
 import importlib.util
@@ -5,6 +9,17 @@ import inspect
 from nodes.base.base_node import BaseNode
 
 def load_nodes(directories: List[str]) -> Dict[str, type]:
+    """
+    Loads all concrete subclasses of BaseNode from the given directories.
+    
+    Args:
+        directories: List of relative paths to search for node modules.
+    
+    Returns:
+        Dictionary mapping node class names to their types.
+    
+    Note: Skips abstract classes and __init__.py files.
+    """
     registry = {}
     for dir_path in directories:
         base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', dir_path))
@@ -24,4 +39,12 @@ def load_nodes(directories: List[str]) -> Dict[str, type]:
                             registry[name] = obj
     return registry
 
-NODE_REGISTRY = load_nodes(['nodes/impl', 'plugins']) 
+NODE_REGISTRY = load_nodes(['nodes/impl', 'plugins'])
+
+# Developer Notes:
+# To add a new node:
+# 1. Create a new .py file in nodes/impl/ or plugins/.
+# 2. Define a class inheriting from BaseNode (or StreamingNode/UniverseNode).
+# 3. Implement required attributes (inputs, outputs, etc.) and execute() method.
+# 4. The node will be automatically registered and available in the system.
+# 5. For UI parameters, define params_meta list on the class. 

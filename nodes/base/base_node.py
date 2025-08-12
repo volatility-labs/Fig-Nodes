@@ -2,6 +2,20 @@ from typing import Dict, Any, Type, Optional, get_origin, get_args
 from core.types_registry import get_type, AssetSymbol, AssetClass
 
 class BaseNode:
+    """
+    Abstract base class for all graph nodes.
+    
+    Subclasses must define:
+    - inputs: Dict[str, Type] - Expected input types
+    - outputs: Dict[str, Type] - Produced output types
+    - default_params: Dict[str, Any] - Default parameter values
+    - Optional: params_meta - List of dicts for UI parameter config
+    - execute(self, inputs: Dict[str, Any]) -> Dict[str, Any]
+    
+    Optional:
+    - required_asset_class: AssetClass - For asset-specific nodes
+    - validate_inputs(self, inputs) - Custom validation
+    """
     inputs: Dict[str, Type] = {}
     outputs: Dict[str, Type] = {"output": Any}
     default_params: Dict[str, Any] = {}
@@ -12,6 +26,13 @@ class BaseNode:
         self.params = {**self.default_params, **(params or {})}
 
     def validate_inputs(self, inputs: Dict[str, Any]) -> bool:
+        """
+        Validates that provided inputs match expected types and requirements.
+        
+        Raises:
+            TypeError: If types don't match
+            ValueError: If required inputs missing or invalid asset class
+        """
         for key, expected_type in self.inputs.items():
             if key not in inputs:
                 if hasattr(self, 'optional_inputs') and key in self.optional_inputs:
@@ -43,6 +64,7 @@ class BaseNode:
         return True
 
     async def execute(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        """Core execution method - must be implemented by subclasses."""
         if not self.validate_inputs(inputs):
             raise ValueError(f"Missing or invalid inputs for node {self.id}: {self.inputs}")
         raise NotImplementedError("Subclasses must implement execute()") 

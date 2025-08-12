@@ -6,7 +6,10 @@ from nodes.base.universe_node import UniverseNode
 from core.types_registry import get_type, AssetSymbol, AssetClass
 logger = logging.getLogger(__name__)
 class BinancePerpsUniverseNode(UniverseNode):
+    """Fetches list of USDT-perpetual symbols from Binance futures."""
+
     async def _fetch_symbols(self) -> List[AssetSymbol]:
+        """Fetch and filter perpetual USDT symbols from Binance API."""
         attempts = 0
         max_attempts = 5
         backoff = 1

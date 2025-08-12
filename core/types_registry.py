@@ -14,12 +14,17 @@ class InstrumentType(Enum):
     FUTURE = auto()
     OPTION = auto()
 
+class Exchange(Enum):
+    """Enum for supported exchanges. Can be extended dynamically using register_exchange."""
+    BINANCE = auto()
+    POLYGON = auto()
+
 @dataclass(frozen=True)
 class AssetSymbol:
     ticker: str
     asset_class: str
     quote_currency: Optional[str] = None
-    exchange: Optional[str] = None
+    exchange: Optional[Exchange] = None
     instrument_type: InstrumentType = InstrumentType.SPOT
     metadata: Dict[str, Any] = field(default_factory=dict)
 
@@ -29,7 +34,7 @@ class AssetSymbol:
         return self.ticker.upper()
 
     @staticmethod
-    def from_string(s: str, asset_class: str, exchange: Optional[str] = None, metadata: Dict[str, Any] = None) -> "AssetSymbol":
+    def from_string(s: str, asset_class: str, exchange: Optional[Exchange] = None, metadata: Dict[str, Any] = None) -> "AssetSymbol":
         if asset_class == AssetClass.CRYPTO:
             if "USDT" in s.upper():
                 ticker, quote = s.upper().split("USDT")
@@ -43,7 +48,7 @@ class AssetSymbol:
             "ticker": self.ticker,
             "asset_class": self.asset_class,
             "quote_currency": self.quote_currency,
-            "exchange": self.exchange,
+            "exchange": self.exchange.name if self.exchange else None,
             "instrument_type": self.instrument_type.name,
             "metadata": self.metadata
         }
@@ -77,3 +82,20 @@ def register_asset_class(name: str) -> str:
     if not hasattr(AssetClass, upper):
         setattr(AssetClass, upper, upper)
     return getattr(AssetClass, upper) 
+
+def register_exchange(name: str) -> Exchange:
+    """Registers a new exchange dynamically to the Exchange Enum."""
+    upper = name.upper()
+    if not hasattr(Exchange, upper):
+        setattr(Exchange, upper, auto())
+    return getattr(Exchange, upper)
+
+# Developer Notes:
+# To add a new type:
+# 1. Define the type (class, dataclass, Enum, etc.) in this file.
+# 2. Register it in TYPE_REGISTRY with a unique string key.
+#    Example: TYPE_REGISTRY["MyNewType"] = MyNewType
+# 3. If it's a complex type (e.g., List[MyType]), use typing constructs.
+# 4. For dynamic extensions (like AssetClass or Exchange), use the register_ functions.
+# 5. Update get_type if custom lookup is needed.
+# 6. Ensure any new types are importable and used consistently in node definitions. 
