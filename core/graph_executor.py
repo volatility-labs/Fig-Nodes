@@ -11,6 +11,8 @@ class GraphExecutor:
         self.graph = graph
         self.node_registry = node_registry
         self.nodes: Dict[int, BaseNode] = {}
+        self.input_names: Dict[int, List[str]] = {}
+        self.output_names: Dict[int, List[str]] = {}
         self.dag = nx.DiGraph()
         self.is_streaming = False
         self.streaming_tasks: List[asyncio.Task] = []
@@ -24,6 +26,8 @@ class GraphExecutor:
                 raise ValueError(f"Unknown node type: {node_type}")
             properties = node_data.get('properties', {})
             self.nodes[node_id] = self.node_registry[node_type](str(node_id), properties)
+            self.input_names[node_id] = [inp.get('name', '') for inp in node_data.get('inputs', [])]
+            self.output_names[node_id] = [out.get('name', '') for out in node_data.get('outputs', [])]
             self.dag.add_node(node_id)
 
         for link in self.graph.get('links', []):
@@ -188,12 +192,12 @@ class GraphExecutor:
                 if link[1] == pred_id and link[3] == node_id:
                     output_slot, input_slot = link[2], link[4]
                     pred_node = self.nodes[pred_id]
-                    pred_outputs = list(pred_node.outputs.keys())
+                    pred_outputs = self.output_names.get(pred_id, list(pred_node.outputs.keys()))
                     if output_slot < len(pred_outputs):
                         output_key = pred_outputs[output_slot]
                         if pred_id in results and output_key in results[pred_id]:
                             value = results[pred_id][output_key]
-                            node_inputs = list(self.nodes[node_id].inputs.keys())
+                            node_inputs = self.input_names.get(node_id, list(self.nodes[node_id].inputs.keys()))
                             if input_slot < len(node_inputs):
                                 input_key = node_inputs[input_slot]
                                 inputs[input_key] = value

@@ -45,7 +45,6 @@ export const TYPE_COLORS: { [type: string]: string } = {
     'DataFrame': '#BDC3C7',         // For OHLCV
     'dict<AssetSymbol, DataFrame>': '#BDC3C7',  // For OHLCVBundle
     'any': '#FFFFFF',
-    // Add more as needed
 };
 
 // Update registerType to use constructed strings if needed

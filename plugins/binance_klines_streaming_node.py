@@ -26,22 +26,7 @@ class BinanceKlinesStreamingNode(StreamingNode):
 
     async def start(self, inputs: Dict[str, Any]) -> AsyncGenerator[Dict[str, Any], None]:
         """Connect to Binance websocket and yield kline updates."""
-        symbols = inputs.get("symbols", [])
-        if not symbols:
-            collected = []
-            i = 0
-            while True:
-                key = f"symbols_{i}"
-                if key not in inputs:
-                    break
-                val = inputs[key]
-                if val is not None:
-                    if isinstance(val, list):
-                        collected.extend(val)
-                    elif isinstance(val, AssetSymbol):
-                        collected.append(val)
-                i += 1
-            symbols = collected
+        symbols = self.collect_multi_input("symbols", inputs)
         if not symbols:
             return
 

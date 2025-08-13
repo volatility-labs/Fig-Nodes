@@ -117,9 +117,14 @@ export default class BaseCustomNode extends LGraphNode {
         let type = baseName;
         if (typeInfo.subtype) {
             const sub = this.parseType(typeInfo.subtype);
-            if (type === 'list' && sub === 'AssetSymbol') return 'AssetSymbolList';
-            // Add more mappings as needed for extensibility
             return `${type}<${sub}>`;
+        } else if (typeInfo.subtypes && typeInfo.subtypes.length > 0) {
+            const subs = typeInfo.subtypes.map((st: any) => this.parseType(st)).join(', ');
+            return `${type}<${subs}>`;
+        } else if (typeInfo.key_type && typeInfo.value_type) {
+            const key = this.parseType(typeInfo.key_type);
+            const val = this.parseType(typeInfo.value_type);
+            return `dict<${key}, ${val}>`;
         }
         return type;
     }

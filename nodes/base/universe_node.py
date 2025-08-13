@@ -15,7 +15,7 @@ class UniverseNode(BaseNode, ABC):
 
     async def execute(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
         symbols = await self._fetch_symbols()
-        filter_symbols = inputs.get("filter_symbols", [])
+        filter_symbols = self.collect_multi_input("filter_symbols", inputs)
         if filter_symbols:
             filter_set = {str(s) for s in filter_symbols}
             symbols = [s for s in symbols if str(s) in filter_set]
