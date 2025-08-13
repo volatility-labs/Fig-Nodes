@@ -1,8 +1,10 @@
 import { LGraphNode, LiteGraph } from '@comfyorg/litegraph';
 import { getTypeColor } from '../types';
+import { showError } from '../utils/uiUtils';
 
 export default class BaseCustomNode extends LGraphNode {
     displayResults: boolean = true;
+    multiInputs?: Record<string, { slots: string[]; multiType: string; color?: string }>;
     result: any;
     displayText: string = '';
     properties: { [key: string]: any } = {};
@@ -16,13 +18,29 @@ export default class BaseCustomNode extends LGraphNode {
             const isArray = Array.isArray(data.inputs);
             // For inputs map
             const inputEntries = isArray ? data.inputs.map((name: string) => [name, null]) : Object.entries(data.inputs);
-            inputEntries.forEach(([inp, typeInfo]: [string, any], index: number) => {
+            inputEntries.forEach(([inp, typeInfo]: [string, any]) => {
                 const typeStr = this.parseType(typeInfo);
-                this.addInput(inp, typeStr);
+                let color;
                 if (typeInfo) {
-                    const color = getTypeColor(typeInfo);
-                    // @ts-ignore: Custom color property
-                    this.inputs[index].color = color;  // Set color on input slot
+                    color = getTypeColor(typeInfo);
+                }
+                if (typeof typeStr === 'string' && typeStr.startsWith('list<') && typeInfo) {
+                    const innerStr = typeStr.slice(5, -1);
+                    const multiType = `${innerStr},${typeStr}`;
+                    this.multiInputs = this.multiInputs || {};
+                    this.multiInputs[inp] = { slots: [], multiType, color };
+                    this.addMultiSlot(inp);
+                } else if (typeof typeStr === 'string' && typeStr.startsWith('dict<') && typeInfo) {
+                    const multiType = typeStr;
+                    this.multiInputs = this.multiInputs || {};
+                    this.multiInputs[inp] = { slots: [], multiType, color };
+                    this.addMultiSlot(inp);
+                } else {
+                    const inputSlot = this.addInput(inp, typeStr);
+                    if (color) {
+                        // @ts-ignore: Custom color property
+                        inputSlot.color = color;
+                    }
                 }
             });
         }
@@ -145,6 +163,7 @@ export default class BaseCustomNode extends LGraphNode {
         this.error = message;
         this.color = '#FF0000'; // Red border for error
         this.setDirtyCanvas(true, true);
+        showError(message);
     }
 
     onDrawForeground(ctx: CanvasRenderingContext2D) {
@@ -235,5 +254,51 @@ export default class BaseCustomNode extends LGraphNode {
         document.body.appendChild(dialog);
         input.focus();
         input.select();
+    }
+
+    addMultiSlot(inp: string) {
+        const info = this.multiInputs![inp];
+        const index = info.slots.length;
+        const slotName = `${inp}_${index}`;
+        const inputSlot = this.addInput(slotName, info.multiType);
+        if (info.color) {
+            // @ts-ignore: Custom color property
+            inputSlot.color = info.color;
+        }
+        info.slots.push(slotName);
+    }
+
+    onConnectionsChange(type: number, slot: number, connected: boolean, link_info: any, input_or_output: any) {
+        if (type !== LiteGraph.INPUT) return;
+        const input = this.inputs[slot];
+        if (!input) return;
+        const nameParts = input.name.split('_');
+        if (nameParts.length !== 2 || isNaN(parseInt(nameParts[1]))) return;
+        const baseName = nameParts[0];
+        const info = this.multiInputs?.[baseName];
+        if (!info) return;
+        const slotIndex = parseInt(nameParts[1]);
+        if (connected) {
+            if (slotIndex === info.slots.length - 1) {
+                this.addMultiSlot(baseName);
+            }
+        } else {
+            if (slotIndex < info.slots.length - 1 && !input.link) {
+                this.removeInput(slot);
+                info.slots.splice(slotIndex, 1);
+                for (let j = 0; j < info.slots.length; j++) {
+                    const currentName = info.slots[j];
+                    const newName = `${baseName}_${j}`;
+                    if (currentName !== newName) {
+                        const sIdx = this.findInputSlot(currentName);
+                        if (sIdx !== -1) {
+                            this.inputs[sIdx].name = newName;
+                        }
+                        info.slots[j] = newName;
+                    }
+                }
+            }
+        }
+        this.setDirtyCanvas(true, true);
     }
 }

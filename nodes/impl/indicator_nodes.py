@@ -1,13 +1,15 @@
 from typing import Dict, Any
 import pandas as pd
 from nodes.base.base_node import BaseNode
+from core.types_registry import get_type
+from core.types_registry import AssetSymbol
 
 class IndicatorsBundleNode(BaseNode):
     """
     Computes a bundle of indicators for the given k-line data.
     """
-    inputs = {"klines_df": pd.DataFrame}
-    outputs = {"indicators": Dict[str, Any]}
+    inputs = {"klines": get_type("OHLCVBundle")}
+    outputs = {"indicators": Dict[AssetSymbol, Dict[str, Any]]}
     default_params = {"timeframe": "1h"}
 
     def __init__(self, node_id: str, params: Dict[str, Any]):
@@ -15,11 +17,28 @@ class IndicatorsBundleNode(BaseNode):
         # TODO: Reimplement indicator computation after services removal
 
     async def execute(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
-        klines_df: pd.DataFrame = inputs.get("klines_df")
-        if klines_df is None or klines_df.empty:
+        bundle = inputs.get("klines", {})
+        if not bundle:
+            collected = {}
+            i = 0
+            while True:
+                key = f"klines_{i}"
+                if key not in inputs:
+                    break
+                val = inputs[key]
+                if val is not None and isinstance(val, dict):
+                    collected.update(val)
+                i += 1
+            bundle = collected
+        if not bundle:
             return {"indicators": {}}
         
         timeframe = self.params.get("timeframe")
-        indicators = {}  # Placeholder: Compute indicators here
+        indicators_bundle = {}
+        for symbol, klines_df in bundle.items():
+            if klines_df is None or klines_df.empty:
+                continue
+            indicators = {}  # Placeholder: Compute indicators here
+            indicators_bundle[symbol] = indicators
         
-        return {"indicators": indicators} 
+        return {"indicators": indicators_bundle} 

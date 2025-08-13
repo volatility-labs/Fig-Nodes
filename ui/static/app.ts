@@ -5,6 +5,8 @@ import { createNodeList } from '@components/NodeList';
 import { getCanvasMenuOptions } from '@utils/menuUtils';
 import { setupResize, setupKeyboard, updateStatus, showLoading } from '@utils/uiUtils';
 
+// For extensibility: To customize error handling, import { showError } from './utils/uiUtils' and reassign it to your custom function, e.g., showError = (msg) => { console.log(msg); alert(msg); };
+
 async function createEditor(container: HTMLElement) {
     try {
         updateStatus('loading', 'Initializing...');

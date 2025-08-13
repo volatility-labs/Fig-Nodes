@@ -28,6 +28,21 @@ class BinanceKlinesStreamingNode(StreamingNode):
         """Connect to Binance websocket and yield kline updates."""
         symbols = inputs.get("symbols", [])
         if not symbols:
+            collected = []
+            i = 0
+            while True:
+                key = f"symbols_{i}"
+                if key not in inputs:
+                    break
+                val = inputs[key]
+                if val is not None:
+                    if isinstance(val, list):
+                        collected.extend(val)
+                    elif isinstance(val, AssetSymbol):
+                        collected.append(val)
+                i += 1
+            symbols = collected
+        if not symbols:
             return
 
         interval = self.params.get("interval")

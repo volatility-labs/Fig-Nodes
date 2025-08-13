@@ -14,8 +14,8 @@ class InstrumentType(Enum):
     FUTURE = auto()
     OPTION = auto()
 
-class Exchange(Enum):
-    """Enum for supported exchanges. Can be extended dynamically using register_exchange."""
+class Provider(Enum):
+    """Enum for data providers or venues (e.g., exchanges, aggregators). Extend via register_provider."""
     BINANCE = auto()
     POLYGON = auto()
 
@@ -24,7 +24,7 @@ class AssetSymbol:
     ticker: str
     asset_class: str
     quote_currency: Optional[str] = None
-    exchange: Optional[Exchange] = None
+    provider: Optional[Provider] = None  
     instrument_type: InstrumentType = InstrumentType.SPOT
     metadata: Dict[str, Any] = field(default_factory=dict)
 
@@ -34,21 +34,21 @@ class AssetSymbol:
         return self.ticker.upper()
 
     @staticmethod
-    def from_string(s: str, asset_class: str, exchange: Optional[Exchange] = None, metadata: Dict[str, Any] = None) -> "AssetSymbol":
+    def from_string(s: str, asset_class: str, provider: Optional[Provider] = None, metadata: Dict[str, Any] = None) -> "AssetSymbol":
         if asset_class == AssetClass.CRYPTO:
             if "USDT" in s.upper():
                 ticker, quote = s.upper().split("USDT")
-                return AssetSymbol(ticker, asset_class, quote_currency="USDT", exchange=exchange, metadata=metadata or {})
+                return AssetSymbol(ticker, asset_class, quote_currency="USDT", provider=provider, metadata=metadata or {})
             else:
-                return AssetSymbol(s.upper(), asset_class, exchange=exchange, metadata=metadata or {})
-        return AssetSymbol(s.upper(), asset_class, exchange=exchange, metadata=metadata or {})
+                return AssetSymbol(s.upper(), asset_class, provider=provider, metadata=metadata or {})
+        return AssetSymbol(s.upper(), asset_class, provider=provider, metadata=metadata or {})
     
     def to_dict(self) -> Dict[str, Any]:
         return {
             "ticker": self.ticker,
             "asset_class": self.asset_class,
             "quote_currency": self.quote_currency,
-            "exchange": self.exchange.name if self.exchange else None,
+            "provider": self.provider.name if self.provider else None,  # Updated
             "instrument_type": self.instrument_type.name,
             "metadata": self.metadata
         }
@@ -83,12 +83,12 @@ def register_asset_class(name: str) -> str:
         setattr(AssetClass, upper, upper)
     return getattr(AssetClass, upper) 
 
-def register_exchange(name: str) -> Exchange:
-    """Registers a new exchange dynamically to the Exchange Enum."""
+def register_provider(name: str) -> Provider:
+    """Registers a new provider dynamically to the Provider Enum."""
     upper = name.upper()
-    if not hasattr(Exchange, upper):
-        setattr(Exchange, upper, auto())
-    return getattr(Exchange, upper)
+    if not hasattr(Provider, upper):
+        setattr(Provider, upper, auto())
+    return getattr(Provider, upper)
 
 # Developer Notes:
 # To add a new type:
@@ -99,3 +99,8 @@ def register_exchange(name: str) -> Exchange:
 # 4. For dynamic extensions (like AssetClass or Exchange), use the register_ functions.
 # 5. Update get_type if custom lookup is needed.
 # 6. Ensure any new types are importable and used consistently in node definitions. 
+
+# Example: In a plugin, register a new provider and use it:
+# from core.types_registry import register_provider
+# MY_PROVIDER = register_provider("ALPHA_VANTAGE")
+# Then in AssetSymbol: AssetSymbol(..., provider=MY_PROVIDER) 

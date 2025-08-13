@@ -2,6 +2,7 @@ from typing import Dict, Any
 from core.types_registry import get_type
 from nodes.base.base_node import BaseNode
 from core.types_registry import AssetSymbol, AssetClass, InstrumentType
+from core.types_registry import Provider
 
 class TextInputNode(BaseNode):
     """Simple node that outputs a static text value from parameters."""
@@ -23,14 +24,14 @@ class AssetSymbolInputNode(BaseNode):
         "ticker": "",
         "asset_class": AssetClass.CRYPTO,
         "quote_currency": "USDT",
-        "exchange": "binance",
+        "provider": Provider.BINANCE.name,  # Updated
         "instrument_type": InstrumentType.PERPETUAL.name
     }
     params_meta = [
         {"name": "ticker", "type": "text", "default": ""},
         {"name": "asset_class", "type": "combo", "default": AssetClass.CRYPTO, "options": [AssetClass.CRYPTO, AssetClass.STOCKS]},
         {"name": "quote_currency", "type": "text", "default": "USDT"},
-        {"name": "exchange", "type": "text", "default": "binance"},
+        {"name": "provider", "type": "combo", "default": Provider.BINANCE.name, "options": [p.name for p in Provider]},
         {"name": "instrument_type", "type": "combo", "default": InstrumentType.PERPETUAL.name, "options": [e.name for e in InstrumentType]}
     ]
 
@@ -39,7 +40,8 @@ class AssetSymbolInputNode(BaseNode):
             ticker=self.params["ticker"].upper(),
             asset_class=self.params["asset_class"],
             quote_currency=self.params.get("quote_currency").upper(),
-            exchange=self.params.get("exchange"),
+            provider=Provider[self.params["provider"]],  # Updated
             instrument_type=InstrumentType[self.params["instrument_type"]]
         )
+        # Optional: Add validation, e.g., if provider == Provider.POLYGON and asset_class == AssetClass.CRYPTO: raise ValueError(...)
         return {"symbol": symbol}

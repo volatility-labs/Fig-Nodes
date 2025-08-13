@@ -41,3 +41,21 @@ export function setupKeyboard(graph: any) {
         }
     });
 }
+
+export let showError: (message: string) => void = (message) => {
+    const dialog = document.createElement('div');
+    dialog.classList.add('error-dialog');
+
+    const content = document.createElement('p');
+    content.textContent = message;
+
+    const button = document.createElement('button');
+    button.textContent = 'OK';
+    button.onclick = () => {
+        document.body.removeChild(dialog);
+    };
+
+    dialog.appendChild(content);
+    dialog.appendChild(button);
+    document.body.appendChild(dialog);
+};

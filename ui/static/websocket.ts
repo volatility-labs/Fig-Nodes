@@ -1,4 +1,5 @@
 import { LGraph, LGraphCanvas } from '@comfyorg/litegraph';
+import { showError } from './utils/uiUtils';
 
 let ws: WebSocket | null = null;
 
@@ -80,6 +81,7 @@ export function setupWebSocket(graph: LGraph, canvas: LGraphCanvas) {
                 }
             } else if (data.type === 'error') {
                 console.error('Execution error:', data.message);
+                showError(data.message);
                 if (indicator) {
                     indicator.className = `status-indicator disconnected`;
                     indicator.textContent = `Error: ${data.message}`;

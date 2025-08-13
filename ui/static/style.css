@@ -205,3 +205,36 @@ html {
     background-color: #484848;
     border-color: #5a9fd4;
 }
+
+.error-dialog {
+    position: fixed;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    background-color: #2c2c2c;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+    z-index: 1000;
+    color: #ffffff;
+    width: 300px;
+    text-align: center;
+}
+
+.error-dialog p {
+    margin-bottom: 15px;
+    font-size: 14px;
+}
+
+.error-dialog button {
+    padding: 8px 16px;
+    background-color: #dc3545;
+    border: none;
+    color: #ffffff;
+    cursor: pointer;
+    border-radius: 4px;
+}
+
+.error-dialog button:hover {
+    background-color: #c82333;
+}
