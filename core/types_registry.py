@@ -1,4 +1,4 @@
-from typing import List, Dict, Any, Type, Optional, AsyncGenerator
+from typing import List, Dict, Any, Type, Optional, AsyncGenerator, TypedDict, Literal
 import pandas as pd
 from datetime import datetime
 from dataclasses import dataclass, field
@@ -18,6 +18,43 @@ class Provider(Enum):
     """Enum for data providers or venues (e.g., exchanges, aggregators). Extend via register_provider."""
     BINANCE = auto()
     POLYGON = auto()
+
+# ---------------------------
+# LLM-related structured types
+# ---------------------------
+
+class LLMToolFunction(TypedDict, total=False):
+    name: str
+    description: Optional[str]
+    parameters: Dict[str, Any]
+
+class LLMToolSpec(TypedDict):
+    type: Literal["function"]
+    function: LLMToolFunction
+
+class LLMToolCallFunction(TypedDict, total=False):
+    name: str
+    arguments: Dict[str, Any]
+
+class LLMToolCall(TypedDict):
+    function: LLMToolCallFunction
+
+class LLMChatMessage(TypedDict, total=False):
+    role: Literal["system", "user", "assistant", "tool"]
+    content: str
+    thinking: Optional[str]
+    images: Optional[List[str]]
+    tool_calls: Optional[List[LLMToolCall]]
+    tool_name: Optional[str]
+
+class LLMChatMetrics(TypedDict, total=False):
+    total_duration: int
+    load_duration: int
+    prompt_eval_count: int
+    prompt_eval_duration: int
+    eval_count: int
+    eval_duration: int
+    error: str
 
 @dataclass(frozen=True)
 class AssetSymbol:
@@ -69,6 +106,12 @@ TYPE_REGISTRY: Dict[str, Type] = {
     "OHLCVBundle": Dict[AssetSymbol, pd.DataFrame],
     "Score": float,
     "OHLCVStream": AsyncGenerator[Dict[AssetSymbol, pd.DataFrame], None],
+    # LLM types
+    "LLMChatMessage": LLMChatMessage, 
+    "LLMChatMessageList": List[LLMChatMessage],
+    "LLMToolSpec": LLMToolSpec,
+    "LLMToolSpecList": List[LLMToolSpec],
+    "LLMChatMetrics": LLMChatMetrics,
 }
 
 def get_type(type_name: str) -> Type:

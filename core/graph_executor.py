@@ -64,7 +64,7 @@ class GraphExecutor:
                 executed_nodes.update(subgraph_nodes)
             else:
                 inputs = self._get_node_inputs(node_id, results)
-                merged_inputs = {**{k: node.params.get(k) for k in node.inputs if k not in inputs}, **inputs}
+                merged_inputs = {**{k: v for k, v in node.params.items() if k in node.inputs and k not in inputs and v is not None}, **inputs}
                 if not node.validate_inputs(merged_inputs):
                     continue
                 outputs = await node.execute(merged_inputs)
@@ -79,7 +79,7 @@ class GraphExecutor:
             current_context = {**context, **tick_results}
             sub_node = self.nodes[sub_node_id]
             sub_inputs = self._get_node_inputs(sub_node_id, current_context)
-            merged_inputs = {**{k: sub_node.params.get(k) for k in sub_node.inputs if k not in sub_inputs}, **sub_inputs}
+            merged_inputs = {**{k: v for k, v in sub_node.params.items() if k in sub_node.inputs and k not in sub_inputs and v is not None}, **sub_inputs}
             
             if not sub_node.validate_inputs(merged_inputs):
                 # TODO: Handle errors more gracefully
@@ -130,7 +130,7 @@ class GraphExecutor:
                     continue
                 node = self.nodes[node_id]
                 inputs = self._get_node_inputs(node_id, static_results)
-                merged_inputs = {**{k: node.params.get(k) for k in node.inputs if k not in inputs}, **inputs}
+                merged_inputs = {**{k: v for k, v in node.params.items() if k in node.inputs and k not in inputs and v is not None}, **inputs}
                 if not node.validate_inputs(merged_inputs):
                     continue
                 outputs = await node.execute(merged_inputs)

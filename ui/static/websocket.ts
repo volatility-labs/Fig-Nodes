@@ -21,6 +21,14 @@ function stopExecution() {
 
 export function setupWebSocket(graph: LGraph, canvas: LGraphCanvas) {
     document.getElementById('execute')?.addEventListener('click', async () => {
+        // Reset LoggingNode UIs before each execution so logs start fresh
+        const nodes = ((graph as any)._nodes as any[]) || [];
+        nodes.forEach((node: any) => {
+            if (node && node.title === 'LoggingNode' && typeof node.reset === 'function') {
+                try { node.reset(); } catch { }
+            }
+        });
+
         const overlay = document.getElementById('loading-overlay');
         const overlayText = overlay?.querySelector('span');
         if (overlay && overlayText) {
@@ -73,9 +81,16 @@ export function setupWebSocket(graph: LGraph, canvas: LGraphCanvas) {
                 for (const nodeId in results) {
                     const node: any = graph.getNodeById(parseInt(nodeId));
                     if (node) {
-                        node.updateDisplay(results[nodeId]);
-                        if (node.onStreamUpdate) {
-                            node.onStreamUpdate(node.result);
+                        if (data.stream) {
+                            // Streaming tick: only append using onStreamUpdate if available
+                            if (typeof node.onStreamUpdate === 'function') {
+                                node.onStreamUpdate(results[nodeId]);
+                            } else {
+                                node.updateDisplay(results[nodeId]);
+                            }
+                        } else {
+                            // Initial/batch: set full snapshot
+                            node.updateDisplay(results[nodeId]);
                         }
                     }
                 }

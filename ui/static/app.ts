@@ -150,41 +150,88 @@ async function createEditor(container: HTMLElement) {
         }
 
         document.addEventListener('keydown', (e: KeyboardEvent) => {
+            // Handle palette-specific keys
             if (!paletteVisible && e.key === 'Tab' && !(e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement)) {
                 e.preventDefault();
                 openPalette();
                 return;
             }
-            if (!paletteVisible) return;
-            if (e.key === 'Escape') {
-                e.preventDefault();
-                closePalette();
+            if (paletteVisible) {
+                if (e.key === 'Escape') {
+                    e.preventDefault();
+                    closePalette();
+                    return;
+                }
+                if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    if (filtered.length) selectionIndex = (selectionIndex + 1) % filtered.length;
+                    updateSelectionHighlight();
+                } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    if (filtered.length) selectionIndex = (selectionIndex - 1 + filtered.length) % filtered.length;
+                    updateSelectionHighlight();
+                } else if (e.key === 'Enter') {
+                    e.preventDefault();
+                    addSelectedNode();
+                }
                 return;
             }
-            if (e.key === 'ArrowDown') {
+
+            // Handle delete key for selected nodes
+            if ((e.key === 'Delete' || e.key === 'Backspace') && !(e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement)) {
                 e.preventDefault();
-                if (filtered.length) selectionIndex = (selectionIndex + 1) % filtered.length;
-                updateSelectionHighlight();
-            } else if (e.key === 'ArrowUp') {
-                e.preventDefault();
-                if (filtered.length) selectionIndex = (selectionIndex - 1 + filtered.length) % filtered.length;
-                updateSelectionHighlight();
-            } else if (e.key === 'Enter') {
-                e.preventDefault();
-                addSelectedNode();
+                const selectedNodes = (canvas as any).selected_nodes || {};
+                const nodesToDelete = Object.values(selectedNodes);
+                if (nodesToDelete.length > 0) {
+                    nodesToDelete.forEach((node: any) => {
+                        graph.remove(node);
+                    });
+                    canvas.draw(true, true);
+                }
             }
         });
 
-        // Open palette on right-click within canvas
-        canvasElement.addEventListener('contextmenu', (e: MouseEvent) => {
-            e.preventDefault();
-            openPalette(e);
+        // Remove right-click palette opening (native context menu will show)
+        canvasElement.addEventListener('contextmenu', (_e: MouseEvent) => {
+            // Do not open palette on right-click
+            // Allow default context menu or other handlers
         });
-        // Open palette on double-click within canvas
+        // Helper: find topmost node under event
+        const findNodeUnderEvent = (e: MouseEvent): any | null => {
+            const p = canvas.convertEventToCanvasOffset(e) as unknown as number[];
+            const x = p[0];
+            const y = p[1];
+            const nodes = (graph as any)._nodes as any[] || [];
+            for (let i = nodes.length - 1; i >= 0; i--) {
+                const node = nodes[i];
+                const nx = node.pos ? node.pos[0] : 0;
+                const ny = node.pos ? node.pos[1] : 0;
+                const w = node.size ? node.size[0] : 0;
+                const h = node.size ? node.size[1] : 0;
+                if (x >= nx && x <= nx + w && y >= ny && y <= ny + h) {
+                    return node;
+                }
+            }
+            return null;
+        };
+
+        // Open palette on double-click only when not on a node
         canvasElement.addEventListener('dblclick', (e: MouseEvent) => {
             e.preventDefault();
             e.stopPropagation();
-            openPalette(e);
+            const node = findNodeUnderEvent(e);
+            if (node && typeof node.onDblClick === 'function') {
+                try {
+                    const handled = node.onDblClick(e, [e.clientX, e.clientY], canvas);
+                    if (handled) return;
+                } catch { }
+            }
+            openPalette();
+        });
+
+        // Ensure canvas can receive keyboard events by focusing it on click
+        canvasElement.addEventListener('click', () => {
+            canvasElement.focus();
         });
         setupWebSocket(graph, canvas);
         setupResize(canvasElement, canvas);

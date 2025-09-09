@@ -20,8 +20,8 @@ def parse_type(t):
             return {"base": base, "subtypes": subtypes}
     else:
         name = getattr(t, "__name__", str(t))
-        if name == "Any":
-            return {"base": "Any"}
+        if name == "Any" or name.endswith(".Any"):
+            return {"base": "any"}
         if t is list or t is set or t is tuple:
             return {"base": name, "subtypes": [{"base": "Any"}]}
         elif t is dict:

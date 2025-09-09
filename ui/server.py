@@ -56,7 +56,13 @@ def list_nodes():
             "outputs": outputs_meta,
             "params": params,
             "category": category,
-            "uiModule": getattr(cls, 'ui_module', None) or ("TextInputNodeUI" if name == "TextInputNode" else "LoggingNodeUI" if name == "LoggingNode" else None)
+            "uiModule": getattr(cls, 'ui_module', None) or (
+                "TextInputNodeUI" if name == "TextInputNode" else
+                "LoggingNodeUI" if name == "LoggingNode" else
+                "OllamaModelSelectorNodeUI" if name == "OllamaModelSelectorNode" else
+                "OllamaChatViewerNodeUI" if name == "OllamaChatViewerNode" else
+                None
+            )
         }
     return {"nodes": nodes_meta}
 
@@ -86,12 +92,12 @@ async def execute_endpoint(websocket: WebSocket):
             await websocket.send_json({"type": "status", "message": "Stream starting..."})
             stream_generator = executor.stream()
             
-            # Send the first chunk of (potentially empty) initial results
+            # Send the first chunk of (potentially empty) initial results (not a stream tick)
             initial_results = await anext(stream_generator)
-            await websocket.send_json({"type": "data", "results": serialize_results(initial_results)})
+            await websocket.send_json({"type": "data", "results": serialize_results(initial_results), "stream": False})
             
             async for results in stream_generator:
-                await websocket.send_json({"type": "data", "results": serialize_results(results)})
+                await websocket.send_json({"type": "data", "results": serialize_results(results), "stream": True})
             
             await websocket.send_json({"type": "status", "message": "Stream finished"})
         else:

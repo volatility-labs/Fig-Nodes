@@ -1,6 +1,7 @@
 import typing
 from typing import Dict, Any, Type, Optional, get_origin, get_args, List
 from core.types_registry import get_type, AssetSymbol, AssetClass
+from typing import Any as TypingAny
 
 class BaseNode:
     """
@@ -72,6 +73,17 @@ class BaseNode:
         return unique
 
     def validate_inputs(self, inputs: Dict[str, Any]) -> bool:
+        def _is_typed_dict(t) -> bool:
+            # Heuristic: TypedDict types are not actual classes; treat them as dicts
+            return hasattr(t, '__annotations__') and not isinstance(t, type)
+
+        def _matches_type(value: Any, expected) -> bool:
+            if expected is Any or expected is TypingAny:
+                return True
+            if _is_typed_dict(expected):
+                return isinstance(value, dict)
+            return isinstance(value, expected)
+
         for key, expected_type in self.inputs.items():
             if key in inputs:
                 # Handle as single input
@@ -89,11 +101,12 @@ class BaseNode:
                         element_type = get_args(expected_type)[0]
                         if element_type is not Any:
                             for item in value:
-                                if not isinstance(item, element_type):
+                                check_ok = True if element_type is Any else _matches_type(item, element_type)
+                                if not check_ok:
                                     raise TypeError(f"Invalid element type in list for input '{key}' in node {self.id}: expected {element_type}, found {type(item)}")
                                 if isinstance(item, AssetSymbol) and self.required_asset_class and item.asset_class != self.required_asset_class:
                                     raise ValueError(f"Invalid asset class for item in '{key}' in node {self.id}: expected {self.required_asset_class}, got {item.asset_class}")
-                elif expected_type is not Any and not isinstance(value, expected_type):
+                elif expected_type is not Any and not _matches_type(value, expected_type):
                     raise TypeError(f"Invalid type for input '{key}' in node {self.id}: expected {expected_type}, got {type(value)}")
                 if expected_type == AssetSymbol and self.required_asset_class and value.asset_class != self.required_asset_class:
                     raise ValueError(f"Invalid asset class for '{key}' in node {self.id}: expected {self.required_asset_class}, got {value.asset_class}")
@@ -118,12 +131,12 @@ class BaseNode:
                     found = True
                     if isinstance(value, list):
                         for item in value:
-                            if element_type is not Any and not isinstance(item, element_type):
+                            if element_type is not Any and not _matches_type(item, element_type):
                                 raise TypeError(f"Invalid element type in list for input '{multi_key}' in node {self.id}: expected {element_type}, got {type(item)}")
                             if isinstance(item, AssetSymbol) and self.required_asset_class and item.asset_class != self.required_asset_class:
                                 raise ValueError(f"Invalid asset class for item in '{multi_key}' in node {self.id}: expected {self.required_asset_class}, got {item.asset_class}")
                     else:
-                        if element_type is not Any and not isinstance(value, element_type):
+                        if element_type is not Any and not _matches_type(value, element_type):
                             raise TypeError(f"Invalid type for input '{multi_key}' in node {self.id}: expected {element_type} or list[{element_type}], got {type(value)}")
                         if isinstance(value, AssetSymbol) and self.required_asset_class and value.asset_class != self.required_asset_class:
                             raise ValueError(f"Invalid asset class for '{multi_key}' in node {self.id}: expected {self.required_asset_class}, got {value.asset_class}")

@@ -34,12 +34,8 @@ export function setupResize(canvasElement: HTMLCanvasElement, canvas: any) {
 }
 
 export function setupKeyboard(graph: any) {
-    document.addEventListener('keydown', (e: KeyboardEvent) => {
-        if ((e.key === 'Delete' || e.key === 'Backspace') && !(e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement)) {
-            const selected = graph.selected_nodes || {};
-            Object.values(selected).forEach((node: any) => graph.remove(node));
-        }
-    });
+    // Keyboard handling is now done in app.ts to avoid conflicts
+    // This function is kept for backward compatibility but does nothing
 }
 
 export let showError: (message: string) => void = (message) => {
