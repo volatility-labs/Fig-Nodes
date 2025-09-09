@@ -24,7 +24,8 @@ class AssetSymbol:
     ticker: str
     asset_class: str
     quote_currency: Optional[str] = None
-    provider: Optional[Provider] = None  
+    provider: Optional[Provider] = None
+    exchange: Optional[str] = None
     instrument_type: InstrumentType = InstrumentType.SPOT
     metadata: Dict[str, Any] = field(default_factory=dict)
 
@@ -52,6 +53,9 @@ class AssetSymbol:
             "instrument_type": self.instrument_type.name,
             "metadata": self.metadata
         }
+
+    def __hash__(self):
+        return hash((self.ticker, self.asset_class, self.quote_currency, self.provider, self.exchange, self.instrument_type, frozenset(self.metadata.items())))
 
 TYPE_REGISTRY: Dict[str, Type] = {
     "AssetSymbol": AssetSymbol,

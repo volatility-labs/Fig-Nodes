@@ -25,3 +25,9 @@ showError = (message: string) => {
 ```
 
 This allows overriding the default popup with custom UI or behavior while keeping the system lightweight. 
+
+# Testing
+
+To run the unit tests:
+
+poetry run python -m pytest tests/unit/ 

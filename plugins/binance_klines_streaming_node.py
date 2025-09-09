@@ -70,4 +70,4 @@ class BinanceKlinesStreamingNode(StreamingNode):
     def stop(self):
         """Close the websocket connection."""
         if self.ws:
-            asyncio.create_task(self.ws.close())
+            asyncio.run(self.ws.close())

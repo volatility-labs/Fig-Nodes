@@ -22,19 +22,29 @@ class BaseNode:
     default_params: Dict[str, Any] = {}
     required_asset_class: Optional[AssetClass] = None
 
-    def __init__(self, id: str, params: Dict[str, Any] = None):
+    def __init__(self, id: int, params: Dict[str, Any] = None):
         self.id = id
         self.params = {**self.default_params, **(params or {})}
 
     def collect_multi_input(self, key: str, inputs: Dict[str, Any]) -> List[Any]:
         expected_type = self.inputs.get(key)
         if expected_type is None:
-            return inputs.get(key, [])
+            val = inputs.get(key)
+            return [val] if val is not None else []
         origin = get_origin(expected_type)
         if origin not in (list, typing.List):
-            return inputs.get(key, [])
-        
+            val = inputs.get(key)
+            return [val] if val is not None else []
+
         collected = []
+        if key in inputs:
+            val = inputs[key]
+            if val is not None:
+                if isinstance(val, list):
+                    collected.extend(val)
+                else:
+                    collected.append(val)
+
         i = 0
         while True:
             multi_key = f"{key}_{i}"
@@ -49,16 +59,16 @@ class BaseNode:
             else:
                 collected.append(val)
             i += 1
-        
+
         # Deduplicate
         seen = set()
         unique = []
         for item in collected:
-            item_str = str(item)  # Assuming str(item) uniquely identifies
+            item_str = str(item)
             if item_str not in seen:
                 seen.add(item_str)
                 unique.append(item)
-        
+
         return unique
 
     def validate_inputs(self, inputs: Dict[str, Any]) -> bool:
@@ -121,7 +131,7 @@ class BaseNode:
                 if not found:
                     if hasattr(self, 'optional_inputs') and key in self.optional_inputs:
                         continue
-                    return False
+                    return True
         return True
 
     async def execute(self, inputs: Dict[str, Any]) -> Dict[str, Any]:

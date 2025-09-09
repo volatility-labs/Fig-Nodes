@@ -14,32 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from core.node_registry import NODE_REGISTRY
 import typing
-
-def _parse_type(t):
-    origin = typing.get_origin(t)
-    if origin:
-        base = origin.__name__
-        args = typing.get_args(t)
-        if origin in (list, set, tuple):
-            subtypes = [_parse_type(a) for a in args]
-            return {"base": base, "subtypes": subtypes}
-        elif origin is dict:
-            key_type = _parse_type(args[0]) if args else None
-            value_type = _parse_type(args[1]) if len(args) > 1 else None
-            return {"base": base, "key_type": key_type, "value_type": value_type}
-        elif origin is typing.Union:
-            subtypes = [_parse_type(a) for a in args]
-            return {"base": "union", "subtypes": subtypes}
-        else:
-            subtypes = [_parse_type(a) for a in args]
-            return {"base": base, "subtypes": subtypes}
-    else:
-        name = getattr(t, "__name__", str(t))
-        if name == "Any":
-            # Use capitalized "Any" to align with frontend wildcard detection
-            # so BaseCustomNode.parseType maps it to LiteGraph's wildcard (0)
-            return {"base": "Any"}
-        return {"base": name}
+from core.types_utils import parse_type  # New import
 
 app = FastAPI()
 
@@ -53,8 +28,8 @@ def read_root():
 def list_nodes():
     nodes_meta = {}
     for name, cls in NODE_REGISTRY.items():
-        inputs_meta = cls.inputs if isinstance(cls.inputs, list) else {k: _parse_type(v) for k, v in cls.inputs.items()}
-        outputs_meta = cls.outputs if isinstance(cls.outputs, list) else {k: _parse_type(v) for k, v in cls.outputs.items()}
+        inputs_meta = cls.inputs if isinstance(cls.inputs, list) else {k: parse_type(v) for k, v in cls.inputs.items()}
+        outputs_meta = cls.outputs if isinstance(cls.outputs, list) else {k: parse_type(v) for k, v in cls.outputs.items()}
         params = []
         if hasattr(cls, 'params_meta'):
             params = cls.params_meta

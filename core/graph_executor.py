@@ -16,6 +16,7 @@ class GraphExecutor:
         self.dag = nx.DiGraph()
         self.is_streaming = False
         self.streaming_tasks: List[asyncio.Task] = []
+        self._stopped = False
         self._build_graph()
 
     def _build_graph(self):
@@ -25,9 +26,13 @@ class GraphExecutor:
             if node_type not in self.node_registry:
                 raise ValueError(f"Unknown node type: {node_type}")
             properties = node_data.get('properties', {})
-            self.nodes[node_id] = self.node_registry[node_type](str(node_id), properties)
-            self.input_names[node_id] = [inp.get('name', '') for inp in node_data.get('inputs', [])]
-            self.output_names[node_id] = [out.get('name', '') for out in node_data.get('outputs', [])]
+            self.nodes[node_id] = self.node_registry[node_type](node_id, properties)
+            input_list = [inp.get('name', '') for inp in node_data.get('inputs', [])]
+            if input_list:
+                self.input_names[node_id] = input_list
+            output_list = [out.get('name', '') for out in node_data.get('outputs', [])]
+            if output_list:
+                self.output_names[node_id] = output_list
             self.dag.add_node(node_id)
 
         for link in self.graph.get('links', []):
@@ -45,18 +50,24 @@ class GraphExecutor:
 
         results: Dict[int, Dict[str, Any]] = {}
         sorted_nodes = list(nx.topological_sort(self.dag))
+        executed_nodes = set()
 
         for node_id in sorted_nodes:
+            if node_id in executed_nodes:
+                continue
             if self.dag.in_degree(node_id) == 0 and self.dag.out_degree(node_id) == 0:
                 continue
             node = self.nodes[node_id]
             if isinstance(node, ForEachNode):
                 await self._execute_foreach_subgraph(node, results)
+                subgraph_nodes = list(nx.dfs_preorder_nodes(self.dag, source=node_id))
+                executed_nodes.update(subgraph_nodes)
             else:
                 inputs = self._get_node_inputs(node_id, results)
-                if not node.validate_inputs(inputs):
-                    raise ValueError(f"Missing inputs for node {node_id}: {set(node.inputs) - set(inputs.keys())}")
-                outputs = await node.execute(inputs)
+                merged_inputs = {**{k: node.params.get(k) for k in node.inputs if k not in inputs}, **inputs}
+                if not node.validate_inputs(merged_inputs):
+                    continue
+                outputs = await node.execute(merged_inputs)
                 results[node_id] = outputs
         
         return results
@@ -68,13 +79,14 @@ class GraphExecutor:
             current_context = {**context, **tick_results}
             sub_node = self.nodes[sub_node_id]
             sub_inputs = self._get_node_inputs(sub_node_id, current_context)
+            merged_inputs = {**{k: sub_node.params.get(k) for k in sub_node.inputs if k not in sub_inputs}, **sub_inputs}
             
-            if not sub_node.validate_inputs(sub_inputs):
+            if not sub_node.validate_inputs(merged_inputs):
                 # TODO: Handle errors more gracefully
                 print(f"Skipping node {sub_node_id} due to missing inputs in stream.")
                 continue
                 
-            sub_outputs = await sub_node.execute(sub_inputs)
+            sub_outputs = await sub_node.execute(merged_inputs)
             tick_results[sub_node_id] = sub_outputs
         return tick_results
 
@@ -118,11 +130,17 @@ class GraphExecutor:
                     continue
                 node = self.nodes[node_id]
                 inputs = self._get_node_inputs(node_id, static_results)
-                outputs = await node.execute(inputs)
+                merged_inputs = {**{k: node.params.get(k) for k in node.inputs if k not in inputs}, **inputs}
+                if not node.validate_inputs(merged_inputs):
+                    continue
+                outputs = await node.execute(merged_inputs)
                 static_results[node_id] = outputs
         
         # Yield the initial results from the static part of the graph
         yield static_results
+
+        if self._stopped:
+            return
 
         # If there are no streaming sources, we are done
         if not streaming_sources:
@@ -136,12 +154,13 @@ class GraphExecutor:
             self.streaming_tasks.append(task)
             
         # Main loop to pull from the queue and yield to the websocket
-        while any(not task.done() for task in self.streaming_tasks):
+        while any(not task.done() for task in self.streaming_tasks) or final_results_queue.qsize() > 0:
             try:
                 final_result = await asyncio.wait_for(final_results_queue.get(), timeout=1.0)
                 yield final_result
             except asyncio.TimeoutError:
-                # This allows us to check if the tasks are done
+                if self._stopped:
+                    break
                 continue
         
         # Clean up any remaining tasks
@@ -157,19 +176,21 @@ class GraphExecutor:
         self.streaming_tasks = []
 
     async def stop(self):
+        self._stopped = True
         for task in self.streaming_tasks:
             if not task.done():
                 task.cancel()
-                node = next((n for n in self.nodes.values() if isinstance(n, StreamingNode)), None)
-                if node:
-                    node.stop()
+        for node in self.nodes.values():
+            if isinstance(node, StreamingNode):
+                node.stop()
         if self.streaming_tasks:
             await asyncio.gather(*self.streaming_tasks, return_exceptions=True)
         self.streaming_tasks = []
 
     async def _execute_foreach_subgraph(self, foreach_node: ForEachNode, results: Dict[str, Any]):
         inputs = self._get_node_inputs(foreach_node.id, results)
-        item_list = inputs.get("list", [])
+        merged_inputs = {**{k: foreach_node.params.get(k) for k in foreach_node.inputs if k not in inputs}, **inputs}
+        item_list = merged_inputs.get("list") or []
         
         subgraph_nodes = list(nx.dfs_preorder_nodes(self.dag, source=foreach_node.id))
         subgraph_nodes.remove(foreach_node.id)
