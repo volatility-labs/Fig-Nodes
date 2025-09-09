@@ -1,19 +1,19 @@
 import BaseCustomNode from './BaseCustomNode';
 import { LGraphCanvas, LiteGraph } from '@comfyorg/litegraph';
+import { showTextEditor } from '@utils/uiUtils';
 
 export default class TextInputNodeUI extends BaseCustomNode {
-    editing: boolean = false;
-    cursorPos: { line: number, col: number } = { line: 0, col: 0 };
-    cursorBlink: number = 0;
-    graphcanvas: LGraphCanvas | null = null;
+    hovering: boolean = false;
+    previewLines: string[] = [];
 
     constructor(title: string, data: any) {
         super(title, data);
         this.resizable = true;
         this.size = [300, 180];
 
-        // Remove default widget to handle custom editing
+        // Remove default widget and store preview
         this.widgets = [];
+        this.updatePreview();
 
         // Set initial value from properties
         if (!this.properties.value) {
@@ -25,13 +25,8 @@ export default class TextInputNodeUI extends BaseCustomNode {
         this.bgcolor = "#1e1e1e";
     }
 
-    getLines(): string[] {
-        return this.properties.value.split('\n');
-    }
-
-    setLines(lines: string[]) {
-        this.properties.value = lines.join('\n');
-    }
+    getLines(): string[] { return (this.properties.value || '').split('\n'); }
+    setLines(lines: string[]) { this.properties.value = lines.join('\n'); }
 
     wrapLine(text: string, maxWidth: number, ctx: CanvasRenderingContext2D): string[] {
         if (!text) return [''];
@@ -77,117 +72,36 @@ export default class TextInputNodeUI extends BaseCustomNode {
         return wrappedLines;
     }
 
-    onMouseDown(event: MouseEvent, pos: [number, number], graphcanvas: LGraphCanvas) {
+    async onDblClick(_event: MouseEvent, _pos: [number, number], _graphcanvas: LGraphCanvas) {
         if (this.flags?.collapsed) return false;
-        if (pos[1] < LiteGraph.NODE_TITLE_HEIGHT) return false;
-
-        const padding = 10;
-        const textAreaX = padding;
-        const textAreaY = LiteGraph.NODE_TITLE_HEIGHT + padding;
-        const textAreaWidth = this.size[0] - (padding * 2);
-        const textAreaHeight = this.size[1] - LiteGraph.NODE_TITLE_HEIGHT - (padding * 2);
-
-        // Check if click is within text area bounds
-        if (pos[0] < textAreaX || pos[0] > textAreaX + textAreaWidth ||
-            pos[1] < textAreaY || pos[1] > textAreaY + textAreaHeight) {
-            return false;
+        const newVal = await showTextEditor(this.properties.value || '', { title: this.title || 'Text', monospace: true, width: 560, height: 380 });
+        if (newVal !== null) {
+            this.properties.value = newVal;
+            this.updatePreview();
+            this.setDirtyCanvas(true, true);
         }
-
-        // Calculate cursor position based on click
-        const localY = pos[1] - textAreaY - padding;
-        const localX = pos[0] - textAreaX - padding;
-        const lineHeight = 16;
-        const line = Math.floor(localY / lineHeight);
-        const lines = this.getLines();
-
-        if (line < lines.length) {
-            const ctx = graphcanvas.ctx;
-            ctx.font = '12px monospace';
-            let col = 0;
-            const lineText = lines[line];
-            while (col < lineText.length) {
-                const width = ctx.measureText(lineText.substring(0, col + 1)).width;
-                if (width > localX) break;
-                col++;
-            }
-            this.cursorPos = { line, col };
-        } else {
-            this.cursorPos = { line: lines.length - 1, col: lines[lines.length - 1].length };
-        }
-
-        this.editing = true;
-        this.cursorBlink = Date.now();
-        this.graphcanvas = graphcanvas;
-        // @ts-ignore
-        graphcanvas.editingNode = this;
-        this.setDirtyCanvas(true, true);
         return true;
     }
 
-    onKeyDown(e: KeyboardEvent) {
-        if (!this.editing) return;
+    onMouseEnter() { this.hovering = true; }
+    onMouseLeave() { this.hovering = false; }
 
-        if (e.key === 'Escape') {
-            this.editing = false;
-            if (this.graphcanvas) {
-                // @ts-ignore
-                this.graphcanvas.editingNode = null;
-            }
-            this.setDirtyCanvas(true, true);
+    updatePreview() {
+        const ctx = (this as any).graph && (this as any).graph.list_of_graphcanvas && (this as any).graph.list_of_graphcanvas[0]?.ctx;
+        if (!ctx) {
+            this.previewLines = (this.properties.value || '').split('\n').slice(0, 8);
             return;
         }
-
-        const lines = this.getLines();
-        const { line, col } = this.cursorPos;
-        let currentLine = lines[line] || '';
-
-        if (e.key === 'Enter') {
-            const before = currentLine.substring(0, col);
-            const after = currentLine.substring(col);
-            lines[line] = before;
-            lines.splice(line + 1, 0, after);
-            this.cursorPos = { line: line + 1, col: 0 };
-        } else if (e.key === 'Backspace') {
-            if (col > 0) {
-                lines[line] = currentLine.substring(0, col - 1) + currentLine.substring(col);
-                this.cursorPos.col--;
-            } else if (line > 0) {
-                const prevLine = lines[line - 1];
-                lines[line - 1] = prevLine + currentLine;
-                lines.splice(line, 1);
-                this.cursorPos = { line: line - 1, col: prevLine.length };
-            }
-        } else if (e.key === 'Delete') {
-            if (col < currentLine.length) {
-                lines[line] = currentLine.substring(0, col) + currentLine.substring(col + 1);
-            } else if (line < lines.length - 1) {
-                lines[line] = currentLine + lines[line + 1];
-                lines.splice(line + 1, 1);
-            }
-        } else if (e.key === 'ArrowLeft') {
-            if (col > 0) this.cursorPos.col--;
-            else if (line > 0) this.cursorPos = { line: line - 1, col: lines[line - 1].length };
-        } else if (e.key === 'ArrowRight') {
-            if (col < currentLine.length) this.cursorPos.col++;
-            else if (line < lines.length - 1) this.cursorPos = { line: line + 1, col: 0 };
-        } else if (e.key === 'ArrowUp' && line > 0) {
-            this.cursorPos.line--;
-            this.cursorPos.col = Math.min(col, lines[this.cursorPos.line].length);
-        } else if (e.key === 'ArrowDown' && line < lines.length - 1) {
-            this.cursorPos.line++;
-            this.cursorPos.col = Math.min(col, lines[this.cursorPos.line].length);
-        } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey) {
-            lines[line] = currentLine.substring(0, col) + e.key + currentLine.substring(col);
-            this.cursorPos.col++;
-        } else {
-            return; // Unhandled key
+        const lines = (this.properties.value || '').split('\n');
+        const textAreaWidth = this.size[0] - 30;
+        ctx.font = '12px monospace';
+        const wrapped: string[] = [];
+        for (const l of lines) {
+            const parts = this.wrapLine(l, textAreaWidth, ctx);
+            wrapped.push(...parts);
+            if (wrapped.length > 8) break;
         }
-
-        this.setLines(lines);
-        this.cursorBlink = Date.now();
-        this.setDirtyCanvas(true, true);
-        e.preventDefault();
-        e.stopPropagation();
+        this.previewLines = wrapped.slice(0, 8);
     }
 
     onDrawForeground(ctx: CanvasRenderingContext2D) {
@@ -202,11 +116,11 @@ export default class TextInputNodeUI extends BaseCustomNode {
         const textAreaHeight = this.size[1] - LiteGraph.NODE_TITLE_HEIGHT - (padding * 2);
 
         // Draw text area background and border
-        ctx.fillStyle = this.editing ? '#2a2a2a' : '#1a1a1a';
+        ctx.fillStyle = this.hovering ? '#2a2a2a' : '#1a1a1a';
         ctx.fillRect(textAreaX, textAreaY, textAreaWidth, textAreaHeight);
 
         // Draw border
-        ctx.strokeStyle = this.editing ? '#5a9fd4' : '#444444';
+        ctx.strokeStyle = this.hovering ? '#5a9fd4' : '#444444';
         ctx.lineWidth = borderWidth;
         ctx.strokeRect(textAreaX, textAreaY, textAreaWidth, textAreaHeight);
 
@@ -215,8 +129,9 @@ export default class TextInputNodeUI extends BaseCustomNode {
         ctx.textAlign = 'left';
         ctx.fillStyle = '#ffffff';
 
-        // Get wrapped lines and render
-        const wrappedLines = this.getWrappedLines(ctx);
+        // Render preview lines
+        this.updatePreview();
+        const wrappedLines = this.previewLines;
         let y = textAreaY + padding + 12; // Start position for text
 
         // Clip text to text area bounds
@@ -226,7 +141,7 @@ export default class TextInputNodeUI extends BaseCustomNode {
             textAreaWidth - (borderWidth * 2), textAreaHeight - (borderWidth * 2));
         ctx.clip();
 
-        wrappedLines.forEach((lineText: string, index: number) => {
+        wrappedLines.forEach((lineText: string) => {
             if (y <= textAreaY + textAreaHeight - padding) {
                 ctx.fillText(lineText, textAreaX + padding, y);
                 y += lineHeight;
@@ -235,20 +150,10 @@ export default class TextInputNodeUI extends BaseCustomNode {
 
         ctx.restore();
 
-        // Draw cursor if editing
-        if (this.editing && (Date.now() - this.cursorBlink) % 1000 < 500) {
-            const { line, col } = this.cursorPos;
-            const rawLines = this.getLines();
-            if (line < rawLines.length) {
-                const cursorText = rawLines[line].substring(0, col);
-                const cursorX = textAreaX + padding + ctx.measureText(cursorText).width;
-                const cursorY = textAreaY + padding + (line * lineHeight);
-
-                if (cursorY >= textAreaY && cursorY <= textAreaY + textAreaHeight - padding) {
-                    ctx.fillStyle = '#ffffff';
-                    ctx.fillRect(cursorX, cursorY, 1, lineHeight);
-                }
-            }
+        // Hint to open editor
+        if (!this.hovering) {
+            ctx.fillStyle = '#9aa0a6';
+            ctx.fillText('Double-click to edit…', textAreaX + padding, textAreaY + textAreaHeight - padding);
         }
 
         // Auto-adjust node size based on content
@@ -260,7 +165,7 @@ export default class TextInputNodeUI extends BaseCustomNode {
         }
     }
 
-    onResize(size: [number, number]) {
+    onResize(_size: [number, number]) {
         this.setDirtyCanvas(true, true);
     }
 }

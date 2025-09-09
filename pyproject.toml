@@ -1,10 +1,9 @@
 [tool.poetry]
-name = "hl-bot-v2"
+name = "Fig Node"
 version = "0.1.0"
-description = "Hyperliquid Trading Bot V2"
+description = "Node based UI for LLM-enhanced trading and financial analysis workflows"
 authors = ["Guanzhi Ma"]
 readme = "README.md"
-packages = [{ include = "hl_bot_v2" }]
 
 [tool.poetry.dependencies]
 python = "^3.11"

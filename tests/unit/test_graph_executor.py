@@ -6,7 +6,7 @@ from typing import Dict, Any, AsyncGenerator
 from core.graph_executor import GraphExecutor
 from nodes.base.base_node import BaseNode
 from nodes.base.streaming_node import StreamingNode
-from nodes.impl.flow_control_nodes import ForEachNode
+from nodes.core.flow.for_each_node import ForEachNode
 from core.node_registry import NODE_REGISTRY  # Assuming it's empty or mock
 
 # Mock Node Classes

@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Trading Bot Workflow Editor</title>
+    <title>Fig Nodes</title>
     <link rel="stylesheet" href="/style.css">
 </head>
 
@@ -12,10 +12,6 @@
     <div class="app-container">
         <div id="main-content">
             <canvas id="litegraph-canvas"></canvas>
-            <div id="menu">
-                <h3>Available Nodes</h3>
-                <ul id="node-list"></ul>
-            </div>
         </div>
         <div id="footer">
             <div id="status-indicator" class="status-indicator"></div>
@@ -31,6 +27,15 @@
     <!-- Loading Overlay -->
     <div id="loading-overlay" style="display: none;">
         <span>Executing...</span>
+    </div>
+
+    <!-- Node Palette Overlay -->
+    <div id="node-palette-overlay" class="node-palette-overlay" style="display: none;">
+        <div id="node-palette" class="node-palette">
+            <input id="node-palette-search" class="node-palette-search" type="text"
+                placeholder="Search nodes (type to filter, Enter to add)" autocomplete="off">
+            <div id="node-palette-list" class="node-palette-list"></div>
+        </div>
     </div>
 
     <input type="file" id="graph-file" accept=".json" style="display: none;">

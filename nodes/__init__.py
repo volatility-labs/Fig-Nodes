@@ -2,6 +2,7 @@
 # This package contains base classes and implementations for graph nodes.
 # Submodules:
 # - base/: Abstract base classes like BaseNode, StreamingNode, UniverseNode.
-# - impl/: Core node implementations (input, logic, etc.).
+# - core/: Core node implementations organized by domain (io, flow, market, logic, llm).
+# - plugins/: External/provider-specific nodes (e.g., binance, polygon, samples).
 #
-# To create custom nodes, inherit from base classes and place in plugins/ for dynamic loading. 
+# To create custom nodes, create under nodes/plugins/<your_namespace>/ and they will be auto-discovered. 

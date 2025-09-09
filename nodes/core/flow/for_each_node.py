@@ -1,7 +1,6 @@
 from typing import Dict, Any, List
 from nodes.base.base_node import BaseNode
 
-# TODO: Implement flow control nodes 
 
 class ForEachNode(BaseNode):
     """
@@ -17,4 +16,6 @@ class ForEachNode(BaseNode):
 
     async def execute(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
         item_list = inputs.get("list", [])
-        return {"list": item_list} 
+        return {"list": item_list}
+
+

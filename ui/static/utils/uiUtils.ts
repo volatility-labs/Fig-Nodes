@@ -59,3 +59,95 @@ export let showError: (message: string) => void = (message) => {
     dialog.appendChild(button);
     document.body.appendChild(dialog);
 };
+
+export async function showTextEditor(initial: string, options?: { title?: string; placeholder?: string; monospace?: boolean; width?: number; height?: number; }): Promise<string | null> {
+    return new Promise((resolve) => {
+        const overlay = document.createElement('div');
+        overlay.classList.add('text-editor-overlay');
+
+        const dialog = document.createElement('div');
+        dialog.classList.add('text-editor-dialog');
+        if (options?.width) dialog.style.width = `${options.width}px`;
+        if (options?.height) dialog.style.height = `${options.height}px`;
+
+        const title = document.createElement('h3');
+        title.textContent = options?.title || 'Edit Text';
+        dialog.appendChild(title);
+
+        const textarea = document.createElement('textarea');
+        textarea.classList.add('text-editor-textarea');
+        if (options?.monospace !== false) textarea.classList.add('monospace');
+        textarea.placeholder = options?.placeholder || '';
+        textarea.value = initial || '';
+        dialog.appendChild(textarea);
+
+        const footer = document.createElement('div');
+        footer.classList.add('text-editor-footer');
+
+        const counter = document.createElement('div');
+        counter.classList.add('text-editor-counter');
+        const updateCounter = () => {
+            counter.textContent = `${textarea.value.length} chars`;
+        };
+        updateCounter();
+
+        const buttons = document.createElement('div');
+        buttons.classList.add('text-editor-buttons');
+
+        const cancelBtn = document.createElement('button');
+        cancelBtn.classList.add('dialog-button');
+        cancelBtn.textContent = 'Cancel (Esc)';
+        cancelBtn.onclick = () => {
+            document.body.removeChild(overlay);
+            resolve(null);
+        };
+
+        const saveBtn = document.createElement('button');
+        saveBtn.classList.add('dialog-button', 'primary');
+        saveBtn.textContent = 'Save (Ctrl/Cmd+Enter)';
+        const doSave = () => {
+            const val = textarea.value;
+            document.body.removeChild(overlay);
+            resolve(val);
+        };
+        saveBtn.onclick = doSave;
+
+        buttons.appendChild(cancelBtn);
+        buttons.appendChild(saveBtn);
+
+        footer.appendChild(counter);
+        footer.appendChild(buttons);
+
+        dialog.appendChild(footer);
+        overlay.appendChild(dialog);
+        document.body.appendChild(overlay);
+
+        textarea.focus();
+        textarea.selectionStart = textarea.value.length;
+        textarea.selectionEnd = textarea.value.length;
+
+        const keyHandler = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                cancelBtn.click();
+            } else if ((e.key === 'Enter' && (e.ctrlKey || e.metaKey))) {
+                doSave();
+            }
+        };
+        const inputHandler = () => updateCounter();
+        document.addEventListener('keydown', keyHandler);
+        textarea.addEventListener('input', inputHandler);
+
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) {
+                cancelBtn.click();
+            }
+        });
+
+        const cleanup = () => {
+            document.removeEventListener('keydown', keyHandler);
+            textarea.removeEventListener('input', inputHandler);
+        };
+        cancelBtn.addEventListener('click', cleanup);
+        saveBtn.addEventListener('click', cleanup);
+    });
+}

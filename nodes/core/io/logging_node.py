@@ -1,7 +1,7 @@
-
 from typing import Dict, Any, List
 from nodes.base.base_node import BaseNode
 from core.types_registry import AssetSymbol
+
 
 class LoggingNode(BaseNode):
     inputs = {"input": Any}
@@ -19,3 +19,5 @@ class LoggingNode(BaseNode):
             text = str(value)
             print(f"LoggingNode {self.id}: {text}")
         return {"output": text}
+
+

@@ -2,13 +2,14 @@ import pytest
 from typing import Dict, Any, List
 from unittest.mock import AsyncMock, patch
 import pandas as pd
-from nodes.impl.flow_control_nodes import ForEachNode
-from nodes.impl.indicator_nodes import IndicatorsBundleNode
-from nodes.impl.input_nodes import TextInputNode, AssetSymbolInputNode
-from nodes.impl.klines_node import KlinesNode
-from nodes.impl.logging_node import LoggingNode
-from nodes.impl.logic_nodes import ScoreNode
-from nodes.impl.resolver_nodes import InstrumentResolverNode
+from nodes.core.flow.for_each_node import ForEachNode
+from nodes.core.market.indicators_bundle_node import IndicatorsBundleNode
+from nodes.core.io.text_input_node import TextInputNode
+from nodes.core.io.asset_symbol_input_node import AssetSymbolInputNode
+from nodes.core.market.klines_node import KlinesNode
+from nodes.core.io.logging_node import LoggingNode
+from nodes.core.logic.score_node import ScoreNode
+from nodes.core.market.instrument_resolver_node import InstrumentResolverNode
 from core.types_registry import AssetSymbol, AssetClass, Provider, InstrumentType
 
 # Tests for ForEachNode

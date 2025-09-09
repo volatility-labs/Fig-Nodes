@@ -4,11 +4,11 @@ from unittest.mock import AsyncMock, patch, MagicMock
 import json
 import asyncio
 import pandas as pd
-from plugins.binance_klines_streaming_node import BinanceKlinesStreamingNode
-from plugins.binance_universe_node import BinancePerpsUniverseNode
-from plugins.polygon_universe_node import PolygonUniverseNode
-from plugins.sample_node import SampleCustomNode
-from plugins.websocket_node import WebSocketNode
+from nodes.plugins.binance.binance_klines_streaming_node import BinanceKlinesStreamingNode
+from nodes.plugins.binance.binance_universe_node import BinancePerpsUniverseNode
+from nodes.plugins.polygon.polygon_universe_node import PolygonUniverseNode
+from nodes.plugins.samples.sample_node import SampleCustomNode
+from nodes.core.io.websocket_node import WebSocketNode
 from core.types_registry import AssetSymbol, AssetClass, InstrumentType
 from nodes.base.base_node import BaseNode
 import websockets.exceptions

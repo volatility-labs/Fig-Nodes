@@ -1,8 +1,8 @@
 from typing import Dict, Any
-import pandas as pd
 from nodes.base.base_node import BaseNode
 from core.types_registry import get_type
 from core.types_registry import AssetSymbol
+
 
 class IndicatorsBundleNode(BaseNode):
     """
@@ -14,7 +14,6 @@ class IndicatorsBundleNode(BaseNode):
 
     def __init__(self, node_id: str, params: Dict[str, Any]):
         super().__init__(node_id, params)
-        # TODO: Reimplement indicator computation after services removal
 
     async def execute(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
         bundle = inputs.get("klines", {})
@@ -32,13 +31,15 @@ class IndicatorsBundleNode(BaseNode):
             bundle = collected
         if not bundle:
             return {"indicators": {}}
-        
+
         timeframe = self.params.get("timeframe")
         indicators_bundle = {}
         for symbol, klines_df in bundle.items():
             if klines_df is None or klines_df.empty:
                 continue
-            indicators = {}  # Placeholder: Compute indicators here
+            indicators = {}
             indicators_bundle[symbol] = indicators
-        
-        return {"indicators": indicators_bundle} 
+
+        return {"indicators": indicators_bundle}
+
+

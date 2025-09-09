@@ -40,21 +40,23 @@ def list_nodes():
                 params.append({"name": k, "type": param_type, "default": default_val})
         
         module_name = cls.__module__
-        if 'UniverseNode' in name:
-            category = "data_source"
-        elif 'nodes.impl' in module_name:
-            category = "Core"
-        elif hasattr(cls, 'is_streaming') and cls.is_streaming:
-            category = "Streaming"
-        else:
-            category = "Plugins"
+        category = getattr(cls, 'CATEGORY', None)
+        if not category:
+            if 'UniverseNode' in name:
+                category = "DataSource"
+            elif 'nodes.core' in module_name:
+                category = "Core"
+            elif getattr(cls, 'is_streaming', False):
+                category = "Streaming"
+            else:
+                category = "Plugins"
             
         nodes_meta[name] = {
             "inputs": inputs_meta,
             "outputs": outputs_meta,
             "params": params,
             "category": category,
-            "uiModule": "TextInputNodeUI" if name == "TextInputNode" else "LoggingNodeUI" if name == "LoggingNode" else None
+            "uiModule": getattr(cls, 'ui_module', None) or ("TextInputNodeUI" if name == "TextInputNode" else "LoggingNodeUI" if name == "LoggingNode" else None)
         }
     return {"nodes": nodes_meta}
 

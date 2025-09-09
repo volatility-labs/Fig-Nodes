@@ -1,7 +1,7 @@
 import networkx as nx
 from typing import Dict, Any, List, AsyncGenerator
 from nodes.base.base_node import BaseNode
-from nodes.impl.flow_control_nodes import ForEachNode
+from nodes.core.flow.for_each_node import ForEachNode
 import asyncio
 from nodes.base.streaming_node import StreamingNode
 from collections import defaultdict
