@@ -31,6 +31,7 @@ class OllamaChatNode(StreamingNode):
         "model": str,
         "messages": get_type("LLMChatMessageList"),
         "prompt": str,
+        "system": str,
         "tools": get_type("LLMToolSpecList"),
     }
 
@@ -59,16 +60,16 @@ class OllamaChatNode(StreamingNode):
         {"name": "think", "type": "combo", "default": False, "options": [False, True]},
     ]
 
-    ui_module = None  # Will use default Base UI; a specialized viewer can be added later.
+    ui_module = "OllamaChatNodeUI"
 
     def __init__(self, id: int, params: Dict[str, Any] = None):
         super().__init__(id, params)
         self._cancel_event = asyncio.Event()
         # Mark optional inputs at runtime for validation layer
-        self.optional_inputs = ["tools", "messages", "prompt"]
+        self.optional_inputs = ["tools", "messages", "prompt", "system"]
 
     @staticmethod
-    def _build_messages(existing_messages: Optional[List[Dict[str, Any]]], prompt: Optional[str]) -> List[Dict[str, Any]]:
+    def _build_messages(existing_messages: Optional[List[Dict[str, Any]]], prompt: Optional[str], system_prompt: Optional[str]) -> List[Dict[str, Any]]:
         """
         Construct a messages array compliant with Ollama chat API from either:
         - existing structured messages
@@ -79,6 +80,11 @@ class OllamaChatNode(StreamingNode):
         if existing_messages:
             # Shallow copy to avoid mutating caller-provided list
             result.extend(existing_messages)
+        # Prepend/ensure a system message if provided and not already present
+        if isinstance(system_prompt, str) and system_prompt.strip():
+            has_system = any(isinstance(m, dict) and m.get("role") == "system" for m in result)
+            if not has_system:
+                result.insert(0, {"role": "system", "content": system_prompt})
         if isinstance(prompt, str) and prompt.strip():
             result.append({"role": "user", "content": prompt})
         return result
@@ -105,7 +111,8 @@ class OllamaChatNode(StreamingNode):
             model: str = inputs.get("model")
             raw_messages: Optional[List[Dict[str, Any]]] = inputs.get("messages")
             prompt_text: Optional[str] = inputs.get("prompt")
-            messages: List[Dict[str, Any]] = self._build_messages(raw_messages, prompt_text)
+            system_prompt: Optional[str] = inputs.get("system")
+            messages: List[Dict[str, Any]] = self._build_messages(raw_messages, prompt_text, system_prompt)
             tools: Optional[List[Dict[str, Any]]] = inputs.get("tools")
 
             if not model:

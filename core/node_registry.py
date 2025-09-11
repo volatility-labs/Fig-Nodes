@@ -48,7 +48,7 @@ def load_nodes(directories: List[str]) -> Dict[str, type]:
 extra_dirs_env = os.getenv('FIG_NODES_PATHS', '')
 extra_dirs: List[str] = [p for p in extra_dirs_env.split(':') if p]
 
-NODE_REGISTRY = load_nodes(['nodes/core', 'nodes/plugins', *extra_dirs])
+NODE_REGISTRY = load_nodes(['nodes/core', 'custom_nodes', *extra_dirs])
 
 # Developer Notes:
 # To add a new node:

@@ -15,6 +15,9 @@ class ForEachNode(BaseNode):
         super().__init__(node_id, params)
 
     async def execute(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        # Validate inputs using BaseNode's validation
+        if not self.validate_inputs(inputs):
+            return {"list": []}
         item_list = inputs.get("list", [])
         return {"list": item_list}
 

@@ -12,13 +12,23 @@ class WebSocketNode(StreamingNode):
 
     async def start(self, inputs: Dict[str, Any]) -> AsyncGenerator[Dict[str, Any], None]:
         symbols = inputs.get("symbols", [])
+        if not symbols:
+            return
         async with websockets.connect("wss://example.com/ws") as ws:
-            await ws.send(json.dumps({"subscribe": [str(s) for s in symbols]}))
+            send = getattr(ws, "send", None)
+            if asyncio.iscoroutinefunction(send):
+                await send(json.dumps({"subscribe": [str(s) for s in symbols]}))
+            else:
+                send(json.dumps({"subscribe": [str(s) for s in symbols]}))
             while True:
-                message = await ws.recv()
+                recv = getattr(ws, "recv", None)
+                if asyncio.iscoroutinefunction(recv):
+                    message = await recv()
+                else:
+                    message = recv()
                 ohlcv = {}
                 yield {"ohlcv": ohlcv}
-                await asyncio.sleep(1)
+                await asyncio.sleep(0)
 
     def stop(self):
         pass

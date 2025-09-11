@@ -26,6 +26,9 @@ class BaseNode:
     def __init__(self, id: int, params: Dict[str, Any] = None):
         self.id = id
         self.params = {**self.default_params, **(params or {})}
+        # Ensure per-instance mutable copies to avoid cross-test/class mutation
+        self.inputs = dict(getattr(self, "inputs", {}))
+        self.outputs = dict(getattr(self, "outputs", {}))
 
     def collect_multi_input(self, key: str, inputs: Dict[str, Any]) -> List[Any]:
         expected_type = self.inputs.get(key)
@@ -144,7 +147,7 @@ class BaseNode:
                 if not found:
                     if hasattr(self, 'optional_inputs') and key in self.optional_inputs:
                         continue
-                    return True
+                    return False
         return True
 
     async def execute(self, inputs: Dict[str, Any]) -> Dict[str, Any]:

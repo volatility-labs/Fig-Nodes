@@ -4,10 +4,10 @@ from unittest.mock import AsyncMock, patch, MagicMock
 import json
 import asyncio
 import pandas as pd
-from nodes.plugins.binance.binance_klines_streaming_node import BinanceKlinesStreamingNode
-from nodes.plugins.binance.binance_universe_node import BinancePerpsUniverseNode
-from nodes.plugins.polygon.polygon_universe_node import PolygonUniverseNode
-from nodes.plugins.samples.sample_node import SampleCustomNode
+from custom_nodes.binance.binance_klines_streaming_node import BinanceKlinesStreamingNode
+from custom_nodes.binance.binance_universe_node import BinancePerpsUniverseNode
+from custom_nodes.polygon.polygon_universe_node import PolygonUniverseNode
+from custom_nodes.samples.sample_node import SampleCustomNode
 from nodes.core.io.websocket_node import WebSocketNode
 from core.types_registry import AssetSymbol, AssetClass, InstrumentType
 from nodes.base.base_node import BaseNode
@@ -132,11 +132,13 @@ def polygon_node():
 @patch("httpx.AsyncClient")
 async def test_polygon_fetch_symbols(mock_client, polygon_node):
     mock_get = AsyncMock()
-    mock_get.status_code = 200
-    mock_get.json.return_value = {
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
         "results": [{"ticker": "X:BTCUSD", "name": "Bitcoin"}],
         "next_url": None
     }
+    mock_get.return_value = mock_response
     mock_client.return_value.__aenter__.return_value.get = mock_get
     symbols = await polygon_node._fetch_symbols()
     assert len(symbols) == 1

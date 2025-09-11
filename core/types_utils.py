@@ -1,9 +1,11 @@
 import typing
 
+
 def parse_type(t):
     origin = typing.get_origin(t)
     if origin:
-        base = t._name if hasattr(t, '_name') and t._name else origin.__name__
+        # typing constructs like List, Dict, Union
+        base = t._name if getattr(t, "_name", None) else ("union" if origin is typing.Union else getattr(origin, "__name__", str(origin)))
         args = typing.get_args(t)
         if origin in (list, set, tuple):
             subtypes = [parse_type(a) for a in args]
@@ -21,8 +23,8 @@ def parse_type(t):
     else:
         name = getattr(t, "__name__", str(t))
         if name == "Any" or name.endswith(".Any"):
-            return {"base": "any"}
-        if t is list or t is set or t is tuple:
+            return {"base": "Any"}
+        if t in (list, set, tuple):
             return {"base": name, "subtypes": [{"base": "Any"}]}
         elif t is dict:
             return {"base": name, "key_type": {"base": "Any"}, "value_type": {"base": "Any"}}

@@ -70,6 +70,22 @@ class BinanceKlinesStreamingNode(StreamingNode):
 
     def stop(self):
         if self.ws:
-            asyncio.run(self.ws.close())
+            # Close websocket if available; in tests this may be a MagicMock
+            close_fn = getattr(self.ws, "close", None)
+            if close_fn:
+                if asyncio.iscoroutinefunction(close_fn):
+                    try:
+                        asyncio.run(close_fn())
+                    except RuntimeError:
+                        # Fallback if loop is running or close_fn is not a coroutine in tests
+                        try:
+                            close_fn()
+                        except Exception:
+                            pass
+                else:
+                    try:
+                        close_fn()
+                    except Exception:
+                        pass
 
 

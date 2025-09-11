@@ -26,8 +26,17 @@ async function createEditor(container: HTMLElement) {
             let NodeClass = BaseCustomNode;
 
             if (data.uiModule) {
-                const module = await import(`./nodes/${data.uiModule}.ts`);
-                NodeClass = module.default;
+                try {
+                    const module = await import(`./nodes/${data.uiModule}.ts`);
+                    NodeClass = module.default || NodeClass;
+                } catch {
+                    try {
+                        const moduleAlt = await import(`./nodes/${data.uiModule}`);
+                        NodeClass = moduleAlt.default || NodeClass;
+                    } catch {
+                        // Fallback to BaseCustomNode if UI module cannot be loaded in this environment
+                    }
+                }
             }
 
             const CustomClass = class extends NodeClass { constructor() { super(name, data); } };

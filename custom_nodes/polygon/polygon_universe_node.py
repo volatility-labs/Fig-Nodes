@@ -1,14 +1,18 @@
-from typing import Dict, Any, List
+from typing import List
 import httpx
 import logging
 from nodes.base.universe_node import UniverseNode
 from core.types_registry import AssetSymbol, AssetClass, register_asset_class
+
 logger = logging.getLogger(__name__)
+
+
 class PolygonUniverseNode(UniverseNode):
     params_meta = [
         {"name": "api_key", "type": "text", "default": ""},
-        {"name": "market", "type": "combo", "default": "stocks", "options": ["stocks", "crypto", "fx", "otc", "indices"]}
+        {"name": "market", "type": "combo", "default": "stocks", "options": ["stocks", "crypto", "fx", "otc", "indices"]},
     ]
+
     async def _fetch_symbols(self) -> List[AssetSymbol]:
         api_key = self.params.get("api_key")
         if not api_key:
@@ -24,18 +28,16 @@ class PolygonUniverseNode(UniverseNode):
             "active": "true",
             "limit": 1000,
             "sort": "ticker",
-            "order": "asc"
+            "order": "asc",
         }
-        symbols = []
+        symbols: List[AssetSymbol] = []
         async with httpx.AsyncClient() as client:
             next_url = base_url
             while next_url:
-                if next_url == base_url:
-                    response = await client.get(next_url, headers=headers, params=params)
-                else:
-                    response = await client.get(next_url, headers=headers)
+                request = client.get(next_url, headers=headers, params=params) if next_url == base_url else client.get(next_url, headers=headers)
+                response = await request
                 if response.status_code != 200:
-                    logger.error(f"Failed to fetch tickers: {response.status_code} - {response.text}")
+                    logger.error(f"Failed to fetch tickers: {response.status_code} - {getattr(response, 'text', '')}")
                     break
                 data = response.json()
                 for res in data.get("results", []):
@@ -66,3 +68,5 @@ class PolygonUniverseNode(UniverseNode):
                     )
                 next_url = data.get("next_url")
         return symbols
+
+
