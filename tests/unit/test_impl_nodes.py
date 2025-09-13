@@ -10,6 +10,7 @@ from nodes.core.market.klines_node import KlinesNode
 from nodes.core.io.logging_node import LoggingNode
 from nodes.core.logic.score_node import ScoreNode
 from nodes.core.market.instrument_resolver_node import InstrumentResolverNode
+from nodes.core.llm.text_to_llm_message_node import TextToLLMMessageNode
 from core.types_registry import AssetSymbol, AssetClass, Provider, InstrumentType
 
 # Tests for ForEachNode
@@ -83,6 +84,30 @@ async def test_text_node_default():
     text_node = TextInputNode("text_id", {})
     result = await text_node.execute({})
     assert result == {"text": ""}
+
+# Tests for TextToLLMMessageNode
+
+@pytest.mark.asyncio
+async def test_text_to_llm_message_default_role():
+    node = TextToLLMMessageNode("adapter_id", {})
+    result = await node.execute({"text": "hello"})
+    assert result["message"]["role"] == "user"
+    assert result["message"]["content"] == "hello"
+    assert isinstance(result["messages"], list) and len(result["messages"]) == 1
+
+@pytest.mark.asyncio
+async def test_text_to_llm_message_roles():
+    for role in ["user", "assistant", "system", "tool"]:
+        node = TextToLLMMessageNode("adapter_id", {"role": role})
+        result = await node.execute({"text": "x"})
+        assert result["message"]["role"] == role
+        assert result["messages"][0]["role"] == role
+
+@pytest.mark.asyncio
+async def test_text_to_llm_message_non_string():
+    node = TextToLLMMessageNode("adapter_id", {"role": "assistant"})
+    result = await node.execute({"text": 123})
+    assert result["message"]["content"] == "123"
 
 # Tests for AssetSymbolInputNode
 

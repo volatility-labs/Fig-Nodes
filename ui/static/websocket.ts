@@ -24,7 +24,7 @@ export function setupWebSocket(graph: LGraph, canvas: LGraphCanvas) {
         // Reset LoggingNode UIs before each execution so logs start fresh
         const nodes = ((graph as any)._nodes as any[]) || [];
         nodes.forEach((node: any) => {
-            if (node && node.title === 'LoggingNode' && typeof node.reset === 'function') {
+            if (node && node.type === 'LoggingNode' && typeof node.reset === 'function') {
                 try { node.reset(); } catch { }
             }
         });

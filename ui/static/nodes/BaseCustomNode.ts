@@ -12,6 +12,11 @@ export default class BaseCustomNode extends LGraphNode {
 
     constructor(title: string, data: any) {
         super(title);
+        // Add editable title
+        this.addWidget('text', 'Title', this.title, (v) => {
+            this.title = v;
+            this.setDirtyCanvas(true, true);
+        });
         this.size = [200, 100];
 
         if (data.inputs) {

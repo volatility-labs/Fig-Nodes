@@ -6,6 +6,14 @@ from core.types_registry import AssetSymbol
 class LoggingNode(BaseNode):
     inputs = {"input": Any}
     outputs = {"output": str}
+    
+    # Allow UI to select how to display/parse the output text
+    default_params = {
+        "format": "auto",  # one of: auto | plain | json | markdown
+    }
+    params_meta = [
+        {"name": "format", "type": "combo", "default": "auto", "options": ["auto", "plain", "json", "markdown"]},
+    ]
 
     async def execute(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
         value = inputs.get("input")
