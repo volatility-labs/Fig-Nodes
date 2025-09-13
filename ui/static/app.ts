@@ -205,21 +205,24 @@ async function createEditor(container: HTMLElement) {
             // Do not open palette on right-click
             // Allow default context menu or other handlers
         });
-        // Helper: find topmost node under event
+        // Helper: find topmost node under event (prefer graph hit-test for accurate title detection)
         const findNodeUnderEvent = (e: MouseEvent): any | null => {
             const p = canvas.convertEventToCanvasOffset(e) as unknown as number[];
             const x = p[0];
             const y = p[1];
+            // Prefer graph's hit-test which includes title height and precise bounds
+            const getNodeOnPos = (graph as any).getNodeOnPos?.bind(graph);
+            if (typeof getNodeOnPos === 'function') {
+                try {
+                    const nodeAtPos = getNodeOnPos(x, y);
+                    if (nodeAtPos) return nodeAtPos;
+                } catch { /* fall through to manual scan */ }
+            }
+            // Fallback: scan using node.isPointInside (uses boundingRect incl. title)
             const nodes = (graph as any)._nodes as any[] || [];
             for (let i = nodes.length - 1; i >= 0; i--) {
                 const node = nodes[i];
-                const nx = node.pos ? node.pos[0] : 0;
-                const ny = node.pos ? node.pos[1] : 0;
-                const w = node.size ? node.size[0] : 0;
-                const h = node.size ? node.size[1] : 0;
-                if (x >= nx && x <= nx + w && y >= ny && y <= ny + h) {
-                    return node;
-                }
+                if (typeof node.isPointInside === 'function' && node.isPointInside(x, y)) return node;
             }
             return null;
         };
@@ -229,12 +232,16 @@ async function createEditor(container: HTMLElement) {
             e.preventDefault();
             e.stopPropagation();
             const node = findNodeUnderEvent(e);
-            if (node && typeof node.onDblClick === 'function') {
-                try {
-                    const handled = node.onDblClick(e, [e.clientX, e.clientY], canvas);
-                    if (handled) return;
-                } catch { }
+            if (node) {
+                if (typeof node.onDblClick === 'function') {
+                    try {
+                        node.onDblClick(e, [e.clientX, e.clientY], canvas);
+                    } catch { }
+                }
+                // If double-click occurred on a node, do not open the palette
+                return;
             }
+            // Only open palette when double-clicking empty canvas
             openPalette();
         });
 
