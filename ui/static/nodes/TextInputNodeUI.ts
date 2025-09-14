@@ -1,171 +1,165 @@
 import BaseCustomNode from './BaseCustomNode';
-import { LGraphCanvas, LiteGraph } from '@comfyorg/litegraph';
-import { showTextEditor } from '@utils/uiUtils';
+import { LiteGraph } from '@comfyorg/litegraph';
 
 export default class TextInputNodeUI extends BaseCustomNode {
-    hovering: boolean = false;
-    previewLines: string[] = [];
+    private textareaEl: HTMLTextAreaElement | null = null;
+    private lastCanvasRef: any = null;
 
     constructor(title: string, data: any) {
         super(title, data);
         this.resizable = true;
-        this.size = [300, 180];
+        this.size = [360, 200];
 
-        // Remove default widget and store preview
+        // Remove default widgets (incl. Title) and let inline textarea handle input
         this.widgets = [];
-        this.updatePreview();
 
-        // Set initial value from properties
         if (!this.properties.value) {
             this.properties.value = '';
         }
 
-        // Set colors for text input styling
-        this.color = "#2c2c2c";
-        this.bgcolor = "#1e1e1e";
+        // ComfyUI-like colors
+        this.color = '#2c2c2c';
+        this.bgcolor = '#1e1e1e';
+        this.displayResults = false;
     }
 
-    getLines(): string[] { return (this.properties.value || '').split('\n'); }
-    setLines(lines: string[]) { this.properties.value = lines.join('\n'); }
+    // Lifecycle: called by LiteGraph when node is added to graph
+    onAdded() { this.ensureTextarea(); }
 
-    wrapLine(text: string, maxWidth: number, ctx: CanvasRenderingContext2D): string[] {
-        if (!text) return [''];
+    onRemoved() { this.detachTextarea(); }
 
-        const words = text.split(' ');
-        const lines: string[] = [];
-        let currentLine = '';
-
-        for (const word of words) {
-            const testLine = currentLine ? `${currentLine} ${word}` : word;
-            const metrics = ctx.measureText(testLine);
-
-            if (metrics.width <= maxWidth) {
-                currentLine = testLine;
-            } else {
-                if (currentLine) {
-                    lines.push(currentLine);
-                    currentLine = word;
-                } else {
-                    // Word is too long, force break
-                    lines.push(word);
-                }
-            }
-        }
-
-        if (currentLine) {
-            lines.push(currentLine);
-        }
-
-        return lines.length > 0 ? lines : [''];
-    }
-
-    getWrappedLines(ctx: CanvasRenderingContext2D): string[] {
-        const textAreaWidth = this.size[0] - 30; // Account for padding and border
-        const rawLines = this.getLines();
-        const wrappedLines: string[] = [];
-
-        for (const line of rawLines) {
-            const wrapped = this.wrapLine(line, textAreaWidth, ctx);
-            wrappedLines.push(...wrapped);
-        }
-
-        return wrappedLines;
-    }
-
-    async onDblClick(_event: MouseEvent, _pos: [number, number], _graphcanvas: LGraphCanvas) {
-        if (this.flags?.collapsed) return false;
-        const newVal = await showTextEditor(this.properties.value || '', { title: this.title || 'Text', monospace: true, width: 560, height: 380 });
-        if (newVal !== null) {
-            this.properties.value = newVal;
-            this.updatePreview();
-            this.setDirtyCanvas(true, true);
-        }
-        return true;
-    }
-
-    onMouseEnter() { this.hovering = true; }
-    onMouseLeave() { this.hovering = false; }
-
-    updatePreview() {
-        const ctx = (this as any).graph && (this as any).graph.list_of_graphcanvas && (this as any).graph.list_of_graphcanvas[0]?.ctx;
-        if (!ctx) {
-            this.previewLines = (this.properties.value || '').split('\n').slice(0, 8);
-            return;
-        }
-        const lines = (this.properties.value || '').split('\n');
-        const textAreaWidth = this.size[0] - 30;
-        ctx.font = '12px monospace';
-        const wrapped: string[] = [];
-        for (const l of lines) {
-            const parts = this.wrapLine(l, textAreaWidth, ctx);
-            wrapped.push(...parts);
-            if (wrapped.length > 8) break;
-        }
-        this.previewLines = wrapped.slice(0, 8);
-    }
-
-    onDrawForeground(ctx: CanvasRenderingContext2D) {
-        if (this.flags?.collapsed) return;
-
-        const padding = 10;
-        const borderWidth = 2;
-        const lineHeight = 16;
-        const textAreaX = padding;
-        const textAreaY = LiteGraph.NODE_TITLE_HEIGHT + padding;
-        const textAreaWidth = this.size[0] - (padding * 2);
-        const textAreaHeight = this.size[1] - LiteGraph.NODE_TITLE_HEIGHT - (padding * 2);
-
-        // Draw text area background and border
-        ctx.fillStyle = this.hovering ? '#2a2a2a' : '#1a1a1a';
-        ctx.fillRect(textAreaX, textAreaY, textAreaWidth, textAreaHeight);
-
-        // Draw border
-        ctx.strokeStyle = this.hovering ? '#5a9fd4' : '#444444';
-        ctx.lineWidth = borderWidth;
-        ctx.strokeRect(textAreaX, textAreaY, textAreaWidth, textAreaHeight);
-
-        // Set up text rendering
-        ctx.font = '12px monospace';
-        ctx.textAlign = 'left';
-        ctx.fillStyle = '#ffffff';
-
-        // Render preview lines
-        this.updatePreview();
-        const wrappedLines = this.previewLines;
-        let y = textAreaY + padding + 12; // Start position for text
-
-        // Clip text to text area bounds
-        ctx.save();
-        ctx.beginPath();
-        ctx.rect(textAreaX + borderWidth, textAreaY + borderWidth,
-            textAreaWidth - (borderWidth * 2), textAreaHeight - (borderWidth * 2));
-        ctx.clip();
-
-        wrappedLines.forEach((lineText: string) => {
-            if (y <= textAreaY + textAreaHeight - padding) {
-                ctx.fillText(lineText, textAreaX + padding, y);
-                y += lineHeight;
-            }
-        });
-
-        ctx.restore();
-
-        // Hint to open editor
-        if (!this.hovering) {
-            ctx.fillStyle = '#9aa0a6';
-            ctx.fillText('Double-click to edit…', textAreaX + padding, textAreaY + textAreaHeight - padding);
-        }
-
-        // Auto-adjust node size based on content
-        const minHeight = LiteGraph.NODE_TITLE_HEIGHT + 80;
-        const contentHeight = Math.max(wrappedLines.length * lineHeight + (padding * 3) + LiteGraph.NODE_TITLE_HEIGHT, minHeight);
-
-        if (this.size[1] < contentHeight) {
-            this.size[1] = contentHeight;
-        }
+    onDeselected() {
+        // Keep editor visible even when not selected
+        this.syncTextarea();
     }
 
     onResize(_size: [number, number]) {
+        this.syncTextarea();
         this.setDirtyCanvas(true, true);
+    }
+
+    // Draw only minimal background under the textarea for visual consistency
+    onDrawForeground(ctx: CanvasRenderingContext2D) {
+        if (this.flags?.collapsed) {
+            this.hideTextarea();
+            return;
+        }
+        this.ensureTextarea();
+
+        const padding = 8;
+        const x = padding;
+        const y = LiteGraph.NODE_TITLE_HEIGHT + padding;
+        const w = Math.max(0, this.size[0] - padding * 2);
+        const h = Math.max(0, this.size[1] - LiteGraph.NODE_TITLE_HEIGHT - padding * 2);
+
+        // Background (will be fully covered by textarea but keeps a fallback look)
+        ctx.fillStyle = '#1a1a1a';
+        ctx.fillRect(x, y, w, h);
+
+        // Border to match ComfyUI prompt box
+        ctx.strokeStyle = '#3a3a3a';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+
+        this.positionTextarea(x, y, w, h);
+    }
+
+    // Do not override mouse handling; textarea will capture events itself
+
+    private ensureTextarea() {
+        const graph: any = (this as any).graph;
+        if (!graph) return;
+        const canvas = graph.list_of_graphcanvas && graph.list_of_graphcanvas[0];
+        if (!canvas || !canvas.canvas) return;
+
+        if (!this.textareaEl || this.lastCanvasRef !== canvas) {
+            this.detachTextarea();
+            this.lastCanvasRef = canvas;
+            const parent = canvas.canvas.parentElement || document.body;
+            const ta = document.createElement('textarea');
+            ta.className = 'inline-node-textarea monospace';
+            ta.spellcheck = false;
+            ta.value = String(this.properties.value || '');
+            ta.addEventListener('input', () => {
+                this.properties.value = ta.value;
+            });
+            ta.addEventListener('blur', () => {
+                this.properties.value = ta.value;
+            });
+            // Stop key events from bubbling to canvas shortcuts
+            ta.addEventListener('keydown', (ev) => {
+                ev.stopPropagation();
+            });
+            parent.appendChild(ta);
+            this.textareaEl = ta;
+        }
+        this.syncTextarea();
+    }
+
+    private detachTextarea() {
+        if (this.textareaEl && this.textareaEl.parentElement) {
+            this.textareaEl.parentElement.removeChild(this.textareaEl);
+        }
+        this.textareaEl = null;
+        this.lastCanvasRef = null;
+    }
+
+    private hideTextarea() {
+        if (this.textareaEl) {
+            this.textareaEl.style.display = 'none';
+        }
+    }
+
+    private syncTextarea() {
+        if (!this.textareaEl) return;
+        this.textareaEl.style.display = '';
+        const current = String(this.properties.value ?? '');
+        if (this.textareaEl.value !== current) {
+            this.textareaEl.value = current;
+        }
+        // Ensure position up-to-date
+        const padding = 8;
+        const x = padding;
+        const y = LiteGraph.NODE_TITLE_HEIGHT + padding;
+        const w = Math.max(0, this.size[0] - padding * 2);
+        const h = Math.max(0, this.size[1] - LiteGraph.NODE_TITLE_HEIGHT - padding * 2);
+        this.positionTextarea(x, y, w, h);
+    }
+
+    private positionTextarea(localX: number, localY: number, localW: number, localH: number) {
+        if (!this.textareaEl) return;
+        const graph: any = (this as any).graph;
+        const canvas = graph && graph.list_of_graphcanvas && graph.list_of_graphcanvas[0];
+        if (!canvas) return;
+
+        // Convert node-local canvas coords to overlay CSS pixels
+        const ds = (canvas as any).ds || { scale: 1, offset: [0, 0] };
+        const scale = ds.scale || 1;
+        const offx = Array.isArray(ds.offset) ? ds.offset[0] : 0;
+        const offy = Array.isArray(ds.offset) ? ds.offset[1] : 0;
+
+        const cx = (this.pos[0] + localX) * scale + offx;
+        const cy = (this.pos[1] + localY) * scale + offy;
+        const cw = localW * scale;
+        const ch = localH * scale;
+
+        const parent = (canvas.canvas.parentElement || document.body);
+        // Position absolute within the canvas parent
+        const style = this.textareaEl.style;
+        style.position = 'absolute';
+        style.left = `${cx}px`;
+        style.top = `${cy}px`;
+        style.width = `${Math.max(0, cw)}px`;
+        style.height = `${Math.max(0, ch)}px`;
+        style.zIndex = '10';
+
+        // Keep font size stable; match ComfyUI prompt look
+        (this.textareaEl as HTMLTextAreaElement).style.fontSize = '12px';
+
+        // Clamp within parent bounds
+        const rect = parent.getBoundingClientRect();
+        if (cw <= 2 || ch <= 2 || cx > rect.width || cy > rect.height) {
+            this.textareaEl.style.display = 'none';
+        }
     }
 }
