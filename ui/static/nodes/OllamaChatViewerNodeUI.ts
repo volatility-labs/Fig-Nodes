@@ -24,13 +24,12 @@ export default class OllamaChatViewerNodeUI extends BaseCustomNode {
     }
 
     onStreamUpdate(_data: any) {
-        // Expect either { delta } for incremental or { assistant_message } final
-        const delta = _data?.delta;
+        // Expect either { assistant_text } progressive or { assistant_message } final
+        const text = _data?.assistant_text;
         const final = _data?.assistant_message;
-        if (typeof delta === 'string' && delta.length) {
-            this.displayText = (this.displayText || '') + delta;
-        }
-        if (final && typeof final?.content === 'string') {
+        if (typeof text === 'string') {
+            this.displayText = text;
+        } else if (final && typeof final?.content === 'string') {
             this.displayText = final.content;
         }
         this.setDirtyCanvas(true, true);
@@ -38,8 +37,9 @@ export default class OllamaChatViewerNodeUI extends BaseCustomNode {
 
     updateDisplay(result: any) {
         // For non-stream payloads routed to viewer
+        const textPref = result?.assistant_text;
         const msg = result?.assistant_message || result?.output || result;
-        const text = typeof msg === 'string' ? msg : (msg?.content || JSON.stringify(msg, null, 2));
+        const text = typeof textPref === 'string' ? textPref : (typeof msg === 'string' ? msg : (msg?.content || JSON.stringify(msg, null, 2)));
         this.displayText = text || '';
         this.setDirtyCanvas(true, true);
     }

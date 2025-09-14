@@ -21,8 +21,10 @@ class OllamaChatNode(StreamingNode):
     - tools (optional): List[Dict[str, Any]] (tool schemas for tool-calling)
 
     Outputs per tick:
-    - delta: str (streamed text chunk if streaming)
+    - assistant_text: str (progressive accumulated assistant text when streaming; final text when done)
     - assistant_message: Dict[str, Any] (final assistant message once available)
+    - thinking: str (final thinking content if provided by model)
+    - assistant_done: bool (False while streaming partials; True on final)
     - metrics: Dict[str, Any] (token counts/durations when provided)
     """
 
@@ -36,8 +38,10 @@ class OllamaChatNode(StreamingNode):
     }
 
     outputs = {
-        "delta": str,
+        "assistant_text": str,
         "assistant_message": get_type("LLMChatMessage"),
+        "thinking": str,
+        "assistant_done": bool,
         "metrics": get_type("LLMChatMetrics"),
     }
 
@@ -131,10 +135,12 @@ class OllamaChatNode(StreamingNode):
             client = AsyncClient(host=host)
 
             accumulated_content: List[str] = []
+            accumulated_thinking: List[str] = []
             final_message: Dict[str, Any] = {}
             metrics: Dict[str, Any] = {}
 
             if use_stream:
+                last_resp: Dict[str, Any] = {}
                 async for part in await client.chat(
                     model=model,
                     messages=messages,
@@ -147,30 +153,42 @@ class OllamaChatNode(StreamingNode):
                 ):
                     if self._cancel_event.is_set():
                         break
-                    msg = (part or {}).get("message") or {}
+                    last_resp = part or {}
+                    msg = last_resp.get("message") or {}
                     content_piece = msg.get("content")
                     if content_piece:
                         accumulated_content.append(content_piece)
-                        yield {"delta": content_piece}
-                # Get final response (non-stream call with history appended)
-                resp = await client.chat(
-                    model=model,
-                    messages=messages,
-                    tools=tools,
-                    stream=False,
-                    format=fmt,
-                    options=options,
-                    keep_alive=keep_alive,
-                    think=think,
-                )
-                final_message = (resp or {}).get("message") or {}
-                # Collect metrics when available
+                    thinking_piece = msg.get("thinking")
+                    if isinstance(thinking_piece, str) and thinking_piece:
+                        accumulated_thinking.append(thinking_piece)
+                    # Emit progressive accumulated assistant_text only
+                    if accumulated_content:
+                        yield {"assistant_text": "".join(accumulated_content), "assistant_done": False}
+                # Build final message and metrics from the streamed parts
+                final_message = (last_resp.get("message") if isinstance(last_resp, dict) else {}) or {}
+                # Collect metrics when available from the last streamed object
                 for k in ("total_duration", "load_duration", "prompt_eval_count", "prompt_eval_duration", "eval_count", "eval_duration"):
-                    if k in resp:
-                        metrics[k] = resp[k]
-                if accumulated_content and not final_message.get("content"):
-                    final_message["content"] = "".join(accumulated_content)
-                yield {"assistant_message": final_message, "metrics": metrics}
+                    if isinstance(last_resp, dict) and k in last_resp:
+                        metrics[k] = last_resp[k]
+                # Ensure final content is the concatenation of all streamed content
+                final_content = "".join(accumulated_content)
+                if not isinstance(final_message, dict):
+                    final_message = {}
+                if final_content:
+                    final_message["content"] = final_content
+                # Prefer final thinking from message; otherwise join accumulated
+                thinking_final: str = ""
+                if isinstance(final_message.get("thinking"), str):
+                    thinking_final = final_message.get("thinking") or ""
+                elif accumulated_thinking:
+                    thinking_final = "".join(accumulated_thinking)
+                yield {
+                    "assistant_text": final_content,
+                    "assistant_message": final_message,
+                    "thinking": thinking_final,
+                    "assistant_done": True,
+                    "metrics": metrics,
+                }
             else:
                 resp = await client.chat(
                     model=model,
@@ -186,7 +204,16 @@ class OllamaChatNode(StreamingNode):
                 for k in ("total_duration", "load_duration", "prompt_eval_count", "prompt_eval_duration", "eval_count", "eval_duration"):
                     if k in resp:
                         metrics[k] = resp[k]
-                yield {"assistant_message": final_message, "metrics": metrics}
+                thinking_final: str = ""
+                if isinstance(final_message.get("thinking"), str):
+                    thinking_final = final_message.get("thinking") or ""
+                yield {
+                    "assistant_text": final_message.get("content") or "",
+                    "assistant_message": final_message,
+                    "thinking": thinking_final,
+                    "assistant_done": True,
+                    "metrics": metrics,
+                }
         except Exception as e:
             # Surface error to UI via metrics field
             yield {"metrics": {"error": str(e)}}

@@ -49,16 +49,16 @@ describe('Node UI classes', () => {
 
     test('LoggingNodeUI appends streaming chunks and ignores replacement when streaming', () => {
         const node = new LoggingNodeUI('Log', baseData());
-        node.onStreamUpdate({ delta: 'Hello ' });
-        node.onStreamUpdate({ delta: 'World' });
+        node.onStreamUpdate({ assistant_text: 'Hello ' });
+        node.onStreamUpdate({ assistant_text: 'Hello World' });
         expect(node.displayText).toBe('Hello World');
-        node.updateDisplay({ delta: 'Ignored' });
+        node.updateDisplay({ assistant_text: 'Ignored' });
         expect(node.displayText).toBe('Hello World');
     });
 
     test('OllamaChatNodeUI streaming and final message handling', () => {
         const node = new OllamaChatNodeUI('Chat', baseData());
-        node.onStreamUpdate({ delta: 'Hi' });
+        node.onStreamUpdate({ assistant_text: 'Hi', assistant_done: false });
         expect(node.displayText).toBe('Hi');
         node.onStreamUpdate({ assistant_message: { content: 'Final' } });
         expect(node.displayText).toBe('Final');
@@ -68,8 +68,8 @@ describe('Node UI classes', () => {
 
     test('OllamaChatViewerNodeUI clears and copies', () => {
         const node = new OllamaChatViewerNodeUI('Viewer', baseData());
-        node.onStreamUpdate({ delta: 'A' });
-        node.onStreamUpdate({ delta: 'B' });
+        node.onStreamUpdate({ assistant_text: 'A' });
+        node.onStreamUpdate({ assistant_text: 'AB' });
         expect(node.displayText).toBe('AB');
         node.onStreamUpdate({ assistant_message: { content: 'C' } });
         expect(node.displayText).toBe('C');
@@ -95,9 +95,9 @@ describe('Node UI classes', () => {
 
     test('StreamingCustomNode accumulates and displays JSON payload', () => {
         const node = new StreamingCustomNode('Stream', baseData());
-        node.onStreamUpdate({ delta: 'x' });
-        expect(node.result).toEqual({ delta: 'x' });
-        expect(node.displayText).toContain('"delta": "x"');
+        node.onStreamUpdate({ assistant_text: 'x' });
+        expect(node.result).toEqual({ assistant_text: 'x' });
+        expect(node.displayText).toContain('"assistant_text": "x"');
     });
 
     test('TextInputNodeUI editing preview and resize behavior', () => {

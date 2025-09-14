@@ -57,7 +57,7 @@ export default class LoggingNodeUI extends BaseCustomNode {
 
     updateDisplay(result: any) {
         // If streaming-style payload, avoid replacing accumulated text
-        if (result && (typeof result.delta === 'string' || (result.assistant_message && typeof result.assistant_message.content === 'string'))) {
+        if (result && (typeof result.assistant_text === 'string' || (result.assistant_message && typeof result.assistant_message.content === 'string'))) {
             return;
         }
         const formatted = this.tryFormat(result);
@@ -71,8 +71,8 @@ export default class LoggingNodeUI extends BaseCustomNode {
         let chunk: string = '';
         if (typeof candidate === 'string') {
             chunk = candidate;
-        } else if (candidate && typeof (candidate as any).delta === 'string') {
-            chunk = (candidate as any).delta;
+        } else if (candidate && typeof (candidate as any).assistant_text === 'string') {
+            chunk = (candidate as any).assistant_text;
         } else if (candidate && (candidate as any).assistant_message && typeof (candidate as any).assistant_message.content === 'string') {
             chunk = (candidate as any).assistant_message.content;
         } else {
@@ -82,9 +82,14 @@ export default class LoggingNodeUI extends BaseCustomNode {
         // Append raw chunk first; then reformat depending on selected mode
         if (chunk) {
             const format = this.getSelectedFormat();
-            if (format === 'json') {
+            const prev = this.displayText || '';
+
+            // If the new chunk is cumulative (superset), replace to avoid duplication
+            if (prev && typeof chunk === 'string' && chunk.startsWith(prev)) {
+                this.displayText = chunk;
+            } else if (format === 'json') {
                 // Attempt to parse accumulated text as JSON for pretty view
-                const accumulated = (this.displayText || '') + chunk;
+                const accumulated = prev + chunk;
                 try {
                     const parsed = JSON.parse(accumulated);
                     this.displayText = JSON.stringify(parsed, null, 2);
@@ -93,7 +98,7 @@ export default class LoggingNodeUI extends BaseCustomNode {
                     this.displayText = accumulated;
                 }
             } else if (format === 'auto') {
-                const accumulated = (this.displayText || '') + chunk;
+                const accumulated = prev + chunk;
                 const trimmed = accumulated.trim();
                 if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
                     try {
@@ -107,7 +112,7 @@ export default class LoggingNodeUI extends BaseCustomNode {
                 }
             } else {
                 // plain or markdown
-                this.displayText = (this.displayText || '') + chunk;
+                this.displayText = prev + chunk;
             }
             this.setDirtyCanvas(true, true);
         }

@@ -51,21 +51,21 @@ export default class OllamaChatNodeUI extends BaseCustomNode {
     }
 
     onStreamUpdate(_data: any) {
-        const delta = _data?.delta;
-        const final = _data?.assistant_message;
-        if (typeof delta === 'string' && delta.length) {
-            this.displayText = (this.displayText || '') + delta;
-        }
-        if (final && typeof final?.content === 'string') {
-            this.displayText = final.content;
+        const text = _data?.assistant_text;
+        const finalMsg = _data?.assistant_message;
+        if (typeof text === 'string') {
+            this.displayText = text;
+        } else if (finalMsg && typeof finalMsg?.content === 'string') {
+            this.displayText = finalMsg.content;
         }
         this.setDirtyCanvas(true, true);
     }
 
     updateDisplay(result: any) {
-        // Prefer assistant_message.content for non-stream responses
+        // Prefer assistant_text, then assistant_message.content for non-stream responses
+        const textPref = result?.assistant_text;
         const msg = result?.assistant_message || result?.output || result;
-        const text = typeof msg === 'string' ? msg : (msg?.content || JSON.stringify(msg, null, 2));
+        const text = typeof textPref === 'string' ? textPref : (typeof msg === 'string' ? msg : (msg?.content || JSON.stringify(msg, null, 2)));
         this.displayText = text || '';
         this.setDirtyCanvas(true, true);
     }
