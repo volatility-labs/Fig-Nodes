@@ -51,9 +51,8 @@ class OllamaChatNode(StreamingNode):
 
     default_params = {
         "stream": True,
-        "format": "",  # "" | "json"
         "options": "",  # JSON string of options, passthrough (hidden from UI)
-        "keep_alive": "1h",
+        "keep_alive": 0,
         "think": False,
         # Exposed controls
         "temperature": 0.7,
@@ -63,7 +62,6 @@ class OllamaChatNode(StreamingNode):
 
     params_meta = [
         {"name": "stream", "type": "combo", "default": True, "options": [True, False]},
-        {"name": "format", "type": "combo", "default": "", "options": ["", "json"]},
         # Hidden from UI: options and keep_alive are supported internally but not user-facing
         {"name": "temperature", "type": "number", "default": 0.7},
         {"name": "seed_mode", "type": "combo", "default": "fixed", "options": ["fixed", "random", "increment"]},
@@ -80,6 +78,8 @@ class OllamaChatNode(StreamingNode):
         self.optional_inputs = ["tools", "messages", "prompt", "system"]
         # Maintain seed state when using increment mode across runs
         self._seed_state: Optional[int] = None
+        # Track active stream iterator for cooperative shutdown
+        self._active_stream = None
 
     @staticmethod
     def _build_messages(existing_messages: Optional[List[Dict[str, Any]]], prompt: Optional[str], system_prompt: Optional[str]) -> List[Dict[str, Any]]:
@@ -104,6 +104,16 @@ class OllamaChatNode(StreamingNode):
 
     def stop(self):
         self._cancel_event.set()
+        # Best-effort cooperative close of active stream
+        stream = getattr(self, "_active_stream", None)
+        if stream is not None:
+            try:
+                aclose = getattr(stream, "aclose", None)
+                if asyncio.iscoroutinefunction(aclose):
+                    # Schedule without await to avoid blocking stop caller
+                    asyncio.create_task(aclose())
+            except Exception:
+                pass
 
     def _parse_options(self) -> Optional[Dict[str, Any]]:
         raw = self.params.get("options")
@@ -133,8 +143,11 @@ class OllamaChatNode(StreamingNode):
 
             host: str = inputs.get("host") or os.getenv("OLLAMA_HOST", "http://localhost:11434")
             use_stream: bool = bool(self.params.get("stream", True))
-            fmt: str = (self.params.get("format") or "").strip() or None
-            keep_alive = self.params.get("keep_alive") or None
+            # Derive Ollama format from json_mode toggle (True -> "json", False -> None)
+            fmt: str = "json" if bool(self.params.get("json_mode", False)) else None
+            # Preserve explicit 0 (unload immediately) and duration strings; only None/"" -> None
+            _keep_alive_param = self.params.get("keep_alive")
+            keep_alive = _keep_alive_param if (_keep_alive_param is not None and _keep_alive_param != "") else None
             think = bool(self.params.get("think", False))
             options = self._parse_options() or {}
 
@@ -177,91 +190,114 @@ class OllamaChatNode(StreamingNode):
             final_message: Dict[str, Any] = {}
             metrics: Dict[str, Any] = {}
 
-            if use_stream:
-                last_resp: Dict[str, Any] = {}
-                async for part in await client.chat(
-                    model=model,
-                    messages=messages,
-                    tools=tools,
-                    stream=True,
-                    format=fmt,
-                    options=options,
-                    keep_alive=keep_alive,
-                    think=think,
-                ):
-                    if self._cancel_event.is_set():
-                        break
-                    last_resp = part or {}
-                    msg = last_resp.get("message") or {}
-                    content_piece = msg.get("content")
-                    if content_piece:
-                        accumulated_content.append(content_piece)
-                    thinking_piece = msg.get("thinking")
-                    if isinstance(thinking_piece, str) and thinking_piece:
-                        accumulated_thinking.append(thinking_piece)
-                    # Emit progressive accumulated assistant_text only
-                    if accumulated_content:
-                        yield {"assistant_text": "".join(accumulated_content), "assistant_done": False}
-                # Build final message and metrics from the streamed parts
-                final_message = (last_resp.get("message") if isinstance(last_resp, dict) else {}) or {}
-                # Collect metrics when available from the last streamed object
-                for k in ("total_duration", "load_duration", "prompt_eval_count", "prompt_eval_duration", "eval_count", "eval_duration"):
-                    if isinstance(last_resp, dict) and k in last_resp:
-                        metrics[k] = last_resp[k]
-                # Surface generation parameters used
-                metrics["seed"] = int(effective_seed) if effective_seed is not None else None
-                if "temperature" in options:
-                    metrics["temperature"] = options["temperature"]
-                # Ensure final content is the concatenation of all streamed content
-                final_content = "".join(accumulated_content)
-                if not isinstance(final_message, dict):
-                    final_message = {}
-                if final_content:
-                    final_message["content"] = final_content
-                # Prefer final thinking from message; otherwise join accumulated
-                thinking_final: str = ""
-                if isinstance(final_message.get("thinking"), str):
-                    thinking_final = final_message.get("thinking") or ""
-                elif accumulated_thinking:
-                    thinking_final = "".join(accumulated_thinking)
-                yield {
-                    "assistant_text": final_content,
-                    "assistant_message": final_message,
-                    "thinking": thinking_final,
-                    "assistant_done": True,
-                    "metrics": metrics,
-                }
-            else:
-                resp = await client.chat(
-                    model=model,
-                    messages=messages,
-                    tools=tools,
-                    stream=False,
-                    format=fmt,
-                    options=options,
-                    keep_alive=keep_alive,
-                    think=think,
-                )
-                final_message = (resp or {}).get("message") or {}
-                for k in ("total_duration", "load_duration", "prompt_eval_count", "prompt_eval_duration", "eval_count", "eval_duration"):
-                    if k in resp:
-                        metrics[k] = resp[k]
-                # Surface generation parameters used
-                metrics["seed"] = int(effective_seed) if effective_seed is not None else None
-                if "temperature" in options:
-                    metrics["temperature"] = options["temperature"]
-                thinking_final: str = ""
-                if isinstance(final_message.get("thinking"), str):
-                    thinking_final = final_message.get("thinking") or ""
-                yield {
-                    "assistant_text": final_message.get("content") or "",
-                    "assistant_message": final_message,
-                    "thinking": thinking_final,
-                    "assistant_done": True,
-                    "metrics": metrics,
-                }
+            try:
+                if use_stream:
+                    last_resp: Dict[str, Any] = {}
+                    stream_iter = await client.chat(
+                        model=model,
+                        messages=messages,
+                        tools=tools,
+                        stream=True,
+                        format=fmt,
+                        options=options,
+                        keep_alive=keep_alive,
+                        think=think,
+                    )
+                    self._active_stream = stream_iter
+                    try:
+                        async for part in stream_iter:
+                            if self._cancel_event.is_set():
+                                break
+                            last_resp = part or {}
+                            msg = last_resp.get("message") or {}
+                            content_piece = msg.get("content")
+                            if content_piece:
+                                accumulated_content.append(content_piece)
+                            thinking_piece = msg.get("thinking")
+                            if isinstance(thinking_piece, str) and thinking_piece:
+                                accumulated_thinking.append(thinking_piece)
+                            # Emit progressive accumulated assistant_text only
+                            if accumulated_content:
+                                yield {"assistant_text": "".join(accumulated_content), "assistant_done": False}
+                    finally:
+                        try:
+                            if self._active_stream is not None and hasattr(self._active_stream, "aclose"):
+                                await self._active_stream.aclose()
+                        except Exception:
+                            pass
+                        self._active_stream = None
+
+                    # Build final message and metrics from the streamed parts
+                    final_message = (last_resp.get("message") if isinstance(last_resp, dict) else {}) or {}
+                    # Collect metrics when available from the last streamed object
+                    for k in ("total_duration", "load_duration", "prompt_eval_count", "prompt_eval_duration", "eval_count", "eval_duration"):
+                        if isinstance(last_resp, dict) and k in last_resp:
+                            metrics[k] = last_resp[k]
+                    # Surface generation parameters used
+                    metrics["seed"] = int(effective_seed) if effective_seed is not None else None
+                    if "temperature" in options:
+                        metrics["temperature"] = options["temperature"]
+                    # Ensure final content is the concatenation of all streamed content
+                    final_content = "".join(accumulated_content)
+                    if not isinstance(final_message, dict):
+                        final_message = {}
+                    if final_content:
+                        final_message["content"] = final_content
+                    # Prefer final thinking from message; otherwise join accumulated
+                    thinking_final: str = ""
+                    if isinstance(final_message.get("thinking"), str):
+                        thinking_final = final_message.get("thinking") or ""
+                    elif accumulated_thinking:
+                        thinking_final = "".join(accumulated_thinking)
+                    yield {
+                        "assistant_text": final_content,
+                        "assistant_message": final_message,
+                        "thinking": thinking_final,
+                        "assistant_done": True,
+                        "metrics": metrics,
+                    }
+                else:
+                    resp = await client.chat(
+                        model=model,
+                        messages=messages,
+                        tools=tools,
+                        stream=False,
+                        format=fmt,
+                        options=options,
+                        keep_alive=keep_alive,
+                        think=think,
+                    )
+                    final_message = (resp or {}).get("message") or {}
+                    for k in ("total_duration", "load_duration", "prompt_eval_count", "prompt_eval_duration", "eval_count", "eval_duration"):
+                        if k in resp:
+                            metrics[k] = resp[k]
+                    # Surface generation parameters used
+                    metrics["seed"] = int(effective_seed) if effective_seed is not None else None
+                    if "temperature" in options:
+                        metrics["temperature"] = options["temperature"]
+                    thinking_final: str = ""
+                    if isinstance(final_message.get("thinking"), str):
+                        thinking_final = final_message.get("thinking") or ""
+                    yield {
+                        "assistant_text": final_message.get("content") or "",
+                        "assistant_message": final_message,
+                        "thinking": thinking_final,
+                        "assistant_done": True,
+                        "metrics": metrics,
+                    }
+            finally:
+                try:
+                    await client.close()
+                except Exception:
+                    pass
+        except asyncio.CancelledError:
+            # Cooperative cancellation; do not emit error on cancel
+            return
         except Exception as e:
             # Surface error to UI via metrics field
             yield {"metrics": {"error": str(e)}}
+        finally:
+            # Reset cancel flag for next run
+            self._cancel_event.clear()
 
 

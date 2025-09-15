@@ -15,8 +15,174 @@ from fastapi.responses import FileResponse
 from core.node_registry import NODE_REGISTRY
 import typing
 from core.types_utils import parse_type  # New import
+from starlette.websockets import WebSocketState
 
 app = FastAPI()
+
+# Queue-based execution manager (single-worker, ComfyUI-like)
+class ExecutionJob:
+    def __init__(self, job_id: int, websocket: WebSocket, graph_data: Dict[str, Any]):
+        self.id = job_id
+        self.websocket = websocket
+        self.graph_data = graph_data
+        self.cancel_event = asyncio.Event()
+        self.done_event = asyncio.Event()
+
+
+class ExecutionQueue:
+    def __init__(self):
+        self._queue: asyncio.Queue[ExecutionJob] = asyncio.Queue()
+        self._pending: List[ExecutionJob] = []
+        self._running: typing.Optional[ExecutionJob] = None
+        self._id_seq = 0
+        self._lock = asyncio.Lock()
+
+    async def enqueue(self, websocket: WebSocket, graph_data: Dict[str, Any]) -> ExecutionJob:
+        async with self._lock:
+            job = ExecutionJob(self._id_seq, websocket, graph_data)
+            self._id_seq += 1
+            self._pending.append(job)
+            await self._queue.put(job)
+            return job
+
+    async def get_next(self) -> ExecutionJob:
+        job = await self._queue.get()
+        async with self._lock:
+            if job in self._pending:
+                self._pending.remove(job)
+            self._running = job
+        return job
+
+    async def mark_done(self, job: ExecutionJob):
+        async with self._lock:
+            if self._running is job:
+                self._running = None
+        self._queue.task_done()
+
+    async def position(self, job: ExecutionJob) -> int:
+        async with self._lock:
+            if self._running is job:
+                return 0
+            try:
+                return self._pending.index(job)
+            except ValueError:
+                return 0
+
+
+EXECUTION_QUEUE = ExecutionQueue()
+_WORKER_TASKS: List[asyncio.Task] = []
+
+
+def _serialize_value(v: Any):
+    if isinstance(v, list):
+        return [_serialize_value(item) for item in v]
+    if isinstance(v, dict):
+        return {str(key): _serialize_value(val) for key, val in v.items()}
+    if hasattr(v, 'to_dict'):
+        return v.to_dict()
+    if isinstance(v, pd.DataFrame):
+        return v.to_dict(orient='records')
+    return str(v)
+
+
+def _serialize_results(results: Dict[int, Dict[str, Any]]):
+    return {str(node_id): {out: _serialize_value(val) for out, val in node_res.items()} for node_id, node_res in results.items()}
+
+
+async def _execution_worker():
+    while True:
+        job = await EXECUTION_QUEUE.get_next()
+        websocket = job.websocket
+        executor: typing.Optional[GraphExecutor] = None
+        try:
+            executor = GraphExecutor(job.graph_data, NODE_REGISTRY)
+            try:
+                await websocket.send_json({"type": "status", "message": "Starting execution"})
+            except Exception:
+                pass
+
+            if executor.is_streaming:
+                try:
+                    await websocket.send_json({"type": "status", "message": "Stream starting..."})
+                except Exception:
+                    pass
+                stream_generator = executor.stream()
+                try:
+                    initial_results = await anext(stream_generator)
+                except StopAsyncIteration:
+                    initial_results = {}
+                try:
+                    await websocket.send_json({"type": "data", "results": _serialize_results(initial_results), "stream": False})
+                except Exception:
+                    pass
+
+                try:
+                    while True:
+                        if job.cancel_event.is_set() or websocket.client_state in (WebSocketState.CLOSED, WebSocketState.DISCONNECTED):
+                            await executor.stop()
+                            break
+                        try:
+                            results = await asyncio.wait_for(anext(stream_generator), timeout=0.1)
+                        except asyncio.TimeoutError:
+                            continue
+                        except StopAsyncIteration:
+                            break
+                        try:
+                            await websocket.send_json({"type": "data", "results": _serialize_results(results), "stream": True})
+                        except Exception:
+                            await executor.stop()
+                            break
+                finally:
+                    try:
+                        await websocket.send_json({"type": "status", "message": "Stream finished"})
+                    except Exception:
+                        pass
+            else:
+                try:
+                    await websocket.send_json({"type": "status", "message": "Executing batch"})
+                except Exception:
+                    pass
+                results = await executor.execute()
+                try:
+                    await websocket.send_json({"type": "data", "results": _serialize_results(results)})
+                    await websocket.send_json({"type": "status", "message": "Batch finished"})
+                except Exception:
+                    pass
+
+        except WebSocketDisconnect:
+            if executor and executor.is_streaming:
+                try:
+                    await executor.stop()
+                except Exception:
+                    pass
+        except Exception as e:
+            try:
+                await websocket.send_json({"type": "error", "message": str(e)})
+            except Exception:
+                pass
+        finally:
+            try:
+                if websocket.client_state not in (WebSocketState.DISCONNECTED, WebSocketState.CLOSED):
+                    await websocket.close()
+            except Exception:
+                pass
+            job.done_event.set()
+            await EXECUTION_QUEUE.mark_done(job)
+
+
+@app.on_event("startup")
+async def _startup_queue_worker():
+    task = asyncio.create_task(_execution_worker())
+    _WORKER_TASKS.append(task)
+
+
+@app.on_event("shutdown")
+async def _shutdown_queue_worker():
+    for t in _WORKER_TASKS:
+        t.cancel()
+    if _WORKER_TASKS:
+        await asyncio.gather(*_WORKER_TASKS, return_exceptions=True)
+
 
 app.mount("/static", StaticFiles(directory=os.path.join(os.path.dirname(__file__), "static/dist")), name="static")
 
@@ -69,52 +235,23 @@ def list_nodes():
 @app.websocket("/execute")
 async def execute_endpoint(websocket: WebSocket):
     await websocket.accept()
+    job = None
     try:
         graph_data = await websocket.receive_json()
-        executor = GraphExecutor(graph_data, NODE_REGISTRY)
-
-        def serialize_value(v):
-            if isinstance(v, list):
-                return [serialize_value(item) for item in v]
-            if isinstance(v, dict):
-                return {str(key): serialize_value(val) for key, val in v.items()}  # Convert keys to str
-            if hasattr(v, 'to_dict'):
-                return v.to_dict()
-            if isinstance(v, pd.DataFrame):
-                return v.to_dict(orient='records')
-            return str(v)  # Fallback
-
-        def serialize_results(results):
-            return {str(node_id): {out: serialize_value(val) for out, val in node_res.items()} for node_id, node_res in results.items()}
-
-        if executor.is_streaming:
-            # Handle long-running streaming execution
-            await websocket.send_json({"type": "status", "message": "Stream starting..."})
-            stream_generator = executor.stream()
-            
-            # Send the first chunk of (potentially empty) initial results (not a stream tick)
-            initial_results = await anext(stream_generator)
-            await websocket.send_json({"type": "data", "results": serialize_results(initial_results), "stream": False})
-            
-            async for results in stream_generator:
-                await websocket.send_json({"type": "data", "results": serialize_results(results), "stream": True})
-            
-            await websocket.send_json({"type": "status", "message": "Stream finished"})
-        else:
-            # Handle short-lived batch execution
-            await websocket.send_json({"type": "status", "message": "Executing batch"})
-            results = await executor.execute()
-            await websocket.send_json({"type": "data", "results": serialize_results(results)})
-            await websocket.send_json({"type": "status", "message": "Batch finished"})
-
+        await websocket.send_json({"type": "status", "message": "Waiting for available slot..."})
+        job = await EXECUTION_QUEUE.enqueue(websocket, graph_data)
+        await job.done_event.wait()
     except WebSocketDisconnect:
         print("Client disconnected.")
-        if 'executor' in locals() and executor.is_streaming:
-            await executor.stop()
+        if job is not None:
+            job.cancel_event.set()
     except Exception as e:
-        await websocket.send_json({"type": "error", "message": str(e)})
+        try:
+            await websocket.send_json({"type": "error", "message": str(e)})
+        except Exception:
+            pass
     finally:
-        await websocket.close()
+        pass
 
 if __name__ == "__main__":
     import uvicorn

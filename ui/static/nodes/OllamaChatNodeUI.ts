@@ -55,9 +55,11 @@ export default class OllamaChatNodeUI extends BaseCustomNode {
             this.properties['seed'] = Math.max(0, Math.floor(Number(v) || 0));
         }, { min: 0, step: 1 });
 
-        // JSON mode toggle replacing format combo (show "text" when false)
-        this.addWidget('toggle', 'json_mode', (this.properties['format'] || '') === 'json', (v: boolean) => {
-            this.properties['format'] = v ? 'json' : '';
+        // JSON mode toggle (boolean). Server derives Ollama format from this.
+        const currentJsonMode = typeof this.properties['json_mode'] === 'boolean' ? this.properties['json_mode'] : false;
+        this.properties['json_mode'] = currentJsonMode;
+        this.addWidget('toggle', 'json_mode', currentJsonMode, (v: boolean) => {
+            this.properties['json_mode'] = !!v;
         }, {});
 
         // Convenience buttons (optional UX helpers)

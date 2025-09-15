@@ -15,18 +15,11 @@ class WebSocketNode(StreamingNode):
         if not symbols:
             return
         async with websockets.connect("wss://example.com/ws") as ws:
-            send = getattr(ws, "send", None)
-            if asyncio.iscoroutinefunction(send):
-                await send(json.dumps({"subscribe": [str(s) for s in symbols]}))
-            else:
-                send(json.dumps({"subscribe": [str(s) for s in symbols]}))
+            await ws.send(json.dumps({"subscribe": [str(s) for s in symbols]}))
             while True:
-                recv = getattr(ws, "recv", None)
-                if asyncio.iscoroutinefunction(recv):
-                    message = await recv()
-                else:
-                    message = recv()
-                ohlcv = {}
+                message = await ws.recv()
+                data = json.loads(message)  # Placeholder: assume data is OHLCV
+                ohlcv = {sym: data.get(sym, {}) for sym in symbols}  # Placeholder parsing
                 yield {"ohlcv": ohlcv}
                 await asyncio.sleep(0)
 
