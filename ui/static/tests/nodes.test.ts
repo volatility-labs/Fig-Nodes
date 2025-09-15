@@ -100,14 +100,14 @@ describe('Node UI classes', () => {
         expect(node.displayText).toContain('"assistant_text": "x"');
     });
 
-    test('TextInputNodeUI editing preview and resize behavior', () => {
+    test('TextInputNodeUI inline editor behavior', () => {
         const node = new TextInputNodeUI('Text', baseData());
         node.properties.value = 'a very long line that should wrap across the width of the text area to test wrapping logic';
-        // Force preview update without canvas ctx
-        node.updatePreview();
-        expect(Array.isArray(node.previewLines)).toBe(true);
-        // Double click handler returns true
-        expect(typeof node.onDblClick).toBe('function');
+        // Inline editor: no preview API; validate key characteristics instead
+        expect(node.displayResults).toBe(false);
+        expect(typeof (node as any).onDrawForeground).toBe('function');
+        // Private ensureTextarea exists at runtime
+        expect(typeof (node as any).ensureTextarea).toBe('function');
     });
 });
 

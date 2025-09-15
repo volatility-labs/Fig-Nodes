@@ -130,36 +130,47 @@ export default class TextInputNodeUI extends BaseCustomNode {
         if (!this.textareaEl) return;
         const graph: any = (this as any).graph;
         const canvas = graph && graph.list_of_graphcanvas && graph.list_of_graphcanvas[0];
-        if (!canvas) return;
+        if (!canvas || !canvas.canvas) return;
 
-        // Convert node-local canvas coords to overlay CSS pixels
-        const ds = (canvas as any).ds || { scale: 1, offset: [0, 0] };
-        const scale = ds.scale || 1;
-        const offx = Array.isArray(ds.offset) ? ds.offset[0] : 0;
-        const offy = Array.isArray(ds.offset) ? ds.offset[1] : 0;
+        // Get canvas transform from LiteGraph's internal state
+        const scale = canvas.scale || canvas.ds?.scale || 1;
+        const offset = canvas.offset || canvas.ds?.offset || [0, 0];
+        const offx = Array.isArray(offset) ? offset[0] : 0;
+        const offy = Array.isArray(offset) ? offset[1] : 0;
 
-        const cx = (this.pos[0] + localX) * scale + offx;
-        const cy = (this.pos[1] + localY) * scale + offy;
-        const cw = localW * scale;
-        const ch = localH * scale;
+        // Convert canvas coordinates to screen coordinates
+        const canvasX = (this.pos[0] + localX) * scale + offx;
+        const canvasY = (this.pos[1] + localY) * scale + offy;
+        const canvasW = localW * scale;
+        const canvasH = localH * scale;
 
-        const parent = (canvas.canvas.parentElement || document.body);
-        // Position absolute within the canvas parent
+        // Get canvas element position on screen
+        const canvasRect = canvas.canvas.getBoundingClientRect();
+
+        // Calculate screen position relative to viewport
+        const screenX = canvasRect.left + canvasX;
+        const screenY = canvasRect.top + canvasY;
+
+        // Position relative to document body (not canvas parent) for proper overlay
         const style = this.textareaEl.style;
-        style.position = 'absolute';
-        style.left = `${cx}px`;
-        style.top = `${cy}px`;
-        style.width = `${Math.max(0, cw)}px`;
-        style.height = `${Math.max(0, ch)}px`;
-        style.zIndex = '10';
+        style.position = 'fixed';
+        style.left = `${screenX}px`;
+        style.top = `${screenY}px`;
+        style.width = `${Math.max(0, canvasW)}px`;
+        style.height = `${Math.max(0, canvasH)}px`;
+        style.zIndex = '1000';
 
         // Keep font size stable; match ComfyUI prompt look
-        (this.textareaEl as HTMLTextAreaElement).style.fontSize = '12px';
+        style.fontSize = '12px';
 
-        // Clamp within parent bounds
-        const rect = parent.getBoundingClientRect();
-        if (cw <= 2 || ch <= 2 || cx > rect.width || cy > rect.height) {
+        // Hide if too small or out of viewport bounds
+        const viewportWidth = window.innerWidth;
+        const viewportHeight = window.innerHeight;
+        if (canvasW <= 2 || canvasH <= 2 || screenX + canvasW < 0 || screenY + canvasH < 0 ||
+            screenX > viewportWidth || screenY > viewportHeight) {
             this.textareaEl.style.display = 'none';
+        } else {
+            this.textareaEl.style.display = '';
         }
     }
 }
