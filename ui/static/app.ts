@@ -15,6 +15,84 @@ async function createEditor(container: HTMLElement) {
         // Disable LiteGraph native search box on double click
         (canvas as any).showSearchBox = () => { };
 
+        // Track last mouse position for positioning quick inputs near cursor
+        let lastMouseEvent: MouseEvent | null = null;
+        canvasElement.addEventListener('mousemove', (e: MouseEvent) => { lastMouseEvent = e; });
+
+        // ComfyUI-like quick prompt to replace LiteGraph default bottom prompt
+        const showQuickPrompt = (title: string, value: any, callback: (v: any) => void, options?: any) => {
+            const numericOnly = (options && (options.type === 'number' || options.input === 'number')) || typeof value === 'number';
+
+            const overlay = document.createElement('div');
+            overlay.className = 'quick-input-overlay';
+
+            const dialog = document.createElement('div');
+            dialog.className = 'quick-input-dialog';
+
+            const label = document.createElement('div');
+            label.className = 'quick-input-label';
+            label.textContent = title || 'Value';
+
+            const input = document.createElement('input');
+            input.className = 'quick-input-field';
+            input.type = numericOnly ? 'number' : 'text';
+            input.value = (value !== undefined && value !== null) ? String(value) : '';
+            if (numericOnly) {
+                input.setAttribute('step', options?.step?.toString() || '1');
+                input.setAttribute('min', options?.min?.toString() || '0');
+            }
+
+            const okButton = document.createElement('button');
+            okButton.className = 'quick-input-ok';
+            okButton.textContent = 'OK';
+
+            const submit = () => {
+                let out: any = input.value;
+                if (numericOnly) {
+                    const n = Number(out);
+                    if (!Number.isFinite(n)) return; // keep open if invalid
+                    out = Math.floor(n);
+                }
+                if (overlay.parentNode) document.body.removeChild(overlay);
+                try { callback(out); } catch { /* no-op */ }
+            };
+            const cancel = () => { if (overlay.parentNode) document.body.removeChild(overlay); };
+
+            okButton.addEventListener('click', submit);
+            input.addEventListener('keydown', (ev) => {
+                ev.stopPropagation();
+                if (ev.key === 'Enter') submit();
+                else if (ev.key === 'Escape') cancel();
+            });
+            overlay.addEventListener('click', (ev) => {
+                if (ev.target === overlay) cancel();
+            });
+
+            dialog.appendChild(label);
+            dialog.appendChild(input);
+            dialog.appendChild(okButton);
+            overlay.appendChild(dialog);
+            document.body.appendChild(overlay);
+
+            // Position near cursor if we have one
+            const ev = lastMouseEvent;
+            if (ev) {
+                dialog.style.position = 'absolute';
+                dialog.style.left = `${ev.clientX}px`;
+                dialog.style.top = `${ev.clientY - 28}px`;
+                overlay.style.background = 'transparent';
+                (overlay.style as any).pointerEvents = 'none';
+                (dialog.style as any).pointerEvents = 'auto';
+            }
+
+            input.focus();
+            input.select();
+        };
+
+        // Override both canvas and LiteGraph prompt hooks
+        (canvas as any).prompt = showQuickPrompt;
+        (LiteGraph as any).prompt = showQuickPrompt;
+
         const response = await fetch('/nodes');
         if (!response.ok) throw new Error(`Failed to fetch nodes: ${response.statusText}`);
         const meta = await response.json();
@@ -235,7 +313,11 @@ async function createEditor(container: HTMLElement) {
             if (node) {
                 if (typeof node.onDblClick === 'function') {
                     try {
-                        node.onDblClick(e, [e.clientX, e.clientY], canvas);
+                        // Convert event to local node coordinates
+                        const canvasPos = canvas.convertEventToCanvasOffset(e) as unknown as number[];
+                        const localPos = [canvasPos[0] - node.pos[0], canvasPos[1] - node.pos[1]];
+                        const handled = node.onDblClick(e, localPos, canvas);
+                        if (handled) return;
                     } catch { }
                 }
                 // If double-click occurred on a node, do not open the palette

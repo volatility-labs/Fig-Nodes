@@ -2,6 +2,7 @@ from typing import Dict, Any, List, Optional, AsyncGenerator
 import os
 import json
 import asyncio
+import random
 from nodes.base.streaming_node import StreamingNode
 
 
@@ -51,16 +52,22 @@ class OllamaChatNode(StreamingNode):
     default_params = {
         "stream": True,
         "format": "",  # "" | "json"
-        "options": "",  # JSON string of options, passthrough
-        "keep_alive": "5m",
+        "options": "",  # JSON string of options, passthrough (hidden from UI)
+        "keep_alive": "1h",
         "think": False,
+        # Exposed controls
+        "temperature": 0.7,
+        "seed": 0,
+        "seed_mode": "fixed",  # fixed | random | increment
     }
 
     params_meta = [
         {"name": "stream", "type": "combo", "default": True, "options": [True, False]},
         {"name": "format", "type": "combo", "default": "", "options": ["", "json"]},
-        {"name": "options", "type": "textarea", "default": ""},
-        {"name": "keep_alive", "type": "text", "default": "5m"},
+        # Hidden from UI: options and keep_alive are supported internally but not user-facing
+        {"name": "temperature", "type": "number", "default": 0.7},
+        {"name": "seed_mode", "type": "combo", "default": "fixed", "options": ["fixed", "random", "increment"]},
+        {"name": "seed", "type": "number", "default": 0},
         {"name": "think", "type": "combo", "default": False, "options": [False, True]},
     ]
 
@@ -71,6 +78,8 @@ class OllamaChatNode(StreamingNode):
         self._cancel_event = asyncio.Event()
         # Mark optional inputs at runtime for validation layer
         self.optional_inputs = ["tools", "messages", "prompt", "system"]
+        # Maintain seed state when using increment mode across runs
+        self._seed_state: Optional[int] = None
 
     @staticmethod
     def _build_messages(existing_messages: Optional[List[Dict[str, Any]]], prompt: Optional[str], system_prompt: Optional[str]) -> List[Dict[str, Any]]:
@@ -127,7 +136,36 @@ class OllamaChatNode(StreamingNode):
             fmt: str = (self.params.get("format") or "").strip() or None
             keep_alive = self.params.get("keep_alive") or None
             think = bool(self.params.get("think", False))
-            options = self._parse_options()
+            options = self._parse_options() or {}
+
+            # Apply temperature
+            try:
+                temperature_raw = self.params.get("temperature")
+                if temperature_raw is not None:
+                    options["temperature"] = float(temperature_raw)
+            except Exception:
+                pass
+
+            # Determine effective seed according to seed_mode
+            seed_mode = str(self.params.get("seed_mode") or "fixed").strip().lower()
+            seed_raw = self.params.get("seed")
+            effective_seed: Optional[int] = None
+            try:
+                base_seed = int(seed_raw) if seed_raw is not None else 0
+            except Exception:
+                base_seed = 0
+
+            if seed_mode == "random":
+                effective_seed = random.randint(0, 2**31 - 1)
+            elif seed_mode == "increment":
+                if self._seed_state is None:
+                    self._seed_state = base_seed
+                effective_seed = self._seed_state
+                self._seed_state += 1
+            else:  # fixed
+                effective_seed = base_seed
+
+            options["seed"] = int(effective_seed)
 
             # Lazy import to keep dependency local to node
             from ollama import AsyncClient
@@ -170,6 +208,10 @@ class OllamaChatNode(StreamingNode):
                 for k in ("total_duration", "load_duration", "prompt_eval_count", "prompt_eval_duration", "eval_count", "eval_duration"):
                     if isinstance(last_resp, dict) and k in last_resp:
                         metrics[k] = last_resp[k]
+                # Surface generation parameters used
+                metrics["seed"] = int(effective_seed) if effective_seed is not None else None
+                if "temperature" in options:
+                    metrics["temperature"] = options["temperature"]
                 # Ensure final content is the concatenation of all streamed content
                 final_content = "".join(accumulated_content)
                 if not isinstance(final_message, dict):
@@ -204,6 +246,10 @@ class OllamaChatNode(StreamingNode):
                 for k in ("total_duration", "load_duration", "prompt_eval_count", "prompt_eval_duration", "eval_count", "eval_duration"):
                     if k in resp:
                         metrics[k] = resp[k]
+                # Surface generation parameters used
+                metrics["seed"] = int(effective_seed) if effective_seed is not None else None
+                if "temperature" in options:
+                    metrics["temperature"] = options["temperature"]
                 thinking_final: str = ""
                 if isinstance(final_message.get("thinking"), str):
                     thinking_final = final_message.get("thinking") or ""

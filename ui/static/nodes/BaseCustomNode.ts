@@ -12,11 +12,6 @@ export default class BaseCustomNode extends LGraphNode {
 
     constructor(title: string, data: any) {
         super(title);
-        // Add editable title
-        this.addWidget('text', 'Title', this.title, (v) => {
-            this.title = v;
-            this.setDirtyCanvas(true, true);
-        });
         this.size = [200, 100];
 
         if (data.inputs) {
@@ -237,6 +232,12 @@ export default class BaseCustomNode extends LGraphNode {
     }
 
     showCustomPrompt(title: string, defaultValue: string, isPassword: boolean, callback: (value: string | null) => void) {
+        // Backward-compatible: route to compact quick input if not password
+        if (!isPassword) {
+            this.showQuickValuePrompt(title || 'Value', defaultValue, false, (val) => callback(val));
+            return;
+        }
+
         const dialog = document.createElement('div');
         dialog.className = 'custom-input-dialog';
 
@@ -246,7 +247,7 @@ export default class BaseCustomNode extends LGraphNode {
 
         const input = document.createElement('input');
         input.className = 'dialog-input';
-        input.type = isPassword ? 'password' : 'text';
+        input.type = 'password';
         input.value = defaultValue;
 
         const okButton = document.createElement('button');
@@ -266,6 +267,96 @@ export default class BaseCustomNode extends LGraphNode {
         input.select();
     }
 
+    // Small ComfyUI-style quick input popup for values like seed
+    showQuickValuePrompt(labelText: string, defaultValue: string | number, numericOnly: boolean, callback: (value: string | null) => void, position?: { x: number; y: number }) {
+        const overlay = document.createElement('div');
+        overlay.className = 'quick-input-overlay';
+
+        const dialog = document.createElement('div');
+        dialog.className = 'quick-input-dialog';
+
+        const label = document.createElement('div');
+        label.className = 'quick-input-label';
+        label.textContent = labelText || 'Value';
+
+        const input = document.createElement('input');
+        input.className = 'quick-input-field';
+        input.type = numericOnly ? 'number' : 'text';
+        input.value = String(defaultValue ?? '');
+        input.spellcheck = false;
+
+        const okButton = document.createElement('button');
+        okButton.className = 'quick-input-ok';
+        okButton.textContent = 'OK';
+
+        const submit = () => {
+            if (numericOnly) {
+                const n = Number(input.value);
+                if (!Number.isFinite(n)) {
+                    return; // ignore invalid
+                }
+                callback(String(Math.floor(n)));
+            } else {
+                callback(input.value);
+            }
+            document.body.removeChild(overlay);
+        };
+
+        const cancel = () => {
+            callback(null);
+            if (overlay.parentNode) document.body.removeChild(overlay);
+        };
+
+        okButton.addEventListener('click', submit);
+        input.addEventListener('keydown', (ev) => {
+            ev.stopPropagation();
+            if (ev.key === 'Enter') submit();
+            if (ev.key === 'Escape') cancel();
+        });
+        overlay.addEventListener('click', (ev) => {
+            if (ev.target === overlay) cancel();
+        });
+
+        dialog.appendChild(label);
+        dialog.appendChild(input);
+        dialog.appendChild(okButton);
+        overlay.appendChild(dialog);
+        document.body.appendChild(overlay);
+
+        // Prefer to use canvas-global prompt if it has been overridden in app.ts
+        try {
+            const graph: any = (this as any).graph;
+            const canvas = graph?.list_of_graphcanvas?.[0];
+            const prompt = (canvas && (canvas as any).prompt) || (window as any).LiteGraph?.prompt;
+            if (typeof prompt === 'function') {
+                document.body.removeChild(overlay);
+                prompt(labelText, defaultValue, (val: any) => {
+                    if (numericOnly && val != null) {
+                        const n = Number(val);
+                        if (!Number.isFinite(n)) { callback(null); return; }
+                        callback(String(Math.floor(n)));
+                    } else {
+                        callback(val == null ? null : String(val));
+                    }
+                }, { type: numericOnly ? 'number' : 'text', step: 1, min: 0 });
+                return;
+            }
+        } catch { /* fall back to inline */ }
+
+        // Positioning: center by default, otherwise near provided coordinates
+        if (position && Number.isFinite(position.x) && Number.isFinite(position.y)) {
+            dialog.style.position = 'absolute';
+            dialog.style.left = `${position.x}px`;
+            dialog.style.top = `${position.y}px`;
+            overlay.style.background = 'transparent';
+            (overlay.style as any).pointerEvents = 'none';
+            (dialog.style as any).pointerEvents = 'auto';
+        }
+
+        input.focus();
+        input.select();
+    }
+
     addMultiSlot(inp: string) {
         const info = this.multiInputs![inp];
         const index = info.slots.length;
@@ -278,7 +369,81 @@ export default class BaseCustomNode extends LGraphNode {
         info.slots.push(slotName);
     }
 
-    onConnectionsChange(type: number, slot: number, connected: boolean, link_info: any, input_or_output: any) {
+    onDblClick(e: any, pos: any, canvas: any) {
+        // Check if double-click is on the title area
+        const titleHeight = LiteGraph.NODE_TITLE_HEIGHT || 30;
+        const localPos = Array.isArray(pos) ? pos : [pos[0], pos[1]];
+        if (localPos && localPos[1] <= titleHeight) {
+            this.startInlineTitleEdit(e, canvas);
+            return true; // Prevent default double-click behavior
+        }
+        return false;
+    }
+
+    startInlineTitleEdit(_event: MouseEvent, canvas: any) {
+        // Create input element for inline editing
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.value = this.title;
+        input.className = 'inline-title-input';
+
+        // Position the input over the node title
+        const canvasRect = canvas.canvas.getBoundingClientRect();
+
+        // Calculate screen position using canvas transformation
+        const scale = canvas.ds?.scale || 1;
+        const offset = canvas.ds?.offset || [0, 0];
+
+        const screenX = (this.pos[0] + offset[0]) * scale;
+        const screenY = (this.pos[1] + offset[1]) * scale;
+
+        input.style.position = 'absolute';
+        input.style.left = `${canvasRect.left + screenX}px`;
+        input.style.top = `${canvasRect.top + screenY}px`;
+        input.style.width = `${this.size[0] * scale}px`;
+        input.style.height = `${(LiteGraph.NODE_TITLE_HEIGHT || 30) * scale}px`;
+        input.style.fontSize = `${12 * scale}px`;
+        input.style.zIndex = '10000';
+
+        document.body.appendChild(input);
+        input.focus();
+        input.select();
+
+        const finishEdit = () => {
+            const newTitle = input.value.trim();
+            if (newTitle && newTitle !== this.title) {
+                this.title = newTitle;
+                // Update the title widget if it exists
+                const titleWidget = this.widgets?.find(w => w.name === 'Title');
+                if (titleWidget) {
+                    titleWidget.value = newTitle;
+                }
+                this.setDirtyCanvas(true, true);
+            }
+            if (input.parentNode) {
+                input.parentNode.removeChild(input);
+            }
+        };
+
+        const cancelEdit = () => {
+            if (input.parentNode) {
+                input.parentNode.removeChild(input);
+            }
+        };
+
+        // Handle finish editing events
+        input.addEventListener('blur', finishEdit);
+        input.addEventListener('keydown', (e) => {
+            e.stopPropagation(); // Prevent canvas shortcuts
+            if (e.key === 'Enter') {
+                finishEdit();
+            } else if (e.key === 'Escape') {
+                cancelEdit();
+            }
+        });
+    }
+
+    onConnectionsChange(type: number, slot: number, connected: boolean, _link_info: any, _input_or_output: any) {
         if (type !== LiteGraph.INPUT) return;
         const input = this.inputs[slot];
         if (!input) return;

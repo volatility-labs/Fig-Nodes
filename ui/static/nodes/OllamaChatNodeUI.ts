@@ -7,15 +7,12 @@ export default class OllamaChatNodeUI extends BaseCustomNode {
         this.color = '#1f2a44';
         this.bgcolor = '#0b1220';
 
-        // Ensure textarea widgets are shown for options/format when present
-        // Leave default widgets from BaseCustomNode intact
-
         // Replace boolean params (stream, think) with explicit toggles for reliability
         try {
             const widgets = (this as any).widgets as any[] | undefined;
             if (widgets && Array.isArray(widgets)) {
-                // Remove auto-generated widgets for these params (if any)
-                const namesToReplace = new Set(['stream', 'think']);
+                // Remove auto-generated widgets for these params and any hidden ones
+                const namesToReplace = new Set(['Title', 'stream', 'think', 'keep_alive', 'options', 'seed', 'seed_mode', 'temperature']);
                 for (let i = widgets.length - 1; i >= 0; i--) {
                     const w = widgets[i];
                     if (w && namesToReplace.has(w.name)) {
@@ -28,6 +25,12 @@ export default class OllamaChatNodeUI extends BaseCustomNode {
         // Add robust boolean toggles bound to node properties
         const currentStream = typeof this.properties['stream'] === 'boolean' ? this.properties['stream'] : true;
         const currentThink = typeof this.properties['think'] === 'boolean' ? this.properties['think'] : false;
+        // Keep internal defaults for hidden params
+        if (!this.properties['keep_alive']) this.properties['keep_alive'] = '1h';
+        if (this.properties['options'] === undefined) this.properties['options'] = '';
+        if (this.properties['temperature'] === undefined) this.properties['temperature'] = 0.7;
+        if (!this.properties['seed_mode']) this.properties['seed_mode'] = 'fixed';
+        if (this.properties['seed'] === undefined) this.properties['seed'] = 0;
 
         this.properties['stream'] = currentStream;
         this.properties['think'] = currentThink;
@@ -39,7 +42,25 @@ export default class OllamaChatNodeUI extends BaseCustomNode {
             this.properties['think'] = !!v;
         }, {});
 
-        // Convenience buttons
+        // Temperature control
+        this.addWidget('slider', 'temperature', this.properties['temperature'], (v: number) => {
+            this.properties['temperature'] = v;
+        }, { min: 0.0, max: 1.5, step: 0.05 });
+
+        // Seed controls (ComfyUI-like): mode + value + helpers
+        this.addWidget('combo', 'seed_mode', this.properties['seed_mode'], (v: string) => {
+            this.properties['seed_mode'] = v;
+        }, { values: ['fixed', 'random', 'increment'] });
+        this.addWidget('number', 'seed', this.properties['seed'], (v: number) => {
+            this.properties['seed'] = Math.max(0, Math.floor(Number(v) || 0));
+        }, { min: 0, step: 1 });
+
+        // JSON mode toggle replacing format combo (show "text" when false)
+        this.addWidget('toggle', 'json_mode', (this.properties['format'] || '') === 'json', (v: boolean) => {
+            this.properties['format'] = v ? 'json' : '';
+        }, {});
+
+        // Convenience buttons (optional UX helpers)
         this.addWidget('button', 'Clear Stream', '', () => {
             this.displayText = '';
             this.setDirtyCanvas(true, true);
