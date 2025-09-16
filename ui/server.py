@@ -118,7 +118,7 @@ async def _execution_worker():
 
                 try:
                     while True:
-                        if job.cancel_event.is_set() or websocket.client_state in (WebSocketState.CLOSED, WebSocketState.DISCONNECTED):
+                        if job.cancel_event.is_set() or websocket.client_state == WebSocketState.DISCONNECTED:
                             await executor.stop()
                             break
                         try:
@@ -162,7 +162,7 @@ async def _execution_worker():
                 pass
         finally:
             try:
-                if websocket.client_state not in (WebSocketState.DISCONNECTED, WebSocketState.CLOSED):
+                if websocket.client_state != WebSocketState.DISCONNECTED:
                     await websocket.close()
             except Exception:
                 pass
