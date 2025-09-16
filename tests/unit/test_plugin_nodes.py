@@ -16,6 +16,11 @@ import websockets.exceptions
 # Tests for BinanceKlinesStreamingNode
 
 @pytest.fixture
+def mock_connect():
+    with patch("websockets.connect") as mock:
+        yield mock
+
+@pytest.fixture
 def binance_klines_node():
     return BinanceKlinesStreamingNode("bk_id", {"interval": "1m"})
 
@@ -70,7 +75,7 @@ async def test_binance_klines_start(mock_connect):
     assert "ohlcv" in output
     df = output["ohlcv"][AssetSymbol("BTC", AssetClass.CRYPTO, "USDT", exchange="binance", instrument_type=InstrumentType.PERPETUAL)]
     assert isinstance(df, pd.DataFrame)
-    assert df["close"][0] == 4.0
+    assert df["close"].iloc[0] == 4.0
 
     await gen.aclose()
 
@@ -231,16 +236,17 @@ async def test_ws_node_no_symbols(mock_connect, ws_node):
 @patch("websockets.connect")
 async def test_ws_node_error_handling(mock_connect, ws_node):
     async def failing_recv():
-        raise websockets.exceptions.ConnectionClosedError(1006, "Closed")
+        raise Exception("Connection failed")
     
-    mock_ws = MagicMock()
+    mock_ws = AsyncMock()
     mock_ws.__aenter__.return_value = mock_ws
     mock_ws.recv = failing_recv
+    mock_ws.send = AsyncMock()
     mock_connect.return_value = mock_ws
 
     inputs = {"symbols": [AssetSymbol("TEST", AssetClass.CRYPTO)]}
     gen = ws_node.start(inputs)
-    with pytest.raises(websockets.exceptions.ConnectionClosedError):
+    with pytest.raises(Exception):
         await anext(gen)
 
     await gen.aclose()

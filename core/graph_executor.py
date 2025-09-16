@@ -111,69 +111,119 @@ class GraphExecutor:
             await result_queue.put(final_tick_results)
 
     async def stream(self) -> AsyncGenerator[Dict[str, Any], None]:
-        static_results: Dict[int, Dict[str, Any]] = {}
-        
-        streaming_pipeline_nodes = set()
-        streaming_sources = []
-        for node_id in self.dag.nodes:
-            if isinstance(self.nodes[node_id], StreamingNode) and self.dag.degree(node_id) > 0:
-                streaming_sources.append(node_id)
-                streaming_pipeline_nodes.add(node_id)
-                for descendant in nx.descendants(self.dag, node_id):
-                    streaming_pipeline_nodes.add(descendant)
-
-        # First, execute all nodes that are NOT part of any streaming pipeline
-        sorted_nodes = list(nx.topological_sort(self.dag))
-        for node_id in sorted_nodes:
-            if node_id not in streaming_pipeline_nodes:
-                if self.dag.in_degree(node_id) == 0 and self.dag.out_degree(node_id) == 0:
-                    continue
-                node = self.nodes[node_id]
-                inputs = self._get_node_inputs(node_id, static_results)
-                merged_inputs = {**{k: v for k, v in node.params.items() if k in node.inputs and k not in inputs and v is not None}, **inputs}
-                if not node.validate_inputs(merged_inputs):
-                    continue
-                outputs = await node.execute(merged_inputs)
-                static_results[node_id] = outputs
-        
-        # Yield the initial results from the static part of the graph
-        yield static_results
-
-        if self._stopped:
-            return
-
-        # If there are no streaming sources, we are done
-        if not streaming_sources:
-            return
-
-        # Start the streaming sources and their pipelines
-        final_results_queue = asyncio.Queue()
-        self.streaming_tasks = []
-        for source_id in streaming_sources:
-            task = asyncio.create_task(self._run_streaming_source(source_id, static_results.copy(), final_results_queue))
-            self.streaming_tasks.append(task)
+        try:
+            static_results: Dict[int, Dict[str, Any]] = {}
             
-        # Main loop to pull from the queue and yield to the websocket
-        while any(not task.done() for task in self.streaming_tasks) or final_results_queue.qsize() > 0:
-            try:
-                final_result = await asyncio.wait_for(final_results_queue.get(), timeout=1.0)
-                yield final_result
-            except asyncio.TimeoutError:
-                if self._stopped:
-                    break
-                continue
-        
-        # Clean up any remaining tasks
-        results = await asyncio.gather(*self.streaming_tasks, return_exceptions=True)
-        exceptions = [r for r in results if isinstance(r, Exception)]
-        if exceptions:
-            raise exceptions[0]
+            streaming_pipeline_nodes = set()
+            streaming_sources = []
+            for node_id in self.dag.nodes:
+                if isinstance(self.nodes[node_id], StreamingNode):
+                    degree = self.dag.degree(node_id)
+                    in_degree = self.dag.in_degree(node_id)
+                    out_degree = self.dag.out_degree(node_id)
+                    print(f"GraphExecutor: StreamingNode {node_id} - degree={degree}, in_degree={in_degree}, out_degree={out_degree}")
+                    
+                    # A streaming node should be executed if it has any connections (input or output)
+                    # The original condition was too restrictive for leaf nodes (nodes with no outputs)
+                    if degree > 0:
+                        streaming_sources.append(node_id)
+                        streaming_pipeline_nodes.add(node_id)
+                        for descendant in nx.descendants(self.dag, node_id):
+                            streaming_pipeline_nodes.add(descendant)
+                        print(f"GraphExecutor: Added StreamingNode {node_id} as streaming source")
+                    else:
+                        print(f"GraphExecutor: Skipped StreamingNode {node_id} - no connections")
+        except Exception as e:
+            print(f"GraphExecutor: Exception in stream setup: {e}")
+            import traceback
+            traceback.print_exc()
+            raise
 
-        for task in self.streaming_tasks:
-            if not task.done():
-                task.cancel()
-        await asyncio.gather(*self.streaming_tasks, return_exceptions=True)
-        self.streaming_tasks = []
+        try:
+            # First, execute all nodes that are NOT part of any streaming pipeline
+            sorted_nodes = list(nx.topological_sort(self.dag))
+            for node_id in sorted_nodes:
+                if node_id not in streaming_pipeline_nodes:
+                    if self.dag.in_degree(node_id) == 0 and self.dag.out_degree(node_id) == 0:
+                        continue
+                    node = self.nodes[node_id]
+                    inputs = self._get_node_inputs(node_id, static_results)
+                    merged_inputs = {**{k: v for k, v in node.params.items() if k in node.inputs and k not in inputs and v is not None}, **inputs}
+                    if not node.validate_inputs(merged_inputs):
+                        continue
+                    outputs = await node.execute(merged_inputs)
+                    static_results[node_id] = outputs
+            
+            # Yield the initial results from the static part of the graph
+            print(f"GraphExecutor: Yielding initial static results: {list(static_results.keys())}")
+            yield static_results
+            
+            # This code will only execute when anext() is called again
+            print("GraphExecutor: Successfully yielded initial results, continuing...")
+
+            if self._stopped:
+                print("GraphExecutor: Execution stopped, returning early")
+                return
+            
+            print("GraphExecutor: Continuing to streaming phase...")
+
+            print(f"GraphExecutor: Found {len(streaming_sources)} streaming sources: {streaming_sources}")
+            
+            # If there are no streaming sources, we are done
+            if not streaming_sources:
+                print("GraphExecutor: No streaming sources found, ending stream")
+                return
+        except Exception as e:
+            print(f"GraphExecutor: Exception in static execution or yield: {e}")
+            import traceback
+            traceback.print_exc()
+            raise
+
+        try:
+            # Start the streaming sources and their pipelines
+            print("GraphExecutor: Starting streaming sources...")
+            final_results_queue = asyncio.Queue()
+            self.streaming_tasks = []
+            for source_id in streaming_sources:
+                print(f"GraphExecutor: Creating task for streaming source {source_id}")
+                task = asyncio.create_task(self._run_streaming_source(source_id, static_results.copy(), final_results_queue))
+                self.streaming_tasks.append(task)
+                
+            print(f"GraphExecutor: Created {len(self.streaming_tasks)} streaming tasks")
+            
+            # Main loop to pull from the queue and yield to the websocket
+            print("GraphExecutor: Starting main streaming loop")
+            while any(not task.done() for task in self.streaming_tasks) or final_results_queue.qsize() > 0:
+                try:
+                    print("GraphExecutor: Waiting for streaming result...")
+                    final_result = await asyncio.wait_for(final_results_queue.get(), timeout=1.0)
+                    print(f"GraphExecutor: Got streaming result: {list(final_result.keys())}")
+                    yield final_result
+                except asyncio.TimeoutError:
+                    if self._stopped:
+                        print("GraphExecutor: Stopped during streaming")
+                        break
+                    continue
+            
+            print("GraphExecutor: Streaming loop finished, cleaning up...")
+            # Clean up any remaining tasks
+            results = await asyncio.gather(*self.streaming_tasks, return_exceptions=True)
+            exceptions = [r for r in results if isinstance(r, Exception)]
+            if exceptions:
+                print(f"GraphExecutor: Exception in streaming task: {exceptions[0]}")
+                raise exceptions[0]
+
+            for task in self.streaming_tasks:
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(*self.streaming_tasks, return_exceptions=True)
+            self.streaming_tasks = []
+            print("GraphExecutor: Streaming cleanup complete")
+        except Exception as e:
+            print(f"GraphExecutor: Exception in streaming phase: {e}")
+            import traceback
+            traceback.print_exc()
+            raise
 
     async def stop(self):
         self._stopped = True

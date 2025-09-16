@@ -76,20 +76,42 @@ export default class OllamaChatNodeUI extends BaseCustomNode {
     onStreamUpdate(_data: any) {
         const text = _data?.assistant_text;
         const finalMsg = _data?.assistant_message;
-        if (typeof text === 'string') {
+        const error = _data?.metrics?.error;
+
+        if (error) {
+            this.displayText = `❌ Error: ${error}`;
+            this.color = '#722f37';
+            this.bgcolor = '#2d1b1e';
+        } else if (typeof text === 'string') {
             this.displayText = text;
+            this.color = '#1f2a44';
+            this.bgcolor = '#0b1220';
         } else if (finalMsg && typeof finalMsg?.content === 'string') {
             this.displayText = finalMsg.content;
+            this.color = '#1f2a44';
+            this.bgcolor = '#0b1220';
         }
         this.setDirtyCanvas(true, true);
     }
 
     updateDisplay(result: any) {
+        // Check for errors first
+        const error = result?.metrics?.error;
+        if (error) {
+            this.displayText = `❌ Error: ${error}`;
+            this.color = '#722f37';
+            this.bgcolor = '#2d1b1e';
+            this.setDirtyCanvas(true, true);
+            return;
+        }
+
         // Prefer assistant_text, then assistant_message.content for non-stream responses
         const textPref = result?.assistant_text;
         const msg = result?.assistant_message || result?.output || result;
         const text = typeof textPref === 'string' ? textPref : (typeof msg === 'string' ? msg : (msg?.content || JSON.stringify(msg, null, 2)));
         this.displayText = text || '';
+        this.color = '#1f2a44';
+        this.bgcolor = '#0b1220';
         this.setDirtyCanvas(true, true);
     }
 }

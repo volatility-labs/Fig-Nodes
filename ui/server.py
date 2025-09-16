@@ -95,45 +95,65 @@ async def _execution_worker():
         websocket = job.websocket
         executor: typing.Optional[GraphExecutor] = None
         try:
+            print("Worker: Creating GraphExecutor")
             executor = GraphExecutor(job.graph_data, NODE_REGISTRY)
+            print(f"Worker: GraphExecutor created, is_streaming={executor.is_streaming}")
             try:
                 await websocket.send_json({"type": "status", "message": "Starting execution"})
             except Exception:
                 pass
 
             if executor.is_streaming:
+                print("Worker: Executing streaming path")
                 try:
                     await websocket.send_json({"type": "status", "message": "Stream starting..."})
                 except Exception:
                     pass
                 stream_generator = executor.stream()
                 try:
+                    print("Worker: Getting initial results from stream generator")
                     initial_results = await anext(stream_generator)
+                    print(f"Worker: Got initial results: {list(initial_results.keys())}")
                 except StopAsyncIteration:
+                    print("Worker: Stream generator exhausted on first anext()")
                     initial_results = {}
                 try:
                     await websocket.send_json({"type": "data", "results": _serialize_results(initial_results), "stream": False})
                 except Exception:
                     pass
 
-                try:
+                async def monitor_cancel():
                     while True:
-                        if job.cancel_event.is_set() or websocket.client_state == WebSocketState.DISCONNECTED:
+                        await asyncio.sleep(0.5)
+                        if job.cancel_event.is_set() or websocket.client_state in (WebSocketState.CLOSED, WebSocketState.DISCONNECTED):
+                            print("Worker: Detected cancel or disconnect in monitor, stopping executor")
                             await executor.stop()
                             break
+
+                monitor_task = asyncio.create_task(monitor_cancel())
+
+                try:
+                    print("Worker: Starting stream loop")
+                    while True:
                         try:
-                            results = await asyncio.wait_for(anext(stream_generator), timeout=0.1)
-                        except asyncio.TimeoutError:
-                            continue
+                            results = await anext(stream_generator)
+                            print(f"Worker: Got stream result: {list(results.keys())}")
                         except StopAsyncIteration:
+                            print("Worker: Stream generator exhausted (StopAsyncIteration)")
                             break
+                        except Exception as e:
+                            print(f"Worker: Unexpected exception in stream: {e}")
+                            raise
                         try:
                             await websocket.send_json({"type": "data", "results": _serialize_results(results), "stream": True})
                         except Exception:
+                            print("Worker: Exception sending stream data, stopping executor")
                             await executor.stop()
                             break
                 finally:
+                    monitor_task.cancel()
                     try:
+                        print("Worker: Stream finished, sending final status")
                         await websocket.send_json({"type": "status", "message": "Stream finished"})
                     except Exception:
                         pass
@@ -162,7 +182,7 @@ async def _execution_worker():
                 pass
         finally:
             try:
-                if websocket.client_state != WebSocketState.DISCONNECTED:
+                if websocket.client_state not in (WebSocketState.DISCONNECTED, WebSocketState.CLOSED):
                     await websocket.close()
             except Exception:
                 pass
@@ -244,13 +264,18 @@ async def execute_endpoint(websocket: WebSocket):
         
         # If no background worker is running (testing mode), execute directly
         import os
-        if os.getenv("PYTEST_CURRENT_TEST") is not None:
+        pytest_test = os.getenv("PYTEST_CURRENT_TEST")
+        print(f"Server: PYTEST_CURRENT_TEST = {pytest_test}")
+        if pytest_test is not None:
+            print("Server: Using direct execution (testing mode)")
             await _execute_job_directly(websocket, graph_data)
         else:
+            print("Server: Using queued execution (production mode)")
             await websocket.send_json({"type": "status", "message": "Waiting for available slot..."})
             job = await EXECUTION_QUEUE.enqueue(websocket, graph_data)
             await job.done_event.wait()
     except WebSocketDisconnect:
+        print("Client disconnected.")
         if job is not None:
             job.cancel_event.set()
     except Exception as e:
@@ -258,46 +283,63 @@ async def execute_endpoint(websocket: WebSocket):
             await websocket.send_json({"type": "error", "message": str(e)})
         except Exception:
             pass
+    finally:
+        pass
 
 
 async def _execute_job_directly(websocket: WebSocket, graph_data: Dict[str, Any]):
     """Execute job directly without queue (for testing)"""
     executor: typing.Optional[GraphExecutor] = None
     try:
+        print("Server: Creating GraphExecutor")
         executor = GraphExecutor(graph_data, NODE_REGISTRY)
+        print(f"Server: GraphExecutor created, is_streaming={executor.is_streaming}")
         await websocket.send_json({"type": "status", "message": "Starting execution"})
 
         if executor.is_streaming:
+            print("Server: Executing streaming path")
             await websocket.send_json({"type": "status", "message": "Stream starting..."})
+            stream_generator = executor.stream()
             try:
-                stream_generator = executor.stream()
-                try:
-                    initial_results = await anext(stream_generator)
-                except StopAsyncIteration:
-                    initial_results = {}
-                await websocket.send_json({"type": "data", "results": _serialize_results(initial_results), "stream": False})
+                print("Server: Getting initial results from stream generator")
+                initial_results = await anext(stream_generator)
+                print(f"Server: Got initial results: {list(initial_results.keys())}")
+            except StopAsyncIteration:
+                print("Server: Stream generator exhausted on first anext()")
+                initial_results = {}
+            await websocket.send_json({"type": "data", "results": _serialize_results(initial_results), "stream": False})
 
-                stream_finished_normally = True
-                try:
-                    while True:
-                        try:
-                            results = await asyncio.wait_for(anext(stream_generator), timeout=0.1)
-                        except asyncio.TimeoutError:
-                            continue
-                        except StopAsyncIteration:
-                            break
-                        except Exception as e:
-                            # Handle errors from the stream generator
-                            stream_finished_normally = False
-                            await websocket.send_json({"type": "error", "message": str(e)})
-                            return
-                        await websocket.send_json({"type": "data", "results": _serialize_results(results), "stream": True})
-                finally:
-                    if stream_finished_normally:
-                        await websocket.send_json({"type": "status", "message": "Stream finished"})
-            except Exception as stream_error:
-                await websocket.send_json({"type": "error", "message": str(stream_error)})
-                return
+            async def monitor_cancel():
+                while True:
+                    await asyncio.sleep(0.5)
+                    if websocket.client_state in (WebSocketState.CLOSED, WebSocketState.DISCONNECTED):
+                        print("Server: Detected disconnect in monitor, stopping executor")
+                        await executor.stop()
+                        break
+
+            monitor_task = asyncio.create_task(monitor_cancel())
+
+            stream_finished_normally = True
+            try:
+                print("Server: Starting stream loop")
+                while True:
+                    try:
+                        results = await anext(stream_generator)
+                        print(f"Server: Got stream result: {list(results.keys())}")
+                    except StopAsyncIteration:
+                        print("Server: Stream generator exhausted (StopAsyncIteration)")
+                        break
+                    except Exception as e:
+                        print(f"Server: Stream error: {e}")
+                        stream_finished_normally = False
+                        await websocket.send_json({"type": "error", "message": str(e)})
+                        return
+                    await websocket.send_json({"type": "data", "results": _serialize_results(results), "stream": True})
+            finally:
+                monitor_task.cancel()
+                if stream_finished_normally:
+                    print("Server: Stream finished normally")
+                    await websocket.send_json({"type": "status", "message": "Stream finished"})
         else:
             await websocket.send_json({"type": "status", "message": "Executing batch"})
             results = await executor.execute()

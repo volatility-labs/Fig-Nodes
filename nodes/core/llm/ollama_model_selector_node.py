@@ -29,14 +29,19 @@ class OllamaModelSelectorNode(BaseNode):
         host = self.params.get("host") or "http://localhost:11434"
         selected = self.params.get("selected") or ""
 
+        print(f"OllamaModelSelectorNode: host={host}, selected='{selected}'")
+
         try:
             import httpx
-            async with httpx.AsyncClient(timeout=5.0) as client:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                print(f"OllamaModelSelectorNode: Querying {host}/api/tags")
                 r = await client.get(f"{host}/api/tags")
                 r.raise_for_status()
                 data = r.json()
                 models_list = [m.get("name") for m in data.get("models", []) if m.get("name")]
-        except Exception:
+                print(f"OllamaModelSelectorNode: Found {len(models_list)} models: {models_list}")
+        except Exception as e:
+            print(f"OllamaModelSelectorNode: Error querying Ollama models: {e}")
             models_list = []
 
         # Update params_meta options dynamically for UI consumption via /nodes metadata
@@ -48,7 +53,17 @@ class OllamaModelSelectorNode(BaseNode):
         # If selected is empty or not in list, choose first if available
         if (not selected or selected not in models_list) and models_list:
             selected = models_list[0]
+            print(f"OllamaModelSelectorNode: Auto-selected first model: {selected}")
+        
+        # Validate final selection
+        if not selected and not models_list:
+            error_msg = "No local Ollama models found. Pull one via 'ollama pull <model>'"
+            print(f"OllamaModelSelectorNode: ERROR - {error_msg}")
+            raise ValueError(error_msg)
+        elif selected and selected not in models_list:
+            print(f"OllamaModelSelectorNode: WARNING - Selected model '{selected}' not in available models {models_list}")
 
+        print(f"OllamaModelSelectorNode: Final output - host={host}, model='{selected}', models_count={len(models_list)}")
         return {"host": host, "model": selected, "models": models_list}
 
 

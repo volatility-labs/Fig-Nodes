@@ -138,7 +138,12 @@ class OllamaChatNode(StreamingNode):
             messages: List[Dict[str, Any]] = self._build_messages(raw_messages, prompt_text, system_prompt)
             tools: Optional[List[Dict[str, Any]]] = inputs.get("tools")
 
+            print(f"OllamaChatNode: Received inputs - model='{model}', prompt='{prompt_text}', messages_count={len(raw_messages) if raw_messages else 0}")
+
             if not model:
+                error_msg = "No model provided to OllamaChatNode. Check model selector connection."
+                print(f"OllamaChatNode: ERROR - {error_msg}")
+                yield {"metrics": {"error": error_msg}, "assistant_text": "", "assistant_done": True}
                 return
 
             host: str = inputs.get("host") or os.getenv("OLLAMA_HOST", "http://localhost:11434")
@@ -150,6 +155,15 @@ class OllamaChatNode(StreamingNode):
             keep_alive = _keep_alive_param if (_keep_alive_param is not None and _keep_alive_param != "") else None
             think = bool(self.params.get("think", False))
             options = self._parse_options() or {}
+
+            print(f"OllamaChatNode: Using host={host}, stream={use_stream}, messages={len(messages)}")
+
+            # Validate we have something to send
+            if not messages and not prompt_text:
+                error_msg = "No messages or prompt provided to OllamaChatNode"
+                print(f"OllamaChatNode: ERROR - {error_msg}")
+                yield {"metrics": {"error": error_msg}, "assistant_text": "", "assistant_done": True}
+                return
 
             # Apply temperature
             try:
@@ -183,6 +197,7 @@ class OllamaChatNode(StreamingNode):
             # Lazy import to keep dependency local to node
             from ollama import AsyncClient
 
+            print(f"OllamaChatNode: Creating Ollama client for {host}")
             client = AsyncClient(host=host)
 
             accumulated_content: List[str] = []
@@ -192,6 +207,7 @@ class OllamaChatNode(StreamingNode):
 
             try:
                 if use_stream:
+                    print(f"OllamaChatNode: Starting streaming chat with model={model}")
                     last_resp: Dict[str, Any] = {}
                     stream_iter = await client.chat(
                         model=model,
