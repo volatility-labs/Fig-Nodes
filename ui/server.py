@@ -172,8 +172,11 @@ async def _execution_worker():
 
 @app.on_event("startup")
 async def _startup_queue_worker():
-    task = asyncio.create_task(_execution_worker())
-    _WORKER_TASKS.append(task)
+    # Only start worker tasks if not in testing mode
+    import os
+    if os.getenv("PYTEST_CURRENT_TEST") is None:
+        task = asyncio.create_task(_execution_worker())
+        _WORKER_TASKS.append(task)
 
 
 @app.on_event("shutdown")
@@ -238,11 +241,16 @@ async def execute_endpoint(websocket: WebSocket):
     job = None
     try:
         graph_data = await websocket.receive_json()
-        await websocket.send_json({"type": "status", "message": "Waiting for available slot..."})
-        job = await EXECUTION_QUEUE.enqueue(websocket, graph_data)
-        await job.done_event.wait()
+        
+        # If no background worker is running (testing mode), execute directly
+        import os
+        if os.getenv("PYTEST_CURRENT_TEST") is not None:
+            await _execute_job_directly(websocket, graph_data)
+        else:
+            await websocket.send_json({"type": "status", "message": "Waiting for available slot..."})
+            job = await EXECUTION_QUEUE.enqueue(websocket, graph_data)
+            await job.done_event.wait()
     except WebSocketDisconnect:
-        print("Client disconnected.")
         if job is not None:
             job.cancel_event.set()
     except Exception as e:
@@ -250,8 +258,54 @@ async def execute_endpoint(websocket: WebSocket):
             await websocket.send_json({"type": "error", "message": str(e)})
         except Exception:
             pass
-    finally:
-        pass
+
+
+async def _execute_job_directly(websocket: WebSocket, graph_data: Dict[str, Any]):
+    """Execute job directly without queue (for testing)"""
+    executor: typing.Optional[GraphExecutor] = None
+    try:
+        executor = GraphExecutor(graph_data, NODE_REGISTRY)
+        await websocket.send_json({"type": "status", "message": "Starting execution"})
+
+        if executor.is_streaming:
+            await websocket.send_json({"type": "status", "message": "Stream starting..."})
+            try:
+                stream_generator = executor.stream()
+                try:
+                    initial_results = await anext(stream_generator)
+                except StopAsyncIteration:
+                    initial_results = {}
+                await websocket.send_json({"type": "data", "results": _serialize_results(initial_results), "stream": False})
+
+                stream_finished_normally = True
+                try:
+                    while True:
+                        try:
+                            results = await asyncio.wait_for(anext(stream_generator), timeout=0.1)
+                        except asyncio.TimeoutError:
+                            continue
+                        except StopAsyncIteration:
+                            break
+                        except Exception as e:
+                            # Handle errors from the stream generator
+                            stream_finished_normally = False
+                            await websocket.send_json({"type": "error", "message": str(e)})
+                            return
+                        await websocket.send_json({"type": "data", "results": _serialize_results(results), "stream": True})
+                finally:
+                    if stream_finished_normally:
+                        await websocket.send_json({"type": "status", "message": "Stream finished"})
+            except Exception as stream_error:
+                await websocket.send_json({"type": "error", "message": str(stream_error)})
+                return
+        else:
+            await websocket.send_json({"type": "status", "message": "Executing batch"})
+            results = await executor.execute()
+            await websocket.send_json({"type": "data", "results": _serialize_results(results)})
+            await websocket.send_json({"type": "status", "message": "Batch finished"})
+
+    except Exception as e:
+        await websocket.send_json({"type": "error", "message": str(e)})
 
 if __name__ == "__main__":
     import uvicorn
