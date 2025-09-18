@@ -9,6 +9,7 @@ import signal
 
 
 from core.types_registry import get_type
+from services.tools.registry import get_tool_handler
 
 
 class OllamaChatNode(StreamingNode):
@@ -60,6 +61,9 @@ class OllamaChatNode(StreamingNode):
         "temperature": 0.7,
         "seed": 0,
         "seed_mode": "fixed",  # fixed | random | increment
+        # Tool orchestration controls
+        "max_tool_iters": 2,
+        "tool_timeout_s": 10,
     }
 
     params_meta = [
@@ -69,6 +73,8 @@ class OllamaChatNode(StreamingNode):
         {"name": "seed_mode", "type": "combo", "default": "fixed", "options": ["fixed", "random", "increment"]},
         {"name": "seed", "type": "number", "default": 0},
         {"name": "think", "type": "combo", "default": False, "options": [False, True]},
+        {"name": "max_tool_iters", "type": "number", "default": 2},
+        {"name": "tool_timeout_s", "type": "number", "default": 10},
     ]
 
     ui_module = "OllamaChatNodeUI"
@@ -184,6 +190,110 @@ class OllamaChatNode(StreamingNode):
         except Exception:
             return None
 
+    async def _maybe_execute_tools_and_augment_messages(self, host: str, model: str, base_messages: List[Dict[str, Any]], tools: Optional[List[Dict[str, Any]]], fmt: Optional[str], options: Dict[str, Any], keep_alive: Optional[Any], think: bool, client_factory=None) -> Dict[str, Any]:
+        """
+        Orchestrate tool-calling rounds until no tool_calls are present or max iterations reached.
+        Returns a dict with keys: messages (final history), last_response (last non-streaming chat response), metrics (aggregated).
+        """
+        # No tools attached; nothing to orchestrate
+        if not tools or not isinstance(tools, list):
+            return {"messages": base_messages, "last_response": None, "metrics": {}}
+
+        max_iters = int(self.params.get("max_tool_iters", 2) or 0)
+        timeout_s = int(self.params.get("tool_timeout_s", 10) or 10)
+
+        # Lazy import for client if not provided
+        if client_factory is None:
+            from ollama import AsyncClient
+            client_factory = lambda: AsyncClient(host=host)
+
+        messages = list(base_messages)
+        combined_metrics: Dict[str, Any] = {}
+
+        async def _invoke_chat_nonstream(_client):
+            return await _client.chat(
+                model=model,
+                messages=messages,
+                tools=tools,
+                stream=False,
+                format=fmt,
+                options=options,
+                keep_alive=keep_alive,
+                think=think,
+            )
+
+        # Iterate tool rounds
+        last_resp: Optional[Dict[str, Any]] = None
+        for _round in range(max(0, max_iters) + 1):
+            client = client_factory()
+            try:
+                resp = await _invoke_chat_nonstream(client)
+            finally:
+                try:
+                    await client.close()
+                except Exception:
+                    pass
+
+            last_resp = resp or {}
+            # Merge metrics if present
+            for k in ("total_duration", "load_duration", "prompt_eval_count", "prompt_eval_duration", "eval_count", "eval_duration"):
+                if k in (resp or {}):
+                    combined_metrics[k] = (resp or {}).get(k)
+
+            message = (resp or {}).get("message") or {}
+            tool_calls = message.get("tool_calls") if isinstance(message, dict) else None
+            # If no tool calls, stop and keep last response
+            if not tool_calls or not isinstance(tool_calls, list):
+                break
+
+            # Execute tool calls and append tool results
+            for call in tool_calls:
+                try:
+                    fn = (call or {}).get("function") or {}
+                    tool_name = fn.get("name")
+                    arguments = fn.get("arguments") or {}
+                    if not isinstance(arguments, dict):
+                        arguments = {}
+
+                    handler = get_tool_handler(tool_name) if isinstance(tool_name, str) else None
+                    result_obj: Any = None
+
+                    async def _run_handler():
+                        if handler is None:
+                            return {"error": "unknown_tool", "message": f"No handler for tool '{tool_name}'"}
+                        ctx = {"model": model, "host": host}
+                        return await handler(arguments, ctx)
+
+                    try:
+                        result_obj = await asyncio.wait_for(_run_handler(), timeout=timeout_s)
+                    except asyncio.TimeoutError:
+                        result_obj = {"error": "timeout", "message": f"Tool '{tool_name}' timed out after {timeout_s}s"}
+                    except Exception as _e:
+                        result_obj = {"error": "exception", "message": str(_e)}
+
+                    # Ensure JSON-serializable content; fallback to str
+                    try:
+                        content_str = json.dumps(result_obj, ensure_ascii=False)
+                    except Exception:
+                        content_str = str(result_obj)
+
+                    messages.append({
+                        "role": "tool",
+                        "tool_name": tool_name,
+                        "content": content_str,
+                    })
+                except Exception as _e_outer:
+                    # Append an error tool message to allow model to recover
+                    messages.append({
+                        "role": "tool",
+                        "tool_name": str((call or {}).get("function", {}).get("name", "unknown")),
+                        "content": json.dumps({"error": "handler_failure", "message": str(_e_outer)}),
+                    })
+
+            # After appending tool outputs, continue loop to call chat again
+
+        return {"messages": messages, "last_response": last_resp, "metrics": combined_metrics}
+
     async def start(self, inputs: Dict[str, Any]) -> AsyncGenerator[Dict[str, Any], None]:
         try:
             model: str = inputs.get("model")
@@ -252,16 +362,24 @@ class OllamaChatNode(StreamingNode):
             # Lazy import to keep dependency local to node
             from ollama import AsyncClient
 
-            print(f"OllamaChatNode: Creating Ollama client for {host}")
-            client = AsyncClient(host=host)
-            self._client = client
-
             accumulated_content: List[str] = []
             accumulated_thinking: List[str] = []
             final_message: Dict[str, Any] = {}
             metrics: Dict[str, Any] = {}
 
             try:
+                # If tools are provided, first orchestrate non-streaming rounds until no tool calls
+                tool_rounds_info = {"messages": messages, "last_response": None, "metrics": {}}
+                if tools:
+                    tool_rounds_info = await self._maybe_execute_tools_and_augment_messages(
+                        host, model, messages, tools, fmt, options, keep_alive, think
+                    )
+                    messages = tool_rounds_info.get("messages", messages)
+                    # Carry over metrics if available
+                    t_metrics = tool_rounds_info.get("metrics") or {}
+                    if isinstance(t_metrics, dict):
+                        metrics.update(t_metrics)
+
                 if use_stream:
                     print(f"OllamaChatNode: Starting streaming chat with model={model}")
                     # Child-process based streaming for hard kill capability
@@ -425,6 +543,10 @@ class OllamaChatNode(StreamingNode):
                                     pass
                         self._proc = None
                 else:
+                    from ollama import AsyncClient
+                    print(f"OllamaChatNode: Creating Ollama client for {host}")
+                    client = AsyncClient(host=host)
+                    self._client = client
                     resp = await client.chat(
                         model=model,
                         messages=messages,
@@ -454,10 +576,12 @@ class OllamaChatNode(StreamingNode):
                         "metrics": metrics,
                     }
             finally:
-                try:
-                    await client.close()
-                except Exception:
-                    pass
+                client = getattr(self, "_client", None)
+                if client is not None:
+                    try:
+                        await client.close()
+                    except Exception:
+                        pass
                 self._client = None
         except asyncio.CancelledError:
             # Cooperative cancellation; do not emit error on cancel

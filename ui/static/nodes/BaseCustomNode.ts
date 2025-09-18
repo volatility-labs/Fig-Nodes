@@ -26,13 +26,16 @@ export default class BaseCustomNode extends LGraphNode {
                 if (typeInfo) {
                     color = getTypeColor(typeInfo);
                 }
-                if (typeof typeStr === 'string' && typeStr.startsWith('list<') && typeInfo) {
-                    const innerStr = typeStr.slice(5, -1);
-                    const multiType = `${innerStr},${typeStr}`;
+                const typeStrLower = typeof typeStr === 'string' ? typeStr.toLowerCase() : '';
+                if (typeof typeStr === 'string' && typeStrLower.startsWith('list<') && typeInfo) {
+                    const lt = typeStr.indexOf('<');
+                    const gt = typeStr.lastIndexOf('>');
+                    const innerStr = (lt !== -1 && gt !== -1 && gt > lt) ? typeStr.slice(lt + 1, gt) : 'any';
+                    const multiType = innerStr;
                     this.multiInputs = this.multiInputs || {};
                     this.multiInputs[inp] = { slots: [], multiType, color };
                     this.addMultiSlot(inp);
-                } else if (typeof typeStr === 'string' && typeStr.startsWith('dict<') && typeInfo) {
+                } else if (typeof typeStr === 'string' && typeStrLower.startsWith('dict<') && typeInfo) {
                     const multiType = typeStr;
                     this.multiInputs = this.multiInputs || {};
                     this.multiInputs[inp] = { slots: [], multiType, color };

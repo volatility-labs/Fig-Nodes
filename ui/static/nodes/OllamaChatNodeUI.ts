@@ -12,7 +12,7 @@ export default class OllamaChatNodeUI extends BaseCustomNode {
             const widgets = (this as any).widgets as any[] | undefined;
             if (widgets && Array.isArray(widgets)) {
                 // Remove auto-generated widgets for these params and any hidden ones
-                const namesToReplace = new Set(['Title', 'stream', 'think', 'keep_alive', 'options', 'seed', 'seed_mode', 'temperature']);
+                const namesToReplace = new Set(['Title', 'stream', 'think', 'keep_alive', 'options', 'seed', 'seed_mode', 'temperature', 'max_tool_iters', 'tool_timeout_s']);
                 for (let i = widgets.length - 1; i >= 0; i--) {
                     const w = widgets[i];
                     if (w && namesToReplace.has(w.name)) {
@@ -53,7 +53,19 @@ export default class OllamaChatNodeUI extends BaseCustomNode {
         }, { values: ['fixed', 'random', 'increment'] });
         this.addWidget('number', 'seed', this.properties['seed'], (v: number) => {
             this.properties['seed'] = Math.max(0, Math.floor(Number(v) || 0));
-        }, { min: 0, step: 1 });
+        }, { min: 0, step: 1, precision: 0 });
+
+        // Integer-only controls for tool orchestration
+        const currentMaxIters = typeof this.properties['max_tool_iters'] === 'number' ? Math.floor(this.properties['max_tool_iters']) : 2;
+        const currentToolTimeout = typeof this.properties['tool_timeout_s'] === 'number' ? Math.floor(this.properties['tool_timeout_s']) : 10;
+        this.properties['max_tool_iters'] = currentMaxIters;
+        this.properties['tool_timeout_s'] = currentToolTimeout;
+        this.addWidget('number', 'max_tool_iters', currentMaxIters, (v: number) => {
+            this.properties['max_tool_iters'] = Math.max(0, Math.floor(Number(v) || 0));
+        }, { min: 0, step: 1, precision: 0 });
+        this.addWidget('number', 'tool_timeout_s', currentToolTimeout, (v: number) => {
+            this.properties['tool_timeout_s'] = Math.max(0, Math.floor(Number(v) || 0));
+        }, { min: 0, step: 1, precision: 0 });
 
         // JSON mode toggle (boolean). Server derives Ollama format from this.
         const currentJsonMode = typeof this.properties['json_mode'] === 'boolean' ? this.properties['json_mode'] : false;
