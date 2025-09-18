@@ -9,6 +9,8 @@ export default class BaseCustomNode extends LGraphNode {
     displayText: string = '';
     properties: { [key: string]: any } = {};
     error: string = '';
+    private highlightStartTs: number | null = null;
+    private readonly highlightDurationMs: number = 900;
 
     constructor(title: string, data: any) {
         super(title);
@@ -172,6 +174,28 @@ export default class BaseCustomNode extends LGraphNode {
     }
 
     onDrawForeground(ctx: CanvasRenderingContext2D) {
+        // Pulse highlight outline to indicate recent execution
+        if (this.highlightStartTs !== null) {
+            const now = performance.now();
+            const elapsed = now - this.highlightStartTs;
+            if (elapsed < this.highlightDurationMs) {
+                const t = 1 - (elapsed / this.highlightDurationMs);
+                const alpha = 0.25 + 0.55 * t;
+                const glow = Math.floor(6 * t) + 2;
+                ctx.save();
+                ctx.strokeStyle = `rgba(33, 150, 243, ${alpha.toFixed(3)})`;
+                ctx.lineWidth = 2;
+                // Outer glow
+                (ctx as any).shadowColor = `rgba(33, 150, 243, ${Math.min(0.8, 0.2 + 0.6 * t).toFixed(3)})`;
+                (ctx as any).shadowBlur = glow;
+                ctx.strokeRect(1, 1, this.size[0] - 2, this.size[1] - 2);
+                ctx.restore();
+                this.setDirtyCanvas(true, true);
+            } else {
+                this.highlightStartTs = null;
+            }
+        }
+
         if (this.flags.collapsed || !this.displayResults || !this.displayText) {
             return;
         }
@@ -228,6 +252,11 @@ export default class BaseCustomNode extends LGraphNode {
             const primaryOutput = outputs.length === 1 ? outputs[0] : result;
             this.displayText = typeof primaryOutput === 'string' ? primaryOutput : JSON.stringify(primaryOutput, null, 2);
         }
+        this.setDirtyCanvas(true, true);
+    }
+
+    pulseHighlight() {
+        this.highlightStartTs = performance.now();
         this.setDirtyCanvas(true, true);
     }
 

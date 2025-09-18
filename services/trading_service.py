@@ -8,4 +8,3 @@ class TradingService:
 
     def execute_trade(self, symbol: str, side: str, score: float):
         logger.info(f'Executing trade for {symbol}: Side={side}, Score={score}')
-        # Future: Integrate with Hyperliquid trading 

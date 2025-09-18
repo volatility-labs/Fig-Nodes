@@ -194,9 +194,10 @@ class GraphExecutor:
             # Main loop to pull from the queue and yield to the websocket
             print("GraphExecutor: Starting main streaming loop")
             while any(not task.done() for task in self.streaming_tasks) or final_results_queue.qsize() > 0:
+                if self._stopped:
+                    break
                 try:
-                    print("GraphExecutor: Waiting for streaming result...")
-                    final_result = await asyncio.wait_for(final_results_queue.get(), timeout=1.0)
+                    final_result = await asyncio.wait_for(final_results_queue.get(), timeout=0.1)
                     print(f"GraphExecutor: Got streaming result: {list(final_result.keys())}")
                     yield final_result
                 except asyncio.TimeoutError:

@@ -31,6 +31,9 @@ class OllamaModelSelectorNode(BaseNode):
 
         print(f"OllamaModelSelectorNode: host={host}, selected='{selected}'")
 
+        # Ensure models_list is always defined to avoid UnboundLocalError on failures
+        models_list: List[str] = []
+
         try:
             import httpx
             async with httpx.AsyncClient(timeout=10.0) as client:
@@ -42,7 +45,7 @@ class OllamaModelSelectorNode(BaseNode):
                 print(f"OllamaModelSelectorNode: Found {len(models_list)} models: {models_list}")
         except Exception as e:
             print(f"OllamaModelSelectorNode: Error querying Ollama models: {e}")
-            models_list = []
+            models_list = models_list
 
         # Update params_meta options dynamically for UI consumption via /nodes metadata
         for p in self.params_meta:

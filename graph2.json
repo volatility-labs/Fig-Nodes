@@ -1,0 +1,326 @@
+{
+  "id": "00000000-0000-0000-0000-000000000000",
+  "revision": 0,
+  "last_node_id": 13,
+  "last_link_id": 11,
+  "nodes": [
+    {
+      "id": 6,
+      "type": "TextInputNode",
+      "pos": [
+        424.214111328125,
+        695.1299438476562
+      ],
+      "size": [
+        360,
+        200
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "text",
+          "type": "str",
+          "links": [
+            5
+          ]
+        }
+      ],
+      "title": "TextInputNode",
+      "properties": {
+        "value": "hi"
+      }
+    },
+    {
+      "id": 10,
+      "type": "LoggingNode",
+      "pos": [
+        2194.306884765625,
+        279.4931945800781
+      ],
+      "size": [
+        210,
+        149
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "input",
+          "type": 0,
+          "link": 8
+        }
+      ],
+      "outputs": [
+        {
+          "name": "output",
+          "type": "str",
+          "links": null
+        }
+      ],
+      "title": "LoggingNode",
+      "properties": {
+        "format": "auto"
+      }
+    },
+    {
+      "id": 9,
+      "type": "LoggingNode",
+      "pos": [
+        1682.041259765625,
+        209.63381958007812
+      ],
+      "size": [
+        210,
+        554
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "input",
+          "type": 0,
+          "link": 7
+        }
+      ],
+      "outputs": [
+        {
+          "name": "output",
+          "type": "str",
+          "links": null
+        }
+      ],
+      "title": "LoggingNode",
+      "properties": {
+        "format": "auto"
+      }
+    },
+    {
+      "id": 13,
+      "type": "PolygonUniverseNode",
+      "pos": [
+        613.580322265625,
+        499.6557312011719
+      ],
+      "size": [
+        210,
+        100
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "filter_symbols",
+          "type": "List<AssetSymbol>",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "symbols",
+          "type": "List<AssetSymbol>",
+          "links": null
+        }
+      ],
+      "title": "PolygonUniverseNode",
+      "properties": {
+        "api_key": "sagasdfsadfsadgasdf",
+        "market": "stocks"
+      }
+    },
+    {
+      "id": 1,
+      "type": "OllamaChatNode",
+      "pos": [
+        1114.10546875,
+        288.83203125
+      ],
+      "size": [
+        320,
+        326
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "host",
+          "type": "str",
+          "link": 1
+        },
+        {
+          "name": "model",
+          "type": "str",
+          "link": 2
+        },
+        {
+          "name": "messages",
+          "type": "List<LLMChatMessage>",
+          "link": null
+        },
+        {
+          "name": "prompt",
+          "type": "str",
+          "link": 5
+        },
+        {
+          "name": "system",
+          "type": "str",
+          "link": null
+        },
+        {
+          "name": "tools",
+          "type": "List<LLMToolSpec>",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "assistant_text",
+          "type": "str",
+          "links": [
+            8
+          ]
+        },
+        {
+          "name": "assistant_message",
+          "type": "LLMChatMessage",
+          "links": null
+        },
+        {
+          "name": "thinking",
+          "type": "str",
+          "links": [
+            7
+          ]
+        },
+        {
+          "name": "assistant_done",
+          "type": "bool",
+          "links": null
+        },
+        {
+          "name": "metrics",
+          "type": "LLMChatMetrics",
+          "links": null
+        }
+      ],
+      "title": "Deepseek",
+      "properties": {
+        "stream": false,
+        "temperature": 0.8377289870689655,
+        "seed_mode": "fixed",
+        "seed": 0,
+        "think": true,
+        "keep_alive": "1h",
+        "options": "",
+        "json_mode": false
+      },
+      "color": "#1f2a44",
+      "bgcolor": "#0b1220"
+    },
+    {
+      "id": 3,
+      "type": "OllamaModelSelectorNode",
+      "pos": [
+        551.165283203125,
+        285.4033203125
+      ],
+      "size": [
+        280,
+        146
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "host",
+          "type": "str",
+          "links": [
+            1
+          ]
+        },
+        {
+          "name": "model",
+          "type": "str",
+          "links": [
+            2
+          ]
+        },
+        {
+          "name": "models",
+          "type": "List<str>",
+          "links": null
+        }
+      ],
+      "title": "OllamaModelSelectorNode",
+      "properties": {
+        "host": "http://localhost:11434",
+        "selected": "huihui_ai/deepseek-r1-abliterated:8b"
+      },
+      "color": "#1f2a44",
+      "bgcolor": "#0f172a"
+    }
+  ],
+  "links": [
+    [
+      1,
+      3,
+      0,
+      1,
+      0,
+      "str"
+    ],
+    [
+      2,
+      3,
+      1,
+      1,
+      1,
+      "str"
+    ],
+    [
+      5,
+      6,
+      0,
+      1,
+      3,
+      "str"
+    ],
+    [
+      7,
+      1,
+      2,
+      9,
+      0,
+      "str"
+    ],
+    [
+      8,
+      1,
+      0,
+      10,
+      0,
+      "str"
+    ]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 1,
+      "offset": [
+        -419.87890625,
+        -144.5859375
+      ]
+    }
+  },
+  "version": 0.4
+}

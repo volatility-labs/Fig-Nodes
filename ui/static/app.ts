@@ -331,6 +331,14 @@ async function createEditor(container: HTMLElement) {
         canvasElement.addEventListener('click', () => {
             canvasElement.focus();
         });
+        // Ensure progress bar is hidden on load
+        const progressRoot = document.getElementById('top-progress');
+        const progressBar = document.getElementById('top-progress-bar');
+        if (progressRoot && progressBar) {
+            progressRoot.style.display = 'none';
+            (progressBar as HTMLElement).style.width = '0%';
+        }
+
         setupWebSocket(graph, canvas);
         setupResize(canvasElement, canvas);
         setupKeyboard(graph);

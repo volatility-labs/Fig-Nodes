@@ -65,6 +65,7 @@ async def test_streaming_exception_propagates_from_task():
 
         async def start(self, inputs: Dict[str, Any]):
             raise RuntimeError("bad stream")
+            yield  # Unreachable, but ensures async generator type
 
         def stop(self):
             pass
@@ -168,5 +169,59 @@ async def test_llm_like_edge_cases_empty_and_invalid_messages():
     res = await ex.execute()
     # LLMLikeNode should return a valid assistant_message even with mixed inputs
     assert isinstance(res[2]["assistant_message"], dict)
+
+
+@pytest.mark.asyncio
+async def test_graph_with_cycles():
+    data = {
+        "nodes": [
+            {"id": 1, "type": "PassNode"},
+            {"id": 2, "type": "PassNode"}
+        ],
+        "links": [[0, 1, 0, 2, 0], [0, 2, 0, 1, 0]]  # Cycle
+    }
+    with pytest.raises(ValueError, match="Graph contains cycles"):
+        GraphExecutor(data, {"PassNode": PassNode})
+
+@pytest.mark.asyncio
+async def test_validate_inputs_skip():
+    class InvalidInputNode(BaseNode):
+        inputs = {"required": str}
+        outputs = {}
+        async def execute(self, inputs):
+            return {}
+
+    data = {
+        "nodes": [{"id": 1, "type": "InvalidInputNode"}],
+        "links": []
+    }
+    ex = GraphExecutor(data, {"InvalidInputNode": InvalidInputNode})
+    results = await ex.execute()
+    assert 1 not in results  # Skipped due to invalid inputs
+
+@pytest.mark.asyncio
+async def test_streaming_stop_mid_stream():
+    data = {
+        "nodes": [
+            {"id": 1, "type": "StreamSrc"},
+            {"id": 2, "type": "PassNode", "inputs": [{"name": "input"}], "outputs": [{"name": "output"}]}
+        ],
+        "links": [[0, 1, 0, 2, 0]]
+    }
+    registry = {"StreamSrc": StreamSrc, "PassNode": PassNode}
+    executor = GraphExecutor(data, registry)
+    stream = executor.stream()
+    initial = await anext(stream)  # initial
+    tick1 = await anext(stream)  # first tick
+    # Manually trigger the gate to allow second tick
+    executor.nodes[1]._gate.set()
+    # Give a tiny delay for the tick to be ready
+    await asyncio.sleep(0.1)
+    await executor.stop()
+    # Should raise StopAsyncIteration on next anext since stopped
+    with pytest.raises(StopAsyncIteration):
+        await anext(stream)
+
+# Add tests for other missing lines, e.g., error in _execute_subgraph_for_tick, etc.
 
 

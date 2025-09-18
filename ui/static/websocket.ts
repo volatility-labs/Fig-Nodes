@@ -19,7 +19,40 @@ function stopExecution() {
     }
 }
 
-export function setupWebSocket(graph: LGraph, canvas: LGraphCanvas) {
+export function setupWebSocket(graph: LGraph, _canvas: LGraphCanvas) {
+    const progressRoot = document.getElementById('top-progress');
+    const progressBar = document.getElementById('top-progress-bar');
+    const progressText = document.getElementById('top-progress-text');
+
+    const showProgress = (label: string, determinate: boolean) => {
+        if (progressRoot && progressBar && progressText) {
+            progressRoot.style.display = 'block';
+            progressText.textContent = label;
+            if (determinate) {
+                progressBar.classList.remove('indeterminate');
+                (progressBar as HTMLElement).style.width = '1%';
+            } else {
+                progressBar.classList.add('indeterminate');
+                (progressBar as HTMLElement).style.width = '100%';
+            }
+        }
+    };
+
+    const setProgress = (percent: number, label?: string) => {
+        if (progressBar) {
+            progressBar.classList.remove('indeterminate');
+            (progressBar as HTMLElement).style.width = `${Math.max(0, Math.min(100, percent)).toFixed(1)}%`;
+        }
+        if (progressText && label) progressText.textContent = label;
+    };
+
+    const hideProgress = () => {
+        if (progressRoot && progressBar) {
+            (progressBar as HTMLElement).style.width = '0%';
+            progressRoot.style.display = 'none';
+        }
+    };
+
     document.getElementById('execute')?.addEventListener('click', async () => {
         // Reset LoggingNode UIs before each execution so logs start fresh
         const nodes = ((graph as any)._nodes as any[]) || [];
@@ -44,6 +77,7 @@ export function setupWebSocket(graph: LGraph, canvas: LGraphCanvas) {
         document.getElementById('stop')!.style.display = 'inline-block';
 
         const graphData = graph.serialize();
+        showProgress('Starting...', false);
         const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
         const backendHost = window.location.hostname;
         const wsUrl = `${protocol}://${backendHost}${window.location.port === '8000' ? '' : ':8000'}/execute`;
@@ -65,6 +99,18 @@ export function setupWebSocket(graph: LGraph, canvas: LGraphCanvas) {
                     indicator.className = `status-indicator executing`;
                     indicator.textContent = data.message;
                 }
+                // Keep progress visible and reflect coarse states
+                const msg: string = data.message || '';
+                if (/starting/i.test(msg)) {
+                    showProgress('Starting...', false);
+                } else if (/executing batch/i.test(msg)) {
+                    showProgress('Executing...', false);
+                } else if (/stream starting/i.test(msg)) {
+                    showProgress('Stream starting...', false);
+                } else if (/finished/i.test(msg)) {
+                    setProgress(100, 'Finished');
+                    setTimeout(hideProgress, 350);
+                }
                 if (data.message.includes('finished')) {
                     stopExecution();
                 }
@@ -75,6 +121,7 @@ export function setupWebSocket(graph: LGraph, canvas: LGraphCanvas) {
                         indicator.className = `status-indicator executing`;
                         indicator.textContent = 'Stream started...';
                     }
+                    showProgress('Streaming...', false);
                     return;
                 }
                 const results = data.results;
@@ -88,11 +135,27 @@ export function setupWebSocket(graph: LGraph, canvas: LGraphCanvas) {
                             } else {
                                 node.updateDisplay(results[nodeId]);
                             }
+                            if (typeof node.pulseHighlight === 'function') {
+                                try { node.pulseHighlight(); } catch { }
+                            }
                         } else {
                             // Initial/batch: set full snapshot
                             node.updateDisplay(results[nodeId]);
+                            if (typeof node.pulseHighlight === 'function') {
+                                try { node.pulseHighlight(); } catch { }
+                            }
                         }
                     }
+                }
+                // Progress behavior
+                if (data.stream) {
+                    // Ongoing stream: keep indeterminate
+                    showProgress('Streaming...', false);
+                } else {
+                    // Initial static results (non-streaming part). Do not mark completed here.
+                    // Keep showing determinate progress only if we can infer percentage (not available now),
+                    // otherwise keep indeterminate until a finished status arrives.
+                    showProgress('Running...', false);
                 }
             } else if (data.type === 'error') {
                 console.error('Execution error:', data.message);
@@ -102,11 +165,13 @@ export function setupWebSocket(graph: LGraph, canvas: LGraphCanvas) {
                     indicator.textContent = `Error: ${data.message}`;
                 }
                 stopExecution();
+                hideProgress();
             }
         };
 
         ws.onclose = () => {
             stopExecution();
+            hideProgress();
         };
 
         ws.onerror = (err) => {
@@ -116,6 +181,7 @@ export function setupWebSocket(graph: LGraph, canvas: LGraphCanvas) {
                 indicator.textContent = 'Connection error';
             }
             stopExecution();
+            hideProgress();
         };
     });
 

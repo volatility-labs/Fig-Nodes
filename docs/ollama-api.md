@@ -1869,4 +1869,13 @@ curl http://localhost:11434/api/version
 }
 ```
 
+### Stopping streaming
+
+When using `/api/chat` with `stream: true` through `OllamaChatNode`, stopping from the UI (stop button) or a WebSocket disconnect will:
+
+- Signal cancellation to the running node.
+- Close the underlying stream iterator and AsyncClient, immediately halting further output.
+
+If you need to hard stop a local run from the terminal, use Ctrl-C once. The executor propagates the stop to the node and closes the active Ollama stream and client to prevent additional log spam.
+
 
