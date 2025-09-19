@@ -42,10 +42,7 @@ class OllamaChatNode(StreamingNode):
     }
 
     outputs = {
-        "assistant_text": str,
-        "assistant_message": get_type("LLMChatMessage"),
-        "thinking": str,
-        "assistant_done": bool,
+        "message": get_type("LLMChatMessage"),
         "metrics": get_type("LLMChatMetrics"),
     }
 
@@ -66,15 +63,16 @@ class OllamaChatNode(StreamingNode):
         "tool_timeout_s": 10,
     }
 
+    # Update params_meta:
     params_meta = [
         {"name": "stream", "type": "combo", "default": True, "options": [True, False]},
-        # Hidden from UI: options and keep_alive are supported internally but not user-facing
-        {"name": "temperature", "type": "number", "default": 0.7},
+        {"name": "temperature", "type": "number", "default": 0.7, "min": 0.0, "max": 1.5, "step": 0.05},
         {"name": "seed_mode", "type": "combo", "default": "fixed", "options": ["fixed", "random", "increment"]},
-        {"name": "seed", "type": "number", "default": 0},
+        {"name": "seed", "type": "number", "default": 0, "min": 0, "step": 1, "precision": 0},
         {"name": "think", "type": "combo", "default": False, "options": [False, True]},
-        {"name": "max_tool_iters", "type": "number", "default": 2},
-        {"name": "tool_timeout_s", "type": "number", "default": 10},
+        {"name": "max_tool_iters", "type": "number", "default": 2, "min": 0, "step": 1, "precision": 0},
+        {"name": "tool_timeout_s", "type": "number", "default": 10, "min": 0, "step": 1, "precision": 0},
+        {"name": "json_mode", "type": "combo", "default": False, "options": [False, True]},
     ]
 
     ui_module = "OllamaChatNodeUI"
@@ -102,16 +100,10 @@ class OllamaChatNode(StreamingNode):
         - a plain-text prompt (as a user role message)
         - both (prompt appended to existing)
         """
-        result: List[Dict[str, Any]] = []
-        if existing_messages:
-            # Shallow copy to avoid mutating caller-provided list
-            result.extend(existing_messages)
-        # Prepend/ensure a system message if provided and not already present
-        if isinstance(system_prompt, str) and system_prompt.strip():
-            has_system = any(isinstance(m, dict) and m.get("role") == "system" for m in result)
-            if not has_system:
-                result.insert(0, {"role": "system", "content": system_prompt})
-        if isinstance(prompt, str) and prompt.strip():
+        result = list(existing_messages or [])
+        if system_prompt and not any(m.get("role") == "system" for m in result):
+            result.insert(0, {"role": "system", "content": system_prompt})
+        if prompt:
             result.append({"role": "user", "content": prompt})
         return result
 
@@ -308,7 +300,7 @@ class OllamaChatNode(StreamingNode):
             if not model:
                 error_msg = "No model provided to OllamaChatNode. Check model selector connection."
                 print(f"OllamaChatNode: ERROR - {error_msg}")
-                yield {"metrics": {"error": error_msg}, "assistant_text": "", "assistant_done": True}
+                yield {"message": {"role": "assistant", "content": ""}, "metrics": {"error": error_msg}}
                 return
 
             host: str = inputs.get("host") or os.getenv("OLLAMA_HOST", "http://localhost:11434")
@@ -327,7 +319,7 @@ class OllamaChatNode(StreamingNode):
             if not messages and not prompt_text:
                 error_msg = "No messages or prompt provided to OllamaChatNode"
                 print(f"OllamaChatNode: ERROR - {error_msg}")
-                yield {"metrics": {"error": error_msg}, "assistant_text": "", "assistant_done": True}
+                yield {"message": {"role": "assistant", "content": ""}, "metrics": {"error": error_msg}}
                 return
 
             # Apply temperature
@@ -417,7 +409,7 @@ class OllamaChatNode(StreamingNode):
                                     if isinstance(thinking_piece, str) and thinking_piece:
                                         accumulated_thinking.append(thinking_piece)
                                     if accumulated_content:
-                                        yield {"assistant_text": "".join(accumulated_content), "assistant_done": False}
+                                        yield {"message": {"role": "assistant", "content": "".join(accumulated_content)}}
                             finally:
                                 try:
                                     if hasattr(stream, "aclose"):
@@ -438,18 +430,9 @@ class OllamaChatNode(StreamingNode):
                                 final_message = {}
                             if final_content:
                                 final_message["content"] = final_content
-                            thinking_final: str = ""
-                            if isinstance(final_message.get("thinking"), str):
-                                thinking_final = final_message.get("thinking") or ""
-                            elif accumulated_thinking:
-                                thinking_final = "".join(accumulated_thinking)
-                            yield {
-                                "assistant_text": final_content,
-                                "assistant_message": final_message,
-                                "thinking": thinking_final,
-                                "assistant_done": True,
-                                "metrics": metrics,
-                            }
+                            if not isinstance(final_message.get("thinking"), str) and accumulated_thinking:
+                                final_message["thinking"] = "".join(accumulated_thinking)
+                            yield {"message": final_message, "metrics": metrics}
                         finally:
                             try:
                                 await client.close()
@@ -557,13 +540,13 @@ class OllamaChatNode(StreamingNode):
                                         if isinstance(thinking_piece, str) and thinking_piece:
                                             accumulated_thinking.append(thinking_piece)
                                         if accumulated_content:
-                                            yield {"assistant_text": "".join(accumulated_content), "assistant_done": False}
+                                            yield {"message": {"role": "assistant", "content": "".join(accumulated_content)}}
                                     elif mtype == "done":
                                         last_resp = (msg.get("last") or {})
                                         break
                                     elif mtype == "error":
                                         err = str(msg.get("error") or "unknown error")
-                                        yield {"metrics": {"error": err}, "assistant_text": "", "assistant_done": True}
+                                        yield {"message": {"role": "assistant", "content": ""}, "metrics": {"error": err}}
                                         return
                             # If cancelled, exit without emitting a final message
                             if was_cancelled:
@@ -582,18 +565,9 @@ class OllamaChatNode(StreamingNode):
                                 final_message = {}
                             if final_content:
                                 final_message["content"] = final_content
-                            thinking_final: str = ""
-                            if isinstance(final_message.get("thinking"), str):
-                                thinking_final = final_message.get("thinking") or ""
-                            elif accumulated_thinking:
-                                thinking_final = "".join(accumulated_thinking)
-                            yield {
-                                "assistant_text": final_content,
-                                "assistant_message": final_message,
-                                "thinking": thinking_final,
-                                "assistant_done": True,
-                                "metrics": metrics,
-                            }
+                            if not isinstance(final_message.get("thinking"), str) and accumulated_thinking:
+                                final_message["thinking"] = "".join(accumulated_thinking)
+                            yield {"message": final_message, "metrics": metrics}
                         finally:
                             # Cleanup child and IPC
                             try:
@@ -654,7 +628,7 @@ class OllamaChatNode(StreamingNode):
                                     if isinstance(thinking_piece, str) and thinking_piece:
                                         accumulated_thinking.append(thinking_piece)
                                     if accumulated_content:
-                                        yield {"assistant_text": "".join(accumulated_content), "assistant_done": False}
+                                        yield {"message": {"role": "assistant", "content": "".join(accumulated_content)}}
                             finally:
                                 try:
                                     if hasattr(stream, "aclose"):
@@ -664,7 +638,7 @@ class OllamaChatNode(StreamingNode):
 
                             # Emit a final partial update mirroring the last accumulated content
                             if accumulated_content:
-                                yield {"assistant_text": "".join(accumulated_content), "assistant_done": False}
+                                yield {"message": {"role": "assistant", "content": "".join(accumulated_content)}}
 
                             # Build final message and metrics from the streamed parts
                             final_message = (last_resp.get("message") if isinstance(last_resp, dict) else {}) or {}
@@ -679,18 +653,9 @@ class OllamaChatNode(StreamingNode):
                                 final_message = {}
                             if final_content:
                                 final_message["content"] = final_content
-                            thinking_final: str = ""
-                            if isinstance(final_message.get("thinking"), str):
-                                thinking_final = final_message.get("thinking") or ""
-                            elif accumulated_thinking:
-                                thinking_final = "".join(accumulated_thinking)
-                            yield {
-                                "assistant_text": final_content,
-                                "assistant_message": final_message,
-                                "thinking": thinking_final,
-                                "assistant_done": True,
-                                "metrics": metrics,
-                            }
+                            if not isinstance(final_message.get("thinking"), str) and accumulated_thinking:
+                                final_message["thinking"] = "".join(accumulated_thinking)
+                            yield {"message": final_message, "metrics": metrics}
                         finally:
                             try:
                                 await client.close()
@@ -720,16 +685,7 @@ class OllamaChatNode(StreamingNode):
                     metrics["seed"] = int(effective_seed) if effective_seed is not None else None
                     if "temperature" in options:
                         metrics["temperature"] = options["temperature"]
-                    thinking_final: str = ""
-                    if isinstance(final_message.get("thinking"), str):
-                        thinking_final = final_message.get("thinking") or ""
-                    yield {
-                        "assistant_text": final_message.get("content") or "",
-                        "assistant_message": final_message,
-                        "thinking": thinking_final,
-                        "assistant_done": True,
-                        "metrics": metrics,
-                    }
+                    yield {"message": final_message, "metrics": metrics}
             finally:
                 client = getattr(self, "_client", None)
                 if client is not None:
@@ -743,7 +699,7 @@ class OllamaChatNode(StreamingNode):
             return
         except Exception as e:
             # Surface error to UI via metrics field
-            yield {"metrics": {"error": str(e)}}
+            yield {"message": {"role": "assistant", "content": ""}, "metrics": {"error": str(e)}}
         finally:
             # Reset cancel flag for next run
             self._cancel_event.clear()
@@ -828,14 +784,8 @@ class OllamaChatNode(StreamingNode):
                 metrics["seed"] = int(effective_seed) if effective_seed is not None else None
                 if "temperature" in options:
                     metrics["temperature"] = options["temperature"]
-                thinking_final: str = ""
-                if isinstance(final_message.get("thinking"), str):
-                    thinking_final = final_message.get("thinking") or ""
                 return {
-                    "assistant_text": final_message.get("content") or "",
-                    "assistant_message": final_message,
-                    "thinking": thinking_final,
-                    "assistant_done": True,
+                    "message": final_message,
                     "metrics": metrics,
                 }
             finally:
@@ -845,4 +795,4 @@ class OllamaChatNode(StreamingNode):
                     pass
                 self._client = None
         except Exception as e:
-            return {"metrics": {"error": str(e)}}
+            return {"message": {"role": "assistant", "content": ""}, "metrics": {"error": str(e)}}

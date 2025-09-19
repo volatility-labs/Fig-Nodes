@@ -40,8 +40,8 @@ async def test_ollama_integration(mock_ollama_client):
         results = {**initial_results, **chat_results}
         
         assert 2 in results
-        assert results[2]["assistant_text"] == "Hello from Ollama"
-        assert results[2]["assistant_done"]
+        assert results[2]["message"]["content"] == "Hello from Ollama"
+        assert isinstance(results[2].get("metrics", {}), dict)
         
         # Verify chat was called with expected args
         mock_chat.assert_called_once()

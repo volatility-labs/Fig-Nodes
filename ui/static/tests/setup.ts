@@ -34,6 +34,7 @@ vi.mock('@comfyorg/litegraph', () => {
             this.flags = {};
             this.pos = [0, 0];
         }
+        configure(info: any) { /* mock */ }
         addInput(name: string, type: any) {
             const slot = { name, type };
             this.inputs.push(slot);

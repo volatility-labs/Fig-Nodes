@@ -57,7 +57,11 @@ export default class LoggingNodeUI extends BaseCustomNode {
 
     updateDisplay(result: any) {
         // If streaming-style payload, avoid replacing accumulated text
-        if (result && (typeof result.assistant_text === 'string' || (result.assistant_message && typeof result.assistant_message.content === 'string'))) {
+        if (result && (
+            typeof (result as any).assistant_text === 'string' ||
+            ((result as any).assistant_message && typeof (result as any).assistant_message.content === 'string') ||
+            ((result as any).message && typeof (result as any).message.content === 'string')
+        )) {
             return;
         }
         const formatted = this.tryFormat(result);
@@ -71,10 +75,8 @@ export default class LoggingNodeUI extends BaseCustomNode {
         let chunk: string = '';
         if (typeof candidate === 'string') {
             chunk = candidate;
-        } else if (candidate && typeof (candidate as any).assistant_text === 'string') {
-            chunk = (candidate as any).assistant_text;
-        } else if (candidate && (candidate as any).assistant_message && typeof (candidate as any).assistant_message.content === 'string') {
-            chunk = (candidate as any).assistant_message.content;
+        } else if (candidate && (candidate as any).message && typeof (candidate as any).message.content === 'string') {
+            chunk = (candidate as any).message.content;
         } else {
             try { chunk = JSON.stringify(candidate); } catch { chunk = String(candidate ?? ''); }
         }

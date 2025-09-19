@@ -4,7 +4,7 @@ export default class OllamaModelSelectorNodeUI extends BaseCustomNode {
 
     constructor(title: string, data: any) {
         super(title, data);
-        this.size = [280, 120];
+        this.size = [280, 140];
         this.color = '#1f2a44';
         this.bgcolor = '#0f172a';
         // Do not render result text inside this selector node
@@ -13,6 +13,11 @@ export default class OllamaModelSelectorNodeUI extends BaseCustomNode {
         this.addWidget('button', 'Refresh', '', async () => {
             try { await this.fetchAndPopulateModels(); } catch { }
         }, {});
+    }
+
+    onAdded() {
+        // Populate model list once the node is added
+        this.fetchAndPopulateModels().catch(() => { });
     }
 
     async fetchAndPopulateModels() {

@@ -24,22 +24,17 @@ export default class OllamaChatViewerNodeUI extends BaseCustomNode {
     }
 
     onStreamUpdate(_data: any) {
-        // Expect either { assistant_text } progressive or { assistant_message } final
-        const text = _data?.assistant_text;
-        const final = _data?.assistant_message;
-        if (typeof text === 'string') {
-            this.displayText = text;
-        } else if (final && typeof final?.content === 'string') {
-            this.displayText = final.content;
+        const msg = _data?.message;
+        if (msg && typeof msg.content === 'string') {
+            this.displayText = msg.content;
         }
         this.setDirtyCanvas(true, true);
     }
 
     updateDisplay(result: any) {
         // For non-stream payloads routed to viewer
-        const textPref = result?.assistant_text;
-        const msg = result?.assistant_message || result?.output || result;
-        const text = typeof textPref === 'string' ? textPref : (typeof msg === 'string' ? msg : (msg?.content || JSON.stringify(msg, null, 2)));
+        const msg = result?.message || result?.output || result;
+        const text = (msg && typeof msg.content === 'string') ? msg.content : (typeof msg === 'string' ? msg : JSON.stringify(msg, null, 2));
         this.displayText = text || '';
         this.setDirtyCanvas(true, true);
     }

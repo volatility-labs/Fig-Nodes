@@ -42,7 +42,18 @@ class LoggingNode(BaseNode):
                 except Exception:
                     text = str(value)
             else:
-                text = str(value)
+                # Prefer message.content if present to keep logging concise
+                try:
+                    if isinstance(value, dict) and isinstance(value.get("message"), dict):
+                        inner = value.get("message")
+                        if isinstance(inner.get("content"), str):
+                            text = inner.get("content")
+                        else:
+                            text = str(value)
+                    else:
+                        text = str(value)
+                except Exception:
+                    text = str(value)
             print(f"LoggingNode {self.id}: {text}")
         return {"output": text}
 

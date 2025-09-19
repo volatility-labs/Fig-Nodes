@@ -2,9 +2,15 @@ import { LGraphNode, LiteGraph } from '@comfyorg/litegraph';
 import { getTypeColor } from '../types';
 import { showError } from '../utils/uiUtils';
 
+// Reinstate module augmentation at top:
+declare module '@comfyorg/litegraph' {
+    interface INodeInputSlot {
+        color?: string;
+    }
+}
+
 export default class BaseCustomNode extends LGraphNode {
     displayResults: boolean = true;
-    multiInputs?: Record<string, { slots: string[]; multiType: string; color?: string }>;
     result: any;
     displayText: string = '';
     properties: { [key: string]: any } = {};
@@ -27,19 +33,9 @@ export default class BaseCustomNode extends LGraphNode {
                     color = getTypeColor(typeInfo);
                 }
                 const typeStrLower = typeof typeStr === 'string' ? typeStr.toLowerCase() : '';
-                if (typeof typeStr === 'string' && typeStrLower.startsWith('list<') && typeInfo) {
-                    const lt = typeStr.indexOf('<');
-                    const gt = typeStr.lastIndexOf('>');
-                    const innerStr = (lt !== -1 && gt !== -1 && gt > lt) ? typeStr.slice(lt + 1, gt) : 'any';
-                    const multiType = innerStr;
-                    this.multiInputs = this.multiInputs || {};
-                    this.multiInputs[inp] = { slots: [], multiType, color };
-                    this.addMultiSlot(inp);
-                } else if (typeof typeStr === 'string' && typeStrLower.startsWith('dict<') && typeInfo) {
-                    const multiType = typeStr;
-                    this.multiInputs = this.multiInputs || {};
-                    this.multiInputs[inp] = { slots: [], multiType, color };
-                    this.addMultiSlot(inp);
+                if (typeof typeStr === 'string' && (typeStrLower.startsWith('list<') || typeStrLower.startsWith('dict<')) && typeInfo) {
+                    const inputSlot = this.addInput(inp, typeStr);
+                    if (color) inputSlot.color = color;
                 } else {
                     const inputSlot = this.addInput(inp, typeStr);
                     if (color) {
@@ -67,6 +63,19 @@ export default class BaseCustomNode extends LGraphNode {
 
         this.properties = {};
 
+        // Set defaults for all params regardless of UI type
+        if (data.params) {
+            data.params.forEach((param: any) => {
+                let paramType = param.type;
+                if (!paramType) {
+                    paramType = this.determineParamType(param.name);
+                }
+                const defaultValue = param.default !== undefined ? param.default : this.getDefaultValue(param.name);
+                this.properties[param.name] = defaultValue;
+            });
+        }
+
+        // Only auto-add generic widgets if no custom UI module
         if (data.params) {
             data.params.forEach((param: any) => {
                 let paramType = param.type;
@@ -94,11 +103,36 @@ export default class BaseCustomNode extends LGraphNode {
                     this.addWidget('text', param.name, defaultValue, (v) => {
                         this.properties[param.name] = v;
                     }, { multiline: true });
-                } else {
-                    const widgetOpts = paramType === 'combo' ? { values: param.options || [] } : {};
-                    this.addWidget(paramType as any, param.name, this.properties[param.name], (v: any) => {
+                } else if (paramType === 'number') {
+                    const opts = { min: param.min ?? 0, max: param.max ?? undefined, step: param.step ?? 0.1, precision: param.precision ?? (param.step < 1 ? 2 : 0) };
+                    const widget = this.addWidget('number', param.name, defaultValue, (v) => {
                         this.properties[param.name] = v;
+                        widget.value = v;
+                        this.setDirtyCanvas(true, true);
+                    }, opts);
+                    // Ensure widget value stays in sync with properties
+                    widget.value = this.properties[param.name];
+                } else {
+                    let widgetOpts = {};
+                    let isBooleanCombo = false;
+                    let originalOptions = param.options || [];
+                    let displayValues = originalOptions;
+                    if (paramType === 'combo' && originalOptions.length === 2 && typeof originalOptions[0] === 'boolean' && typeof originalOptions[1] === 'boolean') {
+                        isBooleanCombo = true;
+                        displayValues = originalOptions.map((b: boolean) => b ? 'true' : 'false');
+                    }
+                    widgetOpts = { values: displayValues };
+                    const widget = this.addWidget(paramType as any, param.name, this.properties[param.name], (v: any) => {
+                        let finalV = v;
+                        if (isBooleanCombo) {
+                            finalV = v === 'true';
+                        }
+                        this.properties[param.name] = finalV;
+                        widget.value = isBooleanCombo ? (finalV ? 'true' : 'false') : finalV;
+                        this.setDirtyCanvas(true, true);
                     }, widgetOpts);
+                    // Ensure widget value stays in sync with properties
+                    widget.value = isBooleanCombo ? (this.properties[param.name] ? 'true' : 'false') : this.properties[param.name];
                 }
             });
         }
@@ -389,123 +423,22 @@ export default class BaseCustomNode extends LGraphNode {
         input.select();
     }
 
-    addMultiSlot(inp: string) {
-        const info = this.multiInputs![inp];
-        const index = info.slots.length;
-        const slotName = `${inp}_${index}`;
-        const inputSlot = this.addInput(slotName, info.multiType);
-        if (info.color) {
-            // @ts-ignore: Custom color property
-            inputSlot.color = info.color;
-        }
-        info.slots.push(slotName);
-    }
+    onConnectionsChange() { }
 
-    onDblClick(e: any, pos: any, canvas: any) {
-        // Check if double-click is on the title area
-        const titleHeight = LiteGraph.NODE_TITLE_HEIGHT || 30;
-        const localPos = Array.isArray(pos) ? pos : [pos[0], pos[1]];
-        if (localPos && localPos[1] <= titleHeight) {
-            this.startInlineTitleEdit(e, canvas);
-            return true; // Prevent default double-click behavior
-        }
-        return false;
-    }
-
-    startInlineTitleEdit(_event: MouseEvent, canvas: any) {
-        // Create input element for inline editing
-        const input = document.createElement('input');
-        input.type = 'text';
-        input.value = this.title;
-        input.className = 'inline-title-input';
-
-        // Position the input over the node title
-        const canvasRect = canvas.canvas.getBoundingClientRect();
-
-        // Calculate screen position using canvas transformation
-        const scale = canvas.ds?.scale || 1;
-        const offset = canvas.ds?.offset || [0, 0];
-
-        const screenX = (this.pos[0] + offset[0]) * scale;
-        const screenY = (this.pos[1] + offset[1]) * scale;
-
-        input.style.position = 'absolute';
-        input.style.left = `${canvasRect.left + screenX}px`;
-        input.style.top = `${canvasRect.top + screenY}px`;
-        input.style.width = `${this.size[0] * scale}px`;
-        input.style.height = `${(LiteGraph.NODE_TITLE_HEIGHT || 30) * scale}px`;
-        input.style.fontSize = `${12 * scale}px`;
-        input.style.zIndex = '10000';
-
-        document.body.appendChild(input);
-        input.focus();
-        input.select();
-
-        const finishEdit = () => {
-            const newTitle = input.value.trim();
-            if (newTitle && newTitle !== this.title) {
-                this.title = newTitle;
-                // Update the title widget if it exists
-                const titleWidget = this.widgets?.find(w => w.name === 'Title');
-                if (titleWidget) {
-                    titleWidget.value = newTitle;
-                }
-                this.setDirtyCanvas(true, true);
-            }
-            if (input.parentNode) {
-                input.parentNode.removeChild(input);
-            }
-        };
-
-        const cancelEdit = () => {
-            if (input.parentNode) {
-                input.parentNode.removeChild(input);
-            }
-        };
-
-        // Handle finish editing events
-        input.addEventListener('blur', finishEdit);
-        input.addEventListener('keydown', (e) => {
-            e.stopPropagation(); // Prevent canvas shortcuts
-            if (e.key === 'Enter') {
-                finishEdit();
-            } else if (e.key === 'Escape') {
-                cancelEdit();
-            }
-        });
-    }
-
-    onConnectionsChange(type: number, slot: number, connected: boolean, _link_info: any, _input_or_output: any) {
-        if (type !== LiteGraph.INPUT) return;
-        const input = this.inputs[slot];
-        if (!input) return;
-        const nameParts = input.name.split('_');
-        if (nameParts.length !== 2 || isNaN(parseInt(nameParts[1]))) return;
-        const baseName = nameParts[0];
-        const info = this.multiInputs?.[baseName];
-        if (!info) return;
-        const slotIndex = parseInt(nameParts[1]);
-        if (connected) {
-            if (slotIndex === info.slots.length - 1) {
-                this.addMultiSlot(baseName);
-            }
-        } else {
-            if (slotIndex < info.slots.length - 1 && !input.link) {
-                this.removeInput(slot);
-                info.slots.splice(slotIndex, 1);
-                for (let j = 0; j < info.slots.length; j++) {
-                    const currentName = info.slots[j];
-                    const newName = `${baseName}_${j}`;
-                    if (currentName !== newName) {
-                        const sIdx = this.findInputSlot(currentName);
-                        if (sIdx !== -1) {
-                            this.inputs[sIdx].name = newName;
-                        }
-                        info.slots[j] = newName;
-                    }
-                }
-            }
-        }
+    configure(info: any) {
+        super.configure(info);
+        // Sync widget values with properties after configuration
+        this.syncWidgetValues();
         this.setDirtyCanvas(true, true);
+    }
+
+    syncWidgetValues() {
+        if (this.widgets) {
+            this.widgets.forEach((widget: any) => {
+                if (widget.name && this.properties.hasOwnProperty(widget.name)) {
+                    widget.value = this.properties[widget.name];
+                }
+            });
+        }
     }
 }

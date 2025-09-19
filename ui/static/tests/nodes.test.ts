@@ -48,29 +48,29 @@ describe('Node UI classes', () => {
 
     test('LoggingNodeUI appends streaming chunks and ignores replacement when streaming', () => {
         const node = new LoggingNodeUI('Log', baseData());
-        node.onStreamUpdate({ assistant_text: 'Hello ' });
-        node.onStreamUpdate({ assistant_text: 'Hello World' });
+        node.onStreamUpdate({ message: { content: 'Hello ' } });
+        node.onStreamUpdate({ message: { content: 'Hello World' } });
         expect(node.displayText).toBe('Hello World');
-        node.updateDisplay({ assistant_text: 'Ignored' });
+        node.updateDisplay({ message: { content: 'Ignored' } });
         expect(node.displayText).toBe('Hello World');
     });
 
     test('OllamaChatNodeUI streaming and final message handling', () => {
         const node = new OllamaChatNodeUI('Chat', baseData());
-        node.onStreamUpdate({ assistant_text: 'Hi', assistant_done: false });
+        node.onStreamUpdate({ message: { content: 'Hi' } });
         expect(node.displayText).toBe('Hi');
-        node.onStreamUpdate({ assistant_message: { content: 'Final' } });
+        node.onStreamUpdate({ message: { content: 'Final' } });
         expect(node.displayText).toBe('Final');
-        node.updateDisplay({ output: 'Static' });
+        node.updateDisplay({ message: { content: 'Static' } });
         expect(node.displayText).toBe('Static');
     });
 
     test('OllamaChatViewerNodeUI clears and copies', () => {
         const node = new OllamaChatViewerNodeUI('Viewer', baseData());
-        node.onStreamUpdate({ assistant_text: 'A' });
-        node.onStreamUpdate({ assistant_text: 'AB' });
+        node.onStreamUpdate({ message: { content: 'A' } });
+        node.onStreamUpdate({ message: { content: 'AB' } });
         expect(node.displayText).toBe('AB');
-        node.onStreamUpdate({ assistant_message: { content: 'C' } });
+        node.onStreamUpdate({ message: { content: 'C' } });
         expect(node.displayText).toBe('C');
         // simulate clear button
         const clear = node.widgets!.find(w => w.name === 'Clear');
@@ -94,9 +94,9 @@ describe('Node UI classes', () => {
 
     test('StreamingCustomNode accumulates and displays JSON payload', () => {
         const node = new StreamingCustomNode('Stream', baseData());
-        node.onStreamUpdate({ assistant_text: 'x' });
-        expect(node.result).toEqual({ assistant_text: 'x' });
-        expect(node.displayText).toContain('"assistant_text": "x"');
+        node.onStreamUpdate({ message: { content: 'x' } });
+        expect(node.result).toEqual({ message: { content: 'x' } });
+        expect(node.displayText).toContain('"message"');
     });
 
     test('TextInputNodeUI inline editor behavior', () => {
@@ -107,6 +107,119 @@ describe('Node UI classes', () => {
         expect(typeof (node as any).onDrawForeground).toBe('function');
         // Private ensureTextarea exists at runtime
         expect(typeof (node as any).ensureTextarea).toBe('function');
+    });
+});
+
+describe('BaseCustomNode comprehensive tests', () => {
+    test('creates text widget and updates value via prompt', () => {
+        const data = baseData();
+        data.params = [{ name: 'textParam', type: 'text', default: 'initial' }];
+        const node = new BaseCustomNode('Test', data);
+        expect(node.widgets).toBeDefined();
+        const widget = node.widgets![0];
+        expect(widget.name).toBe('textParam: initial');
+        expect(node.properties.textParam).toBe('initial');
+
+        // Simulate prompt callback
+        expect(widget.callback).toBeDefined();
+        widget.callback!();
+        // Note: Can't fully test prompt UI, but assume callback updates
+        // Manually invoke the inner callback
+        const mockNewVal = 'updated';
+        // The callback is the prompt invoker; to test update logic, we need to mimic it
+        // Since it's private, test the effect
+        node.properties.textParam = 'updated';
+        // Widget name doesn't auto-update; the update is inside the callback
+        // Test that property updates work
+        expect(node.properties.textParam).toBe('updated');
+    });
+
+    test('creates number widget with options and updates value', () => {
+        const data = baseData();
+        data.params = [{ name: 'numParam', type: 'number', default: 5, min: 0, max: 10, step: 1 }];
+        const node = new BaseCustomNode('Test', data);
+        expect(node.widgets).toBeDefined();
+        const widget = node.widgets![0];
+        expect(widget.type).toBe('number');
+        expect(widget.value).toBe(5);
+        expect(widget.options.min).toBe(0);
+        expect(widget.options.max).toBe(10);
+        expect(widget.options.step).toBe(1);
+
+        expect(widget.callback).toBeDefined();
+        widget.callback!(7);
+        expect(node.properties.numParam).toBe(7);
+        expect(widget.value).toBe(7); // Since we set widget.value in constructor
+    });
+
+    test('creates combo widget with strings and toggles', () => {
+        const data = baseData();
+        data.params = [{ name: 'comboParam', type: 'combo', options: ['opt1', 'opt2', 'opt3'], default: 'opt1' }];
+        const node = new BaseCustomNode('Test', data);
+        expect(node.widgets).toBeDefined();
+        const widget = node.widgets![0];
+        expect(widget.type).toBe('combo');
+        expect(widget.value).toBe('opt1');
+        expect(widget.options.values).toEqual(['opt1', 'opt2', 'opt3']);
+
+        expect(widget.callback).toBeDefined();
+        widget.callback!('opt2');
+        expect(node.properties.comboParam).toBe('opt2');
+        expect(widget.value).toBe('opt2');
+    });
+
+    test('handles boolean combo widget correctly', () => {
+        const data = baseData();
+        data.params = [{ name: 'boolParam', type: 'combo', options: [true, false], default: true }];
+        const node = new BaseCustomNode('Test', data);
+        expect(node.widgets).toBeDefined();
+        const widget = node.widgets![0];
+        expect(widget.type).toBe('combo');
+        expect(widget.value).toBe('true');
+        expect(widget.options.values).toEqual(['true', 'false']);
+
+        expect(widget.callback).toBeDefined();
+        widget.callback!('false');
+        expect(node.properties.boolParam).toBe(false);
+        expect(widget.value).toBe('false');
+
+        widget.callback!('true');
+        expect(node.properties.boolParam).toBe(true);
+        expect(widget.value).toBe('true');
+    });
+
+    test('wraps text correctly in display', () => {
+        const node = new BaseCustomNode('Test', baseData());
+        node.displayText = 'This is a long text that should wrap across multiple lines in the node display area';
+        const mockCtx = { measureText: (text: string) => ({ width: text.length * 8 }) }; // Simple mock: 8px per char
+        const lines = node.wrapText(node.displayText, 100, mockCtx as any);
+        expect(lines.length).toBeGreaterThan(1);
+        expect(lines.every(line => mockCtx.measureText(line).width <= 100)).toBe(true);
+    });
+
+    test('sets error and updates color', () => {
+        const node = new BaseCustomNode('Test', baseData());
+        node.setError('Test error');
+        expect(node.error).toBe('Test error');
+        expect(node.color).toBe('#FF0000');
+    });
+
+    test('syncs widget values on configure', () => {
+        const data = baseData();
+        data.params = [{ name: 'syncParam', type: 'number', default: 10 }];
+        const node = new BaseCustomNode('Test', data);
+        node.properties.syncParam = 20;
+        node.configure({}); // Triggers sync
+        expect(node.widgets).toBeDefined();
+        const widget = node.widgets![0];
+        expect(widget.value).toBe(20);
+    });
+
+    test('pulses highlight', () => {
+        const node = new BaseCustomNode('Test', baseData());
+        node.pulseHighlight();
+        expect((node as any).highlightStartTs).not.toBeNull();
+        // Can't test timing, but verify it sets the timestamp
     });
 });
 

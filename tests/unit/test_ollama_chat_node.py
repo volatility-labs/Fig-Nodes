@@ -20,29 +20,26 @@ async def test_start_streaming_mode(chat_node):
     with patch("ollama.AsyncClient") as mock_client:
         mock_stream = AsyncMock()
         mock_stream.__aiter__.return_value = [
-            {"message": {"content": "Hi"}},
-            {"message": {"content": " there"}},
-            {"done": True, "total_duration": 100}  # Final chunk without content to exit loop
+            {"message": {"role": "assistant", "content": "Hi"}},
+            {"message": {"role": "assistant", "content": " there"}},
+            {"done": True, "total_duration": 100}
         ]
         mock_chat = AsyncMock(return_value=mock_stream)
         mock_client.return_value.chat = mock_chat
         
         gen = chat_node.start(inputs)
         output1 = await anext(gen)
-        assert output1["assistant_text"] == "Hi"
-        assert not output1["assistant_done"]
+        assert output1["message"]["content"] == "Hi"
+        assert isinstance(output1.get("metrics", {}), dict)
         
         output2 = await anext(gen)
-        assert output2["assistant_text"] == "Hi there"
-        assert not output2["assistant_done"]
+        assert output2["message"]["content"] == "Hi there"
         
         output3 = await anext(gen)
-        assert output3["assistant_text"] == "Hi there"
-        assert not output3["assistant_done"]
+        assert output3["message"]["content"] == "Hi there"
         
         output4 = await anext(gen)
-        assert output4["assistant_text"] == "Hi there"
-        assert output4["assistant_done"]
+        assert output4["message"]["content"] == "Hi there"
         assert "total_duration" in output4["metrics"]
 
 @pytest.mark.asyncio
@@ -55,7 +52,7 @@ async def test_start_non_streaming_mode(chat_node):
     
     with patch("ollama.AsyncClient") as mock_client:
         mock_response = {
-            "message": {"content": "Hello back"},
+            "message": {"role": "assistant", "content": "Hello back"},
             "total_duration": 100
         }
         mock_chat = AsyncMock(return_value=mock_response)
@@ -63,8 +60,7 @@ async def test_start_non_streaming_mode(chat_node):
         
         gen = chat_node.start(inputs)
         output = await anext(gen)
-        assert output["assistant_text"] == "Hello back"
-        assert output["assistant_done"]
+        assert output["message"]["content"] == "Hello back"
         assert output["metrics"]["total_duration"] == 100
 
 @pytest.mark.asyncio
@@ -93,8 +89,8 @@ async def test_think_mode(chat_node):
         mock_client.return_value.chat = mock_chat
         
         result = await chat_node.execute(inputs)
-        assert result["thinking"] == "Thinking step 1\nThinking step 2"
-        assert result["assistant_text"] == "Final"
+        assert result["message"]["thinking"] == "Thinking step 1\nThinking step 2"
+        assert result["message"]["content"] == "Final"
 
 @pytest.mark.asyncio
 async def test_tool_calling(chat_node):
@@ -114,7 +110,7 @@ async def test_tool_calling(chat_node):
         mock_client.return_value.chat = mock_chat
         
         result = await chat_node.execute(inputs)
-        assert "tool_calls" in result["assistant_message"]
+        assert "tool_calls" in result["message"]
 
 @pytest.mark.asyncio
 async def test_seed_modes_comprehensive(chat_node):
@@ -166,7 +162,7 @@ async def test_error_in_streaming(chat_node):
         
         gen = chat_node.start(inputs)
         partial = await anext(gen)
-        assert partial["assistant_text"] == "Partial"
+        assert partial["message"]["content"] == "Partial"
         
         final = await anext(gen)
         assert "error" in final["metrics"]
@@ -188,7 +184,7 @@ async def test_stop_mid_stream(chat_node):
         
         gen = chat_node.start(inputs)
         part1 = await anext(gen)
-        assert part1["assistant_text"] == "Part 1"
+        assert part1["message"]["content"] == "Part 1"
         
         chat_node.stop()
         
