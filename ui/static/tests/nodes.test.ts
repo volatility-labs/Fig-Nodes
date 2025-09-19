@@ -1,5 +1,4 @@
 import { describe, expect, test, vi, beforeEach } from 'vitest';
-import { LiteGraph, LGraphNode } from '@comfyorg/litegraph';
 
 import BaseCustomNode from '../nodes/BaseCustomNode';
 import LLMMessagesBuilderNodeUI from '../nodes/LLMMessagesBuilderNodeUI';
@@ -29,7 +28,7 @@ describe('Node UI classes', () => {
         const node = new BaseCustomNode('Base', baseData());
         expect(node.inputs.length).toBe(1);
         expect(node.outputs.length).toBe(1);
-        expect(node.widgets.length).toBeGreaterThan(0);
+        expect(node.widgets!.length).toBeGreaterThan(0);
         node.updateDisplay({ output: 'hello' });
         expect(typeof node.displayText).toBe('string');
         expect(node.displayText).toContain('hello');
@@ -74,15 +73,15 @@ describe('Node UI classes', () => {
         node.onStreamUpdate({ assistant_message: { content: 'C' } });
         expect(node.displayText).toBe('C');
         // simulate clear button
-        const clear = node.widgets.find(w => w.name === 'Clear');
+        const clear = node.widgets!.find(w => w.name === 'Clear');
         expect(clear).toBeTruthy();
-        clear.callback('');
+        clear?.callback?.('');
         expect(node.displayText).toBe('');
     });
 
     test('OllamaModelSelectorNodeUI fetch populates model list and selected', async () => {
         const node = new OllamaModelSelectorNodeUI('Selector', baseData());
-        node.widgets.push({ name: 'selected', options: { values: [] } } as any);
+        node.widgets!.push({ name: 'selected', options: { values: [] } } as any);
         (globalThis as any).fetch = vi.fn(async () => ({
             ok: true,
             json: async () => ({ models: [{ name: 'llama' }, { name: 'qwen' }] }),
