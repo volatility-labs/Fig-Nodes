@@ -400,7 +400,14 @@ class OllamaChatNode(StreamingNode):
                                 think=think,
                             )
                             try:
-                                async for part in stream:
+                                aiter = stream.__aiter__()
+                                while True:
+                                    if self._cancel_event.is_set():
+                                        return
+                                    try:
+                                        part = await aiter.__anext__()
+                                    except StopAsyncIteration:
+                                        break
                                     last_resp = part or {}
                                     rmsg = (last_resp.get("message") or {}) if isinstance(last_resp, dict) else {}
                                     content_piece = rmsg.get("content")
@@ -417,10 +424,6 @@ class OllamaChatNode(StreamingNode):
                                         await stream.aclose()
                                 except Exception:
                                     pass
-
-                            # Emit a final partial update mirroring the last accumulated content
-                            if accumulated_content:
-                                yield {"assistant_text": "".join(accumulated_content), "assistant_done": False}
 
                             # Build final message and metrics from the streamed parts
                             final_message = (last_resp.get("message") if isinstance(last_resp, dict) else {}) or {}
@@ -566,10 +569,6 @@ class OllamaChatNode(StreamingNode):
                             if was_cancelled:
                                 return
 
-                            # Emit a final partial update mirroring the last accumulated content
-                            if accumulated_content:
-                                yield {"assistant_text": "".join(accumulated_content), "assistant_done": False}
-
                             # Build final message and metrics from the streamed parts
                             final_message = (last_resp.get("message") if isinstance(last_resp, dict) else {}) or {}
                             for k in ("total_duration", "load_duration", "prompt_eval_count", "prompt_eval_duration", "eval_count", "eval_duration"):
@@ -638,7 +637,14 @@ class OllamaChatNode(StreamingNode):
                                 think=think,
                             )
                             try:
-                                async for part in stream:
+                                aiter = stream.__aiter__()
+                                while True:
+                                    if self._cancel_event.is_set():
+                                        return
+                                    try:
+                                        part = await aiter.__anext__()
+                                    except StopAsyncIteration:
+                                        break
                                     last_resp = part or {}
                                     rmsg = (last_resp.get("message") or {}) if isinstance(last_resp, dict) else {}
                                     content_piece = rmsg.get("content")
