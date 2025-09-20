@@ -50,3 +50,42 @@ async def test_ollama_integration(mock_ollama_client):
         assert call_args["messages"][0]["role"] == "user"
         assert call_args["messages"][0]["content"] == "Hello"
         assert not call_args["stream"]
+
+@pytest.mark.asyncio
+@patch("ollama.AsyncClient")
+async def test_ollama_streaming_integration(mock_ollama_client):
+    # Mock chat stream for quick completion
+    async def mock_stream():
+        yield {"message": {"content": "{}"}}
+        yield {"done": True, "total_duration": 50, "eval_count": 5}
+
+    mock_chat = AsyncMock(return_value=mock_stream())
+    mock_ollama_client.return_value.chat = mock_chat
+
+    # Define graph: TextInput -> OllamaChat (streaming)
+    graph_data = {
+        "nodes": [
+            {"id": 1, "type": "OllamaChatNode", "properties": {"stream": True, "json_mode": True}},
+            {"id": 2, "type": "TextInputNode", "properties": {"text": "Output empty JSON"}}
+        ],
+        "links": [
+            [0, 2, 0, 1, 3]  # text -> prompt
+        ]
+    }
+
+    executor = GraphExecutor(graph_data, NODE_REGISTRY)
+    stream_gen = executor.stream()
+
+    initial_results = await anext(stream_gen)
+    stream_tick1 = await anext(stream_gen)
+    final_tick = await anext(stream_gen)
+
+    results = {**initial_results, **stream_tick1, **final_tick}
+
+    assert 1 in results
+    assert results[1]["message"]["content"] == "{}"
+    assert "total_duration" in results[1].get("metrics", {})
+    assert "eval_count" in results[1].get("metrics", {})
+
+    with pytest.raises(StopAsyncIteration):
+        await anext(stream_gen)

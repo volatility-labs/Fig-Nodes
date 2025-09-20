@@ -303,7 +303,7 @@ class OllamaChatNode(StreamingNode):
                 yield {"message": {"role": "assistant", "content": ""}, "metrics": {"error": error_msg}}
                 return
 
-            host: str = inputs.get("host") or os.getenv("OLLAMA_HOST", "http://localhost:11434")
+            host: str = inputs.get("host") or os.environ.get("OLLAMA_HOST", "http://localhost:11434")
             use_stream: bool = bool(self.params.get("stream", True))
             # Derive Ollama format from json_mode toggle (True -> "json", False -> None)
             fmt: str = "json" if bool(self.params.get("json_mode", False)) else None
@@ -375,7 +375,7 @@ class OllamaChatNode(StreamingNode):
                 if use_stream:
                     print(f"OllamaChatNode: Starting streaming chat with model={model}")
                     # If running under pytest, avoid multiprocessing so mocks apply in-process
-                    if os.getenv("PYTEST_CURRENT_TEST"):
+                    if os.environ.get("PYTEST_CURRENT_TEST"):
                         print("OllamaChatNode: In-process streaming (test mode)")
                         client = AsyncClient(host=host)
                         self._client = client
@@ -518,11 +518,16 @@ class OllamaChatNode(StreamingNode):
                         try:
                             last_resp: Dict[str, Any] = {}
                             was_cancelled: bool = False
-                            while proc.is_alive() or parent_conn.poll(0.05):
+                            done_received: bool = False
+                            error_received: bool = False
+
+                            while not done_received and not error_received and not was_cancelled:
                                 if self._cancel_event.is_set():
                                     was_cancelled = True
                                     break
-                                if parent_conn.poll(0.1):
+
+                                # Block with timeout to allow cancel checks
+                                if parent_conn.poll(1.0):  # Increased timeout for efficiency
                                     try:
                                         msg = parent_conn.recv()
                                     except EOFError:
@@ -534,20 +539,51 @@ class OllamaChatNode(StreamingNode):
                                         last_resp = (msg.get("data") or {})
                                         rmsg = (last_resp.get("message") or {}) if isinstance(last_resp, dict) else {}
                                         content_piece = rmsg.get("content")
-                                        if content_piece:
-                                            accumulated_content.append(content_piece)
                                         thinking_piece = rmsg.get("thinking")
                                         if isinstance(thinking_piece, str) and thinking_piece:
                                             accumulated_thinking.append(thinking_piece)
-                                        if accumulated_content:
+                                        if content_piece:
+                                            accumulated_content.append(content_piece)
                                             yield {"message": {"role": "assistant", "content": "".join(accumulated_content)}}
                                     elif mtype == "done":
                                         last_resp = (msg.get("last") or {})
-                                        break
+                                        done_received = True
                                     elif mtype == "error":
                                         err = str(msg.get("error") or "unknown error")
                                         yield {"message": {"role": "assistant", "content": ""}, "metrics": {"error": err}}
-                                        return
+                                        error_received = True
+                                elif not proc.is_alive():
+                                    # Child exited without sending done; drain any remaining messages
+                                    while parent_conn.poll(0.1):
+                                        try:
+                                            msg = parent_conn.recv()
+                                            # Process msg as above
+                                            if not isinstance(msg, dict):
+                                                continue
+                                            mtype = msg.get("type")
+                                            if mtype == "part":
+                                                last_resp = (msg.get("data") or {})
+                                                rmsg = (last_resp.get("message") or {}) if isinstance(last_resp, dict) else {}
+                                                content_piece = rmsg.get("content")
+                                                thinking_piece = rmsg.get("thinking")
+                                                if isinstance(thinking_piece, str) and thinking_piece:
+                                                    accumulated_thinking.append(thinking_piece)
+                                                if content_piece:
+                                                    accumulated_content.append(content_piece)
+                                                    yield {"message": {"role": "assistant", "content": "".join(accumulated_content)}}
+                                            elif mtype == "done":
+                                                last_resp = (msg.get("last") or {})
+                                                done_received = True
+                                            elif mtype == "error":
+                                                err = str(msg.get("error") or "unknown error")
+                                                yield {"message": {"role": "assistant", "content": ""}, "metrics": {"error": err}}
+                                                error_received = True
+                                        except EOFError:
+                                            break
+                                    if not done_received and not error_received:
+                                        # If still no done, assume completion with last_resp
+                                        done_received = True
+
                             # If cancelled, exit without emitting a final message
                             if was_cancelled:
                                 return
@@ -622,12 +658,11 @@ class OllamaChatNode(StreamingNode):
                                     last_resp = part or {}
                                     rmsg = (last_resp.get("message") or {}) if isinstance(last_resp, dict) else {}
                                     content_piece = rmsg.get("content")
-                                    if content_piece:
-                                        accumulated_content.append(content_piece)
                                     thinking_piece = rmsg.get("thinking")
                                     if isinstance(thinking_piece, str) and thinking_piece:
                                         accumulated_thinking.append(thinking_piece)
-                                    if accumulated_content:
+                                    if content_piece:
+                                        accumulated_content.append(content_piece)
                                         yield {"message": {"role": "assistant", "content": "".join(accumulated_content)}}
                             finally:
                                 try:
@@ -635,10 +670,6 @@ class OllamaChatNode(StreamingNode):
                                         await stream.aclose()
                                 except Exception:
                                     pass
-
-                            # Emit a final partial update mirroring the last accumulated content
-                            if accumulated_content:
-                                yield {"message": {"role": "assistant", "content": "".join(accumulated_content)}}
 
                             # Build final message and metrics from the streamed parts
                             final_message = (last_resp.get("message") if isinstance(last_resp, dict) else {}) or {}
@@ -719,7 +750,7 @@ class OllamaChatNode(StreamingNode):
                 error_msg = "No model provided to OllamaChatNode. Check model selector connection."
                 return {"metrics": {"error": error_msg}, "assistant_text": "", "assistant_done": True}
 
-            host: str = inputs.get("host") or os.getenv("OLLAMA_HOST", "http://localhost:11434")
+            host: str = inputs.get("host") or os.environ.get("OLLAMA_HOST", "http://localhost:11434")
             # Force non-streaming for execute()
             fmt: str = "json" if bool(self.params.get("json_mode", False)) else None
             _keep_alive_param = self.params.get("keep_alive")
