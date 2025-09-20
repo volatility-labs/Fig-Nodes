@@ -1,9 +1,42 @@
 {
   "id": "00000000-0000-0000-0000-000000000000",
   "revision": 0,
-  "last_node_id": 4,
-  "last_link_id": 4,
+  "last_node_id": 8,
+  "last_link_id": 11,
   "nodes": [
+    {
+      "id": 5,
+      "type": "LoggingNode",
+      "pos": [
+        1149.11328125,
+        441.1796875
+      ],
+      "size": [
+        210,
+        179
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "input",
+          "type": 0,
+          "link": 11
+        }
+      ],
+      "outputs": [
+        {
+          "name": "output",
+          "type": "str",
+          "links": null
+        }
+      ],
+      "title": "LoggingNode",
+      "properties": {
+        "format": "auto"
+      }
+    },
     {
       "id": 2,
       "type": "OllamaModelSelectorNode",
@@ -16,7 +49,7 @@
         146
       ],
       "flags": {},
-      "order": 0,
+      "order": 2,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -24,14 +57,14 @@
           "name": "host",
           "type": "str",
           "links": [
-            1
+            7
           ]
         },
         {
           "name": "model",
           "type": "str",
           "links": [
-            2
+            8
           ]
         },
         {
@@ -49,15 +82,15 @@
       "bgcolor": "#0f172a"
     },
     {
-      "id": 3,
+      "id": 8,
       "type": "LoggingNode",
       "pos": [
-        1111.015625,
-        260.08203125
+        1139.69921875,
+        231.84375
       ],
       "size": [
         210,
-        89
+        100
       ],
       "flags": {},
       "order": 3,
@@ -66,7 +99,7 @@
         {
           "name": "input",
           "type": 0,
-          "link": 3
+          "link": 9
         }
       ],
       "outputs": [
@@ -82,29 +115,58 @@
       }
     },
     {
-      "id": 1,
+      "id": 4,
+      "type": "TextInputNode",
+      "pos": [
+        181.046875,
+        500.4453125
+      ],
+      "size": [
+        360,
+        200
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "text",
+          "type": "str",
+          "links": [
+            10
+          ]
+        }
+      ],
+      "title": "TextInputNode",
+      "properties": {
+        "value": "what is 1+1"
+      }
+    },
+    {
+      "id": 7,
       "type": "OllamaChatNode",
       "pos": [
-        676.35546875,
-        251.2734375
+        671.86328125,
+        241.890625
       ],
       "size": [
         320,
         374
       ],
       "flags": {},
-      "order": 2,
+      "order": 4,
       "mode": 0,
       "inputs": [
         {
           "name": "host",
           "type": "str",
-          "link": 1
+          "link": 7
         },
         {
           "name": "model",
           "type": "str",
-          "link": 2
+          "link": 8
         },
         {
           "name": "messages",
@@ -114,7 +176,7 @@
         {
           "name": "prompt",
           "type": "str",
-          "link": 4
+          "link": 10
         },
         {
           "name": "system",
@@ -132,13 +194,15 @@
           "name": "message",
           "type": "LLMChatMessage",
           "links": [
-            3
+            9
           ]
         },
         {
           "name": "metrics",
           "type": "LLMChatMetrics",
-          "links": null
+          "links": [
+            11
+          ]
         }
       ],
       "title": "OllamaChatNode",
@@ -154,69 +218,48 @@
       },
       "color": "#1f2a44",
       "bgcolor": "#0b1220"
-    },
-    {
-      "id": 4,
-      "type": "TextInputNode",
-      "pos": [
-        181.046875,
-        500.4453125
-      ],
-      "size": [
-        360,
-        200
-      ],
-      "flags": {},
-      "order": 1,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [
-        {
-          "name": "text",
-          "type": "str",
-          "links": [
-            4
-          ]
-        }
-      ],
-      "title": "TextInputNode",
-      "properties": {
-        "value": "what is 1+1"
-      }
     }
   ],
   "links": [
     [
-      1,
+      7,
       2,
       0,
-      1,
+      7,
       0,
       "str"
     ],
     [
-      2,
+      8,
       2,
       1,
-      1,
+      7,
       1,
       "str"
     ],
     [
-      3,
-      1,
+      9,
+      7,
       0,
-      3,
+      8,
       0,
       "LLMChatMessage"
     ],
     [
-      4,
+      10,
       4,
       0,
-      1,
+      7,
       3,
       "str"
+    ],
+    [
+      11,
+      7,
+      1,
+      5,
+      0,
+      "LLMChatMetrics"
     ]
   ],
   "groups": [],
@@ -225,8 +268,8 @@
     "ds": {
       "scale": 1,
       "offset": [
-        -120.06640625,
-        -75.4375
+        -0.30859375,
+        0
       ]
     }
   },

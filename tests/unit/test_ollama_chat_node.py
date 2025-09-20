@@ -322,4 +322,49 @@ async def test_multiprocessing_fallback(chat_node):
                 output2 = await anext(gen)
                 assert "total_duration" in output2["metrics"]
 
+@pytest.mark.asyncio
+async def test_streaming_equals_nonstreaming(chat_node):
+    inputs = {
+        "model": "test_model",
+        "messages": [{"role": "user", "content": "Test equality"}]
+    }
+    
+    # Non-streaming
+    chat_node.params["stream"] = False
+    with patch("ollama.AsyncClient") as mock_client_ns:
+        mock_response = {
+            "message": {"role": "assistant", "content": "Full response", "thinking": "Thought"},
+            "total_duration": 100,
+            "eval_count": 10
+        }
+        mock_chat_ns = AsyncMock(return_value=mock_response)
+        mock_client_ns.return_value.chat = mock_chat_ns
+        ns_result = await chat_node.execute(inputs)
+    
+    # Streaming
+    chat_node.params["stream"] = True
+    with patch("ollama.AsyncClient") as mock_client_s:
+        mock_stream = AsyncMock()
+        mock_stream.__aiter__.return_value = [
+            {"message": {"content": "Full ", "thinking": "Tho"}},
+            {"message": {"content": "response", "thinking": "ught"}},
+            {"done": True, "total_duration": 100, "eval_count": 10, "message": {"role": "assistant"}}
+        ]
+        mock_chat_s = AsyncMock(return_value=mock_stream)
+        mock_client_s.return_value.chat = mock_chat_s
+        
+        gen = chat_node.start(inputs)
+        outputs = []
+        async for out in gen:
+            outputs.append(out)
+        
+        s_final = outputs[-1]
+    
+    # Compare
+    assert s_final["assistant_message"] == ns_result["assistant_message"]
+    assert s_final["metrics"] == ns_result["metrics"]
+    assert s_final["assistant_text"] == "Full response"
+    assert s_final["thinking"] == "Thought"
+    assert s_final["assistant_done"] is True
+
 # Add more tests for other params like temperature, think, etc.

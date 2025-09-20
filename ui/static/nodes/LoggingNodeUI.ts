@@ -21,6 +21,14 @@ export default class LoggingNodeUI extends BaseCustomNode {
             try { return JSON.stringify(v, null, 2); } catch { return String(v); }
         };
 
+        if (value && typeof value === 'object' && 'role' in value && value.role === 'assistant' && 'content' in value) {
+            let text = this.tryFormat(value.content);
+            if ('thinking' in value && value.thinking) {
+                text += '\n\nThinking: ' + this.tryFormat(value.thinking);
+            }
+            return text;
+        }
+
         if (format === 'plain') {
             if (typeof candidate === 'string') return candidate;
             return stringifyPretty(candidate);
@@ -70,37 +78,36 @@ export default class LoggingNodeUI extends BaseCustomNode {
     }
 
     onStreamUpdate(result: any) {
-        // Handle both non-stream text and streaming chunks by appending
-        const candidate = (result && typeof result.output !== 'undefined') ? result.output : result;
         let chunk: string = '';
-        if (typeof candidate === 'string') {
-            chunk = candidate;
-        } else if (candidate && (candidate as any).message && typeof (candidate as any).message.content === 'string') {
-            chunk = (candidate as any).message.content;
+        const format = this.getSelectedFormat();
+
+        if (result.done) {
+            // For final, format the full message
+            this.displayText = this.tryFormat(result.message || result);
         } else {
-            try { chunk = JSON.stringify(candidate); } catch { chunk = String(candidate ?? ''); }
-        }
+            // Extract chunk for partial
+            const candidate = (result.output || result);
+            if (typeof candidate === 'string') {
+                chunk = candidate;
+            } else if (candidate && candidate.message && typeof candidate.message.content === 'string') {
+                chunk = candidate.message.content;
+            } else {
+                try { chunk = JSON.stringify(candidate); } catch { chunk = String(candidate ?? ''); }
+            }
 
-        // Append raw chunk first; then reformat depending on selected mode
-        if (chunk) {
-            const format = this.getSelectedFormat();
             const prev = this.displayText || '';
+            const accumulated = prev + chunk;
 
-            // If the new chunk is cumulative (superset), replace to avoid duplication
-            if (prev && typeof chunk === 'string' && chunk.startsWith(prev)) {
-                this.displayText = chunk;
+            if (prev && accumulated.startsWith(prev)) {
+                this.displayText = accumulated;  // Replace with cumulative
             } else if (format === 'json') {
-                // Attempt to parse accumulated text as JSON for pretty view
-                const accumulated = prev + chunk;
                 try {
                     const parsed = JSON.parse(accumulated);
                     this.displayText = JSON.stringify(parsed, null, 2);
                 } catch {
-                    // While not valid JSON yet, just append raw
                     this.displayText = accumulated;
                 }
             } else if (format === 'auto') {
-                const accumulated = prev + chunk;
                 const trimmed = accumulated.trim();
                 if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
                     try {
@@ -113,10 +120,9 @@ export default class LoggingNodeUI extends BaseCustomNode {
                     this.displayText = accumulated;
                 }
             } else {
-                // plain or markdown
-                this.displayText = prev + chunk;
+                this.displayText = accumulated;
             }
-            this.setDirtyCanvas(true, true);
         }
+        this.setDirtyCanvas(true, true);
     }
 }

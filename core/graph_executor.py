@@ -65,6 +65,7 @@ class GraphExecutor:
             else:
                 inputs = self._get_node_inputs(node_id, results)
                 merged_inputs = {**{k: v for k, v in node.params.items() if k in node.inputs and k not in inputs and v is not None}, **inputs}
+                print(f"GraphExecutor: Merged inputs for node {node_id}: {merged_inputs}")
                 if not node.validate_inputs(merged_inputs):
                     continue
                 outputs = await node.execute(merged_inputs)
@@ -80,10 +81,12 @@ class GraphExecutor:
             sub_node = self.nodes[sub_node_id]
             sub_inputs = self._get_node_inputs(sub_node_id, current_context)
             merged_inputs = {**{k: v for k, v in sub_node.params.items() if k in sub_node.inputs and k not in sub_inputs and v is not None}, **sub_inputs}
+            print(f"GraphExecutor: Merged inputs for sub_node {sub_node_id}: {merged_inputs}")
             
             if not sub_node.validate_inputs(merged_inputs):
+                missing = [k for k in sub_node.inputs if k not in merged_inputs]
+                print(f"GraphExecutor: Skipping node {sub_node_id} due to missing inputs: {missing}")
                 # TODO: Handle errors more gracefully
-                print(f"Skipping node {sub_node_id} due to missing inputs in stream.")
                 continue
                 
             sub_outputs = await sub_node.execute(merged_inputs)
@@ -149,6 +152,7 @@ class GraphExecutor:
                     node = self.nodes[node_id]
                     inputs = self._get_node_inputs(node_id, static_results)
                     merged_inputs = {**{k: v for k, v in node.params.items() if k in node.inputs and k not in inputs and v is not None}, **inputs}
+                    print(f"GraphExecutor: Merged inputs for node {node_id}: {merged_inputs}")
                     if not node.validate_inputs(merged_inputs):
                         continue
                     outputs = await node.execute(merged_inputs)
@@ -241,6 +245,7 @@ class GraphExecutor:
     async def _execute_foreach_subgraph(self, foreach_node: ForEachNode, results: Dict[str, Any]):
         inputs = self._get_node_inputs(foreach_node.id, results)
         merged_inputs = {**{k: foreach_node.params.get(k) for k in foreach_node.inputs if k not in inputs}, **inputs}
+        print(f"GraphExecutor: Merged inputs for foreach_node {foreach_node.id}: {merged_inputs}")
         item_list = merged_inputs.get("list") or []
         
         subgraph_nodes = list(nx.dfs_preorder_nodes(self.dag, source=foreach_node.id))
@@ -258,8 +263,12 @@ class GraphExecutor:
         results[foreach_node.id] = {"results": foreach_results}
 
     def _get_node_inputs(self, node_id: int, results: Dict[int, Any]) -> Dict[str, Any]:
+        print(f"GraphExecutor: Getting inputs for node {node_id}")
         inputs: Dict[str, Any] = {}
-        for pred_id in self.dag.predecessors(node_id):
+        predecessors = list(self.dag.predecessors(node_id))
+        print(f"GraphExecutor: Predecessors for {node_id}: {predecessors}")
+        print(f"GraphExecutor: Available results keys: {list(results.keys())}")
+        for pred_id in predecessors:
             for link in self.graph.get('links', []):
                 if link[1] == pred_id and link[3] == node_id:
                     output_slot, input_slot = link[2], link[4]
@@ -273,4 +282,5 @@ class GraphExecutor:
                             if input_slot < len(node_inputs):
                                 input_key = node_inputs[input_slot]
                                 inputs[input_key] = value
+        print(f"GraphExecutor: Constructed inputs for {node_id}: {inputs}")
         return inputs

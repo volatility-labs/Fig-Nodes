@@ -19,8 +19,8 @@ class StreamingNode(BaseNode, ABC):
         """
         pass
 
-    @abstractmethod
     def stop(self):
+        print(f"StreamingNode: Stopping node {self.id}")
         """
         Stop the streaming operation cleanly.
         """

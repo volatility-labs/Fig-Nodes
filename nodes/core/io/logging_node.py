@@ -5,6 +5,10 @@ from core.types_registry import AssetSymbol
 
 
 class LoggingNode(BaseNode):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.last_content_length = 0
+
     inputs = {"input": Any}
     outputs = {"output": str}
     
@@ -19,7 +23,24 @@ class LoggingNode(BaseNode):
     async def execute(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
         value = inputs.get("input")
         selected_format = (self.params.get("format") or "auto").strip()
-        if isinstance(value, list) and value and all(isinstance(x, AssetSymbol) for x in value):
+        
+        if isinstance(value, dict) and "message" in value and isinstance(value["message"], dict) and value["message"].get("role") == "assistant" and isinstance(value["message"].get("content"), str):
+            content = value["message"]["content"]
+            is_partial = not value.get("done", False)
+            delta = content[self.last_content_length:]
+            
+            print(delta, end='', flush=True)
+            
+            if not is_partial:
+                print()  # Newline for final
+                if "thinking" in value["message"] and isinstance(value["message"]["thinking"], str):
+                    print("Thinking:", value["message"]["thinking"])
+                self.last_content_length = 0
+            else:
+                self.last_content_length = len(content)
+            
+            text = content  # Full current text for output/UI
+        elif isinstance(value, list) and value and all(isinstance(x, AssetSymbol) for x in value):
             preview_symbols = [str(sym) for sym in value[:100]]
             text = "Preview of first 100 symbols:\n" + "\n".join(preview_symbols)
             if len(value) > 100:
@@ -55,6 +76,7 @@ class LoggingNode(BaseNode):
                 except Exception:
                     text = str(value)
             print(f"LoggingNode {self.id}: {text}")
+        
         return {"output": text}
 
 
