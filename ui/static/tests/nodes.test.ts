@@ -6,6 +6,7 @@ import LoggingNodeUI from '../nodes/LoggingNodeUI';
 import OllamaChatNodeUI from '../nodes/OllamaChatNodeUI';
 import OllamaChatViewerNodeUI from '../nodes/OllamaChatViewerNodeUI';
 import OllamaModelSelectorNodeUI from '../nodes/OllamaModelSelectorNodeUI';
+import PolygonAPIKeyNodeUI from '../nodes/PolygonAPIKeyNodeUI';
 import StreamingCustomNode from '../nodes/StreamingCustomNode';
 import TextInputNodeUI from '../nodes/TextInputNodeUI';
 
@@ -99,6 +100,26 @@ describe('Node UI classes', () => {
         expect(node.displayText).toContain('"message"');
     });
 
+    test('PolygonAPIKeyNodeUI security button and provider styling', () => {
+        const node = new PolygonAPIKeyNodeUI('API Key', baseData());
+        expect(node.displayResults).toBe(false); // Provider node, no display
+        expect(node.color).toBe('#8b5a3c'); // Brown security theme
+        expect(node.bgcolor).toBe('#3d2818');
+
+        // Should have security info button
+        expect(node.widgets).toBeDefined();
+        expect(node.widgets!.length).toBe(1);
+        const button = node.widgets![0];
+        expect(button.name).toBe('🔒 Secure Key');
+
+        // Mock alert to test button callback
+        const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => { });
+        button.callback!();
+        expect(alertSpy).toHaveBeenCalledWith('API key is handled securely and not stored in workflow files.');
+        // @ts-ignore
+        alertSpy.mockRestore();
+    });
+
     test('TextInputNodeUI inline editor behavior', () => {
         const node = new TextInputNodeUI('Text', baseData());
         node.properties.value = 'a very long line that should wrap across the width of the text area to test wrapping logic';
@@ -125,7 +146,6 @@ describe('BaseCustomNode comprehensive tests', () => {
         widget.callback!();
         // Note: Can't fully test prompt UI, but assume callback updates
         // Manually invoke the inner callback
-        const mockNewVal = 'updated';
         // The callback is the prompt invoker; to test update logic, we need to mimic it
         // Since it's private, test the effect
         node.properties.textParam = 'updated';

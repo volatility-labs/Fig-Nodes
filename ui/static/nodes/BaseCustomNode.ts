@@ -423,6 +423,53 @@ export default class BaseCustomNode extends LGraphNode {
         input.select();
     }
 
+    onDblClick(_event: MouseEvent, pos: [number, number], _canvas: any): boolean {
+        // Check if double-click is on the title area
+        if (pos[1] >= 0 && pos[1] <= LiteGraph.NODE_TITLE_HEIGHT) {
+            this.startTitleEdit();
+            return true; // Handled
+        }
+        return false; // Not handled
+    }
+
+    startTitleEdit() {
+        const titleElement = document.createElement('input');
+        titleElement.className = 'inline-title-input';
+        titleElement.value = this.title;
+        titleElement.style.position = 'absolute';
+        titleElement.style.left = `${this.pos[0] + 10}px`; // Small margin from left
+        titleElement.style.top = `${this.pos[1] + 8}px`; // Small margin from top
+        titleElement.style.width = `${this.size[0] - 20}px`; // Account for margins
+        titleElement.style.zIndex = '3000';
+
+        const finishEdit = (save: boolean) => {
+            if (save && titleElement.value.trim()) {
+                this.title = titleElement.value.trim();
+            }
+            if (titleElement.parentNode) {
+                document.body.removeChild(titleElement);
+            }
+            this.setDirtyCanvas(true, true);
+        };
+
+        titleElement.addEventListener('keydown', (e: KeyboardEvent) => {
+            e.stopPropagation();
+            if (e.key === 'Enter') {
+                finishEdit(true);
+            } else if (e.key === 'Escape') {
+                finishEdit(false);
+            }
+        });
+
+        titleElement.addEventListener('blur', () => {
+            finishEdit(true);
+        });
+
+        document.body.appendChild(titleElement);
+        titleElement.focus();
+        titleElement.select();
+    }
+
     onConnectionsChange() { }
 
     configure(info: any) {

@@ -750,10 +750,9 @@ class OllamaChatNode(StreamingNode):
         }
         if thinking:
             snapshot["thinking"] = thinking
-        if tool_calls:
-            snapshot["tool_calls"] = tool_calls
+        snapshot["tool_calls"] = tool_calls
         # Only return if there's meaningful data
-        if snapshot.get("content") or snapshot.get("thinking") or snapshot.get("tool_calls"):
+        if snapshot.get("content") or snapshot.get("thinking") or tool_calls:
             return snapshot
         return None
 
@@ -839,9 +838,9 @@ class OllamaChatNode(StreamingNode):
                     think=think,
                 )
                 final_message = (resp or {}).get("message") or {}
+                metrics: Dict[str, Any] = {}
                 self._parse_content_if_json_mode(final_message, metrics)
                 final_message = self._make_full_message(final_message)
-                metrics: Dict[str, Any] = {}
                 for k in ("total_duration", "load_duration", "prompt_eval_count", "prompt_eval_duration", "eval_count", "eval_duration"):
                     if k in resp:
                         metrics[k] = resp[k]

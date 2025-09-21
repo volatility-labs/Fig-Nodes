@@ -488,7 +488,7 @@ async def test_empty_streaming_response(chat_node):
         
         gen = chat_node.start(inputs)
         output = await anext(gen)
-        assert output["message"] == {"role": "assistant", "content": ""}  # Default empty
+        assert output["message"] == {"role": "assistant", "content": "", "thinking": None, "images": None, "tool_calls": None, "tool_name": None}  # Default empty
         assert output["done"] is True
 
 # Add more tests for other params like temperature, think, etc.

@@ -103,11 +103,13 @@ TYPE_REGISTRY: Dict[str, Type] = {
     "Score": float,
     "OHLCVStream": AsyncGenerator[Dict[AssetSymbol, pd.DataFrame], None],
     # LLM types
-    "LLMChatMessage": LLMChatMessage, 
+    "LLMChatMessage": LLMChatMessage,
     "LLMChatMessageList": List[LLMChatMessage],
     "LLMToolSpec": LLMToolSpec,
     "LLMToolSpecList": List[LLMToolSpec],
     "LLMChatMetrics": LLMChatMetrics,
+    # API types
+    "APIKey": str,
 }
 
 def get_type(type_name: str) -> Type:
