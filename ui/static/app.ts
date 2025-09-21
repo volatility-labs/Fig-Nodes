@@ -15,9 +15,12 @@ async function createEditor(container: HTMLElement) {
         // Disable LiteGraph native search box on double click
         (canvas as any).showSearchBox = () => { };
 
-        // Track last mouse position for positioning quick inputs near cursor
+        // Track last mouse position for positioning quick inputs and dropdowns near cursor
         let lastMouseEvent: MouseEvent | null = null;
         canvasElement.addEventListener('mousemove', (e: MouseEvent) => { lastMouseEvent = e; });
+
+        // Make last mouse event accessible for dropdown positioning
+        (canvas as any).getLastMouseEvent = () => lastMouseEvent;
 
         // ComfyUI-like quick prompt to replace LiteGraph default bottom prompt
         const showQuickPrompt = (title: string, value: any, callback: (v: any) => void, options?: any) => {

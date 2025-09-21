@@ -65,7 +65,6 @@ class GraphExecutor:
             else:
                 inputs = self._get_node_inputs(node_id, results)
                 merged_inputs = {**{k: v for k, v in node.params.items() if k in node.inputs and k not in inputs and v is not None}, **inputs}
-                print(f"GraphExecutor: Merged inputs for node {node_id}: {merged_inputs}")
                 if not node.validate_inputs(merged_inputs):
                     continue
                 outputs = await node.execute(merged_inputs)

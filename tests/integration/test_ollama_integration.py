@@ -96,7 +96,7 @@ async def test_ollama_streaming_integration(mock_httpx_client, mock_ollama_clien
     results = {**initial_results, **stream_tick1, **final_tick}
 
     assert 1 in results
-    assert results[1]["message"]["content"] == "{}"
+    assert results[1]["message"]["content"] == {}
     assert "total_duration" in results[1].get("metrics", {})
     assert "eval_count" in results[1].get("metrics", {})
 

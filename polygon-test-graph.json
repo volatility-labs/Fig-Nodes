@@ -1,0 +1,190 @@
+{
+  "id": "00000000-0000-0000-0000-000000000000",
+  "revision": 0,
+  "last_node_id": 4,
+  "last_link_id": 3,
+  "nodes": [
+    {
+      "id": 2,
+      "type": "AssetSymbolInputNode",
+      "pos": [
+        124.296875,
+        238.703125
+      ],
+      "size": [
+        210,
+        154
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "symbol",
+          "type": "AssetSymbol",
+          "links": [
+            1
+          ]
+        }
+      ],
+      "title": "AssetSymbolInputNode",
+      "properties": {
+        "ticker": "aapl",
+        "asset_class": "STOCKS",
+        "quote_currency": "USDT",
+        "provider": "POLYGON",
+        "instrument_type": "PERPETUAL"
+      }
+    },
+    {
+      "id": 4,
+      "type": "LoggingNode",
+      "pos": [
+        990.72265625,
+        224.14453125
+      ],
+      "size": [
+        210,
+        100
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "input",
+          "type": 0,
+          "link": 3
+        }
+      ],
+      "outputs": [
+        {
+          "name": "output",
+          "type": "str",
+          "links": null
+        }
+      ],
+      "title": "LoggingNode",
+      "properties": {
+        "format": "auto"
+      }
+    },
+    {
+      "id": 1,
+      "type": "PolygonCustomBarsNode",
+      "pos": [
+        531.97265625,
+        216.21875
+      ],
+      "size": [
+        360,
+        246
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "symbol",
+          "type": "AssetSymbol",
+          "link": 1
+        },
+        {
+          "name": "api_key",
+          "type": "str",
+          "link": 2
+        }
+      ],
+      "outputs": [
+        {
+          "name": "ohlcv",
+          "type": "List<dict<str, 0>>",
+          "links": [
+            3
+          ]
+        }
+      ],
+      "title": "PolygonCustomBarsNode",
+      "properties": {
+        "multiplier": 1,
+        "timespan": "day",
+        "lookback_period": "3 months",
+        "adjusted": true,
+        "sort": "asc",
+        "limit": 5000
+      },
+      "color": "#2c5530",
+      "bgcolor": "#1a3320"
+    },
+    {
+      "id": 3,
+      "type": "PolygonAPIKeyNode",
+      "pos": [
+        163.453125,
+        477.5625
+      ],
+      "size": [
+        280,
+        120
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "api_key",
+          "type": "str",
+          "links": [
+            2
+          ]
+        }
+      ],
+      "title": "PolygonAPIKeyNode",
+      "properties": {
+        "api_key": "9VBT7EHIAEeNpGZXEcjdTjZvpAz4dfmC"
+      },
+      "color": "#8b5a3c",
+      "bgcolor": "#3d2818"
+    }
+  ],
+  "links": [
+    [
+      1,
+      2,
+      0,
+      1,
+      0,
+      "AssetSymbol"
+    ],
+    [
+      2,
+      3,
+      0,
+      1,
+      1,
+      "str"
+    ],
+    [
+      3,
+      1,
+      0,
+      4,
+      0,
+      "List<dict<str, 0>>"
+    ]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 1,
+      "offset": [
+        -0.265625,
+        0.2578125
+      ]
+    }
+  },
+  "version": 0.4
+}

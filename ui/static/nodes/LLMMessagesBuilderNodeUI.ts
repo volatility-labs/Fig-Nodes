@@ -8,7 +8,6 @@ export default class LLMMessagesBuilderNodeUI extends BaseCustomNode {
         this.bgcolor = '#0e1621';
 
         // Do not render long result text; show short summary instead
-        this.displayResults = true;
 
         // Convenience buttons
         this.addWidget('button', 'Clear', '', () => {

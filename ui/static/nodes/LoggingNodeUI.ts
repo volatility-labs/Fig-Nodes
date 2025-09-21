@@ -2,6 +2,21 @@
 import BaseCustomNode from './BaseCustomNode';
 
 export default class LoggingNodeUI extends BaseCustomNode {
+    constructor(title: string, data: any) {
+        super(title, data);
+
+        // Set larger size for displaying log data
+        this.size = [400, 300];
+
+        // Enable display for logging node specifically
+        this.displayResults = true;
+
+        // Add format selector widget
+        this.addWidget('combo', 'Format', this.properties['format'] || 'auto', (value: string) => {
+            this.properties['format'] = value;
+        }, { values: ['auto', 'plain', 'json', 'markdown'] });
+    }
+
     private getSelectedFormat(): 'auto' | 'plain' | 'json' | 'markdown' {
         const fmt = (this.properties && this.properties['format']) || 'auto';
         if (fmt === 'plain' || fmt === 'json' || fmt === 'markdown') return fmt;
@@ -64,6 +79,7 @@ export default class LoggingNodeUI extends BaseCustomNode {
     }
 
     updateDisplay(result: any) {
+        console.log('LoggingNodeUI.updateDisplay called with:', result);
         // If streaming-style payload, avoid replacing accumulated text
         if (result && (
             typeof (result as any).assistant_text === 'string' ||
@@ -74,6 +90,7 @@ export default class LoggingNodeUI extends BaseCustomNode {
         }
         const formatted = this.tryFormat(result);
         this.displayText = formatted;
+        console.log('displayText set to:', this.displayText);
         this.setDirtyCanvas(true, true);
     }
 
@@ -124,5 +141,12 @@ export default class LoggingNodeUI extends BaseCustomNode {
             }
         }
         this.setDirtyCanvas(true, true);
+    }
+
+    override onDrawForeground(ctx: CanvasRenderingContext2D) {
+        console.log('LoggingNodeUI.onDrawForeground called, displayText:', this.displayText);
+        console.log('Current size:', this.size);
+        super.onDrawForeground(ctx);
+        console.log('After super.onDrawForeground');
     }
 }

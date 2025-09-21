@@ -1,7 +1,6 @@
-from typing import Dict, Any
-import pandas as pd
+from typing import Dict, Any, List
 from nodes.base.base_node import BaseNode
-from core.types_registry import get_type, AssetSymbol, AssetClass
+from core.types_registry import get_type, AssetSymbol, AssetClass, OHLCVBar
 
 
 class KlinesNode(BaseNode):
@@ -16,11 +15,11 @@ class KlinesNode(BaseNode):
     def __init__(self, node_id: str, params: Dict[str, Any]):
         super().__init__(node_id, params)
 
-    async def execute(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
+    async def execute(self, inputs: Dict[str, Any]) -> Dict[str, List[OHLCVBar]]:
         symbol: AssetSymbol = self.params.get("symbol")
         timeframe = self.params.get("timeframe")
 
-        klines_df = pd.DataFrame()
-        return {"ohlcv": klines_df}
+        # Return empty list for OHLCV data
+        return {"ohlcv": []}
 
 

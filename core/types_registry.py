@@ -52,6 +52,18 @@ class LLMChatMetrics(TypedDict, total=False):
     eval_duration: int
     error: str
 
+class OHLCVBar(TypedDict, total=False):
+    """OHLCV (Open, High, Low, Close, Volume) bar data"""
+    timestamp: int  # Unix timestamp in milliseconds
+    open: float
+    high: float
+    low: float
+    close: float
+    volume: float
+    vw: float  # Volume weighted average price (optional)
+    n: int  # Number of transactions (optional)
+    otc: bool  # OTC ticker flag (optional)
+
 @dataclass(frozen=True)
 class AssetSymbol:
     ticker: str
@@ -98,10 +110,10 @@ TYPE_REGISTRY: Dict[str, Type] = {
     "IndicatorDict": Dict[str, float],
     "AnyList": List[Any],
     "ConfigDict": Dict[str, Any],
-    "OHLCV": pd.DataFrame,
-    "OHLCVBundle": Dict[AssetSymbol, pd.DataFrame],
+    "OHLCV": List[OHLCVBar],
+    "OHLCVBundle": Dict[AssetSymbol, List[OHLCVBar]],
     "Score": float,
-    "OHLCVStream": AsyncGenerator[Dict[AssetSymbol, pd.DataFrame], None],
+    "OHLCVStream": AsyncGenerator[Dict[AssetSymbol, List[OHLCVBar]], None],
     # LLM types
     "LLMChatMessage": LLMChatMessage,
     "LLMChatMessageList": List[LLMChatMessage],

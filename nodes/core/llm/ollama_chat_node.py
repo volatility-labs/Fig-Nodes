@@ -409,9 +409,6 @@ class OllamaChatNode(StreamingNode):
                                     if self._cancel_event.is_set():
                                         return
                                     self._process_stream_part(part, message_buffer)
-                                    snapshot = self._snapshot_buffer(message_buffer)
-                                    if snapshot:  # Yield if meaningful update
-                                        yield {"message": snapshot, "done": False}
 
                                     if part.get("done"):
                                         final_message = self._finalize_buffer(message_buffer)
@@ -425,6 +422,10 @@ class OllamaChatNode(StreamingNode):
                                             metrics["temperature"] = options["temperature"]
                                         yield {"message": final_message, "metrics": metrics, "done": True}
                                         return
+                                    else:
+                                        snapshot = self._snapshot_buffer(message_buffer)
+                                        if snapshot:  # Yield if meaningful update
+                                            yield {"message": snapshot, "done": False}
                             finally:
                                 try:
                                     if hasattr(stream, "aclose"):
@@ -661,9 +662,6 @@ class OllamaChatNode(StreamingNode):
                                         yield {"message": partial_message, "metrics": {"error": "Stream cancelled"}, "done": True}
                                         return
                                     self._process_stream_part(part, message_buffer)
-                                    snapshot = self._snapshot_buffer(message_buffer)
-                                    if snapshot:
-                                        yield {"message": snapshot, "done": False}
 
                                     if part.get("done"):
                                         final_message = self._finalize_buffer(message_buffer)
@@ -677,6 +675,10 @@ class OllamaChatNode(StreamingNode):
                                             metrics["temperature"] = options["temperature"]
                                         yield {"message": final_message, "metrics": metrics, "done": True}
                                         return
+                                    else:
+                                        snapshot = self._snapshot_buffer(message_buffer)
+                                        if snapshot:
+                                            yield {"message": snapshot, "done": False}
                             finally:
                                 # ... existing
                                 pass

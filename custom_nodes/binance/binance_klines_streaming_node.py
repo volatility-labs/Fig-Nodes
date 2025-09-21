@@ -1,16 +1,15 @@
-from typing import Dict, Any, AsyncGenerator
+from typing import Dict, Any, AsyncGenerator, List
 import asyncio
 import websockets
 import json
-import pandas as pd
 from nodes.base.streaming_node import StreamingNode
-from core.types_registry import AssetSymbol, AssetClass, get_type, InstrumentType
+from core.types_registry import AssetSymbol, AssetClass, get_type, InstrumentType, OHLCVBar
 
 
 class BinanceKlinesStreamingNode(StreamingNode):
     """
     Streaming node that subscribes to Binance kline updates for given symbols.
-    Yields closed klines as OHLCVBundle (dict of AssetSymbol to single-row DataFrame).
+    Yields closed klines as OHLCVBundle (dict of AssetSymbol to list of OHLCVBar).
     """
     inputs = {"symbols": get_type("AssetSymbolList")}
     outputs = {"ohlcv": get_type("OHLCVBundle")}
@@ -23,7 +22,7 @@ class BinanceKlinesStreamingNode(StreamingNode):
         super().__init__(node_id, params)
         self.ws = None
 
-    async def start(self, inputs: Dict[str, Any]) -> AsyncGenerator[Dict[str, Any], None]:
+    async def start(self, inputs: Dict[str, Any]) -> AsyncGenerator[Dict[str, Dict[AssetSymbol, List[OHLCVBar]]], None]:
         symbols = self.collect_multi_input("symbols", inputs)
         if not symbols:
             return
@@ -56,17 +55,15 @@ class BinanceKlinesStreamingNode(StreamingNode):
                             exchange="binance",
                             instrument_type=InstrumentType.PERPETUAL,
                         )
-                        df = pd.DataFrame(
-                            {
-                                "open": [float(k["o"])],
-                                "high": [float(k["h"])],
-                                "low": [float(k["l"])],
-                                "close": [float(k["c"])],
-                                "volume": [float(k["v"])],
-                            },
-                            index=[pd.to_datetime(k["t"], unit="ms", utc=True)],
-                        )
-                        yield {"ohlcv": {symbol: df}}
+                        bar = {
+                            "timestamp": k["t"],
+                            "open": float(k["o"]),
+                            "high": float(k["h"]),
+                            "low": float(k["l"]),
+                            "close": float(k["c"]),
+                            "volume": float(k["v"]),
+                        }
+                        yield {"ohlcv": {symbol: [bar]}}
 
     def stop(self):
         if self.ws:

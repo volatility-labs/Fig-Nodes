@@ -112,6 +112,18 @@ export default class BaseCustomNode extends LGraphNode {
                     }, opts);
                     // Ensure widget value stays in sync with properties
                     widget.value = this.properties[param.name];
+                } else if (paramType === 'combo') {
+                    // Custom dropdown widget for combo parameters
+                    const options = param.options || [];
+                    const widget = this.addWidget('button', `${param.name}: ${this.formatComboValue(this.properties[param.name])}`, '', () => {
+                        this.showCustomDropdown(param.name, options, (selectedValue: any) => {
+                            this.properties[param.name] = selectedValue;
+                            widget.name = `${param.name}: ${this.formatComboValue(selectedValue)}`;
+                            this.setDirtyCanvas(true, true);
+                        });
+                    }, {});
+                    // Store options for later use
+                    (widget as any).options = options;
                 } else {
                     let widgetOpts = {};
                     let isBooleanCombo = false;
@@ -137,7 +149,7 @@ export default class BaseCustomNode extends LGraphNode {
             });
         }
 
-        this.displayResults = data.category !== 'data_source';
+        this.displayResults = false;
 
         // Auto-resize node if it has a textarea widget
         if (data.params && data.params.some((p: any) => p.type === 'textarea')) {
@@ -525,10 +537,147 @@ export default class BaseCustomNode extends LGraphNode {
     syncWidgetValues() {
         if (this.widgets) {
             this.widgets.forEach((widget: any) => {
-                if (widget.name && this.properties.hasOwnProperty(widget.name)) {
-                    widget.value = this.properties[widget.name];
+                if (widget.name) {
+                    if (widget.options) {
+                        // Custom combo widget - update display name
+                        const paramName = widget.name.split(':')[0].trim();
+                        if (this.properties.hasOwnProperty(paramName)) {
+                            widget.name = `${paramName}: ${this.formatComboValue(this.properties[paramName])}`;
+                        }
+                    } else if (widget.type === 'number' || widget.type === 'combo') {
+                        if (this.properties.hasOwnProperty(widget.name)) {
+                            widget.value = this.properties[widget.name];
+                        }
+                    }
                 }
             });
         }
+    }
+
+    private formatComboValue(value: any): string {
+        if (typeof value === 'boolean') {
+            return value ? 'true' : 'false';
+        }
+        return String(value);
+    }
+
+    private showCustomDropdown(paramName: string, options: any[], callback: (value: any) => void) {
+        const overlay = document.createElement('div');
+        overlay.className = 'custom-dropdown-overlay';
+
+        const menu = document.createElement('div');
+        menu.className = 'custom-dropdown-menu';
+
+        // Position the menu near the mouse cursor
+        const graph = (this as any).graph;
+        const canvas = graph?.list_of_graphcanvas?.[0];
+        if (canvas && canvas.canvas) {
+            const canvasRect = canvas.canvas.getBoundingClientRect();
+            const lastMouseEvent = (canvas as any).getLastMouseEvent?.();
+
+            if (lastMouseEvent) {
+                // Position near mouse cursor with bounds checking
+                let menuX = lastMouseEvent.clientX;
+                let menuY = lastMouseEvent.clientY + 5;
+
+                // Adjust if menu would go off-screen
+                const menuWidth = 200; // Compact menu width
+                const menuHeight = Math.min(150, options.length * 28 + 16); // Estimate height
+
+                if (menuX + menuWidth > window.innerWidth) {
+                    menuX = window.innerWidth - menuWidth - 10;
+                }
+                if (menuY + menuHeight > window.innerHeight) {
+                    menuY = lastMouseEvent.clientY - menuHeight - 5;
+                }
+
+                menu.style.left = `${menuX}px`;
+                menu.style.top = `${menuY}px`;
+                menu.style.width = `${menuWidth}px`;
+                menu.style.maxHeight = `${menuHeight}px`;
+            } else {
+                // Fallback to node position if no mouse event available
+                const scale = canvas.ds?.scale || 1;
+                const offset = canvas.ds?.offset || [0, 0];
+                const screenX = canvasRect.left + (this.pos[0] + offset[0]) * scale;
+                const screenY = canvasRect.top + (this.pos[1] + offset[1] + this.size[1]) * scale;
+                menu.style.left = `${screenX}px`;
+                menu.style.top = `${screenY + 5}px`;
+                menu.style.width = '200px';
+                menu.style.maxHeight = '150px';
+            }
+        }
+
+        // Add options to menu
+        options.forEach((option) => {
+            const item = document.createElement('div');
+            item.className = 'custom-dropdown-item';
+            item.textContent = this.formatComboValue(option);
+
+            // Highlight current selection
+            if (option === this.properties[paramName]) {
+                item.classList.add('selected');
+            }
+
+            item.addEventListener('click', () => {
+                callback(option);
+                document.body.removeChild(overlay);
+            });
+
+            menu.appendChild(item);
+        });
+
+        overlay.appendChild(menu);
+        overlay.tabIndex = -1; // Make focusable
+        document.body.appendChild(overlay);
+
+        // Close on click outside
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) {
+                document.body.removeChild(overlay);
+            }
+        });
+
+        // Handle keyboard navigation
+        let selectedIndex = options.findIndex(opt => opt === this.properties[paramName]);
+        if (selectedIndex === -1) selectedIndex = 0;
+
+        const updateSelection = () => {
+            const items = menu.querySelectorAll('.custom-dropdown-item');
+            items.forEach((item, i) => {
+                if (i === selectedIndex) {
+                    item.classList.add('selected');
+                    // Only scroll if the method exists (not in test environment)
+                    if (typeof item.scrollIntoView === 'function') {
+                        item.scrollIntoView({ block: 'nearest' });
+                    }
+                } else {
+                    item.classList.remove('selected');
+                }
+            });
+        };
+
+        updateSelection();
+
+        overlay.addEventListener('keydown', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+
+            if (e.key === 'ArrowDown') {
+                selectedIndex = (selectedIndex + 1) % options.length;
+                updateSelection();
+            } else if (e.key === 'ArrowUp') {
+                selectedIndex = (selectedIndex - 1 + options.length) % options.length;
+                updateSelection();
+            } else if (e.key === 'Enter') {
+                callback(options[selectedIndex]);
+                document.body.removeChild(overlay);
+            } else if (e.key === 'Escape') {
+                document.body.removeChild(overlay);
+            }
+        });
+
+        // Focus the overlay for keyboard events
+        overlay.focus();
     }
 }

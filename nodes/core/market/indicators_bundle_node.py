@@ -1,7 +1,6 @@
-from typing import Dict, Any
+from typing import Dict, Any, List
 from nodes.base.base_node import BaseNode
-from core.types_registry import get_type
-from core.types_registry import AssetSymbol
+from core.types_registry import get_type, AssetSymbol, OHLCVBar
 
 
 class IndicatorsBundleNode(BaseNode):
@@ -15,7 +14,7 @@ class IndicatorsBundleNode(BaseNode):
     def __init__(self, node_id: str, params: Dict[str, Any]):
         super().__init__(node_id, params)
 
-    async def execute(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
+    async def execute(self, inputs: Dict[str, Any]) -> Dict[str, Dict[AssetSymbol, Dict[str, Any]]]:
         bundle = inputs.get("klines", {})
         if not bundle:
             collected = {}
@@ -34,8 +33,8 @@ class IndicatorsBundleNode(BaseNode):
 
         timeframe = self.params.get("timeframe")
         indicators_bundle = {}
-        for symbol, klines_df in bundle.items():
-            if klines_df is None or klines_df.empty:
+        for symbol, klines_list in bundle.items():
+            if klines_list is None or not klines_list:
                 continue
             indicators = {}
             indicators_bundle[symbol] = indicators

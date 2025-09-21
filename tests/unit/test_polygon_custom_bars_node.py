@@ -11,8 +11,7 @@ def polygon_custom_bars_node():
     return PolygonCustomBarsNode("polygon_bars_id", {
         "multiplier": 1,
         "timespan": "day",
-        "from_date": "2023-01-01",
-        "to_date": "2023-01-02",
+        "lookback_period": "3 months",
         "adjusted": True,
         "sort": "asc",
         "limit": 5000,
@@ -33,6 +32,12 @@ def sample_symbol():
 @pytest.mark.asyncio
 async def test_execute_success(polygon_custom_bars_node, sample_symbol):
     """Test successful execution with valid inputs and API response."""
+    # Mock datetime.now() to return a consistent date for testing
+    mock_now = pd.Timestamp("2024-01-01")
+    # The node approximates months as 30 days: 3 * 30 = 90 days
+    expected_from_date = (mock_now - pd.Timedelta(days=90)).strftime("%Y-%m-%d")
+    expected_to_date = mock_now.strftime("%Y-%m-%d")
+
     mock_response_data = {
         "status": "OK",
         "results": [
@@ -57,7 +62,11 @@ async def test_execute_success(polygon_custom_bars_node, sample_symbol):
         ]
     }
 
-    with patch("httpx.AsyncClient") as mock_client_class:
+    with patch("httpx.AsyncClient") as mock_client_class, \
+         patch("custom_nodes.polygon.polygon_custom_bars_node.datetime") as mock_datetime:
+
+        mock_datetime.now.return_value = mock_now.to_pydatetime()
+
         mock_client = AsyncMock()
         mock_response = AsyncMock()
         mock_response.status_code = 200
@@ -73,18 +82,24 @@ async def test_execute_success(polygon_custom_bars_node, sample_symbol):
         })
 
         assert "ohlcv" in result
-        df = result["ohlcv"]
-        assert isinstance(df, pd.DataFrame)
-        assert len(df) == 2
-        assert list(df.columns) == ["open", "high", "low", "close", "volume", "vw", "n"]
-        assert df.iloc[0]["open"] == 150.0
-        assert df.iloc[0]["close"] == 152.0
-        assert df.iloc[1]["high"] == 158.0
+        ohlcv_data = result["ohlcv"]
+        assert isinstance(ohlcv_data, list)
+        assert len(ohlcv_data) == 2
+        assert ohlcv_data[0]["open"] == 150.0
+        assert ohlcv_data[0]["close"] == 152.0
+        assert ohlcv_data[0]["high"] == 155.0
+        assert ohlcv_data[0]["low"] == 148.0
+        assert ohlcv_data[0]["volume"] == 1000000
+        assert ohlcv_data[0]["vw"] == 151.5
+        assert ohlcv_data[0]["n"] == 5000
+        assert ohlcv_data[0]["timestamp"] == 1672531200000
+        assert ohlcv_data[1]["high"] == 158.0
 
         # Verify API call
         mock_client.get.assert_called_once()
         call_args = mock_client.get.call_args
-        assert call_args[0][0] == "https://api.polygon.io/v2/aggs/ticker/AAPL/range/1/day/2023-01-01/2023-01-02"
+        expected_url = f"https://api.polygon.io/v2/aggs/ticker/AAPL/range/1/day/{expected_from_date}/{expected_to_date}"
+        assert call_args[0][0] == expected_url
         params = call_args[1]["params"]
         assert params["apiKey"] == "test_api_key"
         assert params["adjusted"] == "true"
@@ -108,19 +123,6 @@ async def test_execute_missing_symbol(polygon_custom_bars_node):
     with pytest.raises(ValueError, match="Symbol input is required"):
         await polygon_custom_bars_node.execute({
             "symbol": None,
-            "api_key": "test_key"
-        })
-
-
-@pytest.mark.asyncio
-async def test_execute_missing_dates(polygon_custom_bars_node, sample_symbol):
-    """Test error when from_date or to_date params are missing."""
-    polygon_custom_bars_node.params["from_date"] = ""
-    polygon_custom_bars_node.params["to_date"] = ""
-
-    with pytest.raises(ValueError, match="Both from_date and to_date are required"):
-        await polygon_custom_bars_node.execute({
-            "symbol": sample_symbol,
             "api_key": "test_key"
         })
 
@@ -194,10 +196,9 @@ async def test_execute_empty_results(polygon_custom_bars_node, sample_symbol):
         })
 
         assert "ohlcv" in result
-        df = result["ohlcv"]
-        assert isinstance(df, pd.DataFrame)
-        assert len(df) == 0
-        assert list(df.columns) == ["open", "high", "low", "close", "volume"]
+        ohlcv_data = result["ohlcv"]
+        assert isinstance(ohlcv_data, list)
+        assert len(ohlcv_data) == 0
 
 
 @pytest.mark.asyncio

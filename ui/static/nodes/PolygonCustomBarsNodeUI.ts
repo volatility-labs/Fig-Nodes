@@ -8,9 +8,6 @@ export default class PolygonCustomBarsNodeUI extends BaseCustomNode {
         this.color = '#2c5530';  // Green theme for market data
         this.bgcolor = '#1a3320';
 
-        // Display results for OHLCV data summary
-        this.displayResults = true;
-
         // Add convenience buttons
         this.addWidget('button', 'Preview Data', '', () => {
             this.displayDataPreview();
@@ -38,12 +35,14 @@ export default class PolygonCustomBarsNodeUI extends BaseCustomNode {
         if (Array.isArray(df) && df.length > 0) {
             const rowCount = df.length;
             const columns = Object.keys(df[0] || {});
-            const summary = `OHLCV Data: ${rowCount} bars\nColumns: ${columns.join(', ')}`;
+            // Get lookback period from params for display
+            const lookbackPeriod = this.properties?.lookback_period || '3 months';
+            const summary = `OHLCV Data: ${rowCount} bars (${lookbackPeriod})\nColumns: ${columns.join(', ')}`;
 
             // Show first few bars as preview
             const previewBars = df.slice(0, 3).map((bar: any, i: number) => {
                 const timestamp = bar.timestamp || bar.index || `Bar ${i + 1}`;
-                const ohlc = `O:${bar.open?.toFixed(2) || 'N/A'} H:${bar.high?.toFixed(2) || 'N/A'} L:${bar.low?.toFixed(2) || 'N/A'} C:${bar.close?.toFixed(2) || 'N/A'}`;
+                const ohlc = `O:${parseFloat(bar.open)?.toFixed(2) ?? 'N/A'} H:${parseFloat(bar.high)?.toFixed(2) ?? 'N/A'} L:${parseFloat(bar.low)?.toFixed(2) ?? 'N/A'} C:${parseFloat(bar.close)?.toFixed(2) ?? 'N/A'}`;
                 const volume = bar.volume ? ` V:${bar.volume.toLocaleString()}` : '';
                 return `${timestamp}: ${ohlc}${volume}`;
             }).join('\n');
@@ -92,7 +91,8 @@ export default class PolygonCustomBarsNodeUI extends BaseCustomNode {
         `;
 
         // Format data for display
-        let displayData = 'OHLCV Data Preview:\n\n';
+        const lookbackPeriod = this.properties?.lookback_period || '3 months';
+        let displayData = `OHLCV Data Preview (${lookbackPeriod}):\n\n`;
         if (Array.isArray(ohlcv) && ohlcv.length > 0) {
             // Show column headers
             const headers = Object.keys(ohlcv[0]).join('\t');
