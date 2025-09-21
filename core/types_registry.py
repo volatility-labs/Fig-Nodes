@@ -1,4 +1,4 @@
-from typing import List, Dict, Any, Type, Optional, AsyncGenerator, TypedDict, Literal
+from typing import List, Dict, Any, Type, Optional, AsyncGenerator, TypedDict, Literal, Union
 import pandas as pd
 from datetime import datetime
 from dataclasses import dataclass, field
@@ -35,9 +35,9 @@ class LLMToolCallFunction(TypedDict, total=False):
 class LLMToolCall(TypedDict):
     function: LLMToolCallFunction
 
-class LLMChatMessage(TypedDict, total=False):
+class LLMChatMessage(TypedDict, total=True):
     role: Literal["system", "user", "assistant", "tool"]
-    content: str
+    content: Union[str, Dict[str, Any]]
     thinking: Optional[str]
     images: Optional[List[str]]
     tool_calls: Optional[List[LLMToolCall]]

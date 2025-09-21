@@ -1,6 +1,6 @@
 import pytest
 import asyncio
-from unittest.mock import patch, AsyncMock
+from unittest.mock import patch, AsyncMock, MagicMock
 from core.graph_executor import GraphExecutor
 from core.node_registry import NODE_REGISTRY
 
@@ -53,7 +53,17 @@ async def test_ollama_integration(mock_ollama_client):
 
 @pytest.mark.asyncio
 @patch("ollama.AsyncClient")
-async def test_ollama_streaming_integration(mock_ollama_client):
+@patch("httpx.AsyncClient")
+async def test_ollama_streaming_integration(mock_httpx_client, mock_ollama_client):
+    # Mock model list for selector
+    httpx_response = MagicMock()
+    httpx_response.json.return_value = {"models": [{"name": "test_model:latest"}]}
+    httpx_response.raise_for_status.return_value = None
+    httpx_client_instance = MagicMock()
+    httpx_client_instance.get = AsyncMock(return_value=httpx_response)
+    # Async context manager behavior
+    mock_httpx_client.return_value.__aenter__.return_value = httpx_client_instance
+
     # Mock chat stream for quick completion
     async def mock_stream():
         yield {"message": {"content": "{}"}}
@@ -65,10 +75,13 @@ async def test_ollama_streaming_integration(mock_ollama_client):
     # Define graph: TextInput -> OllamaChat (streaming)
     graph_data = {
         "nodes": [
+            {"id": 3, "type": "OllamaModelSelectorNode", "properties": {"selected": "test_model:latest"}},
             {"id": 1, "type": "OllamaChatNode", "properties": {"stream": True, "json_mode": True}},
             {"id": 2, "type": "TextInputNode", "properties": {"text": "Output empty JSON"}}
         ],
         "links": [
+            [0, 3, 0, 1, 0],  # selector.host -> chat.host
+            [0, 3, 1, 1, 1],  # selector.model -> chat.model
             [0, 2, 0, 1, 3]  # text -> prompt
         ]
     }

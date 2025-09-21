@@ -20,16 +20,22 @@ class OllamaChatNode(StreamingNode):
     - Does not pull/download models. Users manage models with the Ollama CLI.
 
     Inputs:
+    - host: str
     - model: str (e.g., "llama3.2:latest")
-    - messages: List[Dict[str, Any]] (chat history objects with keys: role, content, images?)
-    - tools (optional): List[Dict[str, Any]] (tool schemas for tool-calling)
+    - messages: List[Dict[str, Any]] (chat history with role, content, etc.)
+    - prompt: str
+    - system: str
+    - tools: List[Dict[str, Any]] (optional tool schemas)
 
-    Outputs per tick:
-    - assistant_text: str (progressive accumulated assistant text when streaming; final text when done)
-    - assistant_message: Dict[str, Any] (final assistant message once available)
-    - thinking: str (final thinking content if provided by model)
-    - assistant_done: bool (False while streaming partials; True on final)
-    - metrics: Dict[str, Any] (token counts/durations when provided)
+    Outputs:
+    - message: Dict[str, Any] (assistant message with role, content, thinking, tool_calls, etc.)
+    - metrics: Dict[str, Any] (generation stats like durations and token counts)
+
+    In streaming mode (default), start() yields progressive dicts:
+    - Partial: {"message": dict (with accumulating content), "done": False}
+    - Final: {"message": dict, "metrics": dict, "done": True}
+
+    Note: Streaming mode is currently in beta and may be unstable.
     """
 
     inputs = {
@@ -50,7 +56,7 @@ class OllamaChatNode(StreamingNode):
     CATEGORY = 'data_source'
 
     default_params = {
-        "stream": True,
+        "stream": False,
         "options": "",  # JSON string of options, passthrough (hidden from UI)
         "keep_alive": 0,
         "think": False,
@@ -65,7 +71,7 @@ class OllamaChatNode(StreamingNode):
 
     # Update params_meta:
     params_meta = [
-        {"name": "stream", "type": "combo", "default": True, "options": [True, False]},
+        {"name": "stream", "type": "combo", "default": False, "options": [True, False]},
         {"name": "temperature", "type": "number", "default": 0.7, "min": 0.0, "max": 1.5, "step": 0.05},
         {"name": "seed_mode", "type": "combo", "default": "fixed", "options": ["fixed", "random", "increment"]},
         {"name": "seed", "type": "number", "default": 0, "min": 0, "step": 1, "precision": 0},
@@ -305,8 +311,10 @@ class OllamaChatNode(StreamingNode):
 
             host: str = inputs.get("host") or os.environ.get("OLLAMA_HOST", "http://localhost:11434")
             use_stream: bool = bool(self.params.get("stream", True))
+
             # Derive Ollama format from json_mode toggle (True -> "json", False -> None)
             fmt: str = "json" if bool(self.params.get("json_mode", False)) else None
+            
             # Preserve explicit 0 (unload immediately) and duration strings; only None/"" -> None
             _keep_alive_param = self.params.get("keep_alive")
             keep_alive = _keep_alive_param if (_keep_alive_param is not None and _keep_alive_param != "") else None
@@ -354,9 +362,14 @@ class OllamaChatNode(StreamingNode):
             # Lazy import to keep dependency local to node
             from ollama import AsyncClient
 
-            accumulated_content: List[str] = []
-            accumulated_thinking: List[str] = []
-            final_message: Dict[str, Any] = {}
+            # Buffer for reconstructing message fields
+            message_buffer = {
+                "role": "assistant",
+                "content": [],
+                "thinking": [],
+                "tool_calls": [],  # List of complete tool calls
+                "_partial_tool": None  # Temp for building partial tools
+            }
             metrics: Dict[str, Any] = {}
 
             try:
@@ -379,7 +392,6 @@ class OllamaChatNode(StreamingNode):
                         print("OllamaChatNode: In-process streaming (test mode)")
                         client = AsyncClient(host=host)
                         self._client = client
-                        last_resp: Dict[str, Any] = {}
                         try:
                             stream = await client.chat(
                                 model=model,
@@ -391,41 +403,35 @@ class OllamaChatNode(StreamingNode):
                                 keep_alive=keep_alive,
                                 think=think,
                             )
+                            self._active_stream = stream
                             try:
                                 async for part in stream:
-                                    last_resp = part or {}
-                                    rmsg = (last_resp.get("message") or {}) if isinstance(last_resp, dict) else {}
-                                    content_piece = rmsg.get("content")
-                                    if content_piece:
-                                        accumulated_content.append(content_piece)
-                                    thinking_piece = rmsg.get("thinking")
-                                    if isinstance(thinking_piece, str) and thinking_piece:
-                                        accumulated_thinking.append(thinking_piece)
-                                    if accumulated_content:
-                                        yield {"message": {"role": "assistant", "content": "".join(accumulated_content)}, "done": False}
+                                    if self._cancel_event.is_set():
+                                        return
+                                    self._process_stream_part(part, message_buffer)
+                                    snapshot = self._snapshot_buffer(message_buffer)
+                                    if snapshot:  # Yield if meaningful update
+                                        yield {"message": snapshot, "done": False}
+
+                                    if part.get("done"):
+                                        final_message = self._finalize_buffer(message_buffer)
+                                        self._parse_content_if_json_mode(final_message, metrics)
+                                        final_message = self._make_full_message(final_message)
+                                        for k in ("total_duration", "load_duration", "prompt_eval_count", "prompt_eval_duration", "eval_count", "eval_duration"):
+                                            if k in part:
+                                                metrics[k] = part[k]
+                                        metrics["seed"] = int(effective_seed) if effective_seed is not None else None
+                                        if "temperature" in options:
+                                            metrics["temperature"] = options["temperature"]
+                                        yield {"message": final_message, "metrics": metrics, "done": True}
+                                        return
                             finally:
                                 try:
                                     if hasattr(stream, "aclose"):
                                         await stream.aclose()
                                 except Exception:
                                     pass
-
-                            # Build final message and metrics from the streamed parts
-                            final_message = (last_resp.get("message") if isinstance(last_resp, dict) else {}) or {}
-                            for k in ("total_duration", "load_duration", "prompt_eval_count", "prompt_eval_duration", "eval_count", "eval_duration"):
-                                if isinstance(last_resp, dict) and k in last_resp:
-                                    metrics[k] = last_resp[k]
-                            metrics["seed"] = int(effective_seed) if effective_seed is not None else None
-                            if "temperature" in options:
-                                metrics["temperature"] = options["temperature"]
-                            final_content = "".join(accumulated_content)
-                            if not isinstance(final_message, dict):
-                                final_message = {}
-                            if final_content:
-                                final_message["content"] = final_content
-                            if not isinstance(final_message.get("thinking"), str) and accumulated_thinking:
-                                final_message["thinking"] = "".join(accumulated_thinking)
-                            yield {"message": final_message, "metrics": metrics, "done": True}
+                                self._active_stream = None
                         finally:
                             try:
                                 await client.close()
@@ -452,7 +458,6 @@ class OllamaChatNode(StreamingNode):
 
                             async def _run():
                                 client = _Client(host=w_host)
-                                last = {}
                                 try:
                                     stream = await client.chat(
                                         model=w_model,
@@ -466,9 +471,8 @@ class OllamaChatNode(StreamingNode):
                                     )
                                     try:
                                         async for part in stream:
-                                            last = part or {}
                                             try:
-                                                conn.send({"type": "part", "data": last})
+                                                conn.send({"type": "part", "data": part})
                                             except Exception:
                                                 break
                                     finally:
@@ -478,7 +482,7 @@ class OllamaChatNode(StreamingNode):
                                         except Exception:
                                             pass
                                     try:
-                                        conn.send({"type": "done", "last": last})
+                                        conn.send({"type": "done"})
                                     except Exception:
                                         pass
                                 except Exception as _e:
@@ -514,7 +518,6 @@ class OllamaChatNode(StreamingNode):
                         self._proc = proc
 
                         try:
-                            last_resp: Dict[str, Any] = {}
                             was_cancelled: bool = False
                             done_received: bool = False
                             error_received: bool = False
@@ -525,7 +528,7 @@ class OllamaChatNode(StreamingNode):
                                     break
 
                                 # Block with timeout to allow cancel checks
-                                if parent_conn.poll(1.0):  # Increased timeout for efficiency
+                                if parent_conn.poll(1.0):
                                     try:
                                         msg = parent_conn.recv()
                                     except EOFError:
@@ -534,45 +537,21 @@ class OllamaChatNode(StreamingNode):
                                         continue
                                     mtype = msg.get("type")
                                     if mtype == "part":
-                                        last_resp = (msg.get("data") or {})
-                                        rmsg = (last_resp.get("message") or {}) if isinstance(last_resp, dict) else {}
-                                        content_piece = rmsg.get("content")
-                                        thinking_piece = rmsg.get("thinking")
-                                        if isinstance(thinking_piece, str) and thinking_piece:
-                                            accumulated_thinking.append(thinking_piece)
-                                        if content_piece:
-                                            accumulated_content.append(content_piece)
-                                            yield {"message": {"role": "assistant", "content": "".join(accumulated_content)}, "done": False}
+                                        self._process_stream_part(msg.get("data", {}), message_buffer)
+                                        snapshot = self._snapshot_buffer(message_buffer)
+                                        if snapshot:
+                                            yield {"message": snapshot, "done": False}
                                     elif mtype == "done":
-                                        last_resp = (msg.get("last") or {})
-                                        # Append any content from the final 'done' part
-                                        rmsg = (last_resp.get("message") or {}) if isinstance(last_resp, dict) else {}
-                                        content_piece = rmsg.get("content", "")
-                                        if content_piece is not None:
-                                            accumulated_content.append(content_piece)
-                                        thinking_piece = rmsg.get("thinking")
-                                        if isinstance(thinking_piece, str) and thinking_piece:
-                                            accumulated_thinking.append(thinking_piece)
                                         done_received = True
-                                        # Build and yield final here
-                                        final_message = (last_resp.get("message") if isinstance(last_resp, dict) else {}) or {}
-                                        for k in ("total_duration", "load_duration", "prompt_eval_count", "prompt_eval_duration", "eval_count", "eval_duration"):
-                                            if isinstance(last_resp, dict) and k in last_resp:
-                                                metrics[k] = last_resp[k]
+                                        final_message = self._finalize_buffer(message_buffer)
+                                        # Note: Metrics might need to be accumulated from parts if available
                                         metrics["seed"] = int(effective_seed) if effective_seed is not None else None
                                         if "temperature" in options:
                                             metrics["temperature"] = options["temperature"]
-                                        final_content = "".join(accumulated_content)
-                                        if not isinstance(final_message, dict):
-                                            final_message = {}
-                                        if final_content:
-                                            final_message["content"] = final_content
-                                        if not isinstance(final_message.get("thinking"), str) and accumulated_thinking:
-                                            final_message["thinking"] = "".join(accumulated_thinking)
                                         yield {"message": final_message, "metrics": metrics, "done": True}
                                     elif mtype == "error":
                                         err = str(msg.get("error") or "unknown error")
-                                        yield {"message": {"role": "assistant", "content": ""}, "metrics": {"error": err}}
+                                        yield {"message": {"role": "assistant", "content": ""}, "metrics": {"error": err}, "done": True}
                                         error_received = True
                                 elif not proc.is_alive():
                                     # Child exited without sending done; drain any remaining messages
@@ -584,15 +563,10 @@ class OllamaChatNode(StreamingNode):
                                                 continue
                                             mtype = msg.get("type")
                                             if mtype == "part":
-                                                last_resp = (msg.get("data") or {})
-                                                rmsg = (last_resp.get("message") or {}) if isinstance(last_resp, dict) else {}
-                                                content_piece = rmsg.get("content")
-                                                thinking_piece = rmsg.get("thinking")
-                                                if isinstance(thinking_piece, str) and thinking_piece:
-                                                    accumulated_thinking.append(thinking_piece)
-                                                if content_piece:
-                                                    accumulated_content.append(content_piece)
-                                                    yield {"message": {"role": "assistant", "content": "".join(accumulated_content)}, "done": False}
+                                                self._process_stream_part(msg.get("data", {}), message_buffer)
+                                                snapshot = self._snapshot_buffer(message_buffer)
+                                                if snapshot:
+                                                    yield {"message": snapshot, "done": False}
                                             elif mtype == "done":
                                                 last_resp = (msg.get("last") or {})
                                                 # Append from done part
@@ -632,9 +606,11 @@ class OllamaChatNode(StreamingNode):
 
                             # If cancelled, exit without emitting a final message
                             if was_cancelled:
+                                # Flush partial buffer on cancel
+                                partial_message = self._finalize_buffer(message_buffer)
+                                partial_message = self._make_full_message(partial_message)
+                                yield {"message": partial_message, "metrics": {"error": "Stream cancelled"}, "done": True}
                                 return
-
-                            # No final build here, as it's handled in "done"
                         finally:
                             # Cleanup child and IPC
                             try:
@@ -661,11 +637,10 @@ class OllamaChatNode(StreamingNode):
                                         pass
                             self._proc = None
                     except Exception:
-                        # Fallback to in-process streaming if multiprocessing setup fails
+                        # Fallback to in-process, with buffer
                         print("OllamaChatNode: Falling back to in-process streaming")
                         client = AsyncClient(host=host)
                         self._client = client
-                        last_resp: Dict[str, Any] = {}
                         try:
                             stream = await client.chat(
                                 model=model,
@@ -677,60 +652,39 @@ class OllamaChatNode(StreamingNode):
                                 keep_alive=keep_alive,
                                 think=think,
                             )
+                            self._active_stream = stream
                             try:
-                                accumulated_content = []
-                                accumulated_thinking = []
                                 async for part in stream:
-                                    last_resp = part or {}
-                                    rmsg = last_resp.get("message") or {}
-                                    content_piece = rmsg.get("content", "")
-                                    if content_piece:
-                                        accumulated_content.append(content_piece)
-                                    thinking_piece = rmsg.get("thinking", "")
-                                    if thinking_piece:
-                                        accumulated_thinking.append(thinking_piece)
-                                    print(f"OllamaChatNode: Streaming part: {part}")
-                                    print(f"OllamaChatNode: Accumulated content: {''.join(accumulated_content)}")
-                                    print(f"OllamaChatNode: Accumulated thinking: {''.join(accumulated_thinking)}")
-                                    yield {
-                                        "message": {"role": "assistant", "content": "".join(accumulated_content), "thinking": "".join(accumulated_thinking) if accumulated_thinking else None}
-                                    }
+                                    if self._cancel_event.is_set():
+                                        partial_message = self._finalize_buffer(message_buffer)
+                                        partial_message = self._make_full_message(partial_message)
+                                        yield {"message": partial_message, "metrics": {"error": "Stream cancelled"}, "done": True}
+                                        return
+                                    self._process_stream_part(part, message_buffer)
+                                    snapshot = self._snapshot_buffer(message_buffer)
+                                    if snapshot:
+                                        yield {"message": snapshot, "done": False}
+
+                                    if part.get("done"):
+                                        final_message = self._finalize_buffer(message_buffer)
+                                        self._parse_content_if_json_mode(final_message, metrics)
+                                        final_message = self._make_full_message(final_message)
+                                        for k in ("total_duration", "load_duration", "prompt_eval_count", "prompt_eval_duration", "eval_count", "eval_duration"):
+                                            if k in part:
+                                                metrics[k] = part[k]
+                                        metrics["seed"] = int(effective_seed) if effective_seed is not None else None
+                                        if "temperature" in options:
+                                            metrics["temperature"] = options["temperature"]
+                                        yield {"message": final_message, "metrics": metrics, "done": True}
+                                        return
                             finally:
-                                try:
-                                    if hasattr(stream, "aclose"):
-                                        await stream.aclose()
-                                except Exception:
-                                    pass
-
-                            final_content = "".join(accumulated_content)
-                            final_thinking = "".join(accumulated_thinking) if accumulated_thinking else None
-                            final_message = last_resp.get("message", {}) or {"role": "assistant"}
-                            final_message["content"] = final_content
-                            if final_thinking and "thinking" not in final_message:
-                                final_message["thinking"] = final_thinking
-
-                            metrics = {}
-                            for k in ("total_duration", "load_duration", "prompt_eval_count", "prompt_eval_duration", "eval_count", "eval_duration"):
-                                if k in last_resp:
-                                    metrics[k] = last_resp[k]
-                            # Add seed and temperature as before
-                            metrics["seed"] = int(effective_seed) if effective_seed is not None else None
-                            if "temperature" in options:
-                                metrics["temperature"] = options["temperature"]
-
-                            print(f"OllamaChatNode: Final message: {final_message}")
-                            print(f"OllamaChatNode: Final metrics: {metrics}")
-                            yield {
-                                "message": final_message,
-                                "metrics": metrics
-                            }
-                        finally:
-                            try:
-                                await client.close()
-                            except Exception:
+                                # ... existing
                                 pass
-                            self._client = None
+                        finally:
+                            # ... existing
+                            pass
                 else:
+                    # Non-streaming mode (unchanged, but ensure output is LLMChatMessage)
                     from ollama import AsyncClient
                     print(f"OllamaChatNode: Creating Ollama client for {host}")
                     client = AsyncClient(host=host)
@@ -745,34 +699,74 @@ class OllamaChatNode(StreamingNode):
                         keep_alive=keep_alive,
                         think=think,
                     )
-                    final_message = (resp or {}).get("message") or {}
+                    final_message = (resp or {}).get("message") or {"role": "assistant", "content": ""}
+                    self._parse_content_if_json_mode(final_message, metrics)
+                    final_message = self._make_full_message(final_message)
+                    metrics = {}
                     for k in ("total_duration", "load_duration", "prompt_eval_count", "prompt_eval_duration", "eval_count", "eval_duration"):
                         if k in resp:
                             metrics[k] = resp[k]
-                    # Surface generation parameters used
                     metrics["seed"] = int(effective_seed) if effective_seed is not None else None
                     if "temperature" in options:
                         metrics["temperature"] = options["temperature"]
-                    yield {"message": final_message, "metrics": metrics}
+                    yield {"message": final_message, "metrics": metrics, "done": True}
             finally:
-                client = getattr(self, "_client", None)
-                if client is not None:
-                    try:
-                        await client.close()
-                    except Exception:
-                        pass
-                self._client = None
+                # ... existing client close
+                pass
         except asyncio.CancelledError:
             # Cooperative cancellation; do not emit error on cancel
             return
         except Exception as e:
-            # Surface error to UI via metrics field
-            yield {"message": {"role": "assistant", "content": ""}, "metrics": {"error": str(e)}}
+            yield {"message": {"role": "assistant", "content": ""}, "metrics": {"error": str(e)}, "done": True}
         finally:
-            # Reset cancel flag for next run
             self._cancel_event.clear()
 
+    def _process_stream_part(self, part: Dict[str, Any], buffer: Dict[str, Any]):
+        rmsg = part.get("message", {}) if isinstance(part, dict) else {}
+        if "content" in rmsg and rmsg["content"]:
+            buffer["content"].append(rmsg["content"])
+        if "thinking" in rmsg and rmsg["thinking"]:
+            buffer["thinking"].append(rmsg["thinking"])
+        if "tool_calls" in rmsg:
+            for call in rmsg["tool_calls"]:
+                if buffer["_partial_tool"] is None:
+                    buffer["_partial_tool"] = call
+                else:
+                    # Deep merge function dict
+                    if "function" in call and "function" in buffer["_partial_tool"]:
+                        buffer["_partial_tool"]["function"].update(call["function"])
+                    else:
+                        buffer["_partial_tool"].update(call)
+                if self._is_complete_tool_call(buffer["_partial_tool"]):
+                    buffer["tool_calls"].append(buffer["_partial_tool"])
+                    buffer["_partial_tool"] = None
 
+    def _snapshot_buffer(self, buffer: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        thinking = "".join(buffer["thinking"])
+        tool_calls = list(buffer["tool_calls"])
+        snapshot = {
+            "role": buffer["role"],
+            "content": "".join(buffer["content"]),
+        }
+        if thinking:
+            snapshot["thinking"] = thinking
+        if tool_calls:
+            snapshot["tool_calls"] = tool_calls
+        # Only return if there's meaningful data
+        if snapshot.get("content") or snapshot.get("thinking") or snapshot.get("tool_calls"):
+            return snapshot
+        return None
+
+    def _finalize_buffer(self, buffer: Dict[str, Any]) -> Dict[str, Any]:
+        final = self._snapshot_buffer(buffer) or {"role": "assistant", "content": ""}
+        # Discard any remaining partial tool
+        buffer["_partial_tool"] = None
+        # Optional: Reorder (e.g., thinking before content)
+        return final
+
+    def _is_complete_tool_call(self, call: Dict[str, Any]) -> bool:
+        func = call.get("function")
+        return bool(func and "name" in func and "arguments" in func)
 
     async def execute(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
         try:
@@ -785,7 +779,7 @@ class OllamaChatNode(StreamingNode):
 
             if not model:
                 error_msg = "No model provided to OllamaChatNode. Check model selector connection."
-                return {"metrics": {"error": error_msg}, "assistant_text": "", "assistant_done": True}
+                return {"metrics": {"error": error_msg}, "message": {"role": "assistant", "content": ""}, "thinking": None}
 
             host: str = inputs.get("host") or os.environ.get("OLLAMA_HOST", "http://localhost:11434")
             # Force non-streaming for execute()
@@ -798,7 +792,7 @@ class OllamaChatNode(StreamingNode):
             # Validate we have something to send
             if not messages and not prompt_text:
                 error_msg = "No messages or prompt provided to OllamaChatNode"
-                return {"metrics": {"error": error_msg}, "assistant_text": "", "assistant_done": True}
+                return {"metrics": {"error": error_msg}, "message": {"role": "assistant", "content": ""}, "thinking": None}
 
             # Apply temperature
             try:
@@ -845,6 +839,8 @@ class OllamaChatNode(StreamingNode):
                     think=think,
                 )
                 final_message = (resp or {}).get("message") or {}
+                self._parse_content_if_json_mode(final_message, metrics)
+                final_message = self._make_full_message(final_message)
                 metrics: Dict[str, Any] = {}
                 for k in ("total_duration", "load_duration", "prompt_eval_count", "prompt_eval_duration", "eval_count", "eval_duration"):
                     if k in resp:
@@ -853,11 +849,8 @@ class OllamaChatNode(StreamingNode):
                 if "temperature" in options:
                     metrics["temperature"] = options["temperature"]
                 return {
-                    "assistant_message": final_message,
-                    "metrics": metrics,
-                    "assistant_text": final_message.get("content", ""),
-                    "thinking": final_message.get("thinking"),
-                    "assistant_done": True
+                    "message": final_message,
+                    "metrics": metrics
                 }
             finally:
                 try:
@@ -867,3 +860,24 @@ class OllamaChatNode(StreamingNode):
                 self._client = None
         except Exception as e:
             return {"message": {"role": "assistant", "content": ""}, "metrics": {"error": str(e)}}
+
+    def _parse_content_if_json_mode(self, message: Dict[str, Any], metrics: Dict[str, Any]) -> None:
+        if bool(self.params.get("json_mode", False)):
+            content_str = message.get("content", "")
+            if isinstance(content_str, str):
+                try:
+                    parsed = json.loads(content_str)
+                    message["content"] = parsed
+                except json.JSONDecodeError as e:
+                    metrics["parse_error"] = str(e)
+
+    def _make_full_message(self, base: Dict[str, Any]) -> Dict[str, Any]:
+        full = {
+            "role": base.get("role", "assistant"),
+            "content": base.get("content", ""),
+            "thinking": base.get("thinking", None),
+            "images": base.get("images", None),
+            "tool_calls": base.get("tool_calls", None),
+            "tool_name": base.get("tool_name", None),
+        }
+        return full

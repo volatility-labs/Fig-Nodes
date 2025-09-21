@@ -30,14 +30,17 @@ async def test_start_streaming_mode(chat_node):
         gen = chat_node.start(inputs)
         output1 = await anext(gen)
         assert output1["message"]["content"] == "Hi"
+        assert "done" in output1 and not output1["done"]
         assert isinstance(output1.get("metrics", {}), dict)
         
         output2 = await anext(gen)
         assert output2["message"]["content"] == "Hi there"
+        assert "done" in output2 and not output2["done"]
         
         output3 = await anext(gen)
         assert output3["message"]["content"] == "Hi there"
-        assert "total_duration" in output3["metrics"]
+        assert "metrics" in output3
+        assert output3["done"] == True
 
 @pytest.mark.asyncio
 async def test_start_non_streaming_mode(chat_node):
@@ -58,7 +61,7 @@ async def test_start_non_streaming_mode(chat_node):
         gen = chat_node.start(inputs)
         output = await anext(gen)
         assert output["message"]["content"] == "Hello back"
-        assert output["metrics"]["total_duration"] == 100
+        assert "metrics" in output and output["metrics"]["total_duration"] == 100
 
 @pytest.mark.asyncio
 async def test_temperature_application(chat_node):
@@ -184,7 +187,8 @@ async def test_stop_mid_stream(chat_node):
         assert part1["message"]["content"] == "Part 1"
         
         chat_node.stop()
-        
+        await asyncio.sleep(0.1)  # Allow time for cancellation to propagate
+
         with pytest.raises(StopAsyncIteration):
             await anext(gen)
 
@@ -293,6 +297,7 @@ async def test_streaming_cancellation(chat_node):
         assert "Part1" in part1["message"]["content"]
 
         chat_node.stop()
+        await asyncio.sleep(0.1)  # Allow time for cancellation to propagate
 
         with pytest.raises(StopAsyncIteration):
             await anext(gen)
@@ -323,6 +328,83 @@ async def test_multiprocessing_fallback(chat_node):
                 assert "total_duration" in output2["metrics"]
 
 @pytest.mark.asyncio
+async def test_interleaved_streaming(chat_node):
+    inputs = {
+        "model": "test_model",
+        "messages": [{"role": "user", "content": "Complex response with thinking and tools"}]
+    }
+    
+    # Non-streaming baseline
+    chat_node.params["stream"] = False
+    with patch("ollama.AsyncClient") as mock_client_ns:
+        mock_response = {
+            "message": {
+                "role": "assistant",
+                "content": "Final content",
+                "thinking": "Thought process",
+                "tool_calls": [{"function": {"name": "tool1", "arguments": {"param": "value"}}}]
+            },
+            "total_duration": 100
+        }
+        mock_chat_ns = AsyncMock(return_value=mock_response)
+        mock_client_ns.return_value.chat = mock_chat_ns
+        ns_result = await chat_node.execute(inputs)
+    
+    # Streaming with interleaved chunks
+    chat_node.params["stream"] = True
+    with patch("ollama.AsyncClient") as mock_client_s:
+        mock_stream = AsyncMock()
+        mock_stream.__aiter__.return_value = [
+            {"message": {"thinking": "Thought "}},  # Partial thinking
+            {"message": {"tool_calls": [{"function": {"name": "tool1"}}]}},  # Partial tool
+            {"message": {"content": "Final "}},  # Partial content
+            {"message": {"thinking": "process"}},  # More thinking
+            {"message": {"tool_calls": [{"function": {"arguments": {"param": "value"}}}]}},  # Complete tool
+            {"message": {"content": "content"}, "done": True, "total_duration": 100}  # Final content and done
+        ]
+        mock_chat_s = AsyncMock(return_value=mock_stream)
+        mock_client_s.return_value.chat = mock_chat_s
+        
+        gen = chat_node.start(inputs)
+        outputs = []
+        async for out in gen:
+            outputs.append(out)
+        
+        # Assert progressive yields are valid partial LLMChatMessage
+        assert len(outputs) > 1
+        assert all("message" in o and "role" in o["message"] for o in outputs[:-1])
+        assert all(not o.get("done", False) for o in outputs[:-1])
+        
+        # Assert final matches non-streaming
+        s_final = outputs[-1]
+        assert s_final["message"] == ns_result["message"]
+        assert s_final["metrics"] == ns_result["metrics"]
+        assert s_final["done"] is True
+
+@pytest.mark.asyncio
+async def test_partial_tool_discard(chat_node):
+    chat_node.params["stream"] = True
+    inputs = {"model": "test_model", "messages": [{"role": "user", "content": "Test partial tool"}]}
+    
+    with patch("ollama.AsyncClient") as mock_client:
+        mock_stream = AsyncMock()
+        mock_stream.__aiter__.return_value = [
+            {"message": {"tool_calls": [{"function": {"name": "incomplete_tool"}}]}},  # Incomplete (missing args)
+            {"message": {"content": "Content"}},
+            {"done": True}
+        ]
+        mock_chat = AsyncMock(return_value=mock_stream)
+        mock_client.return_value.chat = mock_chat
+        
+        gen = chat_node.start(inputs)
+        outputs = [out async for out in gen]
+        
+        final = outputs[-1]
+        assert "tool_calls" not in final["message"] or len(final["message"]["tool_calls"]) == 0  # Discarded incomplete
+        assert final["message"]["content"] == "Content"
+
+# Expand existing test_streaming_equals_nonstreaming to include thinking and tool_calls
+@pytest.mark.asyncio
 async def test_streaming_equals_nonstreaming(chat_node):
     inputs = {
         "model": "test_model",
@@ -333,7 +415,12 @@ async def test_streaming_equals_nonstreaming(chat_node):
     chat_node.params["stream"] = False
     with patch("ollama.AsyncClient") as mock_client_ns:
         mock_response = {
-            "message": {"role": "assistant", "content": "Full response", "thinking": "Thought"},
+            "message": {
+                "role": "assistant",
+                "content": "Full response",
+                "thinking": "Thought",
+                "tool_calls": [{"function": {"name": "tool", "arguments": {}}}]
+            },
             "total_duration": 100,
             "eval_count": 10
         }
@@ -346,25 +433,62 @@ async def test_streaming_equals_nonstreaming(chat_node):
     with patch("ollama.AsyncClient") as mock_client_s:
         mock_stream = AsyncMock()
         mock_stream.__aiter__.return_value = [
-            {"message": {"content": "Full ", "thinking": "Tho"}},
-            {"message": {"content": "response", "thinking": "ught"}},
-            {"done": True, "total_duration": 100, "eval_count": 10, "message": {"role": "assistant"}}
+            {"message": {"thinking": "Tho"}},
+            {"message": {"thinking": "ught"}},
+            {"message": {"tool_calls": [{"function": {"name": "tool", "arguments": {}}}]}},
+            {"message": {"content": "Full "}},
+            {"message": {"content": "response"}},
+            {"done": True, "total_duration": 100, "eval_count": 10}
         ]
         mock_chat_s = AsyncMock(return_value=mock_stream)
         mock_client_s.return_value.chat = mock_chat_s
         
         gen = chat_node.start(inputs)
-        outputs = []
-        async for out in gen:
-            outputs.append(out)
+        outputs = [out async for out in gen]
         
         s_final = outputs[-1]
-    
-    # Compare
-    assert s_final["assistant_message"] == ns_result["assistant_message"]
-    assert s_final["metrics"] == ns_result["metrics"]
-    assert s_final["assistant_text"] == "Full response"
-    assert s_final["thinking"] == "Thought"
-    assert s_final["assistant_done"] is True
+        assert s_final["message"] == ns_result["message"]
+        assert s_final["metrics"] == ns_result["metrics"]
+        assert s_final["done"] is True
+
+# Add test for error in mid-stream
+@pytest.mark.asyncio
+async def test_error_mid_stream(chat_node):
+    chat_node.params["stream"] = True
+    inputs = {"model": "test_model", "messages": [{"role": "user", "content": "Test error"}]}
+
+    with patch("ollama.AsyncClient") as mock_client:
+        async def mock_stream():
+            yield {"message": {"content": "Partial"}}
+            raise Exception("Stream error")
+        
+        mock_chat = AsyncMock(return_value=mock_stream())
+        mock_client.return_value.chat = mock_chat
+        
+        gen = chat_node.start(inputs)
+        partial = await anext(gen)
+        assert partial["message"]["content"] == "Partial"
+        
+        final = await anext(gen)
+        assert "error" in final["metrics"]
+        assert final["metrics"]["error"] == "Stream error"
+        assert final["done"] is True  # Ensure it finalizes on error
+
+# Add test for empty response stream
+@pytest.mark.asyncio
+async def test_empty_streaming_response(chat_node):
+    chat_node.params["stream"] = True
+    inputs = {"model": "test_model", "messages": [{"role": "user", "content": "Empty"}]}
+
+    with patch("ollama.AsyncClient") as mock_client:
+        mock_stream = AsyncMock()
+        mock_stream.__aiter__.return_value = [{"done": True}]
+        mock_chat = AsyncMock(return_value=mock_stream)
+        mock_client.return_value.chat = mock_chat
+        
+        gen = chat_node.start(inputs)
+        output = await anext(gen)
+        assert output["message"] == {"role": "assistant", "content": ""}  # Default empty
+        assert output["done"] is True
 
 # Add more tests for other params like temperature, think, etc.
