@@ -424,12 +424,16 @@ export default class BaseCustomNode extends LGraphNode {
     }
 
     onDblClick(_event: MouseEvent, pos: [number, number], _canvas: any): boolean {
-        // Check if double-click is on the title area
-        if (pos[1] >= 0 && pos[1] <= LiteGraph.NODE_TITLE_HEIGHT) {
+        // Hit-test precisely on the title TEXT bounds
+        const bounds = this.getTitleTextBounds();
+        if (!bounds) return false;
+        const [x, y] = pos;
+        const within = x >= bounds.x && x <= bounds.x + bounds.width && y >= bounds.y && y <= bounds.y + bounds.height;
+        if (within) {
             this.startTitleEdit();
-            return true; // Handled
+            return true;
         }
-        return false; // Not handled
+        return false;
     }
 
     startTitleEdit() {
@@ -468,6 +472,45 @@ export default class BaseCustomNode extends LGraphNode {
         document.body.appendChild(titleElement);
         titleElement.focus();
         titleElement.select();
+    }
+
+    private getTitleFontSize(): number {
+        // Try to parse from this.titleFontStyle, fallback to LiteGraph default
+        try {
+            // titleFontStyle looks like "bold 18px Arial" or "16px Roboto"
+            // pick the first number+px
+            const style: any = (this as any).titleFontStyle || '';
+            const m = String(style).match(/(\d+(?:\.\d+)?)px/);
+            if (m) return Math.round(Number(m[1]));
+        } catch { /* ignore */ }
+        // Reasonable default matching LiteGraph.NODE_TEXT_SIZE if available
+        try {
+            const sizeConst: any = (LiteGraph as any).NODE_TEXT_SIZE;
+            if (typeof sizeConst === 'number' && Number.isFinite(sizeConst)) return sizeConst;
+        } catch { /* ignore */ }
+        return 16;
+    }
+
+    private getTitleTextBounds(): { x: number; y: number; width: number; height: number } | null {
+        // Local node coordinates: origin at (0, 0) is the bottom of the title bar
+        // Title bar spans y in [-NODE_TITLE_HEIGHT, 0]
+        const fontSize = this.getTitleFontSize();
+        const padLeft = LiteGraph.NODE_TITLE_HEIGHT; // matches library padding used for icon/space
+        const baselineY = -LiteGraph.NODE_TITLE_HEIGHT + (LiteGraph as any).NODE_TITLE_TEXT_Y;
+
+        // Measure text width using offscreen canvas and node's font style
+        const canvasEl = document.createElement('canvas');
+        const ctx = canvasEl.getContext('2d');
+        if (!ctx) return null;
+        const fontStyle: any = (this as any).titleFontStyle || `${fontSize}px Arial`;
+        ctx.font = String(fontStyle);
+        const text = this.title ?? '';
+        const textWidth = Math.ceil(ctx.measureText(text).width);
+
+        const height = Math.ceil(fontSize + 6); // small vertical padding around text
+        const yTop = Math.round(baselineY - fontSize * 0.85); // approx ascent region
+
+        return { x: padLeft, y: yTop, width: Math.max(2, textWidth), height };
     }
 
     onConnectionsChange() { }

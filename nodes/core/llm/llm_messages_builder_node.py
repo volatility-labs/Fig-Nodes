@@ -26,10 +26,13 @@ class LLMMessagesBuilderNode(BaseNode):
     inputs = {
         "base": get_type("LLMChatMessageList"),
         "system_text": str,
+        "user": get_type("LLMChatMessageList"),
+        "assistant": get_type("LLMChatMessageList"),
+        "tool": get_type("LLMChatMessageList"),
         **{f"message_{i}": get_type("LLMChatMessage") for i in range(10)},
         "prompt": str,
     }
-    optional_inputs = ["base", "system_text", "prompt"] + [f"message_{i}" for i in range(10)]
+    optional_inputs = ["base", "system_text", "user", "assistant", "tool", "prompt"] + [f"message_{i}" for i in range(10)]
 
     outputs = {
         "messages": get_type("LLMChatMessageList"),
@@ -53,14 +56,42 @@ class LLMMessagesBuilderNode(BaseNode):
     async def execute(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
         merged = list(inputs.get("base") or [])
         if inputs.get("system_text"):
-            merged.insert(0, {"role": "system", "content": inputs["system_text"]})
+            # Only add system_text if there are no existing system messages in base
+            has_existing_system = any(m.get("role") == "system" for m in merged)
+            if not has_existing_system:
+                merged.insert(0, {"role": "system", "content": inputs["system_text"]})
+
+        # Handle multi-inputs: user, assistant, tool
+        for input_name in ["user", "assistant", "tool"]:
+            input_value = inputs.get(input_name)
+            if input_value:
+                for item in input_value:
+                    if isinstance(item, list):
+                        merged.extend(item)
+                    else:
+                        merged.append(item)
+
         for i in range(10):
             msg = inputs.get(f"message_{i}")
             if msg:
                 merged.append(msg)
         if inputs.get("prompt"):
             merged.append({"role": "user", "content": inputs["prompt"]})
-        # Add filtering if needed
-        return {"messages": [m for m in merged if m]}
+
+        # Apply filtering based on params
+        messages = merged
+        if self.params.get("drop_empty", True):
+            messages = [m for m in messages if m and (m.get("content") or "").strip()]
+        if self.params.get("enforce_single_system", True):
+            system_msgs = [m for m in messages if m.get("role") == "system"]
+            if len(system_msgs) > 1:
+                messages = [m for m in messages if m.get("role") != "system"]
+                messages.insert(0, system_msgs[0])
+        if self.params.get("ensure_system_first", True):
+            system_msgs = [m for m in messages if m.get("role") == "system"]
+            non_system_msgs = [m for m in messages if m.get("role") != "system"]
+            messages = system_msgs + non_system_msgs
+
+        return {"messages": messages}
 
 
