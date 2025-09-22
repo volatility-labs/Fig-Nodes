@@ -2,6 +2,9 @@
 import BaseCustomNode from './BaseCustomNode';
 
 export default class LoggingNodeUI extends BaseCustomNode {
+    private copyButton: any = null;
+    private copyFeedbackTimeout: number | null = null;
+
     constructor(title: string, data: any) {
         super(title, data);
 
@@ -11,10 +14,46 @@ export default class LoggingNodeUI extends BaseCustomNode {
         // Enable display for logging node specifically
         this.displayResults = true;
 
-        // Add format selector widget
-        this.addWidget('combo', 'Format', this.properties['format'] || 'auto', (value: string) => {
-            this.properties['format'] = value;
-        }, { values: ['auto', 'plain', 'json', 'markdown'] });
+        // Add copy button widget
+        this.copyButton = this.addWidget('button', '📋 Copy Log', '', () => {
+            this.copyLogToClipboard();
+        }, {});
+    }
+
+    private copyLogToClipboard() {
+        const textToCopy = this.displayText || '';
+        if (!textToCopy.trim()) {
+            this.showCopyFeedback('No content to copy', false);
+            return;
+        }
+
+        navigator.clipboard.writeText(textToCopy).then(() => {
+            this.showCopyFeedback('Copied to clipboard!', true);
+        }).catch((err) => {
+            console.error('Failed to copy text: ', err);
+            this.showCopyFeedback('Copy failed', false);
+        });
+    }
+
+    private showCopyFeedback(message: string, success: boolean) {
+        if (this.copyButton) {
+            const originalText = this.copyButton.name;
+            this.copyButton.name = success ? '✅ ' + message : '❌ ' + message;
+
+            // Clear any existing timeout
+            if (this.copyFeedbackTimeout) {
+                clearTimeout(this.copyFeedbackTimeout);
+            }
+
+            // Reset button text after 2 seconds
+            this.copyFeedbackTimeout = window.setTimeout(() => {
+                this.copyButton.name = originalText;
+                this.copyFeedbackTimeout = null;
+                this.setDirtyCanvas(true, true);
+            }, 2000);
+
+            this.setDirtyCanvas(true, true);
+        }
     }
 
     private getSelectedFormat(): 'auto' | 'plain' | 'json' | 'markdown' {
@@ -148,5 +187,14 @@ export default class LoggingNodeUI extends BaseCustomNode {
         console.log('Current size:', this.size);
         super.onDrawForeground(ctx);
         console.log('After super.onDrawForeground');
+    }
+
+    // Clean up timeouts when node is destroyed
+    onRemoved() {
+        if (this.copyFeedbackTimeout) {
+            clearTimeout(this.copyFeedbackTimeout);
+            this.copyFeedbackTimeout = null;
+        }
+        super.onRemoved?.();
     }
 }

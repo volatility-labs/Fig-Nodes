@@ -9,7 +9,7 @@ import signal
 
 
 from core.types_registry import get_type
-from services.tools.registry import get_tool_handler
+from services.tools.registry import get_tool_handler, get_all_credential_providers
 
 
 class OllamaChatNode(StreamingNode):
@@ -26,6 +26,7 @@ class OllamaChatNode(StreamingNode):
     - prompt: str
     - system: str
     - tools: List[Dict[str, Any]] (optional tool schemas)
+    - tool: Dict[str, Any] (optional single tool schema, supports multi-input)
 
     Outputs:
     - message: Dict[str, Any] (assistant message with role, content, thinking, tool_calls, etc.)
@@ -45,11 +46,14 @@ class OllamaChatNode(StreamingNode):
         "prompt": str,
         "system": str,
         "tools": get_type("LLMToolSpecList"),
+        "tool": get_type("LLMToolSpec"),  # Single tool input supporting multi-input slots
     }
 
     outputs = {
-        "message": get_type("LLMChatMessage"),
+        "message": str,
         "metrics": get_type("LLMChatMetrics"),
+        "tool_history": get_type("LLMToolHistory"),
+        "thinking_history": get_type("LLMThinkingHistory"),
     }
 
     # Mark as data_source category so default Base UI does not display inline output
@@ -87,7 +91,7 @@ class OllamaChatNode(StreamingNode):
         super().__init__(id, params)
         self._cancel_event = asyncio.Event()
         # Mark optional inputs at runtime for validation layer
-        self.optional_inputs = ["tools", "messages", "prompt", "system"]
+        self.optional_inputs = ["tools", "tool", "messages", "prompt", "system"]
         # Maintain seed state when using increment mode across runs
         self._seed_state: Optional[int] = None
         # Track active stream iterator for cooperative shutdown
@@ -111,6 +115,24 @@ class OllamaChatNode(StreamingNode):
             result.insert(0, {"role": "system", "content": system_prompt})
         if prompt:
             result.append({"role": "user", "content": prompt})
+        return result
+
+    def _collect_tools(self, inputs: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """
+        Collect and combine tools from both 'tools' (list) and 'tool' (single/multi) inputs.
+        """
+        result: List[Dict[str, Any]] = []
+
+        # Add tools from the 'tools' input (list)
+        tools_list = inputs.get("tools")
+        if tools_list and isinstance(tools_list, list):
+            result.extend(tools_list)
+
+        # Add tools from the 'tool' multi-input
+        for tool_spec in self.collect_multi_input("tool", inputs):
+            if isinstance(tool_spec, dict) and tool_spec.get("type") == "function":
+                result.append(tool_spec)
+
         return result
 
     def stop(self):
@@ -188,10 +210,42 @@ class OllamaChatNode(StreamingNode):
         except Exception:
             return None
 
+    def _message_to_dict(self, message) -> Dict[str, Any]:
+        """Convert Ollama Message object to dict format."""
+        result = {
+            "role": getattr(message, "role", "assistant"),
+            "content": getattr(message, "content", ""),
+        }
+        # Handle optional attributes
+        for attr in ["thinking", "images", "tool_calls", "tool_name"]:
+            if hasattr(message, attr):
+                value = getattr(message, attr)
+                if value is not None:
+                    if attr == "tool_calls" and isinstance(value, list):
+                        # Convert ToolCall objects to dicts
+                        result[attr] = [self._tool_call_to_dict(tc) for tc in value]
+                    else:
+                        result[attr] = value
+        return result
+
+    def _tool_call_to_dict(self, tool_call) -> Dict[str, Any]:
+        """Convert Ollama ToolCall object to dict format."""
+        if hasattr(tool_call, 'function'):
+            func = tool_call.function
+            return {
+                "function": {
+                    "name": getattr(func, 'name', ''),
+                    "arguments": getattr(func, 'arguments', {}),
+                }
+            }
+        return {}
+
+
+
     async def _maybe_execute_tools_and_augment_messages(self, host: str, model: str, base_messages: List[Dict[str, Any]], tools: Optional[List[Dict[str, Any]]], fmt: Optional[str], options: Dict[str, Any], keep_alive: Optional[Any], think: bool, client_factory=None) -> Dict[str, Any]:
         """
         Orchestrate tool-calling rounds until no tool_calls are present or max iterations reached.
-        Returns a dict with keys: messages (final history), last_response (last non-streaming chat response), metrics (aggregated).
+        Returns a dict with keys: messages (final history), last_response (last non-streaming chat response), metrics (aggregated), tool_history (list of tool calls and results), thinking_history (list of thinking strings).
         """
         # No tools attached; nothing to orchestrate
         if not tools or not isinstance(tools, list):
@@ -207,6 +261,8 @@ class OllamaChatNode(StreamingNode):
 
         messages = list(base_messages)
         combined_metrics: Dict[str, Any] = {}
+        tool_history: List[Dict[str, Any]] = []
+        thinking_history: List[Dict[str, Any]] = []
 
         async def _invoke_chat_nonstream(_client):
             return await _client.chat(
@@ -239,7 +295,17 @@ class OllamaChatNode(StreamingNode):
                     combined_metrics[k] = (resp or {}).get(k)
 
             message = (resp or {}).get("message") or {}
+            # Convert Message object to dict if needed
+            if hasattr(message, 'role'):  # It's a Message object
+                message = self._message_to_dict(message)
+            # Handle both dict (from API) and Message object (from Ollama client)
             tool_calls = message.get("tool_calls") if isinstance(message, dict) else None
+
+            # Collect thinking if present
+            thinking = message.get("thinking")
+            if thinking and isinstance(thinking, str):
+                thinking_history.append({"thinking": thinking, "iteration": _round})
+
             # If no tool calls, stop and keep last response
             if not tool_calls or not isinstance(tool_calls, list):
                 break
@@ -259,7 +325,11 @@ class OllamaChatNode(StreamingNode):
                     async def _run_handler():
                         if handler is None:
                             return {"error": "unknown_tool", "message": f"No handler for tool '{tool_name}'"}
-                        ctx = {"model": model, "host": host}
+                        ctx = {
+                            "model": model,
+                            "host": host,
+                            "credentials": get_all_credential_providers()
+                        }
                         return await handler(arguments, ctx)
 
                     try:
@@ -280,6 +350,9 @@ class OllamaChatNode(StreamingNode):
                         "tool_name": tool_name,
                         "content": content_str,
                     })
+
+                    # Collect tool history
+                    tool_history.append({"call": call, "result": result_obj})
                 except Exception as _e_outer:
                     # Append an error tool message to allow model to recover
                     messages.append({
@@ -290,7 +363,7 @@ class OllamaChatNode(StreamingNode):
 
             # After appending tool outputs, continue loop to call chat again
 
-        return {"messages": messages, "last_response": last_resp, "metrics": combined_metrics}
+        return {"messages": messages, "last_response": last_resp, "metrics": combined_metrics, "tool_history": tool_history, "thinking_history": thinking_history}
 
     async def start(self, inputs: Dict[str, Any]) -> AsyncGenerator[Dict[str, Any], None]:
         try:
@@ -299,7 +372,7 @@ class OllamaChatNode(StreamingNode):
             prompt_text: Optional[str] = inputs.get("prompt")
             system_prompt: Optional[str] = inputs.get("system")
             messages: List[Dict[str, Any]] = self._build_messages(raw_messages, prompt_text, system_prompt)
-            tools: Optional[List[Dict[str, Any]]] = inputs.get("tools")
+            tools: List[Dict[str, Any]] = self._collect_tools(inputs)
 
             print(f"OllamaChatNode: Received inputs - model='{model}', prompt='{prompt_text}', messages_count={len(raw_messages) if raw_messages else 0}")
 
@@ -373,19 +446,19 @@ class OllamaChatNode(StreamingNode):
             metrics: Dict[str, Any] = {}
 
             try:
-                # If tools are provided, first orchestrate non-streaming rounds until no tool calls
-                tool_rounds_info = {"messages": messages, "last_response": None, "metrics": {}}
-                if tools:
-                    tool_rounds_info = await self._maybe_execute_tools_and_augment_messages(
-                        host, model, messages, tools, fmt, options, keep_alive, think
-                    )
-                    messages = tool_rounds_info.get("messages", messages)
-                    # Carry over metrics if available
-                    t_metrics = tool_rounds_info.get("metrics") or {}
-                    if isinstance(t_metrics, dict):
-                        metrics.update(t_metrics)
-
                 if use_stream:
+                    # If tools are provided, first orchestrate non-streaming rounds until no tool calls
+                    tool_rounds_info = {"messages": messages, "last_response": None, "metrics": {}, "tool_history": [], "thinking_history": []}
+                    if tools:
+                        tool_rounds_info = await self._maybe_execute_tools_and_augment_messages(
+                            host, model, messages, tools, fmt, options, keep_alive, think
+                        )
+                        messages = tool_rounds_info.get("messages", messages)
+                        # Carry over metrics if available
+                        t_metrics = tool_rounds_info.get("metrics") or {}
+                        if isinstance(t_metrics, dict):
+                            metrics.update(t_metrics)
+
                     print(f"OllamaChatNode: Starting streaming chat with model={model}")
                     # If running under pytest, avoid multiprocessing so mocks apply in-process
                     if os.environ.get("PYTEST_CURRENT_TEST"):
@@ -410,6 +483,11 @@ class OllamaChatNode(StreamingNode):
                                         return
                                     self._process_stream_part(part, message_buffer)
 
+                                    # Always yield snapshot if meaningful
+                                    snapshot = self._snapshot_buffer(message_buffer)
+                                    if snapshot:  # Yield if meaningful update
+                                        yield {"message": snapshot, "done": False}
+
                                     if part.get("done"):
                                         final_message = self._finalize_buffer(message_buffer)
                                         self._parse_content_if_json_mode(final_message, metrics)
@@ -420,12 +498,8 @@ class OllamaChatNode(StreamingNode):
                                         metrics["seed"] = int(effective_seed) if effective_seed is not None else None
                                         if "temperature" in options:
                                             metrics["temperature"] = options["temperature"]
-                                        yield {"message": final_message, "metrics": metrics, "done": True}
+                                        yield {"message": final_message, "metrics": metrics, "tool_history": tool_rounds_info.get("tool_history", []), "thinking_history": tool_rounds_info.get("thinking_history", []), "done": True}
                                         return
-                                    else:
-                                        snapshot = self._snapshot_buffer(message_buffer)
-                                        if snapshot:  # Yield if meaningful update
-                                            yield {"message": snapshot, "done": False}
                             finally:
                                 try:
                                     if hasattr(stream, "aclose"):
@@ -549,7 +623,7 @@ class OllamaChatNode(StreamingNode):
                                         metrics["seed"] = int(effective_seed) if effective_seed is not None else None
                                         if "temperature" in options:
                                             metrics["temperature"] = options["temperature"]
-                                        yield {"message": final_message, "metrics": metrics, "done": True}
+                                        yield {"message": final_message, "metrics": metrics, "tool_history": tool_rounds_info.get("tool_history", []), "thinking_history": tool_rounds_info.get("thinking_history", []), "done": True}
                                     elif mtype == "error":
                                         err = str(msg.get("error") or "unknown error")
                                         yield {"message": {"role": "assistant", "content": ""}, "metrics": {"error": err}, "done": True}
@@ -594,7 +668,7 @@ class OllamaChatNode(StreamingNode):
                                                     final_message["content"] = final_content
                                                 if not isinstance(final_message.get("thinking"), str) and accumulated_thinking:
                                                     final_message["thinking"] = "".join(accumulated_thinking)
-                                                yield {"message": final_message, "metrics": metrics, "done": True}
+                                                yield {"message": final_message, "metrics": metrics, "tool_history": tool_rounds_info.get("tool_history", []), "thinking_history": tool_rounds_info.get("thinking_history", []), "done": True}
                                             elif mtype == "error":
                                                 err = str(msg.get("error") or "unknown error")
                                                 yield {"message": {"role": "assistant", "content": ""}, "metrics": {"error": err}}
@@ -663,6 +737,11 @@ class OllamaChatNode(StreamingNode):
                                         return
                                     self._process_stream_part(part, message_buffer)
 
+                                    # Always yield snapshot if meaningful
+                                    snapshot = self._snapshot_buffer(message_buffer)
+                                    if snapshot:
+                                        yield {"message": snapshot, "done": False}
+
                                     if part.get("done"):
                                         final_message = self._finalize_buffer(message_buffer)
                                         self._parse_content_if_json_mode(final_message, metrics)
@@ -673,12 +752,8 @@ class OllamaChatNode(StreamingNode):
                                         metrics["seed"] = int(effective_seed) if effective_seed is not None else None
                                         if "temperature" in options:
                                             metrics["temperature"] = options["temperature"]
-                                        yield {"message": final_message, "metrics": metrics, "done": True}
+                                        yield {"message": final_message, "metrics": metrics, "tool_history": tool_rounds_info.get("tool_history", []), "thinking_history": tool_rounds_info.get("thinking_history", []), "done": True}
                                         return
-                                    else:
-                                        snapshot = self._snapshot_buffer(message_buffer)
-                                        if snapshot:
-                                            yield {"message": snapshot, "done": False}
                             finally:
                                 # ... existing
                                 pass
@@ -686,7 +761,20 @@ class OllamaChatNode(StreamingNode):
                             # ... existing
                             pass
                 else:
-                    # Non-streaming mode (unchanged, but ensure output is LLMChatMessage)
+                    # Non-streaming mode - continue tool orchestration if needed
+                    tool_rounds_info = {"messages": messages, "last_response": None, "metrics": {}, "tool_history": [], "thinking_history": []}
+                    if tools:
+                        # Continue tool orchestration until completion or max iterations
+                        tool_rounds_info = await self._maybe_execute_tools_and_augment_messages(
+                            host, model, messages, tools, fmt, options, keep_alive, think
+                        )
+                        messages = tool_rounds_info.get("messages", messages)
+                        # Update metrics
+                        t_metrics = tool_rounds_info.get("metrics") or {}
+                        if isinstance(t_metrics, dict):
+                            metrics.update(t_metrics)
+
+                    # Final non-streaming call without tools (tool orchestration should have resolved them)
                     from ollama import AsyncClient
                     print(f"OllamaChatNode: Creating Ollama client for {host}")
                     client = AsyncClient(host=host)
@@ -694,7 +782,7 @@ class OllamaChatNode(StreamingNode):
                     resp = await client.chat(
                         model=model,
                         messages=messages,
-                        tools=tools,
+                        tools=None,  # Don't pass tools to final call
                         stream=False,
                         format=fmt,
                         options=options,
@@ -703,6 +791,7 @@ class OllamaChatNode(StreamingNode):
                     )
                     final_message = (resp or {}).get("message") or {"role": "assistant", "content": ""}
                     self._parse_content_if_json_mode(final_message, metrics)
+                    self._parse_tool_calls_from_message(final_message)
                     final_message = self._make_full_message(final_message)
                     metrics = {}
                     for k in ("total_duration", "load_duration", "prompt_eval_count", "prompt_eval_duration", "eval_count", "eval_duration"):
@@ -711,7 +800,7 @@ class OllamaChatNode(StreamingNode):
                     metrics["seed"] = int(effective_seed) if effective_seed is not None else None
                     if "temperature" in options:
                         metrics["temperature"] = options["temperature"]
-                    yield {"message": final_message, "metrics": metrics, "done": True}
+                    yield {"message": final_message, "metrics": metrics, "tool_history": tool_rounds_info.get("tool_history", []), "thinking_history": tool_rounds_info.get("thinking_history", []), "done": True}
             finally:
                 # ... existing client close
                 pass
@@ -727,6 +816,8 @@ class OllamaChatNode(StreamingNode):
         rmsg = part.get("message", {}) if isinstance(part, dict) else {}
         if "content" in rmsg and rmsg["content"]:
             buffer["content"].append(rmsg["content"])
+            # Parse custom tool call format from content
+            self._parse_tool_calls_from_content(rmsg["content"], buffer)
         if "thinking" in rmsg and rmsg["thinking"]:
             buffer["thinking"].append(rmsg["thinking"])
         if "tool_calls" in rmsg:
@@ -760,6 +851,12 @@ class OllamaChatNode(StreamingNode):
 
     def _finalize_buffer(self, buffer: Dict[str, Any]) -> Dict[str, Any]:
         final = self._snapshot_buffer(buffer) or {"role": "assistant", "content": ""}
+        # Set tool_name if there are complete tool calls
+        if final.get("tool_calls"):
+            # Only set tool_name if there are actual complete tool calls
+            complete_calls = [call for call in final["tool_calls"] if self._is_complete_tool_call(call)]
+            if complete_calls:
+                final["tool_name"] = complete_calls[0]["function"]["name"]
         # Discard any remaining partial tool
         buffer["_partial_tool"] = None
         # Optional: Reorder (e.g., thinking before content)
@@ -769,6 +866,91 @@ class OllamaChatNode(StreamingNode):
         func = call.get("function")
         return bool(func and "name" in func and "arguments" in func)
 
+    def _parse_tool_calls_from_content(self, content: str, buffer: Dict[str, Any]):
+        """
+        Parse custom tool call format from content.
+        Format: _TOOL_<TOOL_NAME>_: <arguments>
+        Example: _TOOL_WEB_SEARCH_: nvidia latest news
+        """
+        if not isinstance(content, str):
+            return
+
+        # Look for the custom tool call marker
+        marker = "_TOOL_WEB_SEARCH_: "
+        if marker in content:
+            # Extract everything after the marker as the query
+            query_start = content.find(marker) + len(marker)
+            # Find the end of the tool call (look for next marker or end of content)
+            query_end = content.find("_RESULT_:", query_start)
+            if query_end == -1:
+                query_end = content.find("_TOOL_END_:", query_start)
+            if query_end == -1:
+                query_end = len(content)
+
+            query = content[query_start:query_end].strip()
+
+            if query:
+                # Create the tool call in standard format
+                tool_call = {
+                    "function": {
+                        "name": "web_search",
+                        "arguments": {"query": query}
+                    }
+                }
+
+                # Add to buffer if not already present
+                if tool_call not in buffer["tool_calls"]:
+                    buffer["tool_calls"].append(tool_call)
+                    # Set tool_name for backward compatibility
+                    buffer["_tool_name"] = "web_search"
+
+    def _parse_tool_calls_from_message(self, message: Dict[str, Any]):
+        """
+        Parse tool calls from message content if using custom format.
+        Updates the message in-place.
+        """
+        content = message.get("content", "")
+        if isinstance(content, str):
+            # Look for the custom tool call marker
+            marker = "_TOOL_WEB_SEARCH_: "
+            if marker in content:
+                # Extract everything after the marker as the query
+                query_start = content.find(marker) + len(marker)
+                # Find the end of the tool call (look for next marker or end of content)
+                query_end = content.find("_RESULT_:", query_start)
+                if query_end == -1:
+                    query_end = content.find("_TOOL_END_:", query_start)
+                if query_end == -1:
+                    query_end = len(content)
+
+                query = content[query_start:query_end].strip()
+
+                if query:
+                    # Create the tool call in standard format
+                    tool_call = {
+                        "function": {
+                            "name": "web_search",
+                            "arguments": {"query": query}
+                        }
+                    }
+
+                    # Initialize tool_calls list if not present
+                    if "tool_calls" not in message:
+                        message["tool_calls"] = []
+                    # Add if not already present
+                    if tool_call not in message["tool_calls"]:
+                        message["tool_calls"].append(tool_call)
+
+        # Set tool_name for backward compatibility if there are tool_calls
+        if message.get("tool_calls"):
+            complete_calls = [call for call in message["tool_calls"] if self._is_complete_tool_call(call)]
+            if complete_calls:
+                message["tool_name"] = complete_calls[0]["function"]["name"]
+            else:
+                message["tool_name"] = None
+        else:
+            message["tool_name"] = None
+
     async def execute(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
         try:
             model: str = inputs.get("model")
@@ -776,7 +958,7 @@ class OllamaChatNode(StreamingNode):
             prompt_text: Optional[str] = inputs.get("prompt")
             system_prompt: Optional[str] = inputs.get("system")
             messages: List[Dict[str, Any]] = self._build_messages(raw_messages, prompt_text, system_prompt)
-            tools: Optional[List[Dict[str, Any]]] = inputs.get("tools")
+            tools: List[Dict[str, Any]] = self._collect_tools(inputs)
 
             if not model:
                 error_msg = "No model provided to OllamaChatNode. Check model selector connection."
@@ -826,13 +1008,21 @@ class OllamaChatNode(StreamingNode):
 
             from ollama import AsyncClient
 
+            # Tool orchestration if needed
+            tool_rounds_info = {"messages": messages, "last_response": None, "metrics": {}, "tool_history": [], "thinking_history": []}
+            if tools:
+                tool_rounds_info = await self._maybe_execute_tools_and_augment_messages(
+                    host, model, messages, tools, fmt, options, keep_alive, think
+                )
+                messages = tool_rounds_info.get("messages", messages)
+
             client = AsyncClient(host=host)
             self._client = client
             try:
                 resp = await client.chat(
                     model=model,
                     messages=messages,
-                    tools=tools,
+                    tools=None,  # Tools already orchestrated
                     stream=False,
                     format=fmt,
                     options=options,
@@ -842,6 +1032,8 @@ class OllamaChatNode(StreamingNode):
                 final_message = (resp or {}).get("message") or {}
                 metrics: Dict[str, Any] = {}
                 self._parse_content_if_json_mode(final_message, metrics)
+                self._parse_tool_calls_from_message(final_message)
+
                 final_message = self._make_full_message(final_message)
                 for k in ("total_duration", "load_duration", "prompt_eval_count", "prompt_eval_duration", "eval_count", "eval_duration"):
                     if k in resp:
@@ -849,9 +1041,22 @@ class OllamaChatNode(StreamingNode):
                 metrics["seed"] = int(effective_seed) if effective_seed is not None else None
                 if "temperature" in options:
                     metrics["temperature"] = options["temperature"]
+                # Merge tool_rounds_info metrics
+                t_metrics = tool_rounds_info.get("metrics") or {}
+                if isinstance(t_metrics, dict):
+                    metrics.update(t_metrics)
+
+                # Collect thinking from final message if present
+                thinking_history = tool_rounds_info.get("thinking_history", [])
+                thinking = (resp or {}).get("message", {}).get("thinking")
+                if thinking and isinstance(thinking, str):
+                    thinking_history.append({"thinking": thinking, "iteration": 0})
+
                 return {
                     "message": final_message,
-                    "metrics": metrics
+                    "metrics": metrics,
+                    "tool_history": tool_rounds_info.get("tool_history", []),
+                    "thinking_history": thinking_history
                 }
             finally:
                 try:
@@ -872,13 +1077,6 @@ class OllamaChatNode(StreamingNode):
                 except json.JSONDecodeError as e:
                     metrics["parse_error"] = str(e)
 
-    def _make_full_message(self, base: Dict[str, Any]) -> Dict[str, Any]:
-        full = {
-            "role": base.get("role", "assistant"),
-            "content": base.get("content", ""),
-            "thinking": base.get("thinking", None),
-            "images": base.get("images", None),
-            "tool_calls": base.get("tool_calls", None),
-            "tool_name": base.get("tool_name", None),
-        }
-        return full
+    def _make_full_message(self, base: Dict[str, Any]) -> str:
+        # Return just the content string of the final assistant message
+        return base.get("content", "")

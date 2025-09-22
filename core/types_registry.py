@@ -52,6 +52,14 @@ class LLMChatMetrics(TypedDict, total=False):
     eval_duration: int
     error: str
 
+class LLMToolHistoryItem(TypedDict):
+    call: LLMToolCall
+    result: Dict[str, Any]
+
+class LLMThinkingHistoryItem(TypedDict):
+    thinking: str
+    iteration: int
+
 class OHLCVBar(TypedDict, total=False):
     """OHLCV (Open, High, Low, Close, Volume) bar data"""
     timestamp: int  # Unix timestamp in milliseconds
@@ -120,6 +128,8 @@ TYPE_REGISTRY: Dict[str, Type] = {
     "LLMToolSpec": LLMToolSpec,
     "LLMToolSpecList": List[LLMToolSpec],
     "LLMChatMetrics": LLMChatMetrics,
+    "LLMToolHistory": List[LLMToolHistoryItem],
+    "LLMThinkingHistory": List[LLMThinkingHistoryItem],
     # API types
     "APIKey": str,
 }

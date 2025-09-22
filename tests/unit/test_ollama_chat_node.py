@@ -32,13 +32,13 @@ async def test_start_streaming_mode(chat_node):
         assert output1["message"]["content"] == "Hi"
         assert "done" in output1 and not output1["done"]
         assert isinstance(output1.get("metrics", {}), dict)
-        
+
         output2 = await anext(gen)
         assert output2["message"]["content"] == "Hi there"
         assert "done" in output2 and not output2["done"]
-        
+
         output3 = await anext(gen)
-        assert output3["message"]["content"] == "Hi there"
+        assert output3["message"] == "Hi there"  # Final message is string
         assert "metrics" in output3
         assert output3["done"] == True
 
@@ -60,7 +60,7 @@ async def test_start_non_streaming_mode(chat_node):
         
         gen = chat_node.start(inputs)
         output = await anext(gen)
-        assert output["message"]["content"] == "Hello back"
+        assert output["message"] == "Hello back"  # Message is string
         assert "metrics" in output and output["metrics"]["total_duration"] == 100
 
 @pytest.mark.asyncio
@@ -89,11 +89,13 @@ async def test_think_mode(chat_node):
         mock_client.return_value.chat = mock_chat
         
         result = await chat_node.execute(inputs)
-        assert result["message"]["thinking"] == "Thinking step 1\nThinking step 2"
-        assert result["message"]["content"] == "Final"
+        assert result["message"] == "Final"  # Message is string
+        assert len(result["thinking_history"]) == 1
+        assert result["thinking_history"][0]["thinking"] == "Thinking step 1\nThinking step 2"
 
 @pytest.mark.asyncio
 async def test_tool_calling(chat_node):
+    chat_node.params["max_tool_iters"] = 1  # Limit to 1 iteration
     inputs = {
         "model": "test_model",
         "messages": [{"role": "user", "content": "Use tool"}],
@@ -101,16 +103,27 @@ async def test_tool_calling(chat_node):
     }
     
     with patch("ollama.AsyncClient") as mock_client:
-        mock_response = {
-            "message": {
-                "tool_calls": [{"function": {"name": "test_tool", "arguments": {"param": "value"}}}]
+        # First call: tool calls, second call: no tool calls (end loop), third call: final response
+        mock_responses = [
+            {
+                "message": {
+                    "tool_calls": [{"function": {"name": "test_tool", "arguments": {"param": "value"}}}]
+                }
+            },
+            {
+                "message": {"content": "Tool executed"}  # No tool_calls, ends loop
+            },
+            {
+                "message": {"content": "Final response"}
             }
-        }
-        mock_chat = AsyncMock(return_value=mock_response)
+        ]
+        mock_chat = AsyncMock(side_effect=mock_responses)
         mock_client.return_value.chat = mock_chat
         
         result = await chat_node.execute(inputs)
-        assert "tool_calls" in result["message"]
+        # Tool calls are now in tool_history
+        assert len(result["tool_history"]) == 1
+        assert result["tool_history"][0]["call"]["function"]["name"] == "test_tool"
 
 @pytest.mark.asyncio
 async def test_seed_modes_comprehensive(chat_node):
@@ -267,9 +280,9 @@ async def test_quick_streaming_completion(chat_node):
         gen = chat_node.start(inputs)
         output1 = await anext(gen)
         assert output1["message"]["content"] == "{}"
-        
+
         output2 = await anext(gen)
-        assert output2["message"]["content"] == "{}"
+        assert output2["message"] == "{}"  # Final message is string
         assert "total_duration" in output2["metrics"]
         assert output2["metrics"]["total_duration"] == 50
         assert "eval_count" in output2["metrics"]
@@ -400,8 +413,9 @@ async def test_partial_tool_discard(chat_node):
         outputs = [out async for out in gen]
         
         final = outputs[-1]
-        assert "tool_calls" not in final["message"] or len(final["message"]["tool_calls"]) == 0  # Discarded incomplete
-        assert final["message"]["content"] == "Content"
+        # Incomplete tool calls are discarded, not in tool_history
+        assert len(final["tool_history"]) == 0
+        assert final["message"] == "Content"  # Message is string
 
 # Expand existing test_streaming_equals_nonstreaming to include thinking and tool_calls
 @pytest.mark.asyncio
@@ -488,7 +502,7 @@ async def test_empty_streaming_response(chat_node):
         
         gen = chat_node.start(inputs)
         output = await anext(gen)
-        assert output["message"] == {"role": "assistant", "content": "", "thinking": None, "images": None, "tool_calls": None, "tool_name": None}  # Default empty
+        assert output["message"] == ""  # Default empty string
         assert output["done"] is True
 
 # Add more tests for other params like temperature, think, etc.

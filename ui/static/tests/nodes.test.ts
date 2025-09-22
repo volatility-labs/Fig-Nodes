@@ -56,6 +56,71 @@ describe('Node UI classes', () => {
         expect(node.displayText).toBe('Hello World');
     });
 
+    test('LoggingNodeUI copy button copies display text to clipboard', async () => {
+        const node = new LoggingNodeUI('Log', baseData());
+        const mockWriteText = vi.fn().mockResolvedValue(undefined);
+        (globalThis as any).navigator.clipboard.writeText = mockWriteText;
+
+        // Set some display text
+        node.displayText = 'Test log content to copy';
+        expect(node.displayText).toBe('Test log content to copy');
+
+        // Find the copy button widget
+        const copyWidget = node.widgets!.find(w => w.name === '📋 Copy Log');
+        expect(copyWidget).toBeTruthy();
+        expect(copyWidget!.type).toBe('button');
+
+        // Click the copy button
+        copyWidget!.callback!(null);
+
+        // Verify clipboard was called with correct text
+        expect(mockWriteText).toHaveBeenCalledWith('Test log content to copy');
+        expect(mockWriteText).toHaveBeenCalledTimes(1);
+
+        // Verify button shows success feedback (this would happen after the promise resolves)
+        await new Promise(resolve => setTimeout(resolve, 0)); // Wait for promise
+    });
+
+    test('LoggingNodeUI copy button handles empty content', () => {
+        const node = new LoggingNodeUI('Log', baseData());
+        const mockWriteText = vi.fn().mockResolvedValue(undefined);
+        (globalThis as any).navigator.clipboard.writeText = mockWriteText;
+
+        // Set empty display text
+        node.displayText = '';
+        expect(node.displayText).toBe('');
+
+        // Find the copy button widget
+        const copyWidget = node.widgets!.find(w => w.name === '📋 Copy Log');
+        expect(copyWidget).toBeTruthy();
+
+        // Click the copy button
+        copyWidget!.callback!(null);
+
+        // Verify clipboard was not called
+        expect(mockWriteText).not.toHaveBeenCalled();
+    });
+
+    test('LoggingNodeUI copy button handles whitespace-only content', () => {
+        const node = new LoggingNodeUI('Log', baseData());
+        const mockWriteText = vi.fn().mockResolvedValue(undefined);
+        (globalThis as any).navigator.clipboard.writeText = mockWriteText;
+
+        // Set whitespace-only display text
+        node.displayText = '   \n\t   ';
+        expect(node.displayText).toBe('   \n\t   ');
+
+        // Find the copy button widget
+        const copyWidget = node.widgets!.find(w => w.name === '📋 Copy Log');
+        expect(copyWidget).toBeTruthy();
+
+        // Click the copy button
+        copyWidget!.callback!(null);
+
+        // Verify clipboard was not called
+        expect(mockWriteText).not.toHaveBeenCalled();
+    });
+
     test('OllamaChatNodeUI streaming and final message handling', () => {
         const node = new OllamaChatNodeUI('Chat', baseData());
         node.onStreamUpdate({ message: { content: 'Hi' } });
@@ -122,7 +187,7 @@ describe('Node UI classes', () => {
 
         // Mock alert to test security button callback
         const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => { });
-        securityButton!.callback!();
+        securityButton!.callback!(null);
         expect(alertSpy).toHaveBeenCalledWith('API key is handled securely and not stored in workflow files.');
         // @ts-ignore
         alertSpy.mockRestore();
@@ -151,7 +216,7 @@ describe('BaseCustomNode comprehensive tests', () => {
 
         // Simulate prompt callback
         expect(widget.callback).toBeDefined();
-        widget.callback!();
+        widget.callback!(null);
         // Note: Can't fully test prompt UI, but assume callback updates
         // Manually invoke the inner callback
         // The callback is the prompt invoker; to test update logic, we need to mimic it

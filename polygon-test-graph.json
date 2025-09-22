@@ -2,7 +2,7 @@
   "id": "00000000-0000-0000-0000-000000000000",
   "revision": 0,
   "last_node_id": 9,
-  "last_link_id": 8,
+  "last_link_id": 9,
   "nodes": [
     {
       "id": 2,
@@ -35,39 +35,6 @@
         "quote_currency": "USDT",
         "provider": "POLYGON",
         "instrument_type": "PERPETUAL"
-      }
-    },
-    {
-      "id": 4,
-      "type": "LoggingNode",
-      "pos": [
-        990.72265625,
-        224.14453125
-      ],
-      "size": [
-        210,
-        574
-      ],
-      "flags": {},
-      "order": 6,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "input",
-          "type": 0,
-          "link": 3
-        }
-      ],
-      "outputs": [
-        {
-          "name": "output",
-          "type": "str",
-          "links": null
-        }
-      ],
-      "title": "LoggingNode",
-      "properties": {
-        "format": "auto"
       }
     },
     {
@@ -113,7 +80,7 @@
         246
       ],
       "flags": {},
-      "order": 5,
+      "order": 4,
       "mode": 0,
       "inputs": [
         {
@@ -132,7 +99,6 @@
           "name": "ohlcv",
           "type": "List<dict<str, 0>>",
           "links": [
-            3,
             4
           ]
         }
@@ -150,18 +116,136 @@
       "bgcolor": "#1a3320"
     },
     {
+      "id": 8,
+      "type": "OllamaModelSelectorNode",
+      "pos": [
+        1249.2890625,
+        193.390625
+      ],
+      "size": [
+        280,
+        146
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "host",
+          "type": "str",
+          "links": [
+            6
+          ]
+        },
+        {
+          "name": "model",
+          "type": "str",
+          "links": [
+            7
+          ]
+        },
+        {
+          "name": "models",
+          "type": "List<str>",
+          "links": null
+        }
+      ],
+      "title": "OllamaModelSelectorNode",
+      "properties": {
+        "host": "http://localhost:11434",
+        "selected": ""
+      },
+      "color": "#1f2a44",
+      "bgcolor": "#0f172a"
+    },
+    {
+      "id": 6,
+      "type": "OllamaChatNode",
+      "pos": [
+        1374.44921875,
+        439.79296875
+      ],
+      "size": [
+        320,
+        374
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "host",
+          "type": "str",
+          "link": 6
+        },
+        {
+          "name": "model",
+          "type": "str",
+          "link": 7
+        },
+        {
+          "name": "messages",
+          "type": "List<LLMChatMessage>",
+          "link": 5
+        },
+        {
+          "name": "prompt",
+          "type": "str",
+          "link": 9
+        },
+        {
+          "name": "system",
+          "type": "str",
+          "link": null
+        },
+        {
+          "name": "tools",
+          "type": "List<LLMToolSpec>",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "message",
+          "type": "LLMChatMessage",
+          "links": [
+            8
+          ]
+        },
+        {
+          "name": "metrics",
+          "type": "LLMChatMetrics",
+          "links": null
+        }
+      ],
+      "title": "OllamaChatNode",
+      "properties": {
+        "stream": false,
+        "temperature": 0.7,
+        "seed_mode": "fixed",
+        "seed": 0,
+        "think": false,
+        "max_tool_iters": 2,
+        "tool_timeout_s": 10,
+        "json_mode": false
+      },
+      "color": "#1f2a44",
+      "bgcolor": "#0b1220"
+    },
+    {
       "id": 5,
       "type": "TextToLLMMessageNode",
       "pos": [
-        1021.44921875,
-        436.6875
+        996.234375,
+        298.33203125
       ],
       "size": [
         210,
         102
       ],
       "flags": {},
-      "order": 7,
+      "order": 5,
       "mode": 0,
       "inputs": [
         {
@@ -209,71 +293,29 @@
         {
           "name": "text",
           "type": "str",
-          "links": null
+          "links": [
+            9
+          ]
         }
       ],
       "title": "TextInputNode",
       "properties": {
-        "value": "deciphone this data for me please."
+        "value": "decipher this data for me on apple stock please. "
       }
-    },
-    {
-      "id": 8,
-      "type": "OllamaModelSelectorNode",
-      "pos": [
-        1249.2890625,
-        193.390625
-      ],
-      "size": [
-        280,
-        146
-      ],
-      "flags": {},
-      "order": 3,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [
-        {
-          "name": "host",
-          "type": "str",
-          "links": [
-            6
-          ]
-        },
-        {
-          "name": "model",
-          "type": "str",
-          "links": [
-            7
-          ]
-        },
-        {
-          "name": "models",
-          "type": "List<str>",
-          "links": null
-        }
-      ],
-      "title": "OllamaModelSelectorNode",
-      "properties": {
-        "host": "http://localhost:11434",
-        "selected": ""
-      },
-      "color": "#1f2a44",
-      "bgcolor": "#0f172a"
     },
     {
       "id": 9,
       "type": "LoggingNode",
       "pos": [
-        1776.69921875,
-        448.2890625
+        1778.047607421875,
+        253.01675415039062
       ],
       "size": [
         400,
-        1309
+        739
       ],
       "flags": {},
-      "order": 4,
+      "order": 7,
       "mode": 0,
       "inputs": [
         {
@@ -293,80 +335,6 @@
       "properties": {
         "format": "auto"
       }
-    },
-    {
-      "id": 6,
-      "type": "OllamaChatNode",
-      "pos": [
-        1374.44921875,
-        439.79296875
-      ],
-      "size": [
-        320,
-        374
-      ],
-      "flags": {},
-      "order": 8,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "host",
-          "type": "str",
-          "link": 6
-        },
-        {
-          "name": "model",
-          "type": "str",
-          "link": 7
-        },
-        {
-          "name": "messages",
-          "type": "List<LLMChatMessage>",
-          "link": 5
-        },
-        {
-          "name": "prompt",
-          "type": "str",
-          "link": null
-        },
-        {
-          "name": "system",
-          "type": "str",
-          "link": null
-        },
-        {
-          "name": "tools",
-          "type": "List<LLMToolSpec>",
-          "link": null
-        }
-      ],
-      "outputs": [
-        {
-          "name": "message",
-          "type": "LLMChatMessage",
-          "links": [
-            8
-          ]
-        },
-        {
-          "name": "metrics",
-          "type": "LLMChatMetrics",
-          "links": null
-        }
-      ],
-      "title": "OllamaChatNode",
-      "properties": {
-        "stream": false,
-        "temperature": 0.7,
-        "seed_mode": "fixed",
-        "seed": 0,
-        "think": false,
-        "max_tool_iters": 2,
-        "tool_timeout_s": 10,
-        "json_mode": false
-      },
-      "color": "#1f2a44",
-      "bgcolor": "#0b1220"
     }
   ],
   "links": [
@@ -385,14 +353,6 @@
       1,
       1,
       "str"
-    ],
-    [
-      3,
-      1,
-      0,
-      4,
-      0,
-      "List<dict<str, 0>>"
     ],
     [
       4,
@@ -433,16 +393,24 @@
       9,
       0,
       "LLMChatMessage"
+    ],
+    [
+      9,
+      7,
+      0,
+      6,
+      3,
+      "str"
     ]
   ],
   "groups": [],
   "config": {},
   "extra": {
     "ds": {
-      "scale": 1.0834705943388392,
+      "scale": 0.8140274938684011,
       "offset": [
-        -821.3359948737601,
-        -1286.7728376183065
+        -553.1551489664214,
+        -38.41843148617597
       ]
     }
   },

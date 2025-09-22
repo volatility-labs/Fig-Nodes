@@ -17,8 +17,8 @@ class ToolsBuilderNode(BaseNode):
     """
 
     inputs = {
-        # Declare as list to enable multi-input slots: tool_0, tool_1, ...
-        "tool": get_type("LLMToolSpecList"),
+        # Single tool input that supports multi-input slots: tool_0, tool_1, ...
+        "tool": get_type("LLMToolSpec"),
     }
 
     # Allow both inputs to be optional

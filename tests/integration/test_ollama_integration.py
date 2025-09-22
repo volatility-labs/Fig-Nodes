@@ -1,5 +1,6 @@
 import pytest
 import asyncio
+import os
 from unittest.mock import patch, AsyncMock, MagicMock
 from core.graph_executor import GraphExecutor
 from core.node_registry import NODE_REGISTRY
@@ -102,3 +103,137 @@ async def test_ollama_streaming_integration(mock_httpx_client, mock_ollama_clien
 
     with pytest.raises(StopAsyncIteration):
         await anext(stream_gen)
+
+
+@pytest.mark.asyncio
+async def test_web_search_tool_with_ollama_integration():
+    """Test web search tool integration with OllamaChatNode."""
+    # Skip if no API key is available
+    if not os.getenv("TAVILY_API_KEY"):
+        pytest.skip("TAVILY_API_KEY not set, skipping integration test")
+
+    # Define graph: WebSearchToolNode -> OllamaChatNode
+    graph_data = {
+        "nodes": [
+            {"id": 1, "type": "OllamaModelSelectorNode", "properties": {"selected": "llama3.2:latest"}},
+            {"id": 2, "type": "WebSearchToolNode", "properties": {
+                "provider": "tavily",
+                "default_k": 2,
+                "time_range": "month",
+                "lang": "en",
+                "require_api_key": True
+            }},
+            {"id": 3, "type": "OllamaChatNode", "properties": {
+                "stream": False,
+                "max_tool_iters": 1,  # Limit iterations for test
+                "tool_timeout_s": 15
+            }},
+            {"id": 4, "type": "TextInputNode", "properties": {
+                "text": "Search for the latest news about artificial intelligence and summarize the key findings."
+            }}
+        ],
+        "links": [
+            [0, 1, 0, 3, 0],  # selector.host -> chat.host
+            [0, 1, 1, 3, 1],  # selector.model -> chat.model
+            [0, 2, 0, 3, 6],  # web_search_tool.tool -> chat.tools
+            [0, 4, 0, 3, 3]   # text.text -> chat.prompt
+        ]
+    }
+
+    executor = GraphExecutor(graph_data, NODE_REGISTRY)
+
+    # Execute the graph
+    results = await executor.execute()
+
+    # Verify results
+    assert 3 in results  # OllamaChatNode results
+    chat_result = results[3]
+
+    assert "message" in chat_result
+    assert "metrics" in chat_result
+
+    message = chat_result["message"]
+    assert "role" in message
+    assert message["role"] == "assistant"
+    assert "content" in message
+
+    # The response should contain some content (either from tool use or direct response)
+    assert isinstance(message["content"], str)
+    assert len(message["content"]) > 0
+
+    # Check that metrics are present
+    metrics = chat_result["metrics"]
+    assert isinstance(metrics, dict)
+
+    # Note: In a real scenario, the model might use the web search tool
+    # and tool_calls would be present, but for this test we just verify
+    # the integration works without errors
+
+
+@pytest.mark.asyncio
+async def test_web_search_tool_streaming_with_ollama():
+    """Test web search tool integration with streaming OllamaChatNode."""
+    # Skip if no API key is available
+    if not os.getenv("TAVILY_API_KEY"):
+        pytest.skip("TAVILY_API_KEY not set, skipping integration test")
+
+    # Define graph: WebSearchToolNode -> OllamaChatNode (streaming)
+    graph_data = {
+        "nodes": [
+            {"id": 1, "type": "OllamaModelSelectorNode", "properties": {"selected": "llama3.2:latest"}},
+            {"id": 2, "type": "WebSearchToolNode", "properties": {
+                "provider": "tavily",
+                "default_k": 1,
+                "time_range": "week",
+                "lang": "en",
+                "require_api_key": True
+            }},
+            {"id": 3, "type": "OllamaChatNode", "properties": {
+                "stream": True,
+                "max_tool_iters": 1,
+                "tool_timeout_s": 10
+            }},
+            {"id": 4, "type": "TextInputNode", "properties": {
+                "text": "What is the current price of Bitcoin?"
+            }}
+        ],
+        "links": [
+            [0, 1, 0, 3, 0],  # selector.host -> chat.host
+            [0, 1, 1, 3, 1],  # selector.model -> chat.model
+            [0, 2, 0, 3, 6],  # web_search_tool.tool -> chat.tools
+            [0, 4, 0, 3, 3]   # text.text -> chat.prompt
+        ]
+    }
+
+    executor = GraphExecutor(graph_data, NODE_REGISTRY)
+    stream_gen = executor.stream()
+
+    # Get initial results
+    initial_results = await anext(stream_gen)
+
+    # Collect all streaming results
+    all_results = dict(initial_results)
+    try:
+        while True:
+            chunk = await anext(stream_gen)
+            all_results.update(chunk)
+    except StopAsyncIteration:
+        pass
+
+    # Verify we got results from the chat node
+    assert 3 in all_results
+    chat_result = all_results[3]
+
+    assert "message" in chat_result
+    assert "metrics" in chat_result
+    assert "done" in chat_result
+    assert chat_result["done"] is True
+
+    message = chat_result["message"]
+    assert "role" in message
+    assert message["role"] == "assistant"
+    assert "content" in message
+
+    # Content should be non-empty
+    assert isinstance(message["content"], str)
+    assert len(message["content"]) > 0

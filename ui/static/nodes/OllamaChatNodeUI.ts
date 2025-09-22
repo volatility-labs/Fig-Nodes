@@ -22,7 +22,7 @@ export default class OllamaChatNodeUI extends BaseCustomNode {
     onStreamUpdate(_data: any) {
         const error = _data?.metrics?.error;
         const msg = _data?.message;
-        const text = msg && typeof msg.content === 'string' ? msg.content : undefined;
+        const text = typeof msg === 'string' ? msg : undefined;
 
         if (error) {
             this.displayText = `❌ Error: ${error}`;
@@ -47,9 +47,9 @@ export default class OllamaChatNodeUI extends BaseCustomNode {
             return;
         }
 
-        // Prefer assistant_text, then assistant_message.content for non-stream responses
-        const msg = result?.message || result?.output || result;
-        const text = (msg && typeof msg.content === 'string') ? msg.content : (typeof msg === 'string' ? msg : JSON.stringify(msg, null, 2));
+        // Message is now directly a string
+        const msg = result?.message;
+        const text = typeof msg === 'string' ? msg : (typeof result === 'string' ? result : JSON.stringify(result, null, 2));
         this.displayText = text || '';
         this.color = '#1f2a44';
         this.bgcolor = '#0b1220';

@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, patch, MagicMock
 import pandas as pd
 from nodes.core.io.asset_symbol_input_node import AssetSymbol
 from core.types_registry import AssetClass, Provider, InstrumentType
@@ -68,7 +68,7 @@ async def test_execute_success(polygon_custom_bars_node, sample_symbol):
         mock_datetime.now.return_value = mock_now.to_pydatetime()
 
         mock_client = AsyncMock()
-        mock_response = AsyncMock()
+        mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = mock_response_data
         mock_client.get.return_value = mock_response
@@ -157,7 +157,7 @@ async def test_execute_api_status_error(polygon_custom_bars_node, sample_symbol)
 
     with patch("httpx.AsyncClient") as mock_client_class:
         mock_client = AsyncMock()
-        mock_response = AsyncMock()
+        mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = mock_response_data
         mock_client.get.return_value = mock_response
@@ -182,7 +182,7 @@ async def test_execute_empty_results(polygon_custom_bars_node, sample_symbol):
 
     with patch("httpx.AsyncClient") as mock_client_class:
         mock_client = AsyncMock()
-        mock_response = AsyncMock()
+        mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = mock_response_data
         mock_client.get.return_value = mock_response
@@ -226,7 +226,7 @@ async def test_execute_different_parameters(polygon_custom_bars_node, sample_sym
 
     with patch("httpx.AsyncClient") as mock_client_class:
         mock_client = AsyncMock()
-        mock_response = AsyncMock()
+        mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = mock_response_data
         mock_client.get.return_value = mock_response
@@ -273,7 +273,7 @@ async def test_execute_crypto_symbol(polygon_custom_bars_node):
 
     with patch("httpx.AsyncClient") as mock_client_class:
         mock_client = AsyncMock()
-        mock_response = AsyncMock()
+        mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = mock_response_data
         mock_client.get.return_value = mock_response

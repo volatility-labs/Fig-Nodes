@@ -9,6 +9,8 @@ import json
 
 _TOOL_SCHEMAS: Dict[str, Dict[str, Any]] = {}
 _TOOL_HANDLERS: Dict[str, Callable[[Dict[str, Any], Dict[str, Any]], Awaitable[Any]]] = {}
+_TOOL_FACTORIES: Dict[str, Callable[[], 'ToolHandler']] = {}
+_CREDENTIAL_PROVIDERS: Dict[str, Callable[[], str]] = {}
 
 
 def register_tool_schema(name: str, schema: Dict[str, Any]) -> None:
@@ -50,6 +52,63 @@ def get_tool_handler(name: str) -> Optional[Callable[[Dict[str, Any], Dict[str, 
     return _TOOL_HANDLERS.get(name)
 
 
+def register_tool_factory(name: str, factory: Callable[[], 'ToolHandler']) -> None:
+    """Register a tool factory that can create tool instances with credentials."""
+    if not isinstance(name, str) or not name:
+        raise ValueError("Tool factory name must be a non-empty string")
+    if not callable(factory):
+        raise ValueError("Tool factory must be callable")
+    _TOOL_FACTORIES[name] = factory
+
+    # Also register/update the schema from the tool instance
+    try:
+        tool_instance = factory()
+        register_tool_schema(name, tool_instance.schema())
+    except Exception:
+        # If factory fails, keep existing schema
+        pass
+
+    # Create a handler that instantiates the tool and calls execute
+    async def _factory_handler(arguments: Dict[str, Any], context: Dict[str, Any]) -> Any:
+        tool = factory()
+        return await tool.execute(arguments, context)
+
+    register_tool_handler(name, _factory_handler)
+
+
+def get_tool_factory(name: str) -> Optional[Callable[[], 'ToolHandler']]:
+    return _TOOL_FACTORIES.get(name)
+
+
+def register_credential_provider(name: str, provider: Callable[[], str]) -> None:
+    """Register a credential provider for a specific credential type."""
+    if not isinstance(name, str) or not name:
+        raise ValueError("Credential provider name must be a non-empty string")
+    if not callable(provider):
+        raise ValueError("Credential provider must be callable")
+    _CREDENTIAL_PROVIDERS[name] = provider
+
+
+def get_credential_provider(name: str) -> Optional[Callable[[], str]]:
+    return _CREDENTIAL_PROVIDERS.get(name)
+
+
+def get_credential(name: str) -> Optional[str]:
+    """Get a credential value from registered providers."""
+    provider = get_credential_provider(name)
+    if provider:
+        try:
+            return provider()
+        except Exception:
+            return None
+    return None
+
+
+def get_all_credential_providers() -> Dict[str, Callable[[], str]]:
+    """Get all registered credential providers."""
+    return dict(_CREDENTIAL_PROVIDERS)
+
+
 class ToolHandler(ABC):
     """
     Standard interface for implementing tool providers.
@@ -57,6 +116,8 @@ class ToolHandler(ABC):
     Implementations must define a stable tool name (function.name), return a JSON schema
     describing the tool, and provide an async execute method that accepts arguments
     and a context dict.
+
+    The context dict may contain credential providers that tools can use to get API keys.
     """
 
     @property
@@ -71,6 +132,22 @@ class ToolHandler(ABC):
     @abstractmethod
     async def execute(self, arguments: Dict[str, Any], context: Dict[str, Any]) -> Any:
         raise NotImplementedError
+
+
+def get_credential_from_context(context: Dict[str, Any], credential_name: str) -> Optional[str]:
+    """
+    Helper function for tools to get credentials from execution context.
+    The context should contain a 'credentials' dict with credential providers.
+    """
+    credentials = context.get('credentials', {})
+    if isinstance(credentials, dict) and credential_name in credentials:
+        provider = credentials[credential_name]
+        if callable(provider):
+            try:
+                return provider()
+            except Exception:
+                return None
+    return None
 
 
 def register_tool_object(tool: ToolHandler) -> None:
@@ -97,8 +174,14 @@ _DEFAULT_WEB_SEARCH_SCHEMA: Dict[str, Any] = {
                 "k": {"type": "integer", "minimum": 1, "maximum": 10, "default": 5},
                 "time_range": {
                     "type": "string",
-                    "enum": ["day", "week", "month", "year", "all"],
+                    "enum": ["day", "week", "month", "year"],
                     "default": "month",
+                },
+                "topic": {
+                    "type": "string",
+                    "enum": ["general", "news", "finance"],
+                    "default": "general",
+                    "description": "Search topic category"
                 },
                 "lang": {
                     "type": "string",
