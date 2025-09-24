@@ -63,7 +63,7 @@ async def test_execute_success(polygon_custom_bars_node, sample_symbol):
     }
 
     with patch("httpx.AsyncClient") as mock_client_class, \
-         patch("custom_nodes.polygon.polygon_custom_bars_node.datetime") as mock_datetime:
+         patch("services.polygon_service.datetime") as mock_datetime:
 
         mock_datetime.now.return_value = mock_now.to_pydatetime()
 

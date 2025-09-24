@@ -96,5 +96,34 @@ async def debug_polygon_graph():
         import traceback
         traceback.print_exc()
 
+async def debug_filtering_graph():
+    # Load the graph
+    with open('test-filtering.json', 'r') as f:
+        graph_data = json.load(f)
+
+    print("Graph data loaded:")
+    print(json.dumps(graph_data, indent=2))
+
+    # Create executor
+    executor = GraphExecutor(graph_data, NODE_REGISTRY)
+
+    print(f"GraphExecutor created, is_streaming={executor.is_streaming}")
+
+    # Execute the graph
+    try:
+        results = await executor.execute()
+        print(f"Execution results: {results}")
+
+        # Check if node 8 (LoggingNode) has results
+        if 8 in results:
+            print(f"Node 8 results: {results[8]}")
+        else:
+            print("Node 8 not in results")
+
+    except Exception as e:
+        print(f"Error executing graph: {e}")
+        import traceback
+        traceback.print_exc()
+
 if __name__ == "__main__":
-    asyncio.run(debug_web_search_graph())
+    asyncio.run(debug_filtering_graph())

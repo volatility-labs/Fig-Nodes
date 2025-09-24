@@ -1,20 +1,25 @@
-from typing import List
+from typing import List, Dict, Any
 import httpx
 import logging
 from nodes.base.universe_node import UniverseNode
-from core.types_registry import AssetSymbol, AssetClass, register_asset_class
+from core.types_registry import AssetSymbol, AssetClass, register_asset_class, get_type
 
 logger = logging.getLogger(__name__)
 
 
 class PolygonUniverseNode(UniverseNode):
+    inputs = {"api_key": get_type("APIKey")}
     params_meta = [
-        {"name": "api_key", "type": "text", "default": ""},
         {"name": "market", "type": "combo", "default": "stocks", "options": ["stocks", "crypto", "fx", "otc", "indices"]},
     ]
 
+    async def execute(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        # Store inputs for use in _fetch_symbols
+        self._execute_inputs = inputs
+        return await super().execute(inputs)
+
     async def _fetch_symbols(self) -> List[AssetSymbol]:
-        api_key = self.params.get("api_key")
+        api_key = self._execute_inputs.get("api_key")
         if not api_key:
             raise ValueError("Polygon API key is required")
         market = self.params.get("market", "stocks")

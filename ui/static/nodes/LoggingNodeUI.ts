@@ -1,9 +1,12 @@
 
 import BaseCustomNode from './BaseCustomNode';
+import { LiteGraph } from '@comfyorg/litegraph';
 
 export default class LoggingNodeUI extends BaseCustomNode {
     private copyButton: any = null;
     private copyFeedbackTimeout: number | null = null;
+    private displayTextarea: HTMLTextAreaElement | null = null;
+    private lastCanvasRef: any = null;
 
     constructor(title: string, data: any) {
         super(title, data);
@@ -11,8 +14,8 @@ export default class LoggingNodeUI extends BaseCustomNode {
         // Set larger size for displaying log data
         this.size = [400, 300];
 
-        // Enable display for logging node specifically
-        this.displayResults = true;
+        // Disable canvas text rendering - we'll use HTML overlay
+        this.displayResults = false;
 
         // Add copy button widget
         this.copyButton = this.addWidget('button', '📋 Copy Log', '', () => {
@@ -114,8 +117,14 @@ export default class LoggingNodeUI extends BaseCustomNode {
 
     reset() {
         this.displayText = '';
+        this.syncDisplayTextarea();
         this.setDirtyCanvas(true, true);
     }
+
+    // Lifecycle methods for textarea management
+    onAdded() { this.ensureDisplayTextarea(); }
+    onDeselected() { this.syncDisplayTextarea(); }
+    onResize(_size: [number, number]) { this.syncDisplayTextarea(); this.setDirtyCanvas(true, true); }
 
     updateDisplay(result: any) {
         console.log('LoggingNodeUI.updateDisplay called with:', result);
@@ -130,6 +139,7 @@ export default class LoggingNodeUI extends BaseCustomNode {
         const formatted = this.tryFormat(result);
         this.displayText = formatted;
         console.log('displayText set to:', this.displayText);
+        this.syncDisplayTextarea();
         this.setDirtyCanvas(true, true);
     }
 
@@ -152,45 +162,176 @@ export default class LoggingNodeUI extends BaseCustomNode {
             }
 
             const prev = this.displayText || '';
-            const accumulated = prev + chunk;
 
-            if (prev && accumulated.startsWith(prev)) {
-                this.displayText = accumulated;  // Replace with cumulative
-            } else if (format === 'json') {
-                try {
-                    const parsed = JSON.parse(accumulated);
-                    this.displayText = JSON.stringify(parsed, null, 2);
-                } catch {
-                    this.displayText = accumulated;
-                }
-            } else if (format === 'auto') {
-                const trimmed = accumulated.trim();
-                if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+            // If chunk starts with prev, it's cumulative; otherwise replace
+            if (prev && chunk.startsWith(prev)) {
+                this.displayText = chunk;  // Replace with cumulative chunk
+            } else {
+                // Not cumulative, so use the chunk as-is (possibly formatted)
+                if (format === 'json') {
                     try {
-                        const parsed = JSON.parse(accumulated);
+                        const parsed = JSON.parse(chunk);
                         this.displayText = JSON.stringify(parsed, null, 2);
                     } catch {
-                        this.displayText = accumulated;
+                        this.displayText = chunk;
+                    }
+                } else if (format === 'auto') {
+                    const trimmed = chunk.trim();
+                    if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+                        try {
+                            const parsed = JSON.parse(chunk);
+                            this.displayText = JSON.stringify(parsed, null, 2);
+                        } catch {
+                            this.displayText = chunk;
+                        }
+                    } else {
+                        this.displayText = chunk;
                     }
                 } else {
-                    this.displayText = accumulated;
+                    this.displayText = chunk;
                 }
-            } else {
-                this.displayText = accumulated;
             }
         }
+        this.syncDisplayTextarea();
         this.setDirtyCanvas(true, true);
     }
 
-    override onDrawForeground(ctx: CanvasRenderingContext2D) {
-        console.log('LoggingNodeUI.onDrawForeground called, displayText:', this.displayText);
-        console.log('Current size:', this.size);
-        super.onDrawForeground(ctx);
-        console.log('After super.onDrawForeground');
+    onDrawForeground(ctx: CanvasRenderingContext2D) {
+        if (this.flags?.collapsed) {
+            this.hideDisplayTextarea();
+            return;
+        }
+        this.ensureDisplayTextarea();
+
+        const padding = 8;
+        const x = padding;
+        const widgetHeight = this.widgets ? this.widgets.length * LiteGraph.NODE_WIDGET_HEIGHT : 0;
+        const y = LiteGraph.NODE_TITLE_HEIGHT + widgetHeight + padding;
+        const w = Math.max(0, this.size[0] - padding * 2);
+        const h = Math.max(0, this.size[1] - LiteGraph.NODE_TITLE_HEIGHT - widgetHeight - padding * 2);
+
+        // Background (will be fully covered by textarea but keeps a fallback look)
+        ctx.fillStyle = '#2a2a2a';
+        ctx.fillRect(x, y, w, h);
+
+        // Border to match app theme
+        ctx.strokeStyle = '#555';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+
+        this.positionDisplayTextarea(x, y, w, h);
+    }
+
+    private ensureDisplayTextarea() {
+        const graph: any = (this as any).graph;
+        if (!graph) return;
+        const canvas = graph.list_of_graphcanvas && graph.list_of_graphcanvas[0];
+        if (!canvas || !canvas.canvas) return;
+
+        if (!this.displayTextarea || this.lastCanvasRef !== canvas) {
+            this.detachDisplayTextarea();
+            this.lastCanvasRef = canvas;
+            const parent = document.body;
+            const ta = document.createElement('textarea');
+            ta.className = 'inline-node-textarea monospace';
+            ta.readOnly = true; // Make it read-only for display
+            ta.spellcheck = false;
+            ta.value = this.displayText || '';
+            ta.style.resize = 'none'; // Prevent manual resizing
+            ta.style.overflowY = 'auto'; // Allow scrolling for long content
+            // Prevent text selection and editing
+            ta.addEventListener('keydown', (ev) => ev.preventDefault());
+            ta.addEventListener('mousedown', (ev) => ev.preventDefault());
+            ta.addEventListener('contextmenu', (ev) => ev.preventDefault());
+            parent.appendChild(ta);
+            this.displayTextarea = ta;
+        }
+        this.syncDisplayTextarea();
+    }
+
+    private detachDisplayTextarea() {
+        if (this.displayTextarea && this.displayTextarea.parentElement) {
+            this.displayTextarea.parentElement.removeChild(this.displayTextarea);
+        }
+        this.displayTextarea = null;
+        this.lastCanvasRef = null;
+    }
+
+    private hideDisplayTextarea() {
+        if (this.displayTextarea) {
+            this.displayTextarea.style.display = 'none';
+        }
+    }
+
+    private syncDisplayTextarea() {
+        if (!this.displayTextarea) return;
+        this.displayTextarea.style.display = '';
+        const current = this.displayText || '';
+        if (this.displayTextarea.value !== current) {
+            this.displayTextarea.value = current;
+            // Auto-scroll to bottom for log-like behavior
+            this.displayTextarea.scrollTop = this.displayTextarea.scrollHeight;
+        }
+        // Ensure position up-to-date
+        const padding = 8;
+        const x = padding;
+        const y = LiteGraph.NODE_TITLE_HEIGHT + padding;
+        const w = Math.max(0, this.size[0] - padding * 2);
+        const h = Math.max(0, this.size[1] - LiteGraph.NODE_TITLE_HEIGHT - padding * 2);
+        this.positionDisplayTextarea(x, y, w, h);
+    }
+
+    private positionDisplayTextarea(localX: number, localY: number, localW: number, localH: number) {
+        if (!this.displayTextarea) return;
+        const graph: any = (this as any).graph;
+        const canvas = graph && graph.list_of_graphcanvas && graph.list_of_graphcanvas[0];
+        if (!canvas || !canvas.canvas) return;
+
+        // Get canvas transform from LiteGraph's internal state
+        const scale = canvas.ds?.scale || canvas.scale || 1;
+        const offset = canvas.ds?.offset || canvas.offset || [0, 0];
+        const offx = Array.isArray(offset) ? offset[0] : 0;
+        const offy = Array.isArray(offset) ? offset[1] : 0;
+
+        // Convert canvas coordinates to screen coordinates: (pos + offset) * scale
+        const canvasX = (this.pos[0] + localX + offx) * scale;
+        const canvasY = (this.pos[1] + localY + offy) * scale;
+        const canvasW = localW * scale;
+        const canvasH = localH * scale;
+
+        // Get canvas element position on screen
+        const canvasRect = canvas.canvas.getBoundingClientRect();
+
+        // Calculate screen position relative to document body
+        const screenX = canvasRect.left + canvasX;
+        const screenY = canvasRect.top + canvasY;
+
+        // Position relative to document body for proper overlay
+        const style = this.displayTextarea.style;
+        style.position = 'absolute';
+        style.left = `${screenX}px`;
+        style.top = `${screenY}px`;
+        style.width = `${Math.max(0, canvasW)}px`;
+        style.height = `${Math.max(0, canvasH)}px`;
+        style.zIndex = '1000'; // Same z-index as TextInputNodeUI
+
+        // Match inline title editor behavior: scale font size with zoom
+        style.fontSize = `${12 * scale}px`;
+
+        // Hide if too small or out of viewport bounds
+        const viewportWidth = window.innerWidth;
+        const viewportHeight = window.innerHeight;
+        if (canvasW <= 2 || canvasH <= 2 || screenX + canvasW < 0 || screenY + canvasH < 0 ||
+            screenX > viewportWidth || screenY > viewportHeight) {
+            this.displayTextarea.style.display = 'none';
+        } else {
+            this.displayTextarea.style.display = '';
+        }
     }
 
     // Clean up timeouts when node is destroyed
     onRemoved() {
+        this.detachDisplayTextarea();
         if (this.copyFeedbackTimeout) {
             clearTimeout(this.copyFeedbackTimeout);
             this.copyFeedbackTimeout = null;

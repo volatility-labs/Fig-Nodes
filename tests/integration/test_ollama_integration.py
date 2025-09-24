@@ -41,7 +41,7 @@ async def test_ollama_integration(mock_ollama_client):
         results = {**initial_results, **chat_results}
         
         assert 2 in results
-        assert results[2]["message"]["content"] == "Hello from Ollama"
+        assert results[2]["message"] == "Hello from Ollama"
         assert isinstance(results[2].get("metrics", {}), dict)
         
         # Verify chat was called with expected args
@@ -92,12 +92,13 @@ async def test_ollama_streaming_integration(mock_httpx_client, mock_ollama_clien
 
     initial_results = await anext(stream_gen)
     stream_tick1 = await anext(stream_gen)
+    stream_tick2 = await anext(stream_gen)
     final_tick = await anext(stream_gen)
 
-    results = {**initial_results, **stream_tick1, **final_tick}
+    results = {**initial_results, **stream_tick1, **stream_tick2, **final_tick}
 
     assert 1 in results
-    assert results[1]["message"]["content"] == {}
+    assert results[1]["message"] == {}
     assert "total_duration" in results[1].get("metrics", {})
     assert "eval_count" in results[1].get("metrics", {})
 

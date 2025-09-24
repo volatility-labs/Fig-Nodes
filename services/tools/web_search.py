@@ -84,7 +84,7 @@ class WebSearchTool(ToolHandler):
 
     async def execute(self, arguments: Dict[str, Any], context: Dict[str, Any]) -> Any:
         # Get API key from context
-        api_key = get_credential_from_context(context, "tavily_api_key")
+        api_key = get_credential_from_context(context or {}, "tavily_api_key")
         if not api_key:
             return {"error": "missing_api_key", "message": "TAVILY_API_KEY credential not available"}
 
@@ -96,7 +96,10 @@ class WebSearchTool(ToolHandler):
         time_range = (arguments or {}).get("time_range") or "month"
         lang = (arguments or {}).get("lang") or "en"
         topic = (arguments or {}).get("topic") or "general"
-        timeout_s = int(os.getenv("WEB_SEARCH_TIMEOUT_S", "12"))
+        try:
+            timeout_s = int(os.getenv("WEB_SEARCH_TIMEOUT_S", "12"))
+        except (ValueError, TypeError):
+            timeout_s = 12  # Fallback to default
 
         return await _tavily_search(query=query, k=k, time_range=time_range, lang=lang, topic=topic, timeout_s=timeout_s, api_key=api_key)
 

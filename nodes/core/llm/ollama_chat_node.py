@@ -619,6 +619,8 @@ class OllamaChatNode(StreamingNode):
                                     elif mtype == "done":
                                         done_received = True
                                         final_message = self._finalize_buffer(message_buffer)
+                                        self._parse_content_if_json_mode(final_message, metrics)
+                                        final_message = self._make_full_message(final_message)
                                         # Note: Metrics might need to be accumulated from parts if available
                                         metrics["seed"] = int(effective_seed) if effective_seed is not None else None
                                         if "temperature" in options:

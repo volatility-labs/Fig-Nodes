@@ -11,7 +11,9 @@ export default class PolygonAPIKeyNodeUI extends BaseCustomNode {
         this.displayResults = false;
 
         // Add a security indicator button
-        this.addWidget('button', '🔒 Secure Key', '', () => { }, {});
+        this.addWidget('button', '🔒 Secure Key', '', () => {
+            window.alert('API key is handled securely and not stored in workflow files.');
+        }, {});
     }
 
     updateDisplay(result: any) {

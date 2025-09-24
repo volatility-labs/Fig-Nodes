@@ -6,7 +6,6 @@ from nodes.core.flow.for_each_node import ForEachNode
 from nodes.core.market.indicators_bundle_node import IndicatorsBundleNode
 from nodes.core.io.text_input_node import TextInputNode
 from nodes.core.io.asset_symbol_input_node import AssetSymbolInputNode
-from nodes.core.market.klines_node import KlinesNode
 from nodes.core.io.logging_node import LoggingNode
 from nodes.core.logic.score_node import ScoreNode
 from nodes.core.market.instrument_resolver_node import InstrumentResolverNode
@@ -48,23 +47,57 @@ async def test_indicators_node_execute_empty(indicators_node):
 
 @pytest.mark.asyncio
 async def test_indicators_node_execute_single(indicators_node):
-    df = pd.DataFrame({"close": [1, 2]})
-    inputs = {"klines": {AssetSymbol("TEST", AssetClass.CRYPTO): df}}
+    # Create mock OHLCV bars as list of dictionaries
+    klines_data = [
+        {"timestamp": 1000, "open": 1.0, "high": 2.0, "low": 0.5, "close": 1.5, "volume": 100.0},
+        {"timestamp": 2000, "open": 1.5, "high": 3.0, "low": 1.0, "close": 2.5, "volume": 150.0},
+        {"timestamp": 3000, "open": 2.5, "high": 4.0, "low": 2.0, "close": 3.5, "volume": 200.0},
+        {"timestamp": 4000, "open": 3.5, "high": 5.0, "low": 3.0, "close": 4.5, "volume": 250.0},
+        {"timestamp": 5000, "open": 4.5, "high": 6.0, "low": 4.0, "close": 5.5, "volume": 300.0},
+        {"timestamp": 6000, "open": 5.5, "high": 7.0, "low": 5.0, "close": 6.5, "volume": 350.0},
+        {"timestamp": 7000, "open": 6.5, "high": 8.0, "low": 6.0, "close": 7.5, "volume": 400.0},
+        {"timestamp": 8000, "open": 7.5, "high": 9.0, "low": 7.0, "close": 8.5, "volume": 450.0},
+        {"timestamp": 9000, "open": 8.5, "high": 10.0, "low": 8.0, "close": 9.5, "volume": 500.0},
+        {"timestamp": 10000, "open": 9.5, "high": 11.0, "low": 9.0, "close": 10.5, "volume": 550.0},
+        {"timestamp": 11000, "open": 10.5, "high": 12.0, "low": 10.0, "close": 11.5, "volume": 600.0},
+        {"timestamp": 12000, "open": 11.5, "high": 13.0, "low": 11.0, "close": 12.5, "volume": 650.0},
+        {"timestamp": 13000, "open": 12.5, "high": 14.0, "low": 12.0, "close": 13.5, "volume": 700.0},
+        {"timestamp": 14000, "open": 13.5, "high": 15.0, "low": 13.0, "close": 14.5, "volume": 750.0},
+        {"timestamp": 15000, "open": 14.5, "high": 16.0, "low": 14.0, "close": 15.5, "volume": 800.0}
+    ]
+    inputs = {"klines": {AssetSymbol("TEST", AssetClass.CRYPTO): klines_data}}
     result = await indicators_node.execute(inputs)
     assert isinstance(result["indicators"], dict)
     assert AssetSymbol("TEST", AssetClass.CRYPTO) in result["indicators"]
 
 @pytest.mark.asyncio
 async def test_indicators_node_execute_multi(indicators_node):
-    df = pd.DataFrame({"close": [1]})
-    inputs = {"klines_0": {AssetSymbol("A", AssetClass.CRYPTO): df},
-              "klines_1": {AssetSymbol("B", AssetClass.CRYPTO): df}}
+    # Create mock OHLCV bars as list of dictionaries (same data for both symbols)
+    klines_data = [
+        {"timestamp": 1000, "open": 1.0, "high": 2.0, "low": 0.5, "close": 1.5, "volume": 100.0},
+        {"timestamp": 2000, "open": 1.5, "high": 3.0, "low": 1.0, "close": 2.5, "volume": 150.0},
+        {"timestamp": 3000, "open": 2.5, "high": 4.0, "low": 2.0, "close": 3.5, "volume": 200.0},
+        {"timestamp": 4000, "open": 3.5, "high": 5.0, "low": 3.0, "close": 4.5, "volume": 250.0},
+        {"timestamp": 5000, "open": 4.5, "high": 6.0, "low": 4.0, "close": 5.5, "volume": 300.0},
+        {"timestamp": 6000, "open": 5.5, "high": 7.0, "low": 5.0, "close": 6.5, "volume": 350.0},
+        {"timestamp": 7000, "open": 6.5, "high": 8.0, "low": 6.0, "close": 7.5, "volume": 400.0},
+        {"timestamp": 8000, "open": 7.5, "high": 9.0, "low": 7.0, "close": 8.5, "volume": 450.0},
+        {"timestamp": 9000, "open": 8.5, "high": 10.0, "low": 8.0, "close": 9.5, "volume": 500.0},
+        {"timestamp": 10000, "open": 9.5, "high": 11.0, "low": 9.0, "close": 10.5, "volume": 550.0},
+        {"timestamp": 11000, "open": 10.5, "high": 12.0, "low": 10.0, "close": 11.5, "volume": 600.0},
+        {"timestamp": 12000, "open": 11.5, "high": 13.0, "low": 11.0, "close": 12.5, "volume": 650.0},
+        {"timestamp": 13000, "open": 12.5, "high": 14.0, "low": 12.0, "close": 13.5, "volume": 700.0},
+        {"timestamp": 14000, "open": 13.5, "high": 15.0, "low": 13.0, "close": 14.5, "volume": 750.0},
+        {"timestamp": 15000, "open": 14.5, "high": 16.0, "low": 14.0, "close": 15.5, "volume": 800.0}
+    ]
+    inputs = {"klines_0": {AssetSymbol("A", AssetClass.CRYPTO): klines_data},
+              "klines_1": {AssetSymbol("B", AssetClass.CRYPTO): klines_data}}
     result = await indicators_node.execute(inputs)
     assert set(result["indicators"].keys()) == {AssetSymbol("A", AssetClass.CRYPTO), AssetSymbol("B", AssetClass.CRYPTO)}
 
 @pytest.mark.asyncio
 async def test_indicators_node_execute_empty_df(indicators_node):
-    inputs = {"klines": {AssetSymbol("TEST", AssetClass.CRYPTO): pd.DataFrame()}}
+    inputs = {"klines": {AssetSymbol("TEST", AssetClass.CRYPTO): []}}
     result = await indicators_node.execute(inputs)
     assert result["indicators"] == {}
 
@@ -90,7 +123,7 @@ async def test_text_node_default():
 @pytest.mark.asyncio
 async def test_text_to_llm_message_default_role():
     node = TextToLLMMessageNode("adapter_id", {})
-    result = await node.execute({"text": "hello"})
+    result = await node.execute({"data": "hello"})
     assert result["message"]["role"] == "user"
     assert result["message"]["content"] == "hello"
     assert isinstance(result["messages"], list) and len(result["messages"]) == 1
@@ -99,14 +132,14 @@ async def test_text_to_llm_message_default_role():
 async def test_text_to_llm_message_roles():
     for role in ["user", "assistant", "system", "tool"]:
         node = TextToLLMMessageNode("adapter_id", {"role": role})
-        result = await node.execute({"text": "x"})
+        result = await node.execute({"data": "x"})
         assert result["message"]["role"] == role
         assert result["messages"][0]["role"] == role
 
 @pytest.mark.asyncio
 async def test_text_to_llm_message_non_string():
     node = TextToLLMMessageNode("adapter_id", {"role": "assistant"})
-    result = await node.execute({"text": 123})
+    result = await node.execute({"data": 123})
     assert result["message"]["content"] == "123"
 
 # Tests for AssetSymbolInputNode
@@ -133,22 +166,6 @@ async def test_asset_node_execute(asset_node):
 
 def test_asset_node_params_meta():
     assert len(AssetSymbolInputNode.params_meta) == 5  # Check existence
-
-# Tests for KlinesNode
-
-@pytest.fixture
-def klines_node():
-    return KlinesNode("klines_id", {"symbol": AssetSymbol("BTC", AssetClass.CRYPTO, "USDT"), "timeframe": "1h"})
-
-@pytest.mark.asyncio
-async def test_klines_node_execute(klines_node):
-    result = await klines_node.execute({})
-    assert "ohlcv" in result
-    assert isinstance(result["ohlcv"], pd.DataFrame)  # Placeholder empty
-
-def test_klines_node_validate(klines_node):
-    # Params-based, but validate_inputs for inputs (none)
-    assert klines_node.validate_inputs({}) is True
 
 # Tests for LoggingNode
 

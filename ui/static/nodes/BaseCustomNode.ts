@@ -149,8 +149,6 @@ export default class BaseCustomNode extends LGraphNode {
             });
         }
 
-        this.displayResults = false;
-
         // Auto-resize node if it has a textarea widget
         if (data.params && data.params.some((p: any) => p.type === 'textarea')) {
             this.size[1] = 120; // Default height for nodes with a textarea

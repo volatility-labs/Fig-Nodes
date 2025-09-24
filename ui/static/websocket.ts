@@ -62,12 +62,12 @@ export function setupWebSocket(graph: LGraph, _canvas: LGraphCanvas) {
             }
         });
 
+        // Remove loading overlay for all executions - use progress bar instead
         const overlay = document.getElementById('loading-overlay');
-        const overlayText = overlay?.querySelector('span');
-        if (overlay && overlayText) {
-            overlay.style.display = 'flex';
-            overlayText.textContent = 'Executing...';
+        if (overlay) {
+            overlay.style.display = 'none';
         }
+
         const indicator = document.getElementById('status-indicator');
         if (indicator) {
             indicator.className = `status-indicator executing`;
@@ -115,7 +115,7 @@ export function setupWebSocket(graph: LGraph, _canvas: LGraphCanvas) {
                     stopExecution();
                 }
             } else if (data.type === 'data') {
-                if (overlay) overlay.style.display = 'none';
+                // Overlay is never shown during execution now
                 if (Object.keys(data.results).length === 0) {
                     if (indicator) {
                         indicator.className = `status-indicator executing`;

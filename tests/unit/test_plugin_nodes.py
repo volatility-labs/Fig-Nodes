@@ -73,9 +73,10 @@ async def test_binance_klines_start(mock_connect):
     gen = node.start(inputs)
     output = await anext(gen)
     assert "ohlcv" in output
-    df = output["ohlcv"][AssetSymbol("BTC", AssetClass.CRYPTO, "USDT", exchange="binance", instrument_type=InstrumentType.PERPETUAL)]
-    assert isinstance(df, pd.DataFrame)
-    assert df["close"].iloc[0] == 4.0
+    bars = output["ohlcv"][AssetSymbol("BTC", AssetClass.CRYPTO, "USDT", exchange="binance", instrument_type=InstrumentType.PERPETUAL)]
+    assert isinstance(bars, list)
+    assert len(bars) == 1
+    assert bars[0]["close"] == 4.0
 
     await gen.aclose()
 
@@ -145,6 +146,8 @@ async def test_polygon_fetch_symbols(mock_client, polygon_node):
     }
     mock_get.return_value = mock_response
     mock_client.return_value.__aenter__.return_value.get = mock_get
+    # Set execute inputs that _fetch_symbols expects
+    polygon_node._execute_inputs = {"api_key": "test_key"}
     symbols = await polygon_node._fetch_symbols()
     assert len(symbols) == 1
     assert symbols[0].ticker == "BTC"
@@ -153,7 +156,8 @@ async def test_polygon_fetch_symbols(mock_client, polygon_node):
 @pytest.mark.asyncio
 @patch("httpx.AsyncClient")
 async def test_polygon_no_api_key(mock_client, polygon_node):
-    polygon_node.params["api_key"] = ""
+    # Set execute inputs with empty api_key that _fetch_symbols expects
+    polygon_node._execute_inputs = {"api_key": ""}
     with pytest.raises(ValueError):
         await polygon_node._fetch_symbols()
 
@@ -165,6 +169,8 @@ async def test_polygon_pagination(mock_client, polygon_node):
         MagicMock(status_code=200, json=lambda: {"results": [{"ticker": "X:ETHUSD"}], "next_url": None})
     ])
     mock_client.return_value.__aenter__.return_value.get = mock_get
+    # Set execute inputs that _fetch_symbols expects
+    polygon_node._execute_inputs = {"api_key": "test_key"}
     symbols = await polygon_node._fetch_symbols()
     assert len(symbols) == 2
 

@@ -1,0 +1,250 @@
+{
+  "id": "00000000-0000-0000-0000-000000000000",
+  "revision": 0,
+  "last_node_id": 8,
+  "last_link_id": 7,
+  "nodes": [
+    {
+      "id": 3,
+      "type": "PolygonUniverseNode",
+      "pos": [
+        917.7109375,
+        467.23046875
+      ],
+      "size": [
+        210,
+        89
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "api_key",
+          "type": "str",
+          "link": 2
+        }
+      ],
+      "outputs": [
+        {
+          "name": "symbols",
+          "type": "List<AssetSymbol>",
+          "links": [
+            1
+          ]
+        }
+      ],
+      "title": "PolygonUniverseNode",
+      "properties": {
+        "market": "stocks"
+      }
+    },
+    {
+      "id": 4,
+      "type": "PolygonAPIKeyNode",
+      "pos": [
+        569.53515625,
+        600.69140625
+      ],
+      "size": [
+        280,
+        120
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "api_key",
+          "type": "str",
+          "links": [
+            2,
+            3
+          ]
+        }
+      ],
+      "title": "PolygonAPIKeyNode",
+      "properties": {
+        "api_key": "9VBT7EHIAEeNpGZXEcjdTjZvpAz4dfmC"
+      },
+      "color": "#8b5a3c",
+      "bgcolor": "#3d2818"
+    },
+    {
+      "id": 7,
+      "type": "IndicatorsFilterNode",
+      "pos": [
+        1521.171875,
+        484.63671875
+      ],
+      "size": [
+        210,
+        189
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "indicators",
+          "type": "dict<AssetSymbol, dict<str, 0>>",
+          "link": 7
+        }
+      ],
+      "outputs": [
+        {
+          "name": "filtered_symbols",
+          "type": "List<AssetSymbol>",
+          "links": [
+            5
+          ]
+        }
+      ],
+      "title": "IndicatorsFilterNode",
+      "properties": {
+        "min_adx": 0,
+        "require_eis_bullish": false,
+        "require_eis_bearish": false,
+        "min_hurst": 2,
+        "min_acceleration": 0,
+        "min_volume_ratio": 1
+      }
+    },
+    {
+      "id": 8,
+      "type": "LoggingNode",
+      "pos": [
+        2115.7109375,
+        707.2578125
+      ],
+      "size": [
+        400,
+        300
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "input",
+          "type": 0,
+          "link": 5
+        }
+      ],
+      "outputs": [
+        {
+          "name": "output",
+          "type": "str",
+          "links": null
+        }
+      ],
+      "title": "LoggingNode",
+      "properties": {
+        "format": "auto"
+      }
+    },
+    {
+      "id": 5,
+      "type": "PolygonBatchCustomBarsNode",
+      "pos": [
+        1196.109375,
+        469.94140625
+      ],
+      "size": [
+        236.78182983398438,
+        238
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "symbols",
+          "type": "List<AssetSymbol>",
+          "link": 1
+        },
+        {
+          "name": "api_key",
+          "type": "str",
+          "link": 3
+        }
+      ],
+      "outputs": [
+        {
+          "name": "ohlcv_bundle",
+          "type": "dict<AssetSymbol, List<OHLCVBar>>",
+          "links": [
+            6,
+            7
+          ]
+        }
+      ],
+      "title": "PolygonBatchCustomBarsNode",
+      "properties": {
+        "multiplier": 1,
+        "timespan": "day",
+        "lookback_period": "3 months",
+        "adjusted": true,
+        "sort": "asc",
+        "limit": 200,
+        "max_concurrent": 5,
+        "max_symbols": 50
+      }
+    }
+  ],
+  "links": [
+    [
+      1,
+      3,
+      0,
+      5,
+      0,
+      "List<AssetSymbol>"
+    ],
+    [
+      2,
+      4,
+      0,
+      3,
+      0,
+      "str"
+    ],
+    [
+      3,
+      4,
+      0,
+      5,
+      1,
+      "str"
+    ],
+    [
+      5,
+      7,
+      0,
+      8,
+      0,
+      "List<AssetSymbol>"
+    ],
+    [
+      7,
+      5,
+      0,
+      7,
+      0,
+      "dict<AssetSymbol, dict<str, 0>>"
+    ]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 1,
+      "offset": [
+        0,
+        0
+      ]
+    }
+  },
+  "version": 0.4
+}

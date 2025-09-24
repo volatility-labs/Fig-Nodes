@@ -15,3 +15,9 @@ def _ensure_project_root_on_path() -> None:
 
 
 _ensure_project_root_on_path()
+
+# Import services that register tools to ensure they're available for tests
+try:
+    from services.tools import web_search  # noqa: F401
+except ImportError:
+    pass

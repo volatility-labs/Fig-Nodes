@@ -1,6 +1,17 @@
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 from nodes.core.llm.web_search_tool_node import WebSearchToolNode
+
+
+@pytest.fixture(scope="module", autouse=True)
+def ensure_web_search_tool_registered():
+    """Ensure the web_search tool is registered for all tests in this module."""
+    from services.tools.registry import get_tool_schema, register_tool_factory
+    from services.tools.web_search import _create_web_search_tool
+
+    # If the schema is not registered (e.g., cleared by other tests), register it
+    if not get_tool_schema("web_search"):
+        register_tool_factory("web_search", _create_web_search_tool)
 
 
 @pytest.fixture
@@ -14,51 +25,25 @@ def web_search_tool_node():
     })
 
 
-@pytest.fixture
-def mock_web_search_tool():
-    """Mock WebSearchTool with schema method."""
-    mock_tool = MagicMock()
-    mock_tool.schema.return_value = {
-        "type": "function",
-        "function": {
-            "name": "web_search",
-            "description": "Search the web and return concise findings with sources.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "query": {"type": "string", "description": "Search query"},
-                    "k": {"type": "integer", "minimum": 1, "maximum": 10},
-                    "time_range": {
-                        "type": "string",
-                        "enum": ["day", "week", "month", "year", "all"],
-                    },
-                    "lang": {"type": "string", "description": "Language code like en, fr"},
-                },
-                "required": ["query"],
-            },
-        },
-    }
-    return mock_tool
 
 
 @pytest.mark.asyncio
-async def test_execute_returns_tool_schema(web_search_tool_node, mock_web_search_tool):
+async def test_execute_returns_tool_schema(web_search_tool_node):
     """Test that execute returns the tool schema with injected defaults."""
-    with patch("nodes.core.llm.web_search_tool_node.WebSearchTool", return_value=mock_web_search_tool):
-        result = await web_search_tool_node.execute({"api_key": "test_key"})
+    result = await web_search_tool_node.execute({"api_key": "test_key"})
 
-        assert "tool" in result
-        tool_schema = result["tool"]
+    assert "tool" in result
+    tool_schema = result["tool"]
 
-        # Verify it's the schema from the tool
-        assert tool_schema["type"] == "function"
-        assert tool_schema["function"]["name"] == "web_search"
+    # Verify it's the schema from the registry
+    assert tool_schema["type"] == "function"
+    assert tool_schema["function"]["name"] == "web_search"
 
-        # Verify defaults are injected
-        props = tool_schema["function"]["parameters"]["properties"]
-        assert props["k"]["default"] == 5
-        assert props["time_range"]["default"] == "month"
-        assert props["lang"]["default"] == "en"
+    # Verify defaults are injected
+    props = tool_schema["function"]["parameters"]["properties"]
+    assert props["k"]["default"] == 5
+    assert props["time_range"]["default"] == "month"
+    assert props["lang"]["default"] == "en"
 
 
 @pytest.mark.asyncio
@@ -72,39 +57,18 @@ async def test_execute_with_custom_params():
         "require_api_key": True,
     })
 
-    mock_tool = MagicMock()
-    mock_tool.schema.return_value = {
-        "type": "function",
-        "function": {
-            "name": "web_search",
-            "description": "Search the web",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "query": {"type": "string"},
-                    "k": {"type": "integer", "minimum": 1, "maximum": 10},
-                    "time_range": {"type": "string", "enum": ["day", "week", "month", "year", "all"]},
-                    "lang": {"type": "string"},
-                },
-                "required": ["query"],
-            },
-        },
-    }
+    result = await node.execute({"api_key": "test_key"})
 
-    with patch("nodes.core.llm.web_search_tool_node.WebSearchTool", return_value=mock_tool):
-        result = await node.execute({"api_key": "test_key"})
-
-        props = result["tool"]["function"]["parameters"]["properties"]
-        assert props["k"]["default"] == 3
-        assert props["time_range"]["default"] == "week"
-        assert props["lang"]["default"] == "fr"
+    props = result["tool"]["function"]["parameters"]["properties"]
+    assert props["k"]["default"] == 3
+    assert props["time_range"]["default"] == "week"
+    assert props["lang"]["default"] == "fr"
 
 
 @pytest.mark.asyncio
 async def test_execute_handles_missing_properties_gracefully(web_search_tool_node):
     """Test that execute handles missing properties in schema gracefully."""
-    mock_tool = MagicMock()
-    mock_tool.schema.return_value = {
+    mock_schema = {
         "type": "function",
         "function": {
             "name": "web_search",
@@ -120,7 +84,7 @@ async def test_execute_handles_missing_properties_gracefully(web_search_tool_nod
         },
     }
 
-    with patch("nodes.core.llm.web_search_tool_node.WebSearchTool", return_value=mock_tool):
+    with patch("nodes.core.llm.web_search_tool_node.get_tool_schema", return_value=mock_schema):
         # Should not raise an exception even if properties are missing
         result = await web_search_tool_node.execute({"api_key": "test_key"})
         assert "tool" in result
@@ -137,33 +101,13 @@ async def test_execute_with_none_params():
         "require_api_key": True,
     })
 
-    mock_tool = MagicMock()
-    mock_tool.schema.return_value = {
-        "type": "function",
-        "function": {
-            "name": "web_search",
-            "description": "Search the web",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "query": {"type": "string"},
-                    "k": {"type": "integer", "minimum": 1, "maximum": 10},
-                    "time_range": {"type": "string", "enum": ["day", "week", "month", "year", "all"]},
-                    "lang": {"type": "string"},
-                },
-                "required": ["query"],
-            },
-        },
-    }
+    result = await node.execute({"api_key": "test_key"})
 
-    with patch("nodes.core.llm.web_search_tool_node.WebSearchTool", return_value=mock_tool):
-        result = await node.execute({"api_key": "test_key"})
-
-        props = result["tool"]["function"]["parameters"]["properties"]
-        # Should use fallback defaults when params are None
-        assert props["k"]["default"] == 5  # fallback default
-        assert props["time_range"]["default"] == "month"  # fallback default
-        assert props["lang"]["default"] == "en"  # fallback default
+    props = result["tool"]["function"]["parameters"]["properties"]
+    # Should use fallback defaults when params are None
+    assert props["k"]["default"] == 5  # fallback default
+    assert props["time_range"]["default"] == "month"  # fallback default
+    assert props["lang"]["default"] == "en"  # fallback default
 
 
 @pytest.mark.asyncio
@@ -177,33 +121,13 @@ async def test_execute_with_empty_params():
         "require_api_key": True,
     })
 
-    mock_tool = MagicMock()
-    mock_tool.schema.return_value = {
-        "type": "function",
-        "function": {
-            "name": "web_search",
-            "description": "Search the web",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "query": {"type": "string"},
-                    "k": {"type": "integer", "minimum": 1, "maximum": 10},
-                    "time_range": {"type": "string", "enum": ["day", "week", "month", "year", "all"]},
-                    "lang": {"type": "string"},
-                },
-                "required": ["query"],
-            },
-        },
-    }
+    result = await node.execute({"api_key": "test_key"})
 
-    with patch("nodes.core.llm.web_search_tool_node.WebSearchTool", return_value=mock_tool):
-        result = await node.execute({"api_key": "test_key"})
-
-        props = result["tool"]["function"]["parameters"]["properties"]
-        # Should use fallback defaults when params are empty strings
-        assert props["k"]["default"] == 5  # fallback default
-        assert props["time_range"]["default"] == "month"  # fallback default
-        assert props["lang"]["default"] == "en"  # fallback default
+    props = result["tool"]["function"]["parameters"]["properties"]
+    # Should use fallback defaults when params are empty strings
+    assert props["k"]["default"] == 5  # fallback default
+    assert props["time_range"]["default"] == "month"  # fallback default
+    assert props["lang"]["default"] == "en"  # fallback default
 
 
 @pytest.mark.asyncio
@@ -237,31 +161,11 @@ async def test_execute_with_k_out_of_bounds():
         "require_api_key": True,
     })
 
-    mock_tool = MagicMock()
-    mock_tool.schema.return_value = {
-        "type": "function",
-        "function": {
-            "name": "web_search",
-            "description": "Search the web",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "query": {"type": "string"},
-                    "k": {"type": "integer", "minimum": 1, "maximum": 10},
-                    "time_range": {"type": "string", "enum": ["day", "week", "month", "year", "all"]},
-                    "lang": {"type": "string"},
-                },
-                "required": ["query"],
-            },
-        },
-    }
+    result = await node.execute({"api_key": "test_key"})
 
-    with patch("nodes.core.llm.web_search_tool_node.WebSearchTool", return_value=mock_tool):
-        result = await node.execute({"api_key": "test_key"})
-
-        props = result["tool"]["function"]["parameters"]["properties"]
-        # Should still set the value even if out of bounds (validation happens at tool execution)
-        assert props["k"]["default"] == 15
+    props = result["tool"]["function"]["parameters"]["properties"]
+    # Should still set the value even if out of bounds (validation happens at tool execution)
+    assert props["k"]["default"] == 15
 
 
 def test_node_inputs_outputs(web_search_tool_node):

@@ -6,23 +6,20 @@ from core.types_registry import get_type
 
 class ToolsBuilderNode(BaseNode):
     """
-    Aggregates multiple tool specs into a single LLMToolSpecList output.
+    Takes a list of exactly 5 tool specs and outputs them as LLMToolSpecList.
 
-    Inputs (all optional, multi-input):
-    - tool: LLMToolSpec (multi)
-    - tools: LLMToolSpecList (multi)
+    Input:
+    - tools_list: List[LLMToolSpec] - exactly 5 tool specifications
 
     Output:
     - tools: LLMToolSpecList
     """
 
     inputs = {
-        # Single tool input that supports multi-input slots: tool_0, tool_1, ...
-        "tool": get_type("LLMToolSpec"),
+        "tools_list": List[get_type("LLMToolSpec")],
     }
 
-    # Allow both inputs to be optional
-    optional_inputs = ["tool"]
+    optional_inputs = ["tools_list"]
 
     outputs = {
         "tools": get_type("LLMToolSpecList"),
@@ -31,37 +28,25 @@ class ToolsBuilderNode(BaseNode):
     CATEGORY = "llm"
 
     async def execute(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
-        result: List[Dict[str, Any]] = []
+        tools_list = inputs.get("tools_list", [])
 
-        def _append_tool_spec(v):
-            if isinstance(v, dict) and v.get("type") == "function" and isinstance(v.get("function"), dict):
-                result.append(v)
+        if not isinstance(tools_list, list):
+            raise ValueError("tools_list must be a list")
 
-        # Collect single tool specs from multi input "tool"
-        for v in self.collect_multi_input("tool", inputs):
-            if isinstance(v, list):
-                for item in v:
-                    _append_tool_spec(item)
-            else:
-                _append_tool_spec(v)
+        if len(tools_list) != 5:
+            raise ValueError(f"tools_list must contain exactly 5 tools, got {len(tools_list)}")
 
-        # No additional list input; only aggregate from multi "tool" inputs
+        # Validate each tool spec
+        validated_tools = []
+        for i, tool_spec in enumerate(tools_list):
+            if not isinstance(tool_spec, dict):
+                raise ValueError(f"Tool at index {i} must be a dict")
+            if tool_spec.get("type") != "function":
+                raise ValueError(f"Tool at index {i} must have type 'function'")
+            if not isinstance(tool_spec.get("function"), dict):
+                raise ValueError(f"Tool at index {i} must have a 'function' dict")
+            validated_tools.append(tool_spec)
 
-        # Deduplicate by function.name when possible
-        seen = set()
-        deduped: List[Dict[str, Any]] = []
-        for spec in result:
-            name = None
-            try:
-                name = spec.get("function", {}).get("name")
-            except Exception:
-                name = None
-            key = name or id(spec)
-            if key in seen:
-                continue
-            seen.add(key)
-            deduped.append(spec)
-
-        return {"tools": deduped}
+        return {"tools": validated_tools}
 
 
