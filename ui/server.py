@@ -89,14 +89,42 @@ def _serialize_results(results: Dict[int, Dict[str, Any]]):
     return {str(node_id): {out: _serialize_value(val) for out, val in node_res.items()} for node_id, node_res in results.items()}
 
 
+def _serialize_progress(progress_data: Dict[str, Any]):
+    return {
+        "node_id": progress_data["node_id"],
+        "progress": progress_data["progress"],
+        "text": progress_data.get("text", "")
+    }
+
+
 async def _execution_worker():
     while True:
         job = await EXECUTION_QUEUE.get_next()
         websocket = job.websocket
         executor: typing.Optional[GraphExecutor] = None
+
+        def progress_callback(node_id: int, progress: float, text: str = ""):
+            """Send progress update to client."""
+            if websocket.client_state != WebSocketState.CONNECTED:
+                return
+
+            async def safe_send():
+                try:
+                    await websocket.send_json({
+                        "type": "progress",
+                        "node_id": node_id,
+                        "progress": progress,
+                        "text": text
+                    })
+                except Exception:
+                    pass
+
+            asyncio.create_task(safe_send())
+
         try:
             print("Worker: Creating GraphExecutor")
             executor = GraphExecutor(job.graph_data, NODE_REGISTRY)
+            executor.set_progress_callback(progress_callback)
             print(f"Worker: GraphExecutor created, is_streaming={executor.is_streaming}")
             try:
                 await websocket.send_json({"type": "status", "message": "Starting execution"})
@@ -124,7 +152,7 @@ async def _execution_worker():
 
                 async def monitor_cancel():
                     while True:
-                        await asyncio.sleep(0.5)
+                        await asyncio.sleep(0.05)
                         if job.cancel_event.is_set() or websocket.client_state in (WebSocketState.CLOSED, WebSocketState.DISCONNECTED):
                             print("Worker: Detected cancel or disconnect in monitor, stopping executor")
                             await executor.stop()
@@ -162,12 +190,32 @@ async def _execution_worker():
                     await websocket.send_json({"type": "status", "message": "Executing batch"})
                 except Exception:
                     pass
-                results = await executor.execute()
+
+                execution_task = asyncio.create_task(executor.execute())
+
+                async def monitor_cancel():
+                    while not execution_task.done():
+                        await asyncio.sleep(0.05)
+                        if job.cancel_event.is_set() or websocket.client_state in (WebSocketState.CLOSED, WebSocketState.DISCONNECTED):
+                            print("Worker: Detected cancel or disconnect for batch, cancelling execution")
+                            execution_task.cancel()
+                            break
+
+                monitor_task = asyncio.create_task(monitor_cancel())
+
                 try:
-                    await websocket.send_json({"type": "data", "results": _serialize_results(results)})
-                    await websocket.send_json({"type": "status", "message": "Batch finished"})
-                except Exception:
-                    pass
+                    results = await execution_task
+                    if websocket.client_state == WebSocketState.CONNECTED:
+                        await websocket.send_json({"type": "data", "results": _serialize_results(results)})
+                        await websocket.send_json({"type": "status", "message": "Batch finished"})
+                except asyncio.CancelledError:
+                    print("Worker: Batch execution cancelled")
+                except Exception as e:
+                    if websocket.client_state == WebSocketState.CONNECTED:
+                        await websocket.send_json({"type": "error", "message": str(e)})
+                finally:
+                    monitor_task.cancel()
+                    await asyncio.gather(monitor_task, return_exceptions=True)
 
         except WebSocketDisconnect:
             if executor and executor.is_streaming:
@@ -290,9 +338,29 @@ async def execute_endpoint(websocket: WebSocket):
 async def _execute_job_directly(websocket: WebSocket, graph_data: Dict[str, Any]):
     """Execute job directly without queue (for testing)"""
     executor: typing.Optional[GraphExecutor] = None
+
+    def progress_callback(node_id: int, progress: float, text: str = ""):
+        """Send progress update to client."""
+        if websocket.client_state != WebSocketState.CONNECTED:
+            return
+
+        async def safe_send():
+            try:
+                await websocket.send_json({
+                    "type": "progress",
+                    "node_id": node_id,
+                    "progress": progress,
+                    "text": text
+                })
+            except Exception:
+                pass
+
+        asyncio.create_task(safe_send())
+
     try:
         print("Server: Creating GraphExecutor")
         executor = GraphExecutor(graph_data, NODE_REGISTRY)
+        executor.set_progress_callback(progress_callback)
         print(f"Server: GraphExecutor created, is_streaming={executor.is_streaming}")
         await websocket.send_json({"type": "status", "message": "Starting execution"})
 
@@ -311,7 +379,7 @@ async def _execute_job_directly(websocket: WebSocket, graph_data: Dict[str, Any]
 
             async def monitor_cancel():
                 while True:
-                    await asyncio.sleep(0.5)
+                    await asyncio.sleep(0.05)
                     if websocket.client_state in (WebSocketState.CLOSED, WebSocketState.DISCONNECTED):
                         print("Server: Detected disconnect in monitor, stopping executor")
                         await executor.stop()
@@ -342,9 +410,37 @@ async def _execute_job_directly(websocket: WebSocket, graph_data: Dict[str, Any]
                     await websocket.send_json({"type": "status", "message": "Stream finished"})
         else:
             await websocket.send_json({"type": "status", "message": "Executing batch"})
-            results = await executor.execute()
-            await websocket.send_json({"type": "data", "results": _serialize_results(results)})
-            await websocket.send_json({"type": "status", "message": "Batch finished"})
+            execution_task = asyncio.create_task(executor.execute())
+
+            async def monitor_cancel():
+                while True:
+                    await asyncio.sleep(0.05)
+                    if websocket.client_state in (WebSocketState.CLOSED, WebSocketState.DISCONNECTED):
+                        print("Server: Detected disconnect for batch, cancelling execution")
+                        if not execution_task.done():
+                            execution_task.cancel()
+                        await executor.stop()
+                        break
+                    if execution_task.done():
+                        break
+
+            monitor_task = asyncio.create_task(monitor_cancel())
+
+            stream_finished_normally = True
+            try:
+                results = await execution_task
+                await websocket.send_json({"type": "data", "results": _serialize_results(results)})
+                await websocket.send_json({"type": "status", "message": "Batch finished"})
+            except asyncio.CancelledError:
+                print("Server: Batch execution cancelled")
+                stream_finished_normally = False
+            except Exception as e:
+                await websocket.send_json({"type": "error", "message": str(e)})
+                stream_finished_normally = False
+            finally:
+                monitor_task.cancel()
+                if stream_finished_normally:
+                    print("Server: Batch finished normally")
 
     except Exception as e:
         await websocket.send_json({"type": "error", "message": str(e)})

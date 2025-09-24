@@ -157,6 +157,12 @@ export function setupWebSocket(graph: LGraph, _canvas: LGraphCanvas) {
                     // otherwise keep indeterminate until a finished status arrives.
                     showProgress('Running...', false);
                 }
+            } else if (data.type === 'progress') {
+                // Update node progress
+                const node: any = graph.getNodeById(data.node_id);
+                if (node && typeof node.setProgress === 'function') {
+                    node.setProgress(data.progress, data.text);
+                }
             } else if (data.type === 'error') {
                 console.error('Execution error:', data.message);
                 showError(data.message);

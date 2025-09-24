@@ -51,8 +51,7 @@ class PolygonBatchCustomBarsNode(BaseNode):
         "adjusted": True,
         "sort": "asc",
         "limit": 5000,
-        "max_concurrent": 5,  # For concurrency limiting
-        "max_symbols": 50,  # Limit symbols to prevent hanging
+        "max_concurrent": 10,  # For concurrency limiting - increased for better throughput
         "rate_limit_per_second": 95,  # Stay under Polygon's recommended 100/sec
     }
     params_meta = [
@@ -62,8 +61,7 @@ class PolygonBatchCustomBarsNode(BaseNode):
         {"name": "adjusted", "type": "combo", "default": True, "options": [True, False]},
         {"name": "sort", "type": "combo", "default": "asc", "options": ["asc", "desc"]},
         {"name": "limit", "type": "number", "default": 5000, "min": 1, "max": 50000, "step": 1},
-        {"name": "max_concurrent", "type": "number", "default": 5, "min": 1, "max": 20, "step": 1},
-        {"name": "max_symbols", "type": "number", "default": 50, "min": 1, "max": 1000, "step": 1},
+        {"name": "max_concurrent", "type": "number", "default": 10, "min": 1, "max": 20, "step": 1},
         {"name": "rate_limit_per_second", "type": "number", "default": 95, "min": 1, "max": 100, "step": 1},
     ]
 
@@ -72,31 +70,38 @@ class PolygonBatchCustomBarsNode(BaseNode):
         if not symbols:
             return {"ohlcv_bundle": {}}
 
-        # Limit the number of symbols to prevent hanging with large universes
-        max_symbols = self.params.get("max_symbols", 50)  # Default limit of 50 symbols
-        if len(symbols) > max_symbols:
-            logger.warning(f"Limiting symbol processing to {max_symbols} out of {len(symbols)} symbols")
-            symbols = symbols[:max_symbols]
-
         api_key = inputs.get("api_key")
         if not api_key:
             raise ValueError("Polygon API key input is required")
 
-        max_concurrent = self.params.get("max_concurrent", 5)
+        max_concurrent = self.params.get("max_concurrent", 10)
         rate_limit = self.params.get("rate_limit_per_second", 95)
         bundle = {}
         semaphore = asyncio.Semaphore(max_concurrent)
         rate_limiter = RateLimiter(max_per_second=rate_limit)
+        total_symbols = len(symbols)
+        completed_count = 0
 
         async def fetch_for_symbol(sym):
+            nonlocal completed_count
             async with semaphore:
                 # Rate limiting to stay under Polygon's recommended limit
                 await rate_limiter.acquire()
                 try:
                     bars = await fetch_bars(sym, api_key, self.params)
+                    completed_count += 1
+                    progress = (completed_count / total_symbols) * 100
+                    progress_text = f"{completed_count}/{total_symbols}"
+                    self.report_progress(progress, progress_text)
+                    logger.info(".1f")
                     return sym, bars
                 except Exception as e:
+                    completed_count += 1
+                    progress = (completed_count / total_symbols) * 100
+                    progress_text = f"{completed_count}/{total_symbols}"
+                    self.report_progress(progress, progress_text)
                     logger.warning(f"Failed to fetch bars for {sym}: {e}")
+                    logger.info(".1f")
                     return sym, []
 
         # Use gather with timeout to prevent hanging
@@ -116,5 +121,11 @@ class PolygonBatchCustomBarsNode(BaseNode):
             for task in tasks:
                 if not task.done():
                     task.cancel()
+        except asyncio.CancelledError:
+            logger.info("Batch fetch cancelled")
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            raise
 
         return {"ohlcv_bundle": bundle}

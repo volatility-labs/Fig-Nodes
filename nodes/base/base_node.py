@@ -29,6 +29,7 @@ class BaseNode:
         # Ensure per-instance mutable copies to avoid cross-test/class mutation
         self.inputs = dict(getattr(self, "inputs", {}))
         self.outputs = dict(getattr(self, "outputs", {}))
+        self._progress_callback = None
 
     def collect_multi_input(self, key: str, inputs: Dict[str, Any]) -> List[Any]:
         expected_type = self.inputs.get(key)
@@ -149,6 +150,15 @@ class BaseNode:
                         continue
                     return False
         return True
+
+    def set_progress_callback(self, callback):
+        """Set a callback function to report progress during execution."""
+        self._progress_callback = callback
+
+    def report_progress(self, progress: float, text: str = ""):
+        """Report progress to the execution system."""
+        if self._progress_callback:
+            self._progress_callback(self.id, progress, text)
 
     async def execute(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
         """Core execution method - must be implemented by subclasses."""

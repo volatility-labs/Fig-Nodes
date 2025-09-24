@@ -8,24 +8,6 @@ Inspired by ComfyUI for AI and litegraph, Fig Nodes makes it easy to build profe
 
 Created by Volatility Labs Inc. 
 
-## Extending Error Handling
-
-To customize the error display popup, import `showError` from `ui/static/utils/uiUtils.ts` and reassign it to your custom function.
-
-For example, in a script:
-
-```typescript
-import { showError } from './utils/uiUtils';
-
-showError = (message: string) => {
-    // Your custom error handling logic here
-    console.error(message);
-    alert(`Custom Error: ${message}`);
-};
-```
-
-This allows overriding the default popup with custom UI or behavior while keeping the system lightweight. 
-
 ## Setup (pip + venv)
 
 ```bash

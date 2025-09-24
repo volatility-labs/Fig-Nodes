@@ -76,3 +76,7 @@ dmypy.json
 .pytype/
 
 cursor_project_rules
+testing_artifacts/
+testing_venv
+__pycache__
+.cursor

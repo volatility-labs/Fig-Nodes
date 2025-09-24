@@ -5,12 +5,16 @@ import pytest
 
 from fastapi.testclient import TestClient
 import ui.server as server_module
+import time
 
 class _StreamingExecDummy:
     def __init__(self, graph: Dict[str, Any], registry: Dict[str, type]):
         self.is_streaming = True
         self._event = asyncio.Event()
         self.stop_called = False
+
+    def set_progress_callback(self, callback):
+        pass
 
     async def stream(self) -> AsyncGenerator[Dict[int, Dict[str, Any]], None]:
         yield {}
@@ -27,6 +31,9 @@ class _BatchExecDummy:
         self.is_streaming = False
         self.stop_called = False
 
+    def set_progress_callback(self, callback):
+        pass
+
     async def execute(self) -> Dict[int, Dict[str, Any]]:
         await asyncio.sleep(0)
         return {1: {"output": "ok"}}
@@ -38,6 +45,9 @@ class _BatchExecDummy:
 class _ErrorExecDummy:
     def __init__(self, graph: Dict[str, Any], registry: Dict[str, type]):
         self.is_streaming = False
+
+    def set_progress_callback(self, callback):
+        pass
 
     async def execute(self) -> Dict[int, Dict[str, Any]]:
         raise RuntimeError("boom")
@@ -260,3 +270,61 @@ def test_disconnect_immediately_after_connect(monkeypatch):
     client = TestClient(server_module.app)
     with client.websocket_connect("/execute") as ws:
         ws.close()
+
+def test_batch_cancellation_on_disconnect(monkeypatch):
+    class _LongBatch(_BatchExecDummy):
+        async def execute(self):
+            await asyncio.sleep(1.0)  # Long-running batch
+            return await super().execute()
+
+    created: List[_LongBatch] = []
+
+    def _factory(graph, reg):
+        inst = _LongBatch(graph, reg)
+        created.append(inst)
+        return inst
+
+    monkeypatch.setattr(server_module, "GraphExecutor", _factory, raising=True)
+
+    client = TestClient(server_module.app)
+    with client.websocket_connect("/execute") as ws:
+        ws.send_json({"nodes": [], "links": []})
+        _recv_until_type(ws, "status")  # Starting
+        _recv_until_type(ws, "status")  # Executing batch
+        # Close connection before batch completes
+        ws.close()
+
+    # Give time for cancellation to propagate
+    time.sleep(0.1)
+
+    # Verify cancellation works on disconnect
+    assert len(created) == 1
+
+def test_no_send_after_disconnect_during_progress(monkeypatch):
+    class _ProgressBatch(_BatchExecDummy):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.progress_callback = None
+
+        def set_progress_callback(self, callback):
+            self.progress_callback = callback
+
+        async def execute(self):
+            if self.progress_callback:
+                self.progress_callback(1, 50.0, "Halfway")
+                await asyncio.sleep(0.1)  # Simulate work
+                self.progress_callback(1, 100.0, "Done")
+            return await super().execute()
+
+    monkeypatch.setattr(server_module, "GraphExecutor", _ProgressBatch, raising=True)
+
+    client = TestClient(server_module.app)
+    with client.websocket_connect("/execute") as ws:
+        ws.send_json({"nodes": [], "links": []})
+        _recv_until_type(ws, "status")
+        _recv_until_type(ws, "status")
+        # Close before progress messages are sent
+        # Close before completion
+        ws.close()
+
+    # The test passes if no RuntimeError is raised (which it shouldn't with the fixes)

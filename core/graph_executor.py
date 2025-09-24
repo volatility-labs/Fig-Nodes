@@ -17,7 +17,15 @@ class GraphExecutor:
         self.is_streaming = False
         self.streaming_tasks: List[asyncio.Task] = []
         self._stopped = False
+        self._progress_callback = None
         self._build_graph()
+
+    def set_progress_callback(self, callback):
+        """Set a progress callback function."""
+        self._progress_callback = callback
+        # Set progress callback on all nodes
+        for node in self.nodes.values():
+            node.set_progress_callback(callback)
 
     def _build_graph(self):
         for node_data in self.graph.get('nodes', []):
@@ -53,6 +61,9 @@ class GraphExecutor:
         executed_nodes = set()
 
         for node_id in sorted_nodes:
+            if self._stopped:
+                print(f"GraphExecutor: Execution stopped at node {node_id}")
+                break
             if node_id in executed_nodes:
                 continue
             if self.dag.in_degree(node_id) == 0 and self.dag.out_degree(node_id) == 0:

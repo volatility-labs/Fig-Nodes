@@ -17,6 +17,8 @@ export default class BaseCustomNode extends LGraphNode {
     error: string = '';
     private highlightStartTs: number | null = null;
     private readonly highlightDurationMs: number = 900;
+    progress: number = -1; // -1 = no progress, 0-100 = progress percentage
+    progressText: string = '';
 
     constructor(title: string, data: any) {
         super(title);
@@ -243,6 +245,33 @@ export default class BaseCustomNode extends LGraphNode {
             }
         }
 
+        // Draw progress bar if active
+        let progressBarHeight = 0;
+        if (this.progress >= 0) {
+            const barHeight = 4;
+            const barY = LiteGraph.NODE_TITLE_HEIGHT + 2;
+            const barWidth = this.size[0] - 10;
+            const barX = 5;
+
+            // Background bar
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+            ctx.fillRect(barX, barY, barWidth, barHeight);
+
+            // Progress fill
+            ctx.fillStyle = '#2196f3';
+            ctx.fillRect(barX, barY, (barWidth * this.progress) / 100, barHeight);
+
+            // Progress text
+            if (this.progressText) {
+                ctx.fillStyle = '#ffffff';
+                ctx.font = '10px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText(this.progressText, barX + barWidth / 2, barY - 2);
+            }
+
+            progressBarHeight = barHeight + 6; // Include spacing
+        }
+
         if (this.flags.collapsed || !this.displayResults || !this.displayText) {
             return;
         }
@@ -258,7 +287,7 @@ export default class BaseCustomNode extends LGraphNode {
         const lines = this.wrapText(this.displayText, maxWidth, tempCtx);
 
         // Calculate needed height
-        let y = LiteGraph.NODE_TITLE_HEIGHT + 4;
+        let y = LiteGraph.NODE_TITLE_HEIGHT + 4 + progressBarHeight;
         if (this.widgets) {
             y += this.widgets.length * LiteGraph.NODE_WIDGET_HEIGHT;
         }
@@ -304,6 +333,18 @@ export default class BaseCustomNode extends LGraphNode {
 
     pulseHighlight() {
         this.highlightStartTs = performance.now();
+        this.setDirtyCanvas(true, true);
+    }
+
+    setProgress(progress: number, text?: string) {
+        this.progress = Math.max(-1, Math.min(100, progress));
+        this.progressText = text || '';
+        this.setDirtyCanvas(true, true);
+    }
+
+    clearProgress() {
+        this.progress = -1;
+        this.progressText = '';
         this.setDirtyCanvas(true, true);
     }
 

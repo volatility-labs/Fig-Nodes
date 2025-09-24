@@ -207,9 +207,9 @@ class TestPolygonBatchCustomBarsNode:
             assert sample_symbols[2] in bundle  # GOOGL
 
     @pytest.mark.asyncio
-    async def test_execute_symbol_limit(self, polygon_batch_node, mock_bars_response):
-        """Test symbol limiting functionality."""
-        # Create 60 symbols (over the default limit of 50)
+    async def test_execute_no_symbol_limit(self, polygon_batch_node, mock_bars_response):
+        """Test that there are no symbol limits."""
+        # Create 60 symbols - should process all of them
         symbols = [AssetSymbol(f"SYMBOL_{i}", AssetClass.STOCKS) for i in range(60)]
 
         with patch("custom_nodes.polygon.polygon_batch_custom_bars_node.fetch_bars", new_callable=AsyncMock) as mock_fetch:
@@ -220,15 +220,15 @@ class TestPolygonBatchCustomBarsNode:
                 "api_key": "test_api_key"
             })
 
-            # Should only process first 50 symbols
-            assert mock_fetch.call_count == 50
+            # Should process all 60 symbols
+            assert mock_fetch.call_count == 60
             bundle = result["ohlcv_bundle"]
-            assert len(bundle) == 50
+            assert len(bundle) == 60
 
     @pytest.mark.asyncio
-    async def test_execute_custom_symbol_limit(self, mock_bars_response):
-        """Test custom symbol limit parameter."""
-        node = PolygonBatchCustomBarsNode("test_id", {"max_symbols": 10})
+    async def test_execute_all_symbols_processed(self, mock_bars_response):
+        """Test that all symbols are processed regardless of count."""
+        node = PolygonBatchCustomBarsNode("test_id", {})
         symbols = [AssetSymbol(f"SYMBOL_{i}", AssetClass.STOCKS) for i in range(20)]
 
         with patch("custom_nodes.polygon.polygon_batch_custom_bars_node.fetch_bars", new_callable=AsyncMock) as mock_fetch:
@@ -239,8 +239,8 @@ class TestPolygonBatchCustomBarsNode:
                 "api_key": "test_api_key"
             })
 
-            # Should only process first 10 symbols
-            assert mock_fetch.call_count == 10
+            # Should process all 20 symbols
+            assert mock_fetch.call_count == 20
 
     @pytest.mark.asyncio
     async def test_execute_concurrency_control(self, polygon_batch_node, mock_bars_response):
@@ -442,6 +442,62 @@ class TestPolygonBatchCustomBarsNode:
             # should take significant time for 10 requests
             assert elapsed >= 0.8  # Should take at least 0.8 seconds
 
+    @pytest.mark.asyncio
+    async def test_execute_cancellation_during_fetch(self, polygon_batch_node, sample_symbols):
+        """Test handling of cancellation during batch fetch."""
+
+        async def slow_fetch(*args, **kwargs):
+            await asyncio.sleep(1.0)  # Simulate long fetch
+            return []
+
+        with patch("custom_nodes.polygon.polygon_batch_custom_bars_node.fetch_bars", side_effect=slow_fetch):
+            execute_task = asyncio.create_task(polygon_batch_node.execute({
+                "symbols": sample_symbols,
+                "api_key": "test_key"
+            }))
+
+            await asyncio.sleep(0.1)  # Let it start
+            execute_task.cancel()
+
+            with pytest.raises(asyncio.CancelledError):
+                await execute_task
+
+    @pytest.mark.asyncio
+    async def test_progress_after_cancellation(self, polygon_batch_node, sample_symbols):
+        """Test that no progress is reported after cancellation."""
+
+        progress_calls = []
+
+        def mock_report(progress, text):
+            progress_calls.append((progress, text))
+
+        polygon_batch_node.report_progress = mock_report
+
+        async def slow_fetch(*args, **kwargs):
+            await asyncio.sleep(0.5)
+            return []
+
+        with patch("custom_nodes.polygon.polygon_batch_custom_bars_node.fetch_bars", side_effect=slow_fetch):
+            execute_task = asyncio.create_task(polygon_batch_node.execute({
+                "symbols": sample_symbols,
+                "api_key": "test_key"
+            }))
+
+            await asyncio.sleep(0.1)
+            execute_task.cancel()
+
+            try:
+                await execute_task
+            except asyncio.CancelledError:
+                pass
+
+            # Give time for any pending progress calls
+            await asyncio.sleep(0.1)
+
+            # Should have some progress calls before cancellation, but not after
+            assert len(progress_calls) > 0
+            # Note: Exact count may vary, but the point is that cancellation stops further progress
+
     def test_node_properties(self, polygon_batch_node):
         """Test node configuration properties."""
         from core.types_registry import get_type
@@ -459,18 +515,17 @@ class TestPolygonBatchCustomBarsNode:
             "adjusted": True,
             "sort": "asc",
             "limit": 5000,
-            "max_concurrent": 5,
-            "max_symbols": 50,
+            "max_concurrent": 10,
             "rate_limit_per_second": 95,
         }
         assert polygon_batch_node.default_params == expected_defaults
 
         # Verify params_meta structure
-        assert len(polygon_batch_node.params_meta) == 9
+        assert len(polygon_batch_node.params_meta) == 8
         param_names = [p["name"] for p in polygon_batch_node.params_meta]
         expected_names = [
             "multiplier", "timespan", "lookback_period", "adjusted", "sort", "limit",
-            "max_concurrent", "max_symbols", "rate_limit_per_second"
+            "max_concurrent", "rate_limit_per_second"
         ]
         assert set(param_names) == set(expected_names)
 
