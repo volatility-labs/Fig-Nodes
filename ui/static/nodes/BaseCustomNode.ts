@@ -523,9 +523,54 @@ export default class BaseCustomNode extends LGraphNode {
         titleElement.className = 'inline-title-input';
         titleElement.value = this.title;
         titleElement.style.position = 'absolute';
-        titleElement.style.left = `${this.pos[0] + 10}px`; // Small margin from left
-        titleElement.style.top = `${this.pos[1] + 8}px`; // Small margin from top
-        titleElement.style.width = `${this.size[0] - 20}px`; // Account for margins
+
+        // Convert node-local title bounds -> screen coordinates (respect pan/zoom)
+        try {
+            const graph: any = (this as any).graph;
+            const canvas = graph?.list_of_graphcanvas?.[0];
+            const rect: DOMRect | undefined = canvas?.canvas?.getBoundingClientRect();
+            const scale: number = canvas?.ds?.scale ?? 1;
+            const offset: [number, number] = canvas?.ds?.offset ?? [0, 0];
+
+            if (rect) {
+                // Position the input to cover the entire title bar area
+                const nodeScreenX = rect.left + (this.pos[0] + offset[0]) * scale;
+                const nodeScreenY = rect.top + (this.pos[1] + offset[1]) * scale;
+
+                // Title bar spans from top of node to LiteGraph.NODE_TITLE_HEIGHT
+                const titleBarHeight = (LiteGraph as any).NODE_TITLE_HEIGHT || 30;
+                const titleBarTop = nodeScreenY - (titleBarHeight * scale);
+                const titleBarWidth = this.size[0] * scale;
+
+                // Center the input within the title bar with some padding
+                const inputPadding = 8 * scale;
+                const inputWidth = Math.max(100 * scale, titleBarWidth - (inputPadding * 2));
+                const inputHeight = Math.min(28 * scale, titleBarHeight * 0.8);
+
+                titleElement.style.left = `${Math.round(nodeScreenX + inputPadding)}px`;
+                titleElement.style.top = `${Math.round(titleBarTop + (titleBarHeight * scale - inputHeight) / 2)}px`;
+                titleElement.style.width = `${Math.round(inputWidth)}px`;
+                titleElement.style.height = `${Math.round(inputHeight)}px`;
+
+                // Scale font size with zoom but keep it readable
+                const baseFontSize = 14;
+                const scaledFontSize = Math.max(11, Math.min(18, baseFontSize * Math.sqrt(scale)));
+                titleElement.style.fontSize = `${Math.round(scaledFontSize)}px`;
+            } else {
+                // Fallback positioning
+                titleElement.style.left = `${this.pos[0] + 8}px`;
+                titleElement.style.top = `${this.pos[1] - 25}px`;
+                titleElement.style.width = `${Math.max(100, this.size[0] - 16)}px`;
+                titleElement.style.height = '24px';
+            }
+        } catch {
+            // Last-resort fallback
+            titleElement.style.left = `${this.pos[0] + 8}px`;
+            titleElement.style.top = `${this.pos[1] - 25}px`;
+            titleElement.style.width = `${Math.max(100, this.size[0] - 16)}px`;
+            titleElement.style.height = '24px';
+        }
+
         titleElement.style.zIndex = '3000';
 
         const finishEdit = (save: boolean) => {
