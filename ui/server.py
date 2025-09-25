@@ -298,6 +298,13 @@ def list_nodes():
                 "LoggingNodeUI" if name == "LoggingNode" else
                 "OllamaModelSelectorNodeUI" if name == "OllamaModelSelectorNode" else
                 "OllamaChatViewerNodeUI" if name == "OllamaChatViewerNode" else
+                "PolygonUniverseNodeUI" if name == "PolygonUniverseNode" else
+                "PolygonAPIKeyNodeUI" if name == "PolygonAPIKeyNode" else
+                "PolygonCustomBarsNodeUI" if name == "PolygonCustomBarsNode" else
+                "PolygonBatchCustomBarsNodeUI" if name == "PolygonBatchCustomBarsNode" else
+                "SMACrossoverFilterNodeUI" if name == "SMACrossoverFilterNode" else
+                "ADXFilterNodeUI" if name == "ADXFilterNode" else
+                "RSIFilterNodeUI" if name == "RSIFilterNode" else
                 None
             )
         }

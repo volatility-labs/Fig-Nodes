@@ -337,9 +337,12 @@ async function createEditor(container: HTMLElement) {
         // Ensure progress bar is hidden on load
         const progressRoot = document.getElementById('top-progress');
         const progressBar = document.getElementById('top-progress-bar');
-        if (progressRoot && progressBar) {
+        const progressText = document.getElementById('top-progress-text');
+        if (progressRoot && progressBar && progressText) {
             progressRoot.style.display = 'none';
             (progressBar as HTMLElement).style.width = '0%';
+            progressBar.classList.remove('indeterminate');
+            progressText.textContent = '';
         }
 
         setupWebSocket(graph, canvas);

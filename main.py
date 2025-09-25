@@ -64,25 +64,44 @@ def _start_process(cmd: List[str], cwd: Optional[Path] = None, env: Optional[dic
         return subprocess.Popen(cmd, creationflags=creationflags, stdout=sys.stdout, stderr=sys.stderr, **kwargs)
 
 
-def _terminate_process(proc: subprocess.Popen, sig: int = signal.SIGTERM, timeout: float = 10.0) -> None:
+def _terminate_process(proc: subprocess.Popen, sig: int = signal.SIGTERM, timeout: float = 3.0) -> None:
+    """Terminate a process and all its children, with protection against interruption."""
     if proc.poll() is not None:
         return
+
+    # Use SIGKILL for dev servers since they often ignore SIGTERM
+    kill_sig = signal.SIGKILL if os.name == "posix" else signal.SIGTERM
+
     try:
         if os.name == "posix":
-            os.killpg(os.getpgid(proc.pid), sig)
+            # Kill the entire process group to catch all children
+            os.killpg(os.getpgid(proc.pid), kill_sig)
         else:
             proc.send_signal(signal.CTRL_BREAK_EVENT)  # type: ignore[attr-defined]
     except Exception:
+        # Fallback to terminate the main process
         try:
-            proc.terminate()
+            proc.kill()
         except Exception:
             pass
 
-    # Wait for graceful shutdown
+    # Wait for termination, but protect against KeyboardInterrupt
     start = time.time()
     while proc.poll() is None and (time.time() - start) < timeout:
-        time.sleep(0.1)
+        try:
+            time.sleep(0.05)  # Shorter sleep for more responsive termination
+        except KeyboardInterrupt:
+            # If interrupted during wait, immediately force kill
+            try:
+                if os.name == "posix":
+                    os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+                else:
+                    proc.kill()
+            except Exception:
+                pass
+            break
 
+    # Final check - if still running, force kill
     if proc.poll() is None:
         try:
             proc.kill()
@@ -140,8 +159,17 @@ def run_dev(host: str, backend_port: int, vite_port: int) -> int:
     except KeyboardInterrupt:
         print("\nStopping dev servers...")
     finally:
-        _terminate_process(frontend_proc)
-        _terminate_process(backend_proc)
+        # Ensure both processes are terminated, even if interrupted
+        try:
+            _terminate_process(frontend_proc)
+        except KeyboardInterrupt:
+            # If interrupted during frontend termination, still try backend
+            pass
+        try:
+            _terminate_process(backend_proc)
+        except KeyboardInterrupt:
+            # If interrupted during backend termination, at least we tried
+            pass
 
     return exit_code
 

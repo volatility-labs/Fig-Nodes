@@ -17,6 +17,13 @@ function stopExecution() {
         indicator.className = `status-indicator connected`;
         indicator.textContent = 'Ready';
     }
+    // Ensure progress bar is hidden when execution stops
+    const progressRoot = document.getElementById('top-progress');
+    const progressBar = document.getElementById('top-progress-bar');
+    if (progressRoot && progressBar) {
+        (progressBar as HTMLElement).style.width = '0%';
+        progressRoot.style.display = 'none';
+    }
 }
 
 export function setupWebSocket(graph: LGraph, _canvas: LGraphCanvas) {
@@ -158,7 +165,8 @@ export function setupWebSocket(graph: LGraph, _canvas: LGraphCanvas) {
                     showProgress('Running...', false);
                 }
             } else if (data.type === 'progress') {
-                // Update node progress
+                // Update node progress but DO NOT hide the global canvas progress.
+                // The top progress bar should remain active until the graph finishes.
                 const node: any = graph.getNodeById(data.node_id);
                 if (node && typeof node.setProgress === 'function') {
                     node.setProgress(data.progress, data.text);

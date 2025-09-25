@@ -13,15 +13,21 @@ export default class PolygonCustomBarsNodeUI extends BaseCustomNode {
             this.displayDataPreview();
         }, {});
         this.addWidget('button', 'Copy Summary', '', () => {
-            if (this.displayText) navigator.clipboard.writeText(this.displayText);
+            this.copySummary();
         }, {});
     }
 
     updateDisplay(result: any) {
-        const ohlcv = result?.ohlcv;
+        // Store result for other functionality but don't display in node
+        this.result = result;
+        this.displayText = '';
+        this.setDirtyCanvas(true, true);
+    }
+
+    private copySummary() {
+        const ohlcv = this.result?.ohlcv;
         if (!ohlcv || !(ohlcv instanceof Array) && Object.keys(ohlcv).length === 0) {
-            this.displayText = 'No data available';
-            this.setDirtyCanvas(true, true);
+            navigator.clipboard.writeText('No data available');
             return;
         }
 
@@ -47,12 +53,10 @@ export default class PolygonCustomBarsNodeUI extends BaseCustomNode {
                 return `${timestamp}: ${ohlc}${volume}`;
             }).join('\n');
 
-            this.displayText = `${summary}\n\n${previewBars}${rowCount > 3 ? `\n... and ${rowCount - 3} more bars` : ''}`;
+            navigator.clipboard.writeText(`${summary}\n\n${previewBars}${rowCount > 3 ? `\n... and ${rowCount - 3} more bars` : ''}`);
         } else {
-            this.displayText = 'No bars data';
+            navigator.clipboard.writeText('No bars data');
         }
-
-        this.setDirtyCanvas(true, true);
     }
 
     private displayDataPreview() {

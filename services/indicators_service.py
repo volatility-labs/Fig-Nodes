@@ -55,8 +55,13 @@ class IndicatorsService:
         }
 
     def calculate_evwma(self, price: pd.Series, volume: pd.Series, length: int) -> float:
+        if price.empty or volume.empty:
+            return np.nan
         nbfs = self.calculate_nbfs(volume, length)
-        return self.calc_evwma(price.values, volume.values, nbfs)[-1]
+        evwma_values = self.calc_evwma(price.values, volume.values, nbfs)
+        if len(evwma_values) == 0:
+            return np.nan
+        return evwma_values[-1]
 
     def calculate_nbfs(self, volume: pd.Series, length: int, use_cum: bool = False) -> np.ndarray:
         if volume.empty:
@@ -79,8 +84,20 @@ class IndicatorsService:
                 ev[i] = price[i]
         return ev
 
-    def calculate_hurst_exponent(self, price_series: pd.Series, lags_range=range(2, 100)) -> float:
-        if price_series is None or price_series.empty or len(price_series) < max(lags_range) + 1:
+    def calculate_hurst_exponent(self, price_series: pd.Series, lags_range=None) -> float:
+        if price_series is None or price_series.empty:
+            return np.nan
+
+        # Adapt lags_range to available data - use min of 10 data points or available data
+        min_data_points = 10
+        if len(price_series) < min_data_points:
+            return np.nan
+
+        if lags_range is None:
+            max_lag = min(50, len(price_series) // 2)  # Use up to half the data points, max 50
+            lags_range = range(2, max_lag + 1)
+
+        if len(price_series) < max(lags_range) + 1:
             return np.nan
         log_prices = np.log(price_series.values.astype(float))
         tau = []

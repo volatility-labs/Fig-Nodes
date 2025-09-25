@@ -17,6 +17,9 @@ export default class BaseCustomNode extends LGraphNode {
     error: string = '';
     private highlightStartTs: number | null = null;
     private readonly highlightDurationMs: number = 900;
+    // Local progress state in percent (0-100). We override LiteGraph's built-in
+    // drawProgressBar so this field will not conflict with the library's
+    // internal 0..1 progress property.
     progress: number = -1; // -1 = no progress, 0-100 = progress percentage
     progressText: string = '';
 
@@ -222,6 +225,13 @@ export default class BaseCustomNode extends LGraphNode {
         showError(message);
     }
 
+    // Override LiteGraph's default green progress bar which interprets
+    // `this.progress` as a 0..1 float and renders at y=0. Our nodes render
+    // their own progress bar inside onDrawForeground.
+    // Keeping an empty implementation prevents the library from drawing the
+    // default green bar that protruded from nodes.
+    drawProgressBar(_ctx: CanvasRenderingContext2D) { /* no-op */ }
+
     onDrawForeground(ctx: CanvasRenderingContext2D) {
         // Pulse highlight outline to indicate recent execution
         if (this.highlightStartTs !== null) {
@@ -246,30 +256,51 @@ export default class BaseCustomNode extends LGraphNode {
         }
 
         // Draw progress bar if active
+        // Position between title and body for clean separation
         let progressBarHeight = 0;
         if (this.progress >= 0) {
-            const barHeight = 4;
-            const barY = LiteGraph.NODE_TITLE_HEIGHT + 2;
-            const barWidth = this.size[0] - 10;
-            const barX = 5;
+            const barHeight = 5;
+            const barY = 2; // Just below title area, above body content
+            const barWidth = Math.max(0, this.size[0] - 16);
+            const barX = 8;
 
-            // Background bar
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+            // Background bar with subtle styling
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
             ctx.fillRect(barX, barY, barWidth, barHeight);
 
-            // Progress fill
-            ctx.fillStyle = '#2196f3';
-            ctx.fillRect(barX, barY, (barWidth * this.progress) / 100, barHeight);
+            // Inner background
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.05)';
+            ctx.fillRect(barX + 1, barY + 1, barWidth - 2, barHeight - 2);
 
-            // Progress text
-            if (this.progressText) {
-                ctx.fillStyle = '#ffffff';
-                ctx.font = '10px Arial';
-                ctx.textAlign = 'center';
-                ctx.fillText(this.progressText, barX + barWidth / 2, barY - 2);
+            // Progress fill
+            const clampedPercent = Math.max(0, Math.min(100, this.progress));
+            const progressWidth = Math.max(0, Math.min(barWidth - 2, ((barWidth - 2) * clampedPercent) / 100));
+
+            if (progressWidth > 0) {
+                ctx.fillStyle = '#2196f3';
+                ctx.fillRect(barX + 1, barY + 1, progressWidth, barHeight - 2);
             }
 
-            progressBarHeight = barHeight + 6; // Include spacing
+            // Progress text with better contrast
+            if (this.progressText) {
+                ctx.save();
+                ctx.fillStyle = '#ffffff';
+                ctx.font = 'bold 10px Arial';
+                ctx.textAlign = 'right';
+                ctx.textBaseline = 'middle';
+
+                // Add subtle shadow for readability
+                ctx.shadowColor = 'rgba(0, 0, 0, 0.7)';
+                ctx.shadowBlur = 1;
+                ctx.shadowOffsetX = 0;
+                ctx.shadowOffsetY = 1;
+
+                ctx.fillText(this.progressText, barX + barWidth - 3, barY + barHeight / 2);
+                ctx.restore();
+            }
+
+            // Reserve space for the progress bar
+            progressBarHeight = barHeight + 4;
         }
 
         if (this.flags.collapsed || !this.displayResults || !this.displayText) {

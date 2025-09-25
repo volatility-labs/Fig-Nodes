@@ -473,17 +473,18 @@ class TestPolygonBatchCustomBarsNode:
 
         polygon_batch_node.report_progress = mock_report
 
-        async def slow_fetch(*args, **kwargs):
-            await asyncio.sleep(0.5)
+        async def fast_fetch(*args, **kwargs):
+            # Return immediately so progress gets reported before cancellation
             return []
 
-        with patch("custom_nodes.polygon.polygon_batch_custom_bars_node.fetch_bars", side_effect=slow_fetch):
+        with patch("custom_nodes.polygon.polygon_batch_custom_bars_node.fetch_bars", side_effect=fast_fetch):
             execute_task = asyncio.create_task(polygon_batch_node.execute({
                 "symbols": sample_symbols,
                 "api_key": "test_key"
             }))
 
-            await asyncio.sleep(0.1)
+            # Wait a bit for some progress to be reported
+            await asyncio.sleep(0.01)
             execute_task.cancel()
 
             try:
@@ -520,12 +521,11 @@ class TestPolygonBatchCustomBarsNode:
         }
         assert polygon_batch_node.default_params == expected_defaults
 
-        # Verify params_meta structure
-        assert len(polygon_batch_node.params_meta) == 8
+        # Verify params_meta structure (execution controls removed from UI)
+        assert len(polygon_batch_node.params_meta) == 6
         param_names = [p["name"] for p in polygon_batch_node.params_meta]
         expected_names = [
-            "multiplier", "timespan", "lookback_period", "adjusted", "sort", "limit",
-            "max_concurrent", "rate_limit_per_second"
+            "multiplier", "timespan", "lookback_period", "adjusted", "sort", "limit"
         ]
         assert set(param_names) == set(expected_names)
 

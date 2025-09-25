@@ -61,8 +61,7 @@ class PolygonBatchCustomBarsNode(BaseNode):
         {"name": "adjusted", "type": "combo", "default": True, "options": [True, False]},
         {"name": "sort", "type": "combo", "default": "asc", "options": ["asc", "desc"]},
         {"name": "limit", "type": "number", "default": 5000, "min": 1, "max": 50000, "step": 1},
-        {"name": "max_concurrent", "type": "number", "default": 10, "min": 1, "max": 20, "step": 1},
-        {"name": "rate_limit_per_second", "type": "number", "default": 95, "min": 1, "max": 100, "step": 1},
+        # Internal execution controls are not exposed to UI
     ]
 
     async def execute(self, inputs: Dict[str, Any]) -> Dict[str, Dict[AssetSymbol, List[OHLCVBar]]]:
@@ -76,56 +75,45 @@ class PolygonBatchCustomBarsNode(BaseNode):
 
         max_concurrent = self.params.get("max_concurrent", 10)
         rate_limit = self.params.get("rate_limit_per_second", 95)
-        bundle = {}
-        semaphore = asyncio.Semaphore(max_concurrent)
+        bundle: Dict[AssetSymbol, List[OHLCVBar]] = {}
         rate_limiter = RateLimiter(max_per_second=rate_limit)
         total_symbols = len(symbols)
         completed_count = 0
 
-        async def fetch_for_symbol(sym):
+        # Use a bounded worker pool to avoid creating one task per symbol (scales to 100k+)
+        queue: asyncio.Queue = asyncio.Queue()
+        for sym in symbols:
+            queue.put_nowait(sym)
+
+        async def worker(worker_id: int):
             nonlocal completed_count
-            async with semaphore:
-                # Rate limiting to stay under Polygon's recommended limit
+            while True:
+                try:
+                    sym = queue.get_nowait()
+                except asyncio.QueueEmpty:
+                    break
+                # Respect Polygon rate limit
                 await rate_limiter.acquire()
                 try:
                     bars = await fetch_bars(sym, api_key, self.params)
-                    completed_count += 1
-                    progress = (completed_count / total_symbols) * 100
-                    progress_text = f"{completed_count}/{total_symbols}"
-                    self.report_progress(progress, progress_text)
-                    logger.info(".1f")
-                    return sym, bars
-                except Exception as e:
-                    completed_count += 1
-                    progress = (completed_count / total_symbols) * 100
-                    progress_text = f"{completed_count}/{total_symbols}"
-                    self.report_progress(progress, progress_text)
-                    logger.warning(f"Failed to fetch bars for {sym}: {e}")
-                    logger.info(".1f")
-                    return sym, []
-
-        # Use gather with timeout to prevent hanging
-        tasks = [asyncio.create_task(fetch_for_symbol(sym)) for sym in symbols]
-        try:
-            results = await asyncio.wait_for(asyncio.gather(*tasks, return_exceptions=True), timeout=300.0)  # 5 minute timeout
-            for result in results:
-                if isinstance(result, Exception):
-                    logger.error(f"Task failed with exception: {result}")
-                elif isinstance(result, tuple) and len(result) == 2:
-                    sym, bars = result
                     if bars:
                         bundle[sym] = bars
-        except asyncio.TimeoutError:
-            logger.error("Batch bars fetch timed out after 5 minutes")
-            # Cancel remaining tasks
-            for task in tasks:
-                if not task.done():
-                    task.cancel()
+                except Exception as e:
+                    logger.warning(f"Worker {worker_id}: failed to fetch bars for {sym}: {e}")
+                finally:
+                    completed_count += 1
+                    progress = (completed_count / total_symbols) * 100
+                    progress_text = f"{completed_count}/{total_symbols}"
+                    self.report_progress(progress, progress_text)
+                    queue.task_done()
+
+        workers = [asyncio.create_task(worker(i)) for i in range(min(max_concurrent, total_symbols))]
+        try:
+            await asyncio.gather(*workers)
         except asyncio.CancelledError:
-            logger.info("Batch fetch cancelled")
-            for task in tasks:
-                if not task.done():
-                    task.cancel()
+            for w in workers:
+                if not w.done():
+                    w.cancel()
             raise
 
         return {"ohlcv_bundle": bundle}
