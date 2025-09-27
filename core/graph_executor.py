@@ -215,10 +215,7 @@ class GraphExecutor:
                     print(f"GraphExecutor: Got streaming result: {list(final_result.keys())}")
                     yield final_result
                 except asyncio.TimeoutError:
-                    if self._stopped:
-                        print("GraphExecutor: Stopped during streaming")
-                        break
-                    continue
+                    continue  # Removed self._stopped check here, already at top
             
             print("GraphExecutor: Streaming loop finished, cleaning up...")
             # Clean up any remaining tasks
@@ -242,14 +239,18 @@ class GraphExecutor:
 
     async def stop(self):
         self._stopped = True
-        for task in self.streaming_tasks:
-            if not task.done():
-                task.cancel()
         for node in self.nodes.values():
             if isinstance(node, StreamingNode):
-                node.stop()
+                node.stop()  # Call node-specific stop
         if self.streaming_tasks:
-            await asyncio.gather(*self.streaming_tasks, return_exceptions=True)
+            # Cancel and await with timeout for robustness
+            for task in self.streaming_tasks:
+                if not task.done():
+                    task.cancel()
+            try:
+                await asyncio.wait_for(asyncio.gather(*self.streaming_tasks, return_exceptions=True), timeout=5.0)
+            except asyncio.TimeoutError:
+                print("GraphExecutor: Timeout waiting for streaming tasks to stop")
         self.streaming_tasks = []
 
     async def _execute_foreach_subgraph(self, foreach_node: ForEachNode, results: Dict[str, Any]):

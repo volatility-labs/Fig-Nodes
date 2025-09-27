@@ -24,6 +24,10 @@ class StreamingNode(BaseNode, ABC):
         """
         Stop the streaming operation cleanly.
         """
+
+    @abstractmethod
+    def interrupt(self):
+        """Forcefully interrupt any blocking operations."""
         pass
 
     async def execute(self, inputs: Dict[str, Any]) -> Dict[str, Any]:

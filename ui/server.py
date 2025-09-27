@@ -16,10 +16,20 @@ from core.node_registry import NODE_REGISTRY
 import typing
 from core.types_utils import parse_type  # New import
 from starlette.websockets import WebSocketState
+from enum import Enum
 
 app = FastAPI()
 
-# Queue-based execution manager (single-worker, ComfyUI-like)
+# Add at the top after imports
+from enum import Enum
+
+class JobState(Enum):
+    PENDING = "pending"
+    RUNNING = "running"
+    CANCELLED = "cancelled"
+    DONE = "done"
+
+# Update ExecutionJob
 class ExecutionJob:
     def __init__(self, job_id: int, websocket: WebSocket, graph_data: Dict[str, Any]):
         self.id = job_id
@@ -27,46 +37,77 @@ class ExecutionJob:
         self.graph_data = graph_data
         self.cancel_event = asyncio.Event()
         self.done_event = asyncio.Event()
+        self.state = JobState.PENDING  # New state
 
-
+# Fully replace ExecutionQueue class
 class ExecutionQueue:
     def __init__(self):
-        self._queue: asyncio.Queue[ExecutionJob] = asyncio.Queue()
-        self._pending: List[ExecutionJob] = []
+        self._pending: List[ExecutionJob] = []  # Use list instead of asyncio.Queue for easy removal
         self._running: typing.Optional[ExecutionJob] = None
         self._id_seq = 0
         self._lock = asyncio.Lock()
+        self._wakeup_event = asyncio.Event()  # To wake worker when queue changes
 
     async def enqueue(self, websocket: WebSocket, graph_data: Dict[str, Any]) -> ExecutionJob:
         async with self._lock:
             job = ExecutionJob(self._id_seq, websocket, graph_data)
             self._id_seq += 1
             self._pending.append(job)
-            await self._queue.put(job)
+            self._wakeup_event.set()  # Wake worker
+            # Start sending queue position updates
+            asyncio.create_task(self._send_position_updates(job))
             return job
 
-    async def get_next(self) -> ExecutionJob:
-        job = await self._queue.get()
-        async with self._lock:
-            if job in self._pending:
-                self._pending.remove(job)
-            self._running = job
-        return job
+    async def get_next(self) -> typing.Optional[ExecutionJob]:
+        while True:
+            async with self._lock:
+                if self._pending:
+                    job = self._pending.pop(0)
+                    job.state = JobState.RUNNING
+                    self._running = job
+                    return job
+            # Wait for wakeup if queue empty
+            await self._wakeup_event.wait()
+            self._wakeup_event.clear()
 
     async def mark_done(self, job: ExecutionJob):
         async with self._lock:
             if self._running is job:
                 self._running = None
-        self._queue.task_done()
+                job.state = JobState.DONE
+                job.done_event.set()
+            self._wakeup_event.set()  # In case other jobs are waiting
+
+    async def cancel_job(self, job: ExecutionJob):
+        async with self._lock:
+            if job in self._pending:
+                self._pending.remove(job)
+                job.state = JobState.CANCELLED
+                job.done_event.set()
+            elif self._running is job:
+                job.state = JobState.CANCELLED
+                job.cancel_event.set()  # Signal running job to stop
+            self._wakeup_event.set()
 
     async def position(self, job: ExecutionJob) -> int:
         async with self._lock:
             if self._running is job:
                 return 0
             try:
-                return self._pending.index(job)
+                return self._pending.index(job) + 1  # +1 for running job
             except ValueError:
-                return 0
+                return -1  # Not found
+
+    async def _send_position_updates(self, job: ExecutionJob):
+        """Periodically send queue position to client, like ComfyUI."""
+        while job.state == JobState.PENDING:
+            pos = await self.position(job)
+            if job.websocket.client_state == WebSocketState.CONNECTED:
+                try:
+                    await job.websocket.send_json({"type": "queue_position", "position": pos})
+                except Exception:
+                    break
+            await asyncio.sleep(1.0)  # Update every second
 
 
 EXECUTION_QUEUE = ExecutionQueue()
@@ -100,8 +141,17 @@ def _serialize_progress(progress_data: Dict[str, Any]):
 async def _execution_worker():
     while True:
         job = await EXECUTION_QUEUE.get_next()
+        if job is None:
+            continue
         websocket = job.websocket
         executor: typing.Optional[GraphExecutor] = None
+
+        # Check if job was cancelled before we even start
+        if job.cancel_event.is_set():
+            print(f"Worker: Job {job.id} was cancelled before execution, skipping")
+            job.done_event.set()
+            await EXECUTION_QUEUE.mark_done(job)
+            continue
 
         def progress_callback(node_id: int, progress: float, text: str = ""):
             """Send progress update to client."""
@@ -126,6 +176,14 @@ async def _execution_worker():
             executor = GraphExecutor(job.graph_data, NODE_REGISTRY)
             executor.set_progress_callback(progress_callback)
             print(f"Worker: GraphExecutor created, is_streaming={executor.is_streaming}")
+
+            # Final check before starting execution - job might have been cancelled during GraphExecutor creation
+            if job.cancel_event.is_set():
+                print(f"Worker: Job {job.id} was cancelled during setup, skipping execution")
+                job.done_event.set()
+                await EXECUTION_QUEUE.mark_done(job)
+                return
+
             try:
                 await websocket.send_json({"type": "status", "message": "Starting execution"})
             except Exception:
@@ -153,8 +211,12 @@ async def _execution_worker():
                 async def monitor_cancel():
                     while True:
                         await asyncio.sleep(0.05)
-                        if job.cancel_event.is_set() or websocket.client_state in (WebSocketState.CLOSED, WebSocketState.DISCONNECTED):
-                            print("Worker: Detected cancel or disconnect in monitor, stopping executor")
+                        if job.cancel_event.is_set():
+                            print(f"Worker: Job {job.id} cancelled via cancel_event, stopping executor")
+                            await executor.stop()
+                            break
+                        if websocket.client_state in (WebSocketState.CLOSED, WebSocketState.DISCONNECTED):
+                            print("Worker: WebSocket disconnected, stopping executor")
                             await executor.stop()
                             break
 
@@ -196,8 +258,12 @@ async def _execution_worker():
                 async def monitor_cancel():
                     while not execution_task.done():
                         await asyncio.sleep(0.05)
-                        if job.cancel_event.is_set() or websocket.client_state in (WebSocketState.CLOSED, WebSocketState.DISCONNECTED):
-                            print("Worker: Detected cancel or disconnect for batch, cancelling execution")
+                        if job.cancel_event.is_set():
+                            print(f"Worker: Job {job.id} cancelled via cancel_event for batch, cancelling execution")
+                            execution_task.cancel()
+                            break
+                        if websocket.client_state in (WebSocketState.CLOSED, WebSocketState.DISCONNECTED):
+                            print("Worker: WebSocket disconnected for batch, cancelling execution")
                             execution_task.cancel()
                             break
 
@@ -305,6 +371,7 @@ def list_nodes():
                 "SMACrossoverFilterNodeUI" if name == "SMACrossoverFilterNode" else
                 "ADXFilterNodeUI" if name == "ADXFilterNode" else
                 "RSIFilterNodeUI" if name == "RSIFilterNode" else
+                "ExtractSymbolsNodeUI" if name == "ExtractSymbolsNode" else
                 None
             )
         }
@@ -316,7 +383,7 @@ async def execute_endpoint(websocket: WebSocket):
     job = None
     try:
         graph_data = await websocket.receive_json()
-        
+
         # If no background worker is running (testing mode), execute directly
         import os
         pytest_test = os.getenv("PYTEST_CURRENT_TEST")
@@ -332,7 +399,7 @@ async def execute_endpoint(websocket: WebSocket):
     except WebSocketDisconnect:
         print("Client disconnected.")
         if job is not None:
-            job.cancel_event.set()
+            await EXECUTION_QUEUE.cancel_job(job)
     except Exception as e:
         try:
             await websocket.send_json({"type": "error", "message": str(e)})
@@ -388,7 +455,7 @@ async def _execute_job_directly(websocket: WebSocket, graph_data: Dict[str, Any]
                 while True:
                     await asyncio.sleep(0.05)
                     if websocket.client_state in (WebSocketState.CLOSED, WebSocketState.DISCONNECTED):
-                        print("Server: Detected disconnect in monitor, stopping executor")
+                        print("Server: WebSocket disconnected in monitor, stopping executor")
                         await executor.stop()
                         break
 
@@ -423,7 +490,7 @@ async def _execute_job_directly(websocket: WebSocket, graph_data: Dict[str, Any]
                 while True:
                     await asyncio.sleep(0.05)
                     if websocket.client_state in (WebSocketState.CLOSED, WebSocketState.DISCONNECTED):
-                        print("Server: Detected disconnect for batch, cancelling execution")
+                        print("Server: WebSocket disconnected for batch, cancelling execution")
                         if not execution_task.done():
                             execution_task.cancel()
                         await executor.stop()

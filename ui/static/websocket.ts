@@ -2,12 +2,42 @@ import { LGraph, LGraphCanvas } from '@comfyorg/litegraph';
 import { showError } from './utils/uiUtils';
 
 let ws: WebSocket | null = null;
+let executionState: 'idle' | 'connecting' | 'executing' | 'stopping' = 'idle';
+let stopPromiseResolver: (() => void) | null = null;
 
-function stopExecution() {
+function stopExecution(): Promise<void> {
+    return new Promise((resolve) => {
+        if (executionState === 'idle') {
+            resolve();
+            return;
+        }
+
+        executionState = 'stopping';
+        stopPromiseResolver = resolve;
+
+        if (ws) {
+            // Set a timeout to force resolve if server doesn't respond
+            const timeout = setTimeout(() => {
+                console.warn('Stop timeout reached, forcing cleanup');
+                forceStopCleanup();
+            }, 5000); // 5 second timeout
+
+            // Store the timeout so we can clear it when we get proper response
+            (ws as any)._stopTimeout = timeout;
+
+            ws.close(1000, 'Client requested stop');
+        } else {
+            forceStopCleanup();
+        }
+    });
+}
+
+function forceStopCleanup() {
     if (ws) {
-        ws.close();
         ws = null;
     }
+    executionState = 'idle';
+
     const overlay = document.getElementById('loading-overlay');
     if (overlay) overlay.style.display = 'none';
     document.getElementById('execute')!.style.display = 'inline-block';
@@ -23,6 +53,11 @@ function stopExecution() {
     if (progressRoot && progressBar) {
         (progressBar as HTMLElement).style.width = '0%';
         progressRoot.style.display = 'none';
+    }
+
+    if (stopPromiseResolver) {
+        stopPromiseResolver();
+        stopPromiseResolver = null;
     }
 }
 
@@ -61,6 +96,12 @@ export function setupWebSocket(graph: LGraph, _canvas: LGraphCanvas) {
     };
 
     document.getElementById('execute')?.addEventListener('click', async () => {
+        // Don't start new execution if we're in the middle of stopping
+        if (executionState === 'stopping') {
+            console.warn('Cannot start execution while stopping previous one');
+            return;
+        }
+
         // Reset LoggingNode UIs before each execution so logs start fresh
         const nodes = ((graph as any)._nodes as any[]) || [];
         nodes.forEach((node: any) => {
@@ -83,6 +124,7 @@ export function setupWebSocket(graph: LGraph, _canvas: LGraphCanvas) {
         document.getElementById('execute')!.style.display = 'none';
         document.getElementById('stop')!.style.display = 'inline-block';
 
+        executionState = 'connecting';
         const graphData = graph.serialize();
         showProgress('Starting...', false);
         const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
@@ -91,6 +133,7 @@ export function setupWebSocket(graph: LGraph, _canvas: LGraphCanvas) {
         ws = new WebSocket(wsUrl);
 
         ws.onopen = () => {
+            executionState = 'executing';
             if (indicator) {
                 indicator.className = `status-indicator executing`;
                 indicator.textContent = 'Running...';
@@ -116,10 +159,18 @@ export function setupWebSocket(graph: LGraph, _canvas: LGraphCanvas) {
                     showProgress('Stream starting...', false);
                 } else if (/finished/i.test(msg)) {
                     setProgress(100, 'Finished');
-                    setTimeout(hideProgress, 350);
+                    setTimeout(() => {
+                        hideProgress();
+                        executionState = 'idle';
+                    }, 350);
                 }
                 if (data.message.includes('finished')) {
-                    stopExecution();
+                    // Clear any stop timeout since execution finished naturally
+                    if (ws && (ws as any)._stopTimeout) {
+                        clearTimeout((ws as any)._stopTimeout);
+                        (ws as any)._stopTimeout = null;
+                    }
+                    forceStopCleanup();
                 }
             } else if (data.type === 'data') {
                 // Overlay is never shown during execution now
@@ -178,13 +229,24 @@ export function setupWebSocket(graph: LGraph, _canvas: LGraphCanvas) {
                     indicator.className = `status-indicator disconnected`;
                     indicator.textContent = `Error: ${data.message}`;
                 }
-                stopExecution();
+                // Clear any stop timeout
+                if (ws && (ws as any)._stopTimeout) {
+                    clearTimeout((ws as any)._stopTimeout);
+                    (ws as any)._stopTimeout = null;
+                }
+                forceStopCleanup();
                 hideProgress();
             }
         };
 
-        ws.onclose = () => {
-            stopExecution();
+        ws.onclose = (event) => {
+            console.log(`WebSocket closed: code=${event.code}, reason=${event.reason}`);
+            // Clear any stop timeout
+            if (ws && (ws as any)._stopTimeout) {
+                clearTimeout((ws as any)._stopTimeout);
+                (ws as any)._stopTimeout = null;
+            }
+            forceStopCleanup();
             hideProgress();
         };
 
@@ -194,10 +256,17 @@ export function setupWebSocket(graph: LGraph, _canvas: LGraphCanvas) {
                 indicator.className = `status-indicator disconnected`;
                 indicator.textContent = 'Connection error';
             }
-            stopExecution();
+            // Clear any stop timeout
+            if (ws && (ws as any)._stopTimeout) {
+                clearTimeout((ws as any)._stopTimeout);
+                (ws as any)._stopTimeout = null;
+            }
+            forceStopCleanup();
             hideProgress();
         };
     });
 
-    document.getElementById('stop')?.addEventListener('click', stopExecution);
+    document.getElementById('stop')?.addEventListener('click', () => {
+        stopExecution().catch(err => console.error('Error stopping execution:', err));
+    });
 }

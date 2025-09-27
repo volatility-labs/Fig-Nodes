@@ -11,7 +11,7 @@ class OllamaModelSelectorNode(BaseNode):
     """
 
     inputs = {}
-    outputs = {"host": str, "model": str, "models": List[str]}
+    outputs = {"host": str, "model": str}
 
     default_params = {
         "host": os.getenv("OLLAMA_HOST", "http://localhost:11434"),
@@ -66,7 +66,7 @@ class OllamaModelSelectorNode(BaseNode):
         elif selected and selected not in models_list:
             print(f"OllamaModelSelectorNode: WARNING - Selected model '{selected}' not in available models {models_list}")
 
-        print(f"OllamaModelSelectorNode: Final output - host={host}, model='{selected}', models_count={len(models_list)}")
-        return {"host": host, "model": selected, "models": models_list}
+        print(f"OllamaModelSelectorNode: Final output - host={host}, model='{selected}'")
+        return {"host": host, "model": selected}
 
 
