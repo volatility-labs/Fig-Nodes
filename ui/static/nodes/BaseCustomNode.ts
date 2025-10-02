@@ -118,17 +118,20 @@ export default class BaseCustomNode extends LGraphNode {
                     // Ensure widget value stays in sync with properties
                     widget.value = this.properties[param.name];
                 } else if (paramType === 'combo') {
-                    // Custom dropdown widget for combo parameters
-                    const options = param.options || [];
+                    // Custom dropdown widget for combo parameters with dynamic options support
+                    const initialOptions = param.options || [];
                     const widget = this.addWidget('button', `${param.name}: ${this.formatComboValue(this.properties[param.name])}`, '', () => {
-                        this.showCustomDropdown(param.name, options, (selectedValue: any) => {
+                        // Resolve latest options: prefer widget.options.values if provided dynamically by UI module
+                        const dynamicValues = (widget as any).options?.values;
+                        const opts: any[] = Array.isArray(dynamicValues) && dynamicValues.length >= 0 ? dynamicValues : initialOptions;
+                        this.showCustomDropdown(param.name, opts, (selectedValue: any) => {
                             this.properties[param.name] = selectedValue;
                             widget.name = `${param.name}: ${this.formatComboValue(selectedValue)}`;
                             this.setDirtyCanvas(true, true);
                         });
                     }, {});
-                    // Store options for later use
-                    (widget as any).options = options;
+                    // Keep a place to receive dynamic options at runtime
+                    (widget as any).options = { values: initialOptions };
                 } else {
                     let widgetOpts = {};
                     let isBooleanCombo = false;

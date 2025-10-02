@@ -27,13 +27,20 @@ export default class OllamaModelSelectorNodeUI extends BaseCustomNode {
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             const data = await res.json();
             const models = (data.models || []).map((m: any) => m.name).filter(Boolean);
-            const selectedWidget = (this as any).widgets?.find((w: any) => w.name === 'selected');
+            const selectedWidget = (this as any).widgets?.find((w: any) => String(w.name).startsWith('selected'));
             if (selectedWidget) {
                 selectedWidget.options = selectedWidget.options || {};
                 selectedWidget.options.values = models;
-                if (!models.includes(this.properties['selected'])) {
-                    this.properties['selected'] = models[0] || '';
-                }
+            }
+            // Ensure the property reflects a valid selection
+            if (!models.includes(this.properties['selected'])) {
+                this.properties['selected'] = models[0] || '';
+            }
+            // Update the button label to show the current selection
+            if (selectedWidget && typeof selectedWidget.name === 'string') {
+                const labelBase = 'selected';
+                const current = this.properties['selected'] || '';
+                selectedWidget.name = `${labelBase}: ${current}`;
             }
             this.setDirtyCanvas(true, true);
         } catch {
@@ -44,6 +51,7 @@ export default class OllamaModelSelectorNodeUI extends BaseCustomNode {
     updateDisplay(_result: any) {
         // Intentionally no-op to avoid in-node logging
         this.result = _result;
+        this.displayText = '';
     }
 }
 

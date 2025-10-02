@@ -6,6 +6,7 @@ import random
 from nodes.base.streaming_node import StreamingNode
 import multiprocessing as mp
 import signal
+import subprocess as sp
 
 
 from core.types_registry import get_type
@@ -101,6 +102,9 @@ class OllamaChatNode(StreamingNode):
         # Child-process based hard-stop support
         self._proc: Optional[mp.Process] = None
         self._ipc_parent = None
+        # Track last used model/host for CLI stop/unload
+        self._last_model: Optional[str] = None
+        self._last_host: Optional[str] = None
 
     @staticmethod
     def _build_messages(existing_messages: Optional[List[Dict[str, Any]]], prompt: Optional[str], system_prompt: Optional[str]) -> List[Dict[str, Any]]:
@@ -195,9 +199,33 @@ class OllamaChatNode(StreamingNode):
             except Exception:
                 pass
         self._ipc_parent = None
+        # Forcefully unload the model from Ollama via CLI to free VRAM
+        try:
+            self._unload_model_via_cli()
+        except Exception:
+            # Never raise on stop path
+            pass
 
     def interrupt(self):
-        self.stop()
+        # Only signal cancellation to break out of blocking operations.
+        # Cleanup is handled by stop() which is invoked by force_stop.
+        self._cancel_event.set()
+
+    def _unload_model_via_cli(self) -> None:
+        """Spawn a non-blocking CLI call to `ollama stop <model>` using last known host."""
+        model = getattr(self, "_last_model", None)
+        if not model or not isinstance(model, str):
+            return
+        host = getattr(self, "_last_host", None) or os.environ.get("OLLAMA_HOST")
+        env = os.environ.copy()
+        if host:
+            env["OLLAMA_HOST"] = host
+        try:
+            # Fire-and-forget to avoid blocking stop() path
+            sp.Popen(["ollama", "stop", model], env=env, stdout=sp.DEVNULL, stderr=sp.DEVNULL)
+        except Exception:
+            # Swallow any errors (e.g., CLI not installed)
+            pass
 
     def _parse_options(self) -> Optional[Dict[str, Any]]:
         raw = self.params.get("options")
@@ -242,8 +270,6 @@ class OllamaChatNode(StreamingNode):
                 }
             }
         return {}
-
-
 
     async def _maybe_execute_tools_and_augment_messages(self, host: str, model: str, base_messages: List[Dict[str, Any]], tools: Optional[List[Dict[str, Any]]], fmt: Optional[str], options: Dict[str, Any], keep_alive: Optional[Any], think: bool, client_factory=None) -> Dict[str, Any]:
         """
@@ -386,6 +412,9 @@ class OllamaChatNode(StreamingNode):
                 return
 
             host: str = inputs.get("host") or os.environ.get("OLLAMA_HOST", "http://localhost:11434")
+            # Track last used model/host for stop/unload
+            self._last_model = model
+            self._last_host = host
             use_stream: bool = bool(self.params.get("stream", True))
 
             # Derive Ollama format from json_mode toggle (True -> "json", False -> None)
@@ -784,7 +813,8 @@ class OllamaChatNode(StreamingNode):
                     print(f"OllamaChatNode: Creating Ollama client for {host}")
                     client = AsyncClient(host=host)
                     self._client = client
-                    resp = await client.chat(
+                    # Cooperative cancellation for non-streaming call inside start()
+                    chat_task = asyncio.create_task(client.chat(
                         model=model,
                         messages=messages,
                         tools=None,  # Don't pass tools to final call
@@ -793,7 +823,29 @@ class OllamaChatNode(StreamingNode):
                         options=options,
                         keep_alive=keep_alive,
                         think=think,
-                    )
+                    ))
+                    cancel_wait = asyncio.create_task(self._cancel_event.wait())
+                    done, pending = await asyncio.wait({chat_task, cancel_wait}, return_when=asyncio.FIRST_COMPLETED)
+                    if cancel_wait in done and chat_task not in done:
+                        try:
+                            chat_task.cancel()
+                        except Exception:
+                            pass
+                        try:
+                            await asyncio.wait({chat_task}, timeout=0.05)
+                        except Exception:
+                            pass
+                        try:
+                            await client.close()
+                        except Exception:
+                            pass
+                        try:
+                            self._unload_model_via_cli()
+                        except Exception:
+                            pass
+                        yield {"message": {"role": "assistant", "content": ""}, "metrics": {"error": "Stream cancelled"}, "done": True}
+                        return
+                    resp = await chat_task
                     final_message = (resp or {}).get("message") or {"role": "assistant", "content": ""}
                     self._parse_content_if_json_mode(final_message, metrics)
                     self._parse_tool_calls_from_message(final_message)
@@ -970,6 +1022,9 @@ class OllamaChatNode(StreamingNode):
                 return {"metrics": {"error": error_msg}, "message": {"role": "assistant", "content": ""}, "thinking": None}
 
             host: str = inputs.get("host") or os.environ.get("OLLAMA_HOST", "http://localhost:11434")
+            # Track last used model/host for stop/unload
+            self._last_model = model
+            self._last_host = host
             # Force non-streaming for execute()
             fmt: str = "json" if bool(self.params.get("json_mode", False)) else None
             _keep_alive_param = self.params.get("keep_alive")
@@ -1024,7 +1079,8 @@ class OllamaChatNode(StreamingNode):
             client = AsyncClient(host=host)
             self._client = client
             try:
-                resp = await client.chat(
+                # Cooperative cancellation for non-streaming execute()
+                chat_task = asyncio.create_task(client.chat(
                     model=model,
                     messages=messages,
                     tools=None,  # Tools already orchestrated
@@ -1033,7 +1089,28 @@ class OllamaChatNode(StreamingNode):
                     options=options,
                     keep_alive=keep_alive,
                     think=think,
-                )
+                ))
+                cancel_wait = asyncio.create_task(self._cancel_event.wait())
+                done, pending = await asyncio.wait({chat_task, cancel_wait}, return_when=asyncio.FIRST_COMPLETED)
+                if cancel_wait in done and chat_task not in done:
+                    try:
+                        chat_task.cancel()
+                    except Exception:
+                        pass
+                    try:
+                        await asyncio.wait({chat_task}, timeout=0.05)
+                    except Exception:
+                        pass
+                    try:
+                        await client.close()
+                    except Exception:
+                        pass
+                    try:
+                        self._unload_model_via_cli()
+                    except Exception:
+                        pass
+                    raise asyncio.CancelledError()
+                resp = await chat_task
                 final_message = (resp or {}).get("message") or {}
                 metrics: Dict[str, Any] = {}
                 self._parse_content_if_json_mode(final_message, metrics)
@@ -1063,12 +1140,25 @@ class OllamaChatNode(StreamingNode):
                     "tool_history": tool_rounds_info.get("tool_history", []),
                     "thinking_history": thinking_history
                 }
+            except asyncio.CancelledError:
+                try:
+                    await client.close()
+                except Exception:
+                    pass
+                try:
+                    self._unload_model_via_cli()
+                except Exception:
+                    pass
+                self._client = None
+                raise
             finally:
                 try:
                     await client.close()
                 except Exception:
                     pass
                 self._client = None
+        except asyncio.CancelledError:
+            raise
         except Exception as e:
             return {"message": {"role": "assistant", "content": ""}, "metrics": {"error": str(e)}}
 

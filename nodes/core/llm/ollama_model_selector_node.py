@@ -11,7 +11,7 @@ class OllamaModelSelectorNode(BaseNode):
     """
 
     inputs = {}
-    outputs = {"host": str, "model": str, "models": List[str]}
+    outputs = {"host": str, "model": str}
 
     default_params = {
         "host": os.getenv("OLLAMA_HOST", "http://localhost:11434"),
@@ -23,7 +23,7 @@ class OllamaModelSelectorNode(BaseNode):
         {"name": "selected", "type": "combo", "default": "", "options": []},
     ]
 
-    ui_module = None  # Backend provides list; UI will render dropdown using params_meta
+    ui_module = "OllamaModelSelectorNodeUI"  # Custom UI module for dynamic dropdown in the web editor
 
     async def execute(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
         host = self.params.get("host") or "http://localhost:11434"
@@ -67,6 +67,6 @@ class OllamaModelSelectorNode(BaseNode):
             print(f"OllamaModelSelectorNode: WARNING - Selected model '{selected}' not in available models {models_list}")
 
         print(f"OllamaModelSelectorNode: Final output - host={host}, model='{selected}'")
-        return {"host": host, "model": selected, "models": models_list}
+        return {"host": host, "model": selected}
 
 

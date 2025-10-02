@@ -205,6 +205,100 @@ async def test_stop_mid_stream(chat_node):
         with pytest.raises(StopAsyncIteration):
             await anext(gen)
 
+# New tests for CLI-based unload via `ollama stop <model>`
+
+def test_stop_triggers_cli_unload_with_model_and_host(chat_node):
+    chat_node._last_model = "llama3.2:latest"
+    chat_node._last_host = "http://localhost:11434"
+    with patch("nodes.core.llm.ollama_chat_node.sp.Popen") as popen:
+        chat_node.stop()
+        popen.assert_called_once()
+        args, kwargs = popen.call_args
+        assert args[0] == ["ollama", "stop", "llama3.2:latest"]
+        env = kwargs.get("env", {})
+        assert env.get("OLLAMA_HOST") == "http://localhost:11434"
+
+
+def test_stop_uses_env_host_when_no_last_host(chat_node, monkeypatch):
+    chat_node._last_model = "deepseek-r1:latest"
+    chat_node._last_host = None
+    monkeypatch.setenv("OLLAMA_HOST", "http://remote:11434")
+    with patch("nodes.core.llm.ollama_chat_node.sp.Popen") as popen:
+        chat_node.stop()
+        popen.assert_called_once()
+        args, kwargs = popen.call_args
+        assert args[0] == ["ollama", "stop", "deepseek-r1:latest"]
+        assert kwargs["env"]["OLLAMA_HOST"] == "http://remote:11434"
+
+
+def test_stop_does_not_call_cli_when_no_model(chat_node):
+    chat_node._last_model = None
+    chat_node._last_host = "http://localhost:11434"
+    with patch("nodes.core.llm.ollama_chat_node.sp.Popen") as popen:
+        chat_node.stop()
+        popen.assert_not_called()
+
+
+def test_stop_handles_popen_exception(chat_node):
+    chat_node._last_model = "llama3.2:latest"
+    chat_node._last_host = "http://localhost:11434"
+    with patch("nodes.core.llm.ollama_chat_node.sp.Popen") as popen:
+        popen.side_effect = OSError("not found")
+        # Should not raise
+        chat_node.stop()
+        popen.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_start_sets_last_model_and_host(chat_node):
+    chat_node.params["stream"] = False
+    inputs = {"model": "mistral", "host": "http://h1:11434", "messages": [{"role": "user", "content": "Hi"}]}
+    with patch("ollama.AsyncClient") as mock_client:
+        mock_client.return_value.chat = AsyncMock(return_value={"message": {"content": "ok"}})
+        gen = chat_node.start(inputs)
+        _ = await anext(gen)
+        assert chat_node._last_model == "mistral"
+        assert chat_node._last_host == "http://h1:11434"
+
+
+@pytest.mark.asyncio
+async def test_execute_sets_last_model_and_host(chat_node):
+    inputs = {"model": "qwen2", "host": "http://h2:11434", "messages": [{"role": "user", "content": "Hi"}]}
+    with patch("ollama.AsyncClient") as mock_client:
+        mock_client.return_value.chat = AsyncMock(return_value={"message": {"content": "ok"}})
+        await chat_node.execute(inputs)
+        assert chat_node._last_model == "qwen2"
+        assert chat_node._last_host == "http://h2:11434"
+
+
+def test_force_stop_idempotent_unload_once(chat_node):
+    chat_node._last_model = "llama3.2:latest"
+    chat_node._last_host = "http://localhost:11434"
+    with patch("nodes.core.llm.ollama_chat_node.sp.Popen") as popen:
+        chat_node.force_stop()
+        chat_node.force_stop()  # Second call should be a no-op
+        popen.assert_called_once()
+
+
+def test_stop_with_alive_child_process_does_not_break_unload(chat_node):
+    class _FakeProc:
+        def __init__(self):
+            self.pid = 123
+            self._alive = True
+        def is_alive(self):
+            return self._alive
+        def kill(self):
+            self._alive = False
+        def join(self, timeout=None):
+            self._alive = False
+
+    chat_node._proc = _FakeProc()
+    chat_node._ipc_parent = MagicMock()
+    chat_node._last_model = "llama3.2:latest"
+    chat_node._last_host = "http://localhost:11434"
+    with patch("nodes.core.llm.ollama_chat_node.sp.Popen") as popen:
+        chat_node.stop()
+        popen.assert_called_once()
 @pytest.mark.asyncio
 async def test_message_building(chat_node):
     inputs = {

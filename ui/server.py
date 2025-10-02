@@ -44,6 +44,25 @@ async def _shutdown_queue_worker():
 
 app.mount("/static", StaticFiles(directory=os.path.join(os.path.dirname(__file__), "static/dist")), name="static")
 
+def _get_queue_for_current_loop(app) -> ExecutionQueue:
+    """Get or create the ExecutionQueue for the current event loop."""
+    loop_id = id(asyncio.get_running_loop())
+    if not hasattr(app.state, "loop_queues"):
+        app.state.loop_queues = {}
+    if not hasattr(app.state, "loop_workers"):
+        app.state.loop_workers = {}
+    queue = app.state.loop_queues.get(loop_id)
+    if queue is None:
+        queue = ExecutionQueue()
+        app.state.loop_queues[loop_id] = queue
+    workers: List[asyncio.Task] = app.state.loop_workers.get(loop_id, [])
+    alive_tasks = [t for t in workers if not t.done() and not t.cancelled()]
+    if not alive_tasks:
+        task = asyncio.create_task(execution_worker(queue, NODE_REGISTRY))
+        alive_tasks.append(task)
+    app.state.loop_workers[loop_id] = alive_tasks
+    return queue
+
 @app.get("/")
 def read_root():
     return FileResponse(os.path.join(os.path.dirname(__file__), "static/dist", "index.html"))
@@ -115,22 +134,7 @@ async def execute_endpoint(websocket: WebSocket):
                 graph_data = data.get("graph_data") if msg_type == "graph" else {"nodes": data.get("nodes", []), "links": data.get("links", [])}
                 # Always use queue mode
                 await websocket.send_json({"type": "status", "message": "Starting execution..."})
-                # Resolve per-event-loop queue and worker(s)
-                if not hasattr(app.state, "loop_queues"):
-                    app.state.loop_queues = {}
-                if not hasattr(app.state, "loop_workers"):
-                    app.state.loop_workers = {}
-                loop_id = id(asyncio.get_running_loop())
-                queue = app.state.loop_queues.get(loop_id)
-                if queue is None:
-                    queue = ExecutionQueue()
-                    app.state.loop_queues[loop_id] = queue
-                workers: List[asyncio.Task] = app.state.loop_workers.get(loop_id, [])
-                alive_tasks = [t for t in workers if not t.done() and not t.cancelled()]
-                if not alive_tasks:
-                    task = asyncio.create_task(execution_worker(queue, NODE_REGISTRY))
-                    alive_tasks.append(task)
-                app.state.loop_workers[loop_id] = alive_tasks
+                queue = _get_queue_for_current_loop(app)
                 job = await queue.enqueue(websocket, graph_data)
             elif data.get("type") == "stop":
                 if job is None:
@@ -147,11 +151,8 @@ async def execute_endpoint(websocket: WebSocket):
                     continue
 
                 is_cancelling = True
-                loop_id = id(asyncio.get_running_loop())
-                queues = getattr(app.state, "loop_queues", {})
-                queue = queues.get(loop_id)
-                if queue is not None:
-                    await queue.cancel_job(job)
+                queue = _get_queue_for_current_loop(app)
+                await queue.cancel_job(job)
                 await job.done_event.wait()  # Await cleanup
 
                 cancel_done_event.set()
@@ -163,12 +164,9 @@ async def execute_endpoint(websocket: WebSocket):
     except WebSocketDisconnect:
         print("Client disconnected unexpectedly.")
         if job is not None and job.state not in [JobState.DONE, JobState.CANCELLED]:
-            loop_id = id(asyncio.get_running_loop())
-            queues = getattr(app.state, "loop_queues", {})
-            queue = queues.get(loop_id)
-            if queue is not None:
-                await queue.cancel_job(job)
-                await job.done_event.wait()  # Ensure cleanup even on disconnect
+            queue = _get_queue_for_current_loop(app)
+            await queue.cancel_job(job)
+            await job.done_event.wait()  # Ensure cleanup even on disconnect
     except Exception as e:
         try:
             await websocket.send_json({"type": "error", "message": str(e)})

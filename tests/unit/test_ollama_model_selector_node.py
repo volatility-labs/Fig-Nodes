@@ -24,8 +24,8 @@ async def test_model_listing(selector_node):
         mock_client_class.return_value.__aexit__ = AsyncMock()
         
         result = await selector_node.execute({})
-        assert result["models"] == ["model1", "model2"]
         assert result["model"] == "model1"  # Auto-select first
+        assert "models" not in result
 
 @pytest.mark.asyncio
 async def test_selected_model(selector_node):

@@ -34,11 +34,12 @@ class StreamingNode(BaseNode, ABC):
         pass
 
     def force_stop(self):
-        """Immediately terminate streaming execution without awaiting. Idempotent."""
-        if self._is_force_stopped:
-            return  # Idempotent
-        self._is_force_stopped = True
-        # Forceful immediate stop: interrupt blocking ops and call stop (no await)
+        """Immediately terminate streaming execution without awaiting."""
+        if getattr(self, "_is_stopped", False):
+            return
+        # Mark stopped in base first to guard against re-entrancy
+        super().force_stop()
+        # Forceful immediate stop: first interrupt blocking ops, then perform cleanup
         self.interrupt()
         self.stop()
         print(f"StreamingNode: Force stopped node {self.id}")

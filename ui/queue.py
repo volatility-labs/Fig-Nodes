@@ -7,6 +7,7 @@ from fastapi import WebSocket
 from starlette.websockets import WebSocketState
 import typing
 import pandas as pd
+import os
 
 class JobState(Enum):
     PENDING = "pending"
@@ -62,22 +63,22 @@ class ExecutionQueue:
 
     async def cancel_job(self, job: ExecutionJob):
         async with self._lock:
-            print(f"STOP_TRACE: cancel_job called in queue.py for job {job.id}, current state: {job.state}")
-            print(f"Queue: Cancelling job {job.id}, current state: {job.state}")
+            _debug(f"STOP_TRACE: cancel_job called in queue.py for job {job.id}, current state: {job.state}")
+            _debug(f"Queue: Cancelling job {job.id}, current state: {job.state}")
             if job in self._pending:
-                print(f"Queue: Job {job.id} was pending, removing from queue")
+                _debug(f"Queue: Job {job.id} was pending, removing from queue")
                 self._pending.remove(job)
                 job.state = JobState.CANCELLED
                 job.done_event.set()
             elif self._running is job:
-                print(f"STOP_TRACE: Job {job.id} is running, setting cancel_event in queue.py")
+                _debug(f"STOP_TRACE: Job {job.id} is running, setting cancel_event in queue.py")
                 job.state = JobState.CANCELLED
                 job.cancel_event.set()
             else:
-                print(f"Queue: Job {job.id} not found in pending or running lists")
+                _debug(f"Queue: Job {job.id} not found in pending or running lists")
             self._wakeup_event.set()
-            print(f"STOP_TRACE: cancel_job completed in queue.py for job {job.id}")
-            print(f"Queue: Job {job.id} cancellation initiated")
+            _debug(f"STOP_TRACE: cancel_job completed in queue.py for job {job.id}")
+            _debug(f"Queue: Job {job.id} cancellation initiated")
 
     async def position(self, job: ExecutionJob) -> int:
         async with self._lock:
@@ -98,6 +99,69 @@ class ExecutionQueue:
                     break
             await asyncio.sleep(1.0)
 
+
+def _debug(*parts):
+    """Debug print helper, gated by DEBUG_QUEUE env var."""
+    if os.getenv("DEBUG_QUEUE") == "1":
+        print(*parts)
+
+
+def _ws_send_async(websocket: WebSocket, payload: Dict[str, Any]):
+    """Send JSON async, swallowing exceptions."""
+    if websocket.client_state != WebSocketState.CONNECTED:
+        return
+    async def _send():
+        try:
+            await websocket.send_json(payload)
+        except Exception:
+            pass
+    asyncio.create_task(_send())
+
+
+async def _ws_send_sync(websocket: WebSocket, payload: Dict[str, Any], stop_on_fail=False, executor=None):
+    """Send JSON sync, optionally stop executor on fail."""
+    try:
+        await websocket.send_json(payload)
+    except Exception:
+        if stop_on_fail and executor:
+            await executor.stop()
+
+
+async def _monitor_cancel(job: ExecutionJob, websocket: WebSocket, executor, execution_task=None):
+    """Unified cancellation monitoring for both streaming and batch jobs."""
+    _debug(f"STOP_TRACE: monitor_cancel started for job {job.id}")
+    cancel_wait_task = asyncio.create_task(job.cancel_event.wait())
+    async def _wait_disconnect():
+        while websocket.client_state not in (WebSocketState.DISCONNECTED,):
+            await asyncio.sleep(0.05)
+        return True
+    disconnect_wait_task = asyncio.create_task(_wait_disconnect())
+
+    tasks = {cancel_wait_task, disconnect_wait_task}
+    if execution_task:
+        tasks.add(execution_task)
+
+    done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+
+    if cancel_wait_task in done:
+        _debug(f"STOP_TRACE: cancel_event detected, cancelling execution_task")
+        if execution_task:
+            execution_task.cancel()
+        _debug(f"STOP_TRACE: Calling executor.stop() after cancel")
+        await executor.stop()
+        _debug(f"STOP_TRACE: executor.stop() completed")
+    elif disconnect_wait_task in done:
+        _debug(f"Worker: Job {job.id} WebSocket disconnected, stopping executor")
+        if execution_task:
+            execution_task.cancel()
+        await executor.stop()
+    elif execution_task and execution_task in done:
+        _debug(f"STOP_TRACE: execution_task completed normally")
+
+    for t in pending:
+        t.cancel()
+
+
 async def execution_worker(queue: ExecutionQueue, node_registry: Dict[str, type]):
     import core.graph_executor as graph_executor_module  # Import module so monkeypatching works
 
@@ -109,42 +173,27 @@ async def execution_worker(queue: ExecutionQueue, node_registry: Dict[str, type]
         executor: typing.Optional[typing.Any] = None
 
         if job.cancel_event.is_set():
-            import os
-            if os.getenv("DEBUG_QUEUE") == "1":
-                print(f"Worker: Job {job.id} was cancelled before execution, skipping")
-            job.done_event.set()
+            _debug(f"Worker: Job {job.id} was cancelled before execution, skipping")
             await queue.mark_done(job)
             continue
 
         def progress_callback(node_id: int, progress: float, text: str = ""):
-            if websocket.client_state != WebSocketState.CONNECTED:
-                return
-            async def safe_send():
-                try:
-                    await websocket.send_json({
-                        "type": "progress",
-                        "node_id": node_id,
-                        "progress": progress,
-                        "text": text
-                    })
-                except Exception:
-                    pass
-            asyncio.create_task(safe_send())
+            _ws_send_async(websocket, {
+                "type": "progress",
+                "node_id": node_id,
+                "progress": progress,
+                "text": text
+            })
 
         try:
-            import os
-            if os.getenv("DEBUG_QUEUE") == "1":
-                print("Worker: Creating GraphExecutor")
+            _debug("Worker: Creating GraphExecutor")
             # Resolve GraphExecutor at runtime from module to honor monkeypatch
             executor = graph_executor_module.GraphExecutor(job.graph_data, node_registry)
             executor.set_progress_callback(progress_callback)
-            if os.getenv("DEBUG_QUEUE") == "1":
-                print(f"Worker: GraphExecutor created, is_streaming={executor.is_streaming}")
+            _debug(f"Worker: GraphExecutor created, is_streaming={executor.is_streaming}")
 
             if job.cancel_event.is_set():
-                if os.getenv("DEBUG_QUEUE") == "1":
-                    print(f"Worker: Job {job.id} was cancelled during setup, skipping execution")
-                job.done_event.set()
+                _debug(f"Worker: Job {job.id} was cancelled during setup, skipping execution")
                 await queue.mark_done(job)
                 return
 
@@ -152,137 +201,78 @@ async def execution_worker(queue: ExecutionQueue, node_registry: Dict[str, type]
             # to avoid duplicate status messages here.
 
             if executor.is_streaming:
-                import os
-                if os.getenv("DEBUG_QUEUE") == "1":
-                    print("Worker: Executing streaming path")
-                try:
-                    await websocket.send_json({"type": "status", "message": "Stream starting..."})
-                except Exception:
-                    pass
+                _debug("Worker: Executing streaming path")
+                await _ws_send_sync(websocket, {"type": "status", "message": "Stream starting..."})
                 stream_generator = executor.stream()
+
+                # Start cancellation watcher BEFORE first pull to allow immediate stop
+                monitor_task = asyncio.create_task(_monitor_cancel(job, websocket, executor))
+
+                # Race first pull against cancel for immediate response to stop
                 try:
-                    if os.getenv("DEBUG_QUEUE") == "1":
-                        print("Worker: Getting initial results from stream generator")
-                    initial_results = await anext(stream_generator)
-                    if os.getenv("DEBUG_QUEUE") == "1":
-                        print(f"Worker: Got initial results: {list(initial_results.keys())}")
+                    _debug("Worker: Getting initial results from stream generator")
+                    initial_pull = asyncio.create_task(anext(stream_generator))
+                    cancel_wait = asyncio.create_task(job.cancel_event.wait())
+                    done, pending = await asyncio.wait({initial_pull, cancel_wait}, return_when=asyncio.FIRST_COMPLETED)
+                    if cancel_wait in done and initial_pull not in done:
+                        # Stop immediately before first results
+                        await executor.stop()
+                        initial_results = {}
+                    else:
+                        initial_results = await initial_pull
+                        _debug(f"Worker: Got initial results: {list(initial_results.keys())}")
                 except StopAsyncIteration:
-                    if os.getenv("DEBUG_QUEUE") == "1":
-                        print("Worker: Stream generator exhausted on first anext()")
+                    _debug("Worker: Stream generator exhausted on first anext()")
                     initial_results = {}
-                try:
-                    await websocket.send_json({"type": "data", "results": _serialize_results(initial_results), "stream": False})
-                except Exception:
-                    pass
-
-                async def monitor_cancel():
-                    print(f"STOP_TRACE: monitor_cancel started for job {job.id} in queue.py")
-                    checks = 0
-                    while True:
-                        await asyncio.sleep(0.05)
-                        checks += 1
-                        if job.cancel_event.is_set():
-                            print(f"STOP_TRACE: Detected cancel_event in monitor_cancel for job {job.id} after {checks} checks")
-                            print(f"STOP_TRACE: Calling executor.stop() in queue.py")
-                            await executor.stop()
-                            print(f"STOP_TRACE: executor.stop() completed in queue.py")
-                            break
-                        if websocket.client_state in (WebSocketState.CLOSED, WebSocketState.DISCONNECTED):
-                            print(f"Worker: Job {job.id} WebSocket disconnected, stopping executor")
-                            if os.getenv("DEBUG_QUEUE") == "1":
-                                print("Worker: WebSocket disconnected, stopping executor")
-                            await executor.stop()
-                            break
-
-                monitor_task = asyncio.create_task(monitor_cancel())
+                await _ws_send_sync(websocket, {"type": "data", "results": _serialize_results(initial_results), "stream": False})
 
                 stream_failed = False
                 try:
-                    if os.getenv("DEBUG_QUEUE") == "1":
-                        print("Worker: Starting stream loop")
+                    _debug("Worker: Starting stream loop")
                     while True:
                         try:
                             results = await anext(stream_generator)
-                            if os.getenv("DEBUG_QUEUE") == "1":
-                                print(f"Worker: Got stream result: {list(results.keys())}")
+                            _debug(f"Worker: Got stream result: {list(results.keys())}")
                         except StopAsyncIteration:
-                            if os.getenv("DEBUG_QUEUE") == "1":
-                                print("Worker: Stream generator exhausted (StopAsyncIteration)")
+                            _debug("Worker: Stream generator exhausted (StopAsyncIteration)")
                             break
                         except Exception as e:
                             print(f"Worker: Unexpected exception in stream: {e}")
                             stream_failed = True
                             raise
-                        try:
-                            await websocket.send_json({"type": "data", "results": _serialize_results(results), "stream": True})
-                        except Exception:
-                            print("Worker: Exception sending stream data, stopping executor")
-                            await executor.stop()
-                            break
+                        await _ws_send_sync(websocket, {"type": "data", "results": _serialize_results(results), "stream": True}, stop_on_fail=True, executor=executor)
                 finally:
                     monitor_task.cancel()
                 if not stream_failed:
-                    try:
-                        import os
-                        if os.getenv("DEBUG_QUEUE") == "1":
-                            print("Worker: Stream finished, sending final status")
-                        await websocket.send_json({"type": "status", "message": "Stream finished"})
-                    except Exception:
-                        pass
+                    _debug("Worker: Stream finished, sending final status")
+                    await _ws_send_sync(websocket, {"type": "status", "message": "Stream finished"})
             else:
-                print("STOP_TRACE: Processing as batch in execution_worker")
-                try:
-                    await websocket.send_json({"type": "status", "message": "Executing batch"})
-                except Exception:
-                    pass
+                _debug("STOP_TRACE: Processing as batch in execution_worker")
+                await _ws_send_sync(websocket, {"type": "status", "message": "Executing batch"})
 
                 execution_task = asyncio.create_task(executor.execute())
 
-                async def monitor_cancel():
-                    print(f"STOP_TRACE: monitor_cancel started for batch job {job.id}")
-                    cancel_wait_task = asyncio.create_task(job.cancel_event.wait())
-                    done, pending = await asyncio.wait(
-                        [cancel_wait_task, execution_task],
-                        return_when=asyncio.FIRST_COMPLETED
-                    )
-                    if cancel_wait_task in done:
-                        print(f"STOP_TRACE: cancel_event detected, cancelling execution_task")
-                        execution_task.cancel()
-                        print(f"STOP_TRACE: Calling executor.stop() after cancel")
-                        await executor.stop()
-                        print(f"STOP_TRACE: executor.stop() completed")
-                    elif execution_task in done:
-                        print(f"STOP_TRACE: execution_task completed normally")
-                    # Check for disconnect (though may be after completion)
-                    if websocket.client_state in (WebSocketState.CLOSED, WebSocketState.DISCONNECTED):
-                        print(f"STOP_TRACE: WebSocket disconnected detected in monitor_cancel")
-                        execution_task.cancel()
-                        await executor.stop()
-
-                monitor_task = asyncio.create_task(monitor_cancel())
+                monitor_task = asyncio.create_task(_monitor_cancel(job, websocket, executor, execution_task))
 
                 try:
                     results = await execution_task
                     if websocket.client_state == WebSocketState.CONNECTED:
-                        await websocket.send_json({"type": "data", "results": _serialize_results(results)})
-                        await websocket.send_json({"type": "status", "message": "Batch finished"})
+                        await _ws_send_sync(websocket, {"type": "data", "results": _serialize_results(results)})
+                        await _ws_send_sync(websocket, {"type": "status", "message": "Batch finished"})
                 except asyncio.CancelledError:
-                    print("STOP_TRACE: Caught CancelledError in execution_task await")
+                    _debug("STOP_TRACE: Caught CancelledError in execution_task await")
                 except Exception as e:
                     if websocket.client_state == WebSocketState.CONNECTED:
-                        await websocket.send_json({"type": "error", "message": str(e)})
+                        await _ws_send_sync(websocket, {"type": "error", "message": str(e)})
                 finally:
                     monitor_task.cancel()
                     await asyncio.gather(monitor_task, return_exceptions=True)
 
         except Exception as e:
-            try:
-                await websocket.send_json({"type": "error", "message": str(e)})
-            except Exception:
-                pass
+            await _ws_send_sync(websocket, {"type": "error", "message": str(e)})
         finally:
             try:
-                if websocket.client_state not in (WebSocketState.DISCONNECTED, WebSocketState.CLOSED):
+                if websocket.client_state not in (WebSocketState.DISCONNECTED,):
                     await websocket.close()
             except Exception:
                 pass

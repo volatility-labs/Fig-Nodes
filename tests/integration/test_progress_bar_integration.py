@@ -5,7 +5,6 @@ from unittest.mock import AsyncMock, patch, MagicMock
 from core.graph_executor import GraphExecutor
 from core.node_registry import NODE_REGISTRY
 from nodes.base.base_node import BaseNode
-from ui.server import _serialize_progress
 
 
 @pytest.fixture
@@ -229,20 +228,6 @@ class TestProgressBarIntegration:
         # Concurrent execution should be faster than sequential
         assert end_time - start_time < 0.25, "Concurrent execution should complete quickly"
 
-    def test_progress_serialization(self):
-        """Test that progress data can be properly serialized."""
-        progress_data = {
-            "node_id": 5,
-            "progress": 75.5,
-            "text": "15/20"
-        }
-
-        serialized = _serialize_progress(progress_data)
-
-        assert serialized["node_id"] == 5
-        assert serialized["progress"] == 75.5
-        assert serialized["text"] == "15/20"
-
     @pytest.mark.asyncio
     async def test_progress_reporting_with_errors(self, progress_callback, mock_polygon_node):
         """Test progress reporting when errors occur during execution."""
@@ -384,7 +369,6 @@ async def test_real_polygon_batch_progress_reporting():
 @pytest.mark.asyncio
 async def test_websocket_progress_communication():
     """Test that progress updates are properly sent via WebSocket."""
-    from ui.server import _execution_worker
     from unittest.mock import MagicMock, AsyncMock
     import asyncio
 
@@ -438,14 +422,8 @@ async def test_websocket_progress_communication():
         mock_executor_instance.execute = AsyncMock(return_value={1: {"ohlcv_bundle": {}}})
         mock_graph_executor_class.return_value = mock_executor_instance
 
-        # Mock the queue get_next
-        with patch('ui.server.EXECUTION_QUEUE') as mock_queue:
-            mock_queue.get_next = AsyncMock(return_value=mock_job)
-            mock_queue.mark_done = AsyncMock()
-
-            # We can't easily test the full worker function due to its infinite loop,
-            # so let's test the progress callback mechanism directly
-            pass
+        # Test the progress callback directly
+        pass
 
     # Test the progress callback directly
     mock_progress_callback(1, 50.0, "3/6")
