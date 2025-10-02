@@ -196,6 +196,7 @@ async def execution_worker(queue: ExecutionQueue, node_registry: Dict[str, type]
 
                 monitor_task = asyncio.create_task(monitor_cancel())
 
+                stream_failed = False
                 try:
                     if os.getenv("DEBUG_QUEUE") == "1":
                         print("Worker: Starting stream loop")
@@ -210,6 +211,7 @@ async def execution_worker(queue: ExecutionQueue, node_registry: Dict[str, type]
                             break
                         except Exception as e:
                             print(f"Worker: Unexpected exception in stream: {e}")
+                            stream_failed = True
                             raise
                         try:
                             await websocket.send_json({"type": "data", "results": _serialize_results(results), "stream": True})
@@ -219,6 +221,7 @@ async def execution_worker(queue: ExecutionQueue, node_registry: Dict[str, type]
                             break
                 finally:
                     monitor_task.cancel()
+                if not stream_failed:
                     try:
                         import os
                         if os.getenv("DEBUG_QUEUE") == "1":

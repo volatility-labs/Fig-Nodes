@@ -23,21 +23,24 @@ from .queue import JobState
 
 app = FastAPI()
 
-EXECUTION_QUEUE = ExecutionQueue()
-_WORKER_TASKS: List[asyncio.Task] = []
-
 @app.on_event("startup")
 async def _startup_queue_worker():
-    # Always start queue worker now
-    task = asyncio.create_task(execution_worker(EXECUTION_QUEUE, NODE_REGISTRY))
-    _WORKER_TASKS.append(task)
+    # Initialize containers on app.state; workers will be created lazily per loop
+    if not hasattr(app.state, "loop_queues"):
+        app.state.loop_queues = {}
+    if not hasattr(app.state, "loop_workers"):
+        app.state.loop_workers = {}
 
 @app.on_event("shutdown")
 async def _shutdown_queue_worker():
-    for t in _WORKER_TASKS:
+    loop_workers = getattr(app.state, "loop_workers", {})
+    # Cancel tasks registered for this (current) loop
+    current_loop_id = id(asyncio.get_running_loop())
+    tasks: List[asyncio.Task] = loop_workers.get(current_loop_id, [])
+    for t in tasks:
         t.cancel()
-    if _WORKER_TASKS:
-        await asyncio.gather(*_WORKER_TASKS, return_exceptions=True)
+    if tasks:
+        await asyncio.gather(*tasks, return_exceptions=True)
 
 app.mount("/static", StaticFiles(directory=os.path.join(os.path.dirname(__file__), "static/dist")), name="static")
 
@@ -112,14 +115,23 @@ async def execute_endpoint(websocket: WebSocket):
                 graph_data = data.get("graph_data") if msg_type == "graph" else {"nodes": data.get("nodes", []), "links": data.get("links", [])}
                 # Always use queue mode
                 await websocket.send_json({"type": "status", "message": "Starting execution..."})
-                # Ensure a live worker is running (handle cases where startup worker isn't active in tests)
-                alive_tasks = [t for t in _WORKER_TASKS if not t.done() and not t.cancelled()]
+                # Resolve per-event-loop queue and worker(s)
+                if not hasattr(app.state, "loop_queues"):
+                    app.state.loop_queues = {}
+                if not hasattr(app.state, "loop_workers"):
+                    app.state.loop_workers = {}
+                loop_id = id(asyncio.get_running_loop())
+                queue = app.state.loop_queues.get(loop_id)
+                if queue is None:
+                    queue = ExecutionQueue()
+                    app.state.loop_queues[loop_id] = queue
+                workers: List[asyncio.Task] = app.state.loop_workers.get(loop_id, [])
+                alive_tasks = [t for t in workers if not t.done() and not t.cancelled()]
                 if not alive_tasks:
-                    task = asyncio.create_task(execution_worker(EXECUTION_QUEUE, NODE_REGISTRY))
+                    task = asyncio.create_task(execution_worker(queue, NODE_REGISTRY))
                     alive_tasks.append(task)
-                # Replace the task list with only alive tasks (plus newly started one if any)
-                _WORKER_TASKS[:] = alive_tasks
-                job = await EXECUTION_QUEUE.enqueue(websocket, graph_data)
+                app.state.loop_workers[loop_id] = alive_tasks
+                job = await queue.enqueue(websocket, graph_data)
             elif data.get("type") == "stop":
                 if job is None:
                     print("Server: No active job to stop")
@@ -135,7 +147,11 @@ async def execute_endpoint(websocket: WebSocket):
                     continue
 
                 is_cancelling = True
-                await EXECUTION_QUEUE.cancel_job(job)
+                loop_id = id(asyncio.get_running_loop())
+                queues = getattr(app.state, "loop_queues", {})
+                queue = queues.get(loop_id)
+                if queue is not None:
+                    await queue.cancel_job(job)
                 await job.done_event.wait()  # Await cleanup
 
                 cancel_done_event.set()
@@ -147,8 +163,12 @@ async def execute_endpoint(websocket: WebSocket):
     except WebSocketDisconnect:
         print("Client disconnected unexpectedly.")
         if job is not None and job.state not in [JobState.DONE, JobState.CANCELLED]:
-            await EXECUTION_QUEUE.cancel_job(job)
-            await job.done_event.wait()  # Ensure cleanup even on disconnect
+            loop_id = id(asyncio.get_running_loop())
+            queues = getattr(app.state, "loop_queues", {})
+            queue = queues.get(loop_id)
+            if queue is not None:
+                await queue.cancel_job(job)
+                await job.done_event.wait()  # Ensure cleanup even on disconnect
     except Exception as e:
         try:
             await websocket.send_json({"type": "error", "message": str(e)})

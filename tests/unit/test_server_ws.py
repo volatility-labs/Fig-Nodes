@@ -241,7 +241,7 @@ def test_cancellation_streaming_triggers_stop(monkeypatch):
         created.append(inst)
         return inst
 
-    monkeypatch.setattr(server_module, "GraphExecutor", _factory, raising=True)
+    monkeypatch.setattr(graph_executor_module, "GraphExecutor", _factory, raising=True)
 
     client = TestClient(server_module.app)
     with client.websocket_connect("/execute") as ws:
@@ -285,7 +285,7 @@ def test_batch_cancellation_on_disconnect(monkeypatch):
         created.append(inst)
         return inst
 
-    monkeypatch.setattr("core.graph_executor", "GraphExecutor", _factory, raising=True)
+    monkeypatch.setattr(graph_executor_module, "GraphExecutor", _factory, raising=True)
 
     client = TestClient(server_module.app)
     with client.websocket_connect("/execute") as ws:
@@ -476,7 +476,7 @@ def test_cancel_during_streaming_execution(monkeypatch):
             if self.stream_count == 1:
                 yield {1: {"assistant_text": "second chunk"}}
 
-    monkeypatch.setattr("core.graph_executor", "GraphExecutor", _StreamingExec, raising=True)
+    monkeypatch.setattr(graph_executor_module, "GraphExecutor", _StreamingExec, raising=True)
 
     client = TestClient(server_module.app)
     with client.websocket_connect("/execute") as ws:

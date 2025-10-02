@@ -134,7 +134,7 @@ class TestGraphExecutionStopping:
              patch('ui.server.NODE_REGISTRY', {}):
 
             # Enqueue a job, then cancel it before worker picks it up
-            queue = server_module.EXECUTION_QUEUE
+            queue = ExecutionQueue()
             job = await queue.enqueue(mock_websocket, {"nodes": [], "links": []})
             await queue.cancel_job(job)
 
@@ -158,7 +158,8 @@ class TestGraphExecutionStopping:
             job = ExecutionJob(1, mock_websocket, {"nodes": [], "links": []})
 
             # Simulate worker starting execution
-            await server_module.EXECUTION_QUEUE.enqueue(mock_websocket, {"nodes": [], "links": []})
+            queue = ExecutionQueue()
+            await queue.enqueue(mock_websocket, {"nodes": [], "links": []})
 
             # Simulate cancellation during execution
             job.cancel_event.set()

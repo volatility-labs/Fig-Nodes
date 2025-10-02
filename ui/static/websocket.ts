@@ -199,23 +199,30 @@ export function setupWebSocket(graph: LGraph, _canvas: LGraphCanvas) {
                 const results = data.results;
                 for (const nodeId in results) {
                     const node: any = graph.getNodeById(parseInt(nodeId));
-                    if (node) {
-                        if (data.stream) {
-                            // Streaming tick: only append using onStreamUpdate if available
+                    if (!node) continue;
+
+                    // Only the LoggingNode should render result payloads inside its UI.
+                    const allowRender = node.type === 'LoggingNode';
+
+                    if (data.stream) {
+                        // Streaming tick: route UI updates only to LoggingNode
+                        if (allowRender) {
                             if (typeof node.onStreamUpdate === 'function') {
                                 node.onStreamUpdate(results[nodeId]);
-                            } else {
+                            } else if (typeof node.updateDisplay === 'function') {
                                 node.updateDisplay(results[nodeId]);
                             }
-                            if (typeof node.pulseHighlight === 'function') {
-                                try { node.pulseHighlight(); } catch { }
-                            }
-                        } else {
-                            // Initial/batch: set full snapshot
+                        }
+                        if (typeof node.pulseHighlight === 'function') {
+                            try { node.pulseHighlight(); } catch { }
+                        }
+                    } else {
+                        // Initial/batch snapshot: only LoggingNode should display
+                        if (allowRender && typeof node.updateDisplay === 'function') {
                             node.updateDisplay(results[nodeId]);
-                            if (typeof node.pulseHighlight === 'function') {
-                                try { node.pulseHighlight(); } catch { }
-                            }
+                        }
+                        if (typeof node.pulseHighlight === 'function') {
+                            try { node.pulseHighlight(); } catch { }
                         }
                     }
                 }
