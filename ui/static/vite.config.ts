@@ -8,11 +8,8 @@ export default defineConfig({
     base: '/static/',
     server: {
         proxy: {
-            '/nodes': {
-                target: 'http://localhost:8000',
-                changeOrigin: true,
-            },
-            '/execute': {
+            // Proxy API calls to backend, excluding the base path
+            '^/(nodes|execute)': {
                 target: 'http://localhost:8000',
                 changeOrigin: true,
                 ws: true,

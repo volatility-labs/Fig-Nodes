@@ -42,8 +42,7 @@ class PolygonUniverseNode(UniverseNode):
                 request = client.get(next_url, headers=headers, params=params) if next_url == base_url else client.get(next_url, headers=headers)
                 response = await request
                 if response.status_code != 200:
-                    logger.error(f"Failed to fetch tickers: {response.status_code} - {getattr(response, 'text', '')}")
-                    break
+                    raise ValueError(f"Failed to fetch tickers: {response.status_code} - {getattr(response, 'text', '')}")
                 data = response.json()
                 for res in data.get("results", []):
                     ticker = res["ticker"]

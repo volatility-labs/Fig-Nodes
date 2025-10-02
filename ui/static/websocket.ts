@@ -2,38 +2,53 @@ import { LGraph, LGraphCanvas } from '@comfyorg/litegraph';
 import { showError } from './utils/uiUtils';
 
 let ws: WebSocket | null = null;
-let executionState: 'idle' | 'connecting' | 'executing' | 'stopping' = 'idle';
+export let executionState: 'idle' | 'connecting' | 'executing' | 'stopping' = 'idle';
 let stopPromiseResolver: (() => void) | null = null;
 
-function stopExecution(): Promise<void> {
+async function stopExecution(): Promise<void> {
+    if (executionState === 'idle' || executionState === 'stopping') {
+        console.log('Stop execution: Already idle or stopping, skipping');
+        return;  // Idempotent: already idle or stopping
+    }
+
+    console.log('Stop execution: Starting stop process');
+    executionState = 'stopping';
+
+    // Immediately update UI to show stopping state
+    const indicator = document.getElementById('status-indicator');
+    if (indicator) {
+        indicator.className = `status-indicator executing`;
+        indicator.textContent = 'Stopping...';
+    }
+
+    // Show stopping progress with indeterminate bar
+    const progressRoot = document.getElementById('top-progress');
+    const progressBar = document.getElementById('top-progress-bar');
+    const progressText = document.getElementById('top-progress-text');
+    if (progressRoot && progressBar && progressText) {
+        progressRoot.style.display = 'block';
+        progressText.textContent = 'Stopping...';
+        progressBar.classList.add('indeterminate');
+        (progressBar as HTMLElement).style.width = '100%';
+    }
+
     return new Promise((resolve) => {
-        if (executionState === 'idle') {
-            resolve();
-            return;
-        }
-
-        executionState = 'stopping';
         stopPromiseResolver = resolve;
-
-        if (ws) {
-            // Set a timeout to force resolve if server doesn't respond
-            const timeout = setTimeout(() => {
-                console.warn('Stop timeout reached, forcing cleanup');
-                forceStopCleanup();
-            }, 5000); // 5 second timeout
-
-            // Store the timeout so we can clear it when we get proper response
-            (ws as any)._stopTimeout = timeout;
-
-            ws.close(1000, 'Client requested stop');
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            console.log('Stop execution: Sending stop message to backend');
+            ws.send(JSON.stringify({ type: "stop" }));
+            // Wait for backend "stopped" confirmation (handled in onmessage)
         } else {
-            forceStopCleanup();
+            console.log('Stop execution: No active WebSocket, forcing cleanup');
+            forceCleanup();
+            resolve();
         }
     });
 }
 
-function forceStopCleanup() {
+function forceCleanup() {
     if (ws) {
+        ws.close();
         ws = null;
     }
     executionState = 'idle';
@@ -138,7 +153,7 @@ export function setupWebSocket(graph: LGraph, _canvas: LGraphCanvas) {
                 indicator.className = `status-indicator executing`;
                 indicator.textContent = 'Running...';
             }
-            ws?.send(JSON.stringify(graphData));
+            ws?.send(JSON.stringify({ type: "graph", graph_data: graphData }));
         };
 
         ws.onmessage = (event) => {
@@ -165,13 +180,12 @@ export function setupWebSocket(graph: LGraph, _canvas: LGraphCanvas) {
                     }, 350);
                 }
                 if (data.message.includes('finished')) {
-                    // Clear any stop timeout since execution finished naturally
-                    if (ws && (ws as any)._stopTimeout) {
-                        clearTimeout((ws as any)._stopTimeout);
-                        (ws as any)._stopTimeout = null;
-                    }
-                    forceStopCleanup();
+                    forceCleanup();
                 }
+            } else if (data.type === 'stopped') {
+                // Handle stop confirmation from backend
+                console.log('Stop execution: Received stopped confirmation from backend:', data.message);
+                forceCleanup();
             } else if (data.type === 'data') {
                 // Overlay is never shown during execution now
                 if (Object.keys(data.results).length === 0) {
@@ -211,8 +225,7 @@ export function setupWebSocket(graph: LGraph, _canvas: LGraphCanvas) {
                     showProgress('Streaming...', false);
                 } else {
                     // Initial static results (non-streaming part). Do not mark completed here.
-                    // Keep showing determinate progress only if we can infer percentage (not available now),
-                    // otherwise keep indeterminate until a finished status arrives.
+                    // Keep showing indeterminate until a finished status arrives.
                     showProgress('Running...', false);
                 }
             } else if (data.type === 'progress') {
@@ -229,24 +242,14 @@ export function setupWebSocket(graph: LGraph, _canvas: LGraphCanvas) {
                     indicator.className = `status-indicator disconnected`;
                     indicator.textContent = `Error: ${data.message}`;
                 }
-                // Clear any stop timeout
-                if (ws && (ws as any)._stopTimeout) {
-                    clearTimeout((ws as any)._stopTimeout);
-                    (ws as any)._stopTimeout = null;
-                }
-                forceStopCleanup();
+                forceCleanup();
                 hideProgress();
             }
         };
 
         ws.onclose = (event) => {
             console.log(`WebSocket closed: code=${event.code}, reason=${event.reason}`);
-            // Clear any stop timeout
-            if (ws && (ws as any)._stopTimeout) {
-                clearTimeout((ws as any)._stopTimeout);
-                (ws as any)._stopTimeout = null;
-            }
-            forceStopCleanup();
+            forceCleanup();
             hideProgress();
         };
 
@@ -256,12 +259,7 @@ export function setupWebSocket(graph: LGraph, _canvas: LGraphCanvas) {
                 indicator.className = `status-indicator disconnected`;
                 indicator.textContent = 'Connection error';
             }
-            // Clear any stop timeout
-            if (ws && (ws as any)._stopTimeout) {
-                clearTimeout((ws as any)._stopTimeout);
-                (ws as any)._stopTimeout = null;
-            }
-            forceStopCleanup();
+            forceCleanup();
             hideProgress();
         };
     });

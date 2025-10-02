@@ -30,6 +30,7 @@ class BaseNode:
         self.inputs = dict(getattr(self, "inputs", {}))
         self.outputs = dict(getattr(self, "outputs", {}))
         self._progress_callback = None
+        self._is_stopped = False  # For idempotency in force_stop
 
     def collect_multi_input(self, key: str, inputs: Dict[str, Any]) -> List[Any]:
         expected_type = self.inputs.get(key)
@@ -159,6 +160,15 @@ class BaseNode:
         """Report progress to the execution system."""
         if self._progress_callback:
             self._progress_callback(self.id, progress, text)
+
+    def force_stop(self):
+        """Immediately terminate node execution and clean up resources. Idempotent."""
+        print(f"BaseNode: force_stop called for node {self.id}, already stopped: {self._is_stopped}")
+        if self._is_stopped:
+            return  # Idempotent
+        self._is_stopped = True
+        # Base implementation: no-op, subclasses can override for specific kill logic
+        print(f"BaseNode: Force stopping node {self.id} (no-op in base class)")
 
     async def execute(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
         """Core execution method - must be implemented by subclasses."""

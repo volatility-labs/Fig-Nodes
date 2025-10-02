@@ -12,6 +12,10 @@ class StreamingNode(BaseNode, ABC):
     """
     is_streaming = True
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._is_force_stopped = False  # For idempotency
+
     @abstractmethod
     async def start(self, inputs: Dict[str, Any]) -> AsyncGenerator[Dict[str, Any], None]:
         """
@@ -29,6 +33,16 @@ class StreamingNode(BaseNode, ABC):
     def interrupt(self):
         """Forcefully interrupt any blocking operations."""
         pass
+
+    def force_stop(self):
+        """Immediately terminate streaming execution without awaiting. Idempotent."""
+        if self._is_force_stopped:
+            return  # Idempotent
+        self._is_force_stopped = True
+        # Forceful immediate stop: interrupt blocking ops and call stop (no await)
+        self.interrupt()
+        self.stop()
+        print(f"StreamingNode: Force stopped node {self.id}")
 
     async def execute(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
         # For compatibility, but streaming nodes use start/stop instead

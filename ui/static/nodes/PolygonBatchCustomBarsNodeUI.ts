@@ -1,4 +1,5 @@
 import BaseCustomNode from './BaseCustomNode';
+import { executionState } from '../websocket';
 
 export default class PolygonBatchCustomBarsNodeUI extends BaseCustomNode {
     constructor(title: string, data: any) {
@@ -21,6 +22,14 @@ export default class PolygonBatchCustomBarsNodeUI extends BaseCustomNode {
         this.result = result;
         this.displayText = '';
         this.setDirtyCanvas(true, true);
+    }
+
+    setProgress(progress: number, text?: string) {
+        // Ignore progress updates if execution is stopping to prevent visual glitches
+        if (executionState === 'stopping') {
+            return;
+        }
+        super.setProgress(progress, text);
     }
 
     private copySummary() {

@@ -59,6 +59,7 @@ def _recv_until_type(ws, msg_type: str, max_steps: int = 10):
             return data
     raise AssertionError(f"Did not receive message of type {msg_type}")
 
+
 def test_streaming_flow_success(monkeypatch):
     created: List[_StreamingExecDummy] = []
 
@@ -112,7 +113,7 @@ def test_batch_flow_success(monkeypatch):
         assert "Batch finished" in st3.get("message", "")
 
 def test_concurrency_wait_message_on_second_connection(monkeypatch):
-    # In test mode, there's no queue, so this test just verifies both connections work
+    # With queue mode, second connection should get "Starting execution" and wait
     created: List[_StreamingExecDummy] = []
 
     def _factory(graph, reg):
@@ -125,8 +126,8 @@ def test_concurrency_wait_message_on_second_connection(monkeypatch):
     client = TestClient(server_module.app)
     with client.websocket_connect("/execute") as ws1:
         ws1.send_json({"nodes": [], "links": []})
-        _recv_until_type(ws1, "status")
-        _recv_until_type(ws1, "status")
+        _recv_until_type(ws1, "status")  # Starting execution
+        _recv_until_type(ws1, "status")  # Stream starting
         _recv_until_type(ws1, "data")
 
         with client.websocket_connect("/execute") as ws2:
@@ -488,3 +489,29 @@ def test_cancel_during_streaming_execution(monkeypatch):
         ws.close()
 
     # Test passes if no exceptions are raised during the close
+
+
+def test_stop_message_no_active_job(monkeypatch):
+    """Test stop message when no active job exists."""
+    client = TestClient(server_module.app)
+    with client.websocket_connect("/execute") as ws:
+        # Send stop message without starting any execution
+        ws.send_json({"type": "stop"})
+
+        # Should receive stopped confirmation with "no active job" message
+        stopped_msg = _recv_until_type(ws, "stopped")
+        assert "no active job" in stopped_msg.get("message", "").lower()
+
+
+
+
+def test_stop_message_no_active_job(monkeypatch):
+    """Test stop message when no active job exists."""
+    client = TestClient(server_module.app)
+    with client.websocket_connect("/execute") as ws:
+        # Send stop message without starting any execution
+        ws.send_json({"type": "stop"})
+
+        # Should receive stopped confirmation with "no active job" message
+        stopped_msg = _recv_until_type(ws, "stopped")
+        assert "no active job" in stopped_msg.get("message", "").lower()

@@ -45,7 +45,10 @@ class LoggingNode(BaseNode):
             text = "Preview of first 100 symbols:\n" + "\n".join(preview_symbols)
             if len(value) > 100:
                 text += f"\n... and {len(value) - 100} more"
-            print(f"LoggingNode {self.id}: Received {len(value)} symbols. Preview:\n{text}")
+            # Only print preview in debug mode to reduce log verbosity
+            import os
+            if os.getenv("DEBUG_LOGGING") == "1":
+                print(f"LoggingNode {self.id}: Received {len(value)} symbols. Preview:\n{text}")
         elif isinstance(value, list) and value and all(isinstance(x, dict) and 'timestamp' in x and 'open' in x and 'high' in x and 'low' in x and 'close' in x for x in value):
             # OHLCV data preview
             preview_count = min(10, len(value))
@@ -54,7 +57,10 @@ class LoggingNode(BaseNode):
                 text += f"Bar {i+1}: {bar['timestamp']} O:{bar['open']} H:{bar['high']} L:{bar['low']} C:{bar['close']} V:{bar['volume']}\n"
             if len(value) > preview_count:
                 text += f"... and {len(value) - preview_count} more bars"
-            print(f"LoggingNode {self.id}: {text}")
+            # Only print in debug mode to reduce log verbosity
+            import os
+            if os.getenv("DEBUG_LOGGING") == "1":
+                print(f"LoggingNode {self.id}: {text}")
         else:
             if selected_format == "json":
                 # Produce a valid JSON string to enable UI pretty printing
@@ -84,7 +90,10 @@ class LoggingNode(BaseNode):
                         text = str(value)
                 except Exception:
                     text = str(value)
-            print(f"LoggingNode {self.id}: {text}")
+            # Only print in debug mode to reduce log verbosity
+            import os
+            if os.getenv("DEBUG_LOGGING") == "1":
+                print(f"LoggingNode {self.id}: {text}")
         
         return {"output": text}
 

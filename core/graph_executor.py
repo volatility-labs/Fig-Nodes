@@ -14,9 +14,10 @@ class GraphExecutor:
         self.input_names: Dict[int, List[str]] = {}
         self.output_names: Dict[int, List[str]] = {}
         self.dag = nx.DiGraph()
-        self.is_streaming = False
+        self.is_streaming = any(isinstance(self.nodes[node_id], StreamingNode) and self.dag.degree(node_id) > 0 for node_id in self.dag.nodes)
         self.streaming_tasks: List[asyncio.Task] = []
         self._stopped = False
+        self._is_force_stopped = False  # For idempotency
         self._progress_callback = None
         self._build_graph()
 
@@ -50,7 +51,7 @@ class GraphExecutor:
         if not nx.is_directed_acyclic_graph(self.dag):
             raise ValueError("Graph contains cycles")
         
-        self.is_streaming = any(isinstance(node, StreamingNode) for node in self.nodes.values())
+        self.is_streaming = any(isinstance(self.nodes[node_id], StreamingNode) and self.dag.degree(node_id) > 0 for node_id in self.dag.nodes)
 
     async def execute(self) -> Dict[str, Any]:
         if self.is_streaming:
@@ -62,7 +63,7 @@ class GraphExecutor:
 
         for node_id in sorted_nodes:
             if self._stopped:
-                print(f"GraphExecutor: Execution stopped at node {node_id}")
+                print(f"STOP_TRACE: Execution stopped at node {node_id} in GraphExecutor.execute")
                 break
             if node_id in executed_nodes:
                 continue
@@ -78,7 +79,14 @@ class GraphExecutor:
                 merged_inputs = {**{k: v for k, v in node.params.items() if k in node.inputs and k not in inputs and v is not None}, **inputs}
                 if not node.validate_inputs(merged_inputs):
                     continue
-                outputs = await node.execute(merged_inputs)
+                try:
+                    print(f"STOP_TRACE: Awaiting node.execute for node {node_id}")
+                    outputs = await node.execute(merged_inputs)
+                    print(f"STOP_TRACE: Completed node.execute for node {node_id}")
+                except asyncio.CancelledError:
+                    print("STOP_TRACE: Caught CancelledError in node.execute await in GraphExecutor")
+                    self.force_stop()
+                    raise
                 results[node_id] = outputs
         
         return results
@@ -237,21 +245,33 @@ class GraphExecutor:
             traceback.print_exc()
             raise
 
-    async def stop(self):
+    def force_stop(self):
+        """Single entrypoint to immediately kill all execution (batch/stream/mixed). Idempotent."""
+        print(f"STOP_TRACE: GraphExecutor.force_stop called, already stopped: {self._is_force_stopped}")
+        if self._is_force_stopped:
+            return  # Idempotent
+        self._is_force_stopped = True
         self._stopped = True
-        for node in self.nodes.values():
-            if isinstance(node, StreamingNode):
-                node.stop()  # Call node-specific stop
+
+        print(f"STOP_TRACE: Force stopping {len(self.nodes)} nodes in GraphExecutor")
+        # Immediately force stop all nodes (batch and stream)
+        for node_id, node in self.nodes.items():
+            print(f"STOP_TRACE: Calling force_stop on node {node_id} ({type(node).__name__})")
+            node.force_stop()
+
+        # Cancel all tasks immediately without awaiting or timeout
         if self.streaming_tasks:
-            # Cancel and await with timeout for robustness
+            print(f"GraphExecutor: Cancelling {len(self.streaming_tasks)} streaming tasks")
             for task in self.streaming_tasks:
                 if not task.done():
                     task.cancel()
-            try:
-                await asyncio.wait_for(asyncio.gather(*self.streaming_tasks, return_exceptions=True), timeout=5.0)
-            except asyncio.TimeoutError:
-                print("GraphExecutor: Timeout waiting for streaming tasks to stop")
-        self.streaming_tasks = []
+            self.streaming_tasks = []  # Clear list immediately
+
+        print("STOP_TRACE: Force stop completed in GraphExecutor")
+
+    async def stop(self):
+        print("STOP_TRACE: GraphExecutor.stop called")
+        self.force_stop()
 
     async def _execute_foreach_subgraph(self, foreach_node: ForEachNode, results: Dict[str, Any]):
         inputs = self._get_node_inputs(foreach_node.id, results)
@@ -274,11 +294,8 @@ class GraphExecutor:
         results[foreach_node.id] = {"results": foreach_results}
 
     def _get_node_inputs(self, node_id: int, results: Dict[int, Any]) -> Dict[str, Any]:
-        print(f"GraphExecutor: Getting inputs for node {node_id}")
         inputs: Dict[str, Any] = {}
         predecessors = list(self.dag.predecessors(node_id))
-        print(f"GraphExecutor: Predecessors for {node_id}: {predecessors}")
-        print(f"GraphExecutor: Available results keys: {list(results.keys())}")
         for pred_id in predecessors:
             for link in self.graph.get('links', []):
                 if link[1] == pred_id and link[3] == node_id:
@@ -293,5 +310,4 @@ class GraphExecutor:
                             if input_slot < len(node_inputs):
                                 input_key = node_inputs[input_slot]
                                 inputs[input_key] = value
-        print(f"GraphExecutor: Constructed inputs for {node_id}: {inputs}")
         return inputs

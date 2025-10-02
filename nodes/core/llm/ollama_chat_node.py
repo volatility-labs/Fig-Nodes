@@ -196,6 +196,9 @@ class OllamaChatNode(StreamingNode):
                 pass
         self._ipc_parent = None
 
+    def interrupt(self):
+        self.stop()
+
     def _parse_options(self) -> Optional[Dict[str, Any]]:
         raw = self.params.get("options")
         if not raw:

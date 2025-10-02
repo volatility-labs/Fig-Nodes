@@ -547,3 +547,183 @@ class TestPolygonBatchCustomBarsNode:
             "symbols": [],
             "api_key": "test_key"
         }) is True
+
+    @pytest.mark.asyncio
+    async def test_cancellation_propagates_through_fetch_bars(self, sample_symbols):
+        """Test that CancelledError during fetch_bars properly propagates and stops execution."""
+        # Use single concurrency to ensure deterministic behavior
+        node = PolygonBatchCustomBarsNode("test_id", {"max_concurrent": 1})
+        call_count = 0
+
+        async def cancellable_fetch(symbol, api_key, params):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 2:  # Cancel on second call to allow first to complete
+                raise asyncio.CancelledError("Simulated cancellation")
+            await asyncio.sleep(0.01)  # Brief delay for other calls
+            return []
+
+        with patch("custom_nodes.polygon.polygon_batch_custom_bars_node.fetch_bars", side_effect=cancellable_fetch):
+            execute_task = asyncio.create_task(node.execute({
+                "symbols": sample_symbols,
+                "api_key": "test_key"
+            }))
+
+            with pytest.raises(asyncio.CancelledError):
+                await execute_task
+
+            # Should have made 2 calls: first succeeds, second gets cancelled
+            assert call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_cancellation_stops_progress_reporting(self, sample_symbols):
+        """Test that progress reporting stops immediately after cancellation."""
+        # Use single concurrency for predictable behavior
+        node = PolygonBatchCustomBarsNode("test_id", {"max_concurrent": 1})
+        progress_calls = []
+
+        def mock_report(progress, text):
+            progress_calls.append((progress, text))
+            print(f"Progress: {progress}%, {text}")
+
+        node.report_progress = mock_report
+
+        call_count = 0
+
+        async def cancellable_fetch(symbol, api_key, params):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 2:  # Cancel on second call
+                raise asyncio.CancelledError("Simulated cancellation")
+            await asyncio.sleep(0.01)
+            return []
+
+        with patch("custom_nodes.polygon.polygon_batch_custom_bars_node.fetch_bars", side_effect=cancellable_fetch):
+            execute_task = asyncio.create_task(node.execute({
+                "symbols": sample_symbols,
+                "api_key": "test_key"
+            }))
+
+            with pytest.raises(asyncio.CancelledError):
+                await execute_task
+
+            # Should have progress for first completed call, but not continue to all symbols
+            # The cancelled call might still report progress in finally block
+            assert len(progress_calls) >= 1  # At least the first successful call
+            assert call_count == 2  # First succeeds, second gets cancelled
+
+    @pytest.mark.asyncio
+    async def test_cancellation_during_rate_limiting(self, polygon_batch_node, sample_symbols):
+        """Test cancellation works even when waiting for rate limiting."""
+        acquire_calls = 0
+
+        async def cancellable_acquire():
+            nonlocal acquire_calls
+            acquire_calls += 1
+            if acquire_calls == 2:  # Cancel on second acquire attempt
+                raise asyncio.CancelledError("Rate limit cancellation")
+            # Simulate rate limiting delay
+            await asyncio.sleep(0.01)
+
+        with patch("custom_nodes.polygon.polygon_batch_custom_bars_node.RateLimiter") as mock_rate_limiter_class:
+            mock_rate_limiter = MagicMock()
+            mock_rate_limiter.acquire = cancellable_acquire
+            mock_rate_limiter_class.return_value = mock_rate_limiter
+
+            with patch("custom_nodes.polygon.polygon_batch_custom_bars_node.fetch_bars", return_value=[]):
+                execute_task = asyncio.create_task(polygon_batch_node.execute({
+                    "symbols": sample_symbols,
+                    "api_key": "test_key"
+                }))
+
+                with pytest.raises(asyncio.CancelledError):
+                    await execute_task
+
+                # Should have attempted rate limiting at least once
+                assert acquire_calls >= 1
+
+    @pytest.mark.asyncio
+    async def test_cancellation_with_multiple_workers(self, mock_bars_response):
+        """Test cancellation with multiple concurrent workers."""
+        node = PolygonBatchCustomBarsNode("test_id", {"max_concurrent": 3})
+        symbols = [AssetSymbol(f"SYMBOL_{i}", AssetClass.STOCKS) for i in range(10)]
+
+        call_count = 0
+
+        async def slow_cancellable_fetch(symbol, api_key, params):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 3:  # Cancel after a few concurrent requests start
+                raise asyncio.CancelledError("Multi-worker cancellation")
+            await asyncio.sleep(0.1)
+            return mock_bars_response
+
+        with patch("custom_nodes.polygon.polygon_batch_custom_bars_node.fetch_bars", side_effect=slow_cancellable_fetch):
+            execute_task = asyncio.create_task(node.execute({
+                "symbols": symbols,
+                "api_key": "test_key"
+            }))
+
+            # Let some workers start
+            await asyncio.sleep(0.05)
+
+            with pytest.raises(asyncio.CancelledError):
+                await execute_task
+
+            # Should not have completed all calls
+            assert call_count < len(symbols)
+
+    @pytest.mark.asyncio
+    async def test_regular_exception_vs_cancellation(self, sample_symbols):
+        """Test that regular exceptions are still caught but cancellation propagates."""
+        # Use single concurrency for predictable behavior
+        node = PolygonBatchCustomBarsNode("test_id", {"max_concurrent": 1})
+        call_count = 0
+
+        async def mixed_fetch(symbol, api_key, params):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise ValueError("Regular API error")  # Should be caught and logged
+            elif call_count == 2:
+                raise asyncio.CancelledError("Cancellation")  # Should propagate
+            return []
+
+        with patch("custom_nodes.polygon.polygon_batch_custom_bars_node.fetch_bars", side_effect=mixed_fetch):
+            execute_task = asyncio.create_task(node.execute({
+                "symbols": sample_symbols,
+                "api_key": "test_key"
+            }))
+
+            with pytest.raises(asyncio.CancelledError):
+                await execute_task
+
+            # Should have made 2 calls: first failed with ValueError, second with CancelledError
+            assert call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_force_stop_cancels_workers(self, polygon_batch_node, sample_symbols, mock_bars_response):
+        """Test that force_stop cancels internal workers."""
+        async def slow_fetch(*args, **kwargs):
+            await asyncio.sleep(0.5)  # Simulate ongoing fetch
+            return mock_bars_response
+
+        with patch("custom_nodes.polygon.polygon_batch_custom_bars_node.fetch_bars", side_effect=slow_fetch):
+            execute_task = asyncio.create_task(polygon_batch_node.execute({
+                "symbols": sample_symbols,
+                "api_key": "test_key"
+            }))
+
+            await asyncio.sleep(0.1)  # Let workers start
+            assert len(polygon_batch_node.workers) > 0
+            assert any(not w.done() for w in polygon_batch_node.workers)
+
+            polygon_batch_node.force_stop()
+
+            # Workers should be cancelled
+            await asyncio.sleep(0.1)
+            assert all(w.cancelled() or w.done() for w in polygon_batch_node.workers)
+
+            execute_task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await execute_task

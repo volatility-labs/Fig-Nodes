@@ -128,7 +128,7 @@ def run_dev(host: str, backend_port: int, vite_port: int) -> int:
     # Frontend (Vite dev) with proxy to backend (configured in vite.config.ts)
     pm_cmd, pm_name = _select_node_pm(UI_DIR)
     if pm_name == "yarn":
-        fe_cmd = pm_cmd + ["dev", "--", f"--port={vite_port}"]
+        fe_cmd = ["npx", "--yes", "yarn@1.22.22", "dev", "--", f"--port={vite_port}"]
     elif pm_name == "npm":
         fe_cmd = pm_cmd + ["run", "dev", "--", f"--port={vite_port}"]
     else:  # npx fallback
