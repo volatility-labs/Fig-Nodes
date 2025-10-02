@@ -6,6 +6,7 @@ from enum import Enum
 from fastapi import WebSocket
 from starlette.websockets import WebSocketState
 import typing
+import pandas as pd
 
 class JobState(Enum):
     PENDING = "pending"
@@ -98,14 +99,14 @@ class ExecutionQueue:
             await asyncio.sleep(1.0)
 
 async def execution_worker(queue: ExecutionQueue, node_registry: Dict[str, type]):
-    from core.graph_executor import GraphExecutor  # Import here to avoid circular deps
+    import core.graph_executor as graph_executor_module  # Import module so monkeypatching works
 
     while True:
         job = await queue.get_next()
         if job is None:
             continue
         websocket = job.websocket
-        executor: typing.Optional[GraphExecutor] = None
+        executor: typing.Optional[typing.Any] = None
 
         if job.cancel_event.is_set():
             import os
@@ -134,7 +135,8 @@ async def execution_worker(queue: ExecutionQueue, node_registry: Dict[str, type]
             import os
             if os.getenv("DEBUG_QUEUE") == "1":
                 print("Worker: Creating GraphExecutor")
-            executor = GraphExecutor(job.graph_data, node_registry)
+            # Resolve GraphExecutor at runtime from module to honor monkeypatch
+            executor = graph_executor_module.GraphExecutor(job.graph_data, node_registry)
             executor.set_progress_callback(progress_callback)
             if os.getenv("DEBUG_QUEUE") == "1":
                 print(f"Worker: GraphExecutor created, is_streaming={executor.is_streaming}")
@@ -146,13 +148,10 @@ async def execution_worker(queue: ExecutionQueue, node_registry: Dict[str, type]
                 await queue.mark_done(job)
                 return
 
-            try:
-                await websocket.send_json({"type": "status", "message": "Starting execution"})
-            except Exception:
-                pass
+            # Note: Initial "Starting execution" status is sent by the server endpoint
+            # to avoid duplicate status messages here.
 
             if executor.is_streaming:
-                print("STOP_TRACE: Processing as stream in execution_worker")
                 import os
                 if os.getenv("DEBUG_QUEUE") == "1":
                     print("Worker: Executing streaming path")

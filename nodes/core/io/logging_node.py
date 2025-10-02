@@ -45,10 +45,7 @@ class LoggingNode(BaseNode):
             text = "Preview of first 100 symbols:\n" + "\n".join(preview_symbols)
             if len(value) > 100:
                 text += f"\n... and {len(value) - 100} more"
-            # Only print preview in debug mode to reduce log verbosity
-            import os
-            if os.getenv("DEBUG_LOGGING") == "1":
-                print(f"LoggingNode {self.id}: Received {len(value)} symbols. Preview:\n{text}")
+            print(text)
         elif isinstance(value, list) and value and all(isinstance(x, dict) and 'timestamp' in x and 'open' in x and 'high' in x and 'low' in x and 'close' in x for x in value):
             # OHLCV data preview
             preview_count = min(10, len(value))
@@ -90,10 +87,7 @@ class LoggingNode(BaseNode):
                         text = str(value)
                 except Exception:
                     text = str(value)
-            # Only print in debug mode to reduce log verbosity
-            import os
-            if os.getenv("DEBUG_LOGGING") == "1":
-                print(f"LoggingNode {self.id}: {text}")
+            print(f"LoggingNode {self.id}: {text}")
         
         return {"output": text}
 

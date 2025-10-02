@@ -3,7 +3,7 @@ import pytest
 from unittest.mock import Mock, AsyncMock, patch
 from fastapi.testclient import TestClient
 import ui.server as server_module
-from ui.server import ExecutionQueue, ExecutionJob
+from ui.queue import ExecutionQueue, ExecutionJob, JobState
 from core.graph_executor import GraphExecutor
 
 
@@ -41,7 +41,7 @@ class TestExecutionQueue:
         await self.queue.cancel_job(job)
 
         # Verify job is cancelled and removed from pending
-        assert job.id in self.queue._cancelled
+        assert job.state == JobState.CANCELLED
         assert job not in self.queue._pending
         # done_event should be set so any waiter can proceed
         assert job.done_event.is_set()
@@ -60,9 +60,9 @@ class TestExecutionQueue:
 
         await self.queue.cancel_job(job)
 
-        # Verify cancel_event is set for running job
+        # Verify cancel_event is set for running job and state updated
         assert job.cancel_event.is_set()
-        assert job.id in self.queue._cancelled
+        assert job.state == JobState.CANCELLED
 
     @pytest.mark.asyncio
     async def test_get_next_skips_cancelled_jobs(self):
@@ -95,14 +95,14 @@ class TestExecutionQueue:
         job1 = await self.queue.enqueue(mock_ws, graph_data)
         job2 = await self.queue.enqueue(mock_ws, graph_data)
 
-        # Both jobs pending
-        assert await self.queue.position(job1) == 0
-        assert await self.queue.position(job2) == 1
+        # Both jobs pending (1-based positions for pending)
+        assert await self.queue.position(job1) == 1
+        assert await self.queue.position(job2) == 2
 
         # Mark job1 as running
         await self.queue.get_next()
         assert await self.queue.position(job1) == 0
-        assert await self.queue.position(job2) == 0  # job2 is now first in pending
+        assert await self.queue.position(job2) == 1  # job2 is now first in pending
 
 
 class TestGraphExecutionStopping:
@@ -206,7 +206,8 @@ class TestRapidStopExecuteCycles:
 
         # Verify all jobs are cancelled
         for job in jobs:
-            assert job.id in queue._cancelled
+            assert job.state == JobState.CANCELLED
+            assert job.done_event.is_set()
 
         # Verify pending queue is empty
         assert len(queue._pending) == 0
@@ -340,7 +341,7 @@ class TestIntegrationScenarios:
 
         # Cancel before worker picks up
         await queue.cancel_job(job)
-        assert job.id in queue._cancelled
+        assert job.state == JobState.CANCELLED
 
         # Worker should skip this job
         try:
@@ -388,4 +389,3 @@ async def test_execution_queue_under_load():
 
     # Verify queue state is consistent
     assert len(queue._pending) >= 0
-    assert len(queue._cancelled) >= 0

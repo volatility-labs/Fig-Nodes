@@ -105,13 +105,22 @@ async def execute_endpoint(websocket: WebSocket):
     try:
         while True:
             data = await websocket.receive_json()
-            if data.get("type") == "graph":
+            msg_type = data.get("type")
+            is_raw_graph = msg_type is None and "nodes" in data and "links" in data
+            if msg_type == "graph" or is_raw_graph:
+                # Normalize graph payload
+                graph_data = data.get("graph_data") if msg_type == "graph" else {"nodes": data.get("nodes", []), "links": data.get("links", [])}
                 # Always use queue mode
                 await websocket.send_json({"type": "status", "message": "Starting execution..."})
-                job = await EXECUTION_QUEUE.enqueue(websocket, data["graph_data"])
+                # Ensure a live worker is running (handle cases where startup worker isn't active in tests)
+                alive_tasks = [t for t in _WORKER_TASKS if not t.done() and not t.cancelled()]
+                if not alive_tasks:
+                    task = asyncio.create_task(execution_worker(EXECUTION_QUEUE, NODE_REGISTRY))
+                    alive_tasks.append(task)
+                # Replace the task list with only alive tasks (plus newly started one if any)
+                _WORKER_TASKS[:] = alive_tasks
+                job = await EXECUTION_QUEUE.enqueue(websocket, graph_data)
             elif data.get("type") == "stop":
-                print("STOP_TRACE: Received stop message in server.py")
-                print("Server: Received stop message")
                 if job is None:
                     print("Server: No active job to stop")
                     await websocket.send_json({"type": "stopped", "message": "No active job to stop"})
@@ -125,18 +134,11 @@ async def execute_endpoint(websocket: WebSocket):
                     await websocket.close()
                     continue
 
-                print("STOP_TRACE: Starting cancellation process in server.py")
                 is_cancelling = True
-                print(f"STOP_TRACE: Calling cancel_job for job {job.id} in server.py")
-                print(f"Server: Cancelling queue job {job.id}")
                 await EXECUTION_QUEUE.cancel_job(job)
-                print(f"STOP_TRACE: Awaiting done_event in server.py")
                 await job.done_event.wait()  # Await cleanup
-                print(f"STOP_TRACE: Done event set, cancellation completed in server.py")
-                print(f"Server: Queue job {job.id} cancellation completed")
 
                 cancel_done_event.set()
-                print("Server: Sending stopped confirmation to frontend")
                 await websocket.send_json({"type": "stopped", "message": "Execution stopped and cleaned up"})
                 await websocket.close()
                 is_cancelling = False

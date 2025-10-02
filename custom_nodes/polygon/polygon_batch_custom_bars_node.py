@@ -69,17 +69,14 @@ class PolygonBatchCustomBarsNode(BaseNode):
         self.workers: List[asyncio.Task] = []
 
     def force_stop(self):
-        print(f"STOP_TRACE: PolygonBatch force_stop called for node {self.id}, already stopped: {self._is_stopped}, workers: {len(self.workers)}")
         if self._is_stopped:
             return
         self._is_stopped = True
-        print(f"STOP_TRACE: Cancelling {len(self.workers)} workers in PolygonBatch")
         cancelled_count = 0
         for w in self.workers:
             if not w.done():
                 w.cancel()
                 cancelled_count += 1
-        print(f"STOP_TRACE: Cancelled {cancelled_count} workers in PolygonBatch")
         self.workers.clear()
 
     async def execute(self, inputs: Dict[str, Any]) -> Dict[str, Dict[AssetSymbol, List[OHLCVBar]]]:
@@ -160,7 +157,6 @@ class PolygonBatchCustomBarsNode(BaseNode):
             iteration_count = 0
             while self.workers and not self._is_stopped:
                 iteration_count += 1
-                print(f"STOP_TRACE: Main loop iteration {iteration_count}, workers: {len(self.workers)}, stopped: {self._is_stopped}")
                 # Wait for any worker to complete, but with short timeout for responsiveness
                 done, pending = await asyncio.wait(
                     self.workers,

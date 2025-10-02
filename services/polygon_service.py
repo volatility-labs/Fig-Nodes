@@ -2,6 +2,7 @@ from typing import List, Dict, Any
 import httpx
 from datetime import datetime, timedelta
 from core.types_registry import AssetSymbol, OHLCVBar
+import asyncio
 
 async def fetch_bars(symbol: AssetSymbol, api_key: str, params: Dict[str, Any]) -> List[OHLCVBar]:
     print(f"STOP_TRACE: fetch_bars started for {symbol}")
@@ -46,7 +47,6 @@ async def fetch_bars(symbol: AssetSymbol, api_key: str, params: Dict[str, Any]) 
     timeout = httpx.Timeout(5.0, connect=2.0)  # 5s total, 2s connect
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
-            print(f"STOP_TRACE: Awaiting client.get for {symbol}")
             response = await client.get(url, params=query_params)
             print(f"STOP_TRACE: Completed client.get for {symbol}, status: {response.status_code}")
             if response.status_code != 200:

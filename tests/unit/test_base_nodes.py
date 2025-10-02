@@ -20,6 +20,9 @@ class ConcreteStreamingNode(StreamingNode):
     def stop(self):
         pass
 
+    def interrupt(self):
+        pass
+
 class ConcreteUniverseNode(UniverseNode):
     async def _fetch_symbols(self) -> List[AssetSymbol]:
         return [AssetSymbol("TEST", AssetClass.CRYPTO, "USDT")]

@@ -2,6 +2,7 @@ import asyncio
 from typing import Any, AsyncGenerator, Dict, List
 
 import pytest
+import core.graph_executor as graph_executor_module
 
 from fastapi.testclient import TestClient
 import ui.server as server_module
@@ -68,11 +69,11 @@ def test_streaming_flow_success(monkeypatch):
         created.append(inst)
         return inst
 
-    monkeypatch.setattr(server_module, "GraphExecutor", _factory, raising=True)
+    monkeypatch.setattr(graph_executor_module, "GraphExecutor", _factory, raising=True)
 
     client = TestClient(server_module.app)
     with client.websocket_connect("/execute") as ws:
-        ws.send_json({"nodes": [], "links": []})
+        ws.send_json({"type": "graph", "graph_data": {"nodes": [], "links": []}})
         st1 = _recv_until_type(ws, "status")
         assert "Starting execution" in st1.get("message", "")
         st2 = _recv_until_type(ws, "status")
@@ -98,11 +99,11 @@ def test_batch_flow_success(monkeypatch):
         created.append(inst)
         return inst
 
-    monkeypatch.setattr(server_module, "GraphExecutor", _factory, raising=True)
+    monkeypatch.setattr(graph_executor_module, "GraphExecutor", _factory, raising=True)
 
     client = TestClient(server_module.app)
     with client.websocket_connect("/execute") as ws:
-        ws.send_json({"nodes": [], "links": []})
+        ws.send_json({"type": "graph", "graph_data": {"nodes": [], "links": []}})
         st1 = _recv_until_type(ws, "status")
         assert "Starting execution" in st1.get("message", "")
         st2 = _recv_until_type(ws, "status")
@@ -121,17 +122,17 @@ def test_concurrency_wait_message_on_second_connection(monkeypatch):
         created.append(inst)
         return inst
 
-    monkeypatch.setattr(server_module, "GraphExecutor", _factory, raising=True)
+    monkeypatch.setattr(graph_executor_module, "GraphExecutor", _factory, raising=True)
 
     client = TestClient(server_module.app)
     with client.websocket_connect("/execute") as ws1:
-        ws1.send_json({"nodes": [], "links": []})
+        ws1.send_json({"type": "graph", "graph_data": {"nodes": [], "links": []}})
         _recv_until_type(ws1, "status")  # Starting execution
         _recv_until_type(ws1, "status")  # Stream starting
         _recv_until_type(ws1, "data")
 
         with client.websocket_connect("/execute") as ws2:
-            ws2.send_json({"nodes": [], "links": []})
+            ws2.send_json({"type": "graph", "graph_data": {"nodes": [], "links": []}})
             st = _recv_until_type(ws2, "status")
             assert "Starting execution" in st.get("message", "")
 
@@ -161,18 +162,18 @@ def test_fifo_two_batch_jobs(monkeypatch):
             return _Batch1(graph, reg)
         return _Batch2(graph, reg)
 
-    monkeypatch.setattr(server_module, "GraphExecutor", _factory, raising=True)
+    monkeypatch.setattr(graph_executor_module, "GraphExecutor", _factory, raising=True)
 
     client = TestClient(server_module.app)
     with client.websocket_connect("/execute") as ws1:
-        ws1.send_json({"nodes": [], "links": []})
+        ws1.send_json({"type": "graph", "graph_data": {"nodes": [], "links": []}})
         _recv_until_type(ws1, "status")
         _recv_until_type(ws1, "status")
         _recv_until_type(ws1, "data")
         _recv_until_type(ws1, "status")
 
     with client.websocket_connect("/execute") as ws2:
-        ws2.send_json({"nodes": [], "links": []})
+        ws2.send_json({"type": "graph", "graph_data": {"nodes": [], "links": []}})
         _recv_until_type(ws2, "status")
         _recv_until_type(ws2, "status")
         _recv_until_type(ws2, "data")
@@ -189,11 +190,11 @@ def test_queued_client_disconnect_before_start_removes_job(monkeypatch):
         created.append(inst)
         return inst
 
-    monkeypatch.setattr(server_module, "GraphExecutor", _factory, raising=True)
+    monkeypatch.setattr(graph_executor_module, "GraphExecutor", _factory, raising=True)
 
     client = TestClient(server_module.app)
     with client.websocket_connect("/execute") as ws1:
-        ws1.send_json({"nodes": [], "links": []})
+        ws1.send_json({"type": "graph", "graph_data": {"nodes": [], "links": []}})
         _recv_until_type(ws1, "status")
         _recv_until_type(ws1, "status")
         _recv_until_type(ws1, "data")
@@ -205,7 +206,7 @@ def test_queued_client_disconnect_before_start_removes_job(monkeypatch):
 
     # Test a second connection works independently
     with client.websocket_connect("/execute") as ws2:
-        ws2.send_json({"nodes": [], "links": []})
+        ws2.send_json({"type": "graph", "graph_data": {"nodes": [], "links": []}})
         _recv_until_type(ws2, "status")
         _recv_until_type(ws2, "status")
         _recv_until_type(ws2, "data")
@@ -219,13 +220,12 @@ def test_stream_error_is_reported_and_socket_closed(monkeypatch):
             yield {}  # First yield to get past initial_results
             raise RuntimeError("stream-fail")
 
-    monkeypatch.setattr(server_module, "GraphExecutor", lambda g, r: _BadStream(g, r), raising=True)
+    monkeypatch.setattr(graph_executor_module, "GraphExecutor", lambda g, r: _BadStream(g, r), raising=True)
 
     client = TestClient(server_module.app)
     with client.websocket_connect("/execute") as ws:
-        ws.send_json({"nodes": [], "links": []})
+        ws.send_json({"type": "graph", "graph_data": {"nodes": [], "links": []}})
         _recv_until_type(ws, "status")  # "Starting execution"
-        _recv_until_type(ws, "status")  # "Stream starting..."
         _recv_until_type(ws, "data")    # Initial results
         msg = ws.receive_json()         # Should get error on next iteration
         assert msg.get("type") == "error"
@@ -255,11 +255,11 @@ def test_cancellation_streaming_triggers_stop(monkeypatch):
     assert len(created) == 1
 
 def test_batch_error_propagation(monkeypatch):
-    monkeypatch.setattr(server_module, "GraphExecutor", _ErrorExecDummy, raising=True)
+    monkeypatch.setattr(graph_executor_module, "GraphExecutor", _ErrorExecDummy, raising=True)
 
     client = TestClient(server_module.app)
     with client.websocket_connect("/execute") as ws:
-        ws.send_json({"nodes": [], "links": []})
+        ws.send_json({"type": "graph", "graph_data": {"nodes": [], "links": []}})
         msg = ws.receive_json()
         if msg.get("type") != "error":
             while msg.get("type") != "error":
@@ -285,11 +285,11 @@ def test_batch_cancellation_on_disconnect(monkeypatch):
         created.append(inst)
         return inst
 
-    monkeypatch.setattr(server_module, "GraphExecutor", _factory, raising=True)
+    monkeypatch.setattr("core.graph_executor", "GraphExecutor", _factory, raising=True)
 
     client = TestClient(server_module.app)
     with client.websocket_connect("/execute") as ws:
-        ws.send_json({"nodes": [], "links": []})
+        ws.send_json({"type": "graph", "graph_data": {"nodes": [], "links": []}})
         _recv_until_type(ws, "status")  # Starting
         _recv_until_type(ws, "status")  # Executing batch
         # Close connection before batch completes
@@ -317,11 +317,11 @@ def test_no_send_after_disconnect_during_progress(monkeypatch):
                 self.progress_callback(1, 100.0, "Done")
             return await super().execute()
 
-    monkeypatch.setattr(server_module, "GraphExecutor", _ProgressBatch, raising=True)
+    monkeypatch.setattr(graph_executor_module, "GraphExecutor", _ProgressBatch, raising=True)
 
     client = TestClient(server_module.app)
     with client.websocket_connect("/execute") as ws:
-        ws.send_json({"nodes": [], "links": []})
+        ws.send_json({"type": "graph", "graph_data": {"nodes": [], "links": []}})
         _recv_until_type(ws, "status")
         _recv_until_type(ws, "status")
         # Close before progress messages are sent
@@ -351,14 +351,14 @@ def test_rapid_stop_execute_cycles(monkeypatch):
             # Quick stop
             pass
 
-    monkeypatch.setattr(server_module, "GraphExecutor", _QuickBatch, raising=True)
+    monkeypatch.setattr(graph_executor_module, "GraphExecutor", _QuickBatch, raising=True)
 
     client = TestClient(server_module.app)
 
     # Test multiple rapid execute/stop cycles
     for cycle in range(5):
         with client.websocket_connect("/execute") as ws:
-            ws.send_json({"nodes": [], "links": []})
+            ws.send_json({"type": "graph", "graph_data": {"nodes": [], "links": []}})
             # Start execution
             _recv_until_type(ws, "status")  # "Starting execution"
             _recv_until_type(ws, "status")  # "Executing batch"
@@ -388,11 +388,11 @@ def test_stop_before_execution_starts(monkeypatch):
             await asyncio.sleep(0.5)  # Slow execution
             return await super().execute()
 
-    monkeypatch.setattr(server_module, "GraphExecutor", _SlowStartingBatch, raising=True)
+    monkeypatch.setattr(graph_executor_module, "GraphExecutor", _SlowStartingBatch, raising=True)
 
     client = TestClient(server_module.app)
     with client.websocket_connect("/execute") as ws:
-        ws.send_json({"nodes": [], "links": []})
+        ws.send_json({"type": "graph", "graph_data": {"nodes": [], "links": []}})
         # Receive initial status
         _recv_until_type(ws, "status")  # "Starting execution"
 
@@ -419,7 +419,7 @@ def test_multiple_concurrent_connections_queue_properly(monkeypatch):
             await asyncio.sleep(0.2)  # Simulate work
             return await super().execute()
 
-    monkeypatch.setattr(server_module, "GraphExecutor", _TrackedBatch, raising=True)
+    monkeypatch.setattr(graph_executor_module, "GraphExecutor", _TrackedBatch, raising=True)
 
     client = TestClient(server_module.app)
     results = []
@@ -428,7 +428,7 @@ def test_multiple_concurrent_connections_queue_properly(monkeypatch):
     def run_connection(conn_id):
         try:
             with client.websocket_connect("/execute") as ws:
-                ws.send_json({"nodes": [], "links": []})
+                ws.send_json({"type": "graph", "graph_data": {"nodes": [], "links": []}})
                 _recv_until_type(ws, "status")  # Starting
                 _recv_until_type(ws, "status")  # Executing
                 data = _recv_until_type(ws, "data")
@@ -476,11 +476,11 @@ def test_cancel_during_streaming_execution(monkeypatch):
             if self.stream_count == 1:
                 yield {1: {"assistant_text": "second chunk"}}
 
-    monkeypatch.setattr(server_module, "GraphExecutor", _StreamingExec, raising=True)
+    monkeypatch.setattr("core.graph_executor", "GraphExecutor", _StreamingExec, raising=True)
 
     client = TestClient(server_module.app)
     with client.websocket_connect("/execute") as ws:
-        ws.send_json({"nodes": [], "links": []})
+        ws.send_json({"type": "graph", "graph_data": {"nodes": [], "links": []}})
         _recv_until_type(ws, "status")  # "Starting execution"
         _recv_until_type(ws, "status")  # "Stream starting..."
         _recv_until_type(ws, "data")     # Initial results
@@ -505,13 +505,39 @@ def test_stop_message_no_active_job(monkeypatch):
 
 
 
-def test_stop_message_no_active_job(monkeypatch):
-    """Test stop message when no active job exists."""
+# Duplicate test removed due to refactor to single-queue path
+
+
+def test_stop_cancellation_via_stop_message(monkeypatch):
+    created: List[_BatchExecDummy] = []
+
+    class _LongBatch(_BatchExecDummy):
+        async def execute(self):
+            # Simulate long-running batch
+            await asyncio.sleep(2.0)
+            return await super().execute()
+
+    def _factory(graph, reg):
+        inst = _LongBatch(graph, reg)
+        created.append(inst)
+        return inst
+
+    monkeypatch.setattr(graph_executor_module, "GraphExecutor", _factory, raising=True)
+
     client = TestClient(server_module.app)
     with client.websocket_connect("/execute") as ws:
-        # Send stop message without starting any execution
+        ws.send_json({"type": "graph", "graph_data": {"nodes": [], "links": []}})
+        _recv_until_type(ws, "status")  # Starting execution
+        _recv_until_type(ws, "status")  # Executing batch
+
+        # Request stop and allow time for cancellation to propagate
         ws.send_json({"type": "stop"})
 
-        # Should receive stopped confirmation with "no active job" message
-        stopped_msg = _recv_until_type(ws, "stopped")
-        assert "no active job" in stopped_msg.get("message", "").lower()
+        # Poll for stop_called to become True
+        for _ in range(20):
+            if created and created[0].stop_called:
+                break
+            time.sleep(0.05)
+
+    # Verify the executor's stop was invoked
+    assert created and created[0].stop_called

@@ -29,9 +29,8 @@ class StreamingNode(BaseNode, ABC):
         Stop the streaming operation cleanly.
         """
 
-    @abstractmethod
     def interrupt(self):
-        """Forcefully interrupt any blocking operations."""
+        """Forcefully interrupt any blocking operations. Default no-op."""
         pass
 
     def force_stop(self):
