@@ -1,0 +1,428 @@
+{
+    "id": "00000000-0000-0000-0000-000000000000",
+    "revision": 0,
+    "last_node_id": 8,
+    "last_link_id": 8,
+    "nodes": [
+        {
+            "id": 3,
+            "type": "PolygonCustomBarsNode",
+            "pos": [
+                654.7965698242188,
+                365.4978942871094
+            ],
+            "size": [
+                275.98321533203125,
+                246
+            ],
+            "flags": {},
+            "order": 5,
+            "mode": 0,
+            "inputs": [
+                {
+                    "name": "symbol",
+                    "type": "AssetSymbol",
+                    "link": 2
+                },
+                {
+                    "name": "api_key",
+                    "type": "str",
+                    "link": 1
+                }
+            ],
+            "outputs": [
+                {
+                    "name": "ohlcv",
+                    "type": "List<OHLCVBar>",
+                    "links": [
+                        4
+                    ]
+                }
+            ],
+            "title": "PolygonCustomBarsNode",
+            "properties": {
+                "multiplier": 1,
+                "timespan": "day",
+                "lookback_period": "3 months",
+                "adjusted": true,
+                "sort": "asc",
+                "limit": 5000
+            },
+            "color": "#2c5530",
+            "bgcolor": "#1a3320"
+        },
+        {
+            "id": 6,
+            "type": "TextToLLMMessageNode",
+            "pos": [
+                1050.125244140625,
+                361.28656005859375
+            ],
+            "size": [
+                210,
+                102
+            ],
+            "flags": {},
+            "order": 6,
+            "mode": 0,
+            "inputs": [
+                {
+                    "name": "data",
+                    "type": 0,
+                    "link": 4
+                }
+            ],
+            "outputs": [
+                {
+                    "name": "message",
+                    "type": "LLMChatMessage",
+                    "links": null
+                },
+                {
+                    "name": "messages",
+                    "type": "List<LLMChatMessage>",
+                    "links": [
+                        5
+                    ]
+                }
+            ],
+            "title": "TextToLLMMessageNode",
+            "properties": {
+                "role": "user",
+                "format": "readable"
+            }
+        },
+        {
+            "id": 7,
+            "type": "OllamaModelSelectorNode",
+            "pos": [
+                1019.4288940429688,
+                112.61367797851562
+            ],
+            "size": [
+                280,
+                140
+            ],
+            "flags": {},
+            "order": 1,
+            "mode": 0,
+            "inputs": [],
+            "outputs": [
+                {
+                    "name": "host",
+                    "type": "str",
+                    "links": [
+                        6
+                    ]
+                },
+                {
+                    "name": "model",
+                    "type": "str",
+                    "links": [
+                        7
+                    ]
+                }
+            ],
+            "title": "OllamaModelSelectorNode",
+            "properties": {
+                "host": "http://localhost:11434",
+                "selected": "qwen3:8b"
+            },
+            "color": "#1f2a44",
+            "bgcolor": "#0f172a"
+        },
+        {
+            "id": 5,
+            "type": "AssetSymbolInputNode",
+            "pos": [
+                242.1421356201172,
+                382.4833068847656
+            ],
+            "size": [
+                210,
+                154
+            ],
+            "flags": {},
+            "order": 2,
+            "mode": 0,
+            "inputs": [],
+            "outputs": [
+                {
+                    "name": "symbol",
+                    "type": "AssetSymbol",
+                    "links": [
+                        2
+                    ]
+                }
+            ],
+            "title": "AssetSymbolInputNode",
+            "properties": {
+                "ticker": "TSLA",
+                "asset_class": "STOCKS",
+                "quote_currency": "USD",
+                "provider": "POLYGON",
+                "instrument_type": "SPOT"
+            }
+        },
+        {
+            "id": 2,
+            "type": "TextInputNode",
+            "pos": [
+                1068.0350341796875,
+                668.6627807617188
+            ],
+            "size": [
+                301.4808654785156,
+                202.8874969482422
+            ],
+            "flags": {},
+            "order": 3,
+            "mode": 0,
+            "inputs": [],
+            "outputs": [
+                {
+                    "name": "text",
+                    "type": "str",
+                    "links": [
+                        3
+                    ]
+                }
+            ],
+            "title": "TextInputNode",
+            "properties": {
+                "value": "Analyze the tsla stock price action and determine its trend"
+            }
+        },
+        {
+            "id": 1,
+            "type": "OllamaChatNode",
+            "pos": [
+                1514.5816650390625,
+                190.73800659179688
+            ],
+            "size": [
+                320,
+                394
+            ],
+            "flags": {},
+            "order": 7,
+            "mode": 0,
+            "inputs": [
+                {
+                    "name": "host",
+                    "type": "str",
+                    "link": 6
+                },
+                {
+                    "name": "model",
+                    "type": "str",
+                    "link": 7
+                },
+                {
+                    "name": "messages",
+                    "type": "List<LLMChatMessage>",
+                    "link": 5
+                },
+                {
+                    "name": "prompt",
+                    "type": "str",
+                    "link": 3
+                },
+                {
+                    "name": "system",
+                    "type": "str",
+                    "link": null
+                },
+                {
+                    "name": "tools",
+                    "type": "List<LLMToolSpec>",
+                    "link": null
+                },
+                {
+                    "name": "tool",
+                    "type": "LLMToolSpec",
+                    "link": null
+                }
+            ],
+            "outputs": [
+                {
+                    "name": "message",
+                    "type": "str",
+                    "links": [
+                        8
+                    ]
+                },
+                {
+                    "name": "metrics",
+                    "type": "LLMChatMetrics",
+                    "links": null
+                },
+                {
+                    "name": "tool_history",
+                    "type": "List<LLMToolHistoryItem>",
+                    "links": null
+                },
+                {
+                    "name": "thinking_history",
+                    "type": "List<LLMThinkingHistoryItem>",
+                    "links": null
+                }
+            ],
+            "title": "OllamaChatNode",
+            "properties": {
+                "stream": false,
+                "temperature": 0.7,
+                "seed_mode": "fixed",
+                "seed": 0,
+                "think": false,
+                "max_tool_iters": 2,
+                "tool_timeout_s": 10,
+                "json_mode": false
+            },
+            "color": "#1f2a44",
+            "bgcolor": "#0b1220"
+        },
+        {
+            "id": 8,
+            "type": "LoggingNode",
+            "pos": [
+                2029.117919921875,
+                190.56768798828125
+            ],
+            "size": [
+                400,
+                300
+            ],
+            "flags": {},
+            "order": 4,
+            "mode": 0,
+            "inputs": [
+                {
+                    "name": "input",
+                    "type": 0,
+                    "link": 8
+                }
+            ],
+            "outputs": [
+                {
+                    "name": "output",
+                    "type": "str",
+                    "links": null
+                }
+            ],
+            "title": "LoggingNode",
+            "properties": {
+                "format": "auto"
+            }
+        },
+        {
+            "id": 4,
+            "type": "PolygonAPIKeyNode",
+            "pos": [
+                203.0321044921875,
+                660.6071166992188
+            ],
+            "size": [
+                280,
+                120
+            ],
+            "flags": {},
+            "order": 0,
+            "mode": 0,
+            "inputs": [],
+            "outputs": [
+                {
+                    "name": "api_key",
+                    "type": "str",
+                    "links": [
+                        1
+                    ]
+                }
+            ],
+            "title": "PolygonAPIKeyNode",
+            "properties": {
+                "api_key": "GxJgmIYQlDdnrPVoLQm56RBHJxR4BZTL"
+            },
+            "color": "#8b5a3c",
+            "bgcolor": "#3d2818"
+        }
+    ],
+    "links": [
+        [
+            1,
+            4,
+            0,
+            3,
+            1,
+            "str"
+        ],
+        [
+            2,
+            5,
+            0,
+            3,
+            0,
+            "AssetSymbol"
+        ],
+        [
+            3,
+            2,
+            0,
+            1,
+            3,
+            "str"
+        ],
+        [
+            4,
+            3,
+            0,
+            6,
+            0,
+            "List<OHLCVBar>"
+        ],
+        [
+            5,
+            6,
+            1,
+            1,
+            2,
+            "List<LLMChatMessage>"
+        ],
+        [
+            6,
+            7,
+            0,
+            1,
+            0,
+            "str"
+        ],
+        [
+            7,
+            7,
+            1,
+            1,
+            1,
+            "str"
+        ],
+        [
+            8,
+            1,
+            0,
+            8,
+            0,
+            "str"
+        ]
+    ],
+    "groups": [],
+    "config": {},
+    "extra": {
+        "ds": {
+            "scale": 0.9090909090909092,
+            "offset": [
+                94.48388,
+                66.13631999999996
+            ]
+        }
+    },
+    "version": 0.4
+}

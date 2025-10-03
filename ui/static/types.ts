@@ -1,6 +1,5 @@
-// types.ts - Extensible type registry for frontend
+// types.ts - Frontend type helpers: string construction + color mapping
 
-// Update TypeInfo interface
 export interface TypeInfo {
     base: string;
     subtype?: TypeInfo;
@@ -10,7 +9,6 @@ export interface TypeInfo {
     isStream?: boolean;
 }
 
-// Add function to construct type string
 export function constructTypeString(typeInfo: TypeInfo): string {
     let typeStr = typeInfo.base;
     if (typeInfo.isStream) {
@@ -26,39 +24,40 @@ export function constructTypeString(typeInfo: TypeInfo): string {
     return typeStr;
 }
 
-// Update getTypeColor to use constructTypeString
-export function getTypeColor(typeInfo: TypeInfo): string {
-    const typeString = constructTypeString(typeInfo);
-    return TYPE_COLORS[typeString] || '#FFFFFF';
-}
-
-// Update TYPE_COLORS with constructed strings and add more from backend registry
-export const TYPE_COLORS: { [type: string]: string } = {
+// Deterministic color from type string with optional overrides.
+// This avoids manual syncing with backend type registry.
+const TYPE_COLOR_OVERRIDES: { [type: string]: string } = {
+    // Example curated overrides for core types (optional)
     'AssetSymbol': '#FF6D00',
-    'list<AssetSymbol>': '#22A7F0',
-    'str': '#E74C3C',
-    'int': '#2ECC71',
-    'float': '#2ECC71',
-    'dict<str, float>': '#9B59B6',  // For IndicatorDict
-    'list<any>': '#3498DB',         // For AnyList
-    'dict<str, any>': '#9B59B6',    // For ConfigDict
-    'list<dict<str, any>>': '#BDC3C7',         // For OHLCV
-    'dict<AssetSymbol, list<dict<str, any>>>': '#BDC3C7',  // For OHLCVBundle
-    'any': '#FFFFFF',
-    'list<str>': '#E74C3C',
 };
 
-// Update registerType to use constructed strings if needed
-export function registerType(typeString: string, color: string) {
-    if (typeString in TYPE_COLORS) {
-        console.warn(`Overwriting color for type ${typeString}`);
+function hashString(str: string): number {
+    // Small, fast 32-bit hash (FNV-1a variant)
+    let h = 0x811c9dc5;
+    for (let i = 0; i < str.length; i++) {
+        h ^= str.charCodeAt(i);
+        h = Math.imul(h, 0x01000193);
     }
-    TYPE_COLORS[typeString] = color;
+    return h >>> 0;
 }
 
-// Example registrations
-registerType('AssetSymbol', TYPE_COLORS['AssetSymbol']);
-registerType('list<AssetSymbol>', TYPE_COLORS['list<AssetSymbol>']);
-registerType('stream<OHLCVBundle>', '#FF00FF'); // Example for OHLCVStream
-// Add registrations for other types if necessary
+function hslFromHash(hash: number): string {
+    const hue = hash % 360;
+    const sat = 55 + (hash >> 3) % 20; // 55-74
+    const light = 52 + (hash >> 5) % 16; // 52-67
+    return `hsl(${hue}, ${sat}%, ${light}%)`;
+}
 
+export function getTypeColor(typeInfo: TypeInfo): string {
+    const typeString = constructTypeString(typeInfo);
+    if (TYPE_COLOR_OVERRIDES[typeString]) return TYPE_COLOR_OVERRIDES[typeString];
+    return hslFromHash(hashString(typeString.toLowerCase()));
+}
+
+export function registerTypeColorOverride(typeString: string, color: string) {
+    TYPE_COLOR_OVERRIDES[typeString] = color;
+}
+
+export function getTypeColorOverrides(): { [type: string]: string } {
+    return { ...TYPE_COLOR_OVERRIDES };
+}

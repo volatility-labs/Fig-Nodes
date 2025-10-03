@@ -2,7 +2,24 @@ export function updateStatus(status: 'connected' | 'disconnected' | 'loading' | 
     const indicator = document.getElementById('status-indicator');
     if (indicator) {
         indicator.className = `status-indicator ${status}`;
-        indicator.textContent = message || status.charAt(0).toUpperCase() + status.slice(1);
+        // Use tooltip/aria label instead of visible text to avoid layout conflicts
+        const label = message || status.charAt(0).toUpperCase() + status.slice(1);
+        indicator.setAttribute('title', label);
+        indicator.setAttribute('aria-label', label);
+        if (indicator.firstChild) {
+            indicator.textContent = '';
+        }
+    }
+
+    // Mirror status text into the top progress bar label
+    const progressRoot = document.getElementById('top-progress');
+    const progressText = document.getElementById('top-progress-text');
+    if (progressText) {
+        progressText.textContent = message || status.charAt(0).toUpperCase() + status.slice(1);
+    }
+    // Keep the container visible so text can be shown even when the bar is idle
+    if (progressRoot) {
+        progressRoot.style.display = 'block';
     }
 }
 

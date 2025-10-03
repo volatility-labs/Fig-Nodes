@@ -14,14 +14,9 @@ async function stopExecution(): Promise<void> {
     console.log('Stop execution: Starting stop process');
     executionState = 'stopping';
 
-    // Immediately update UI to show stopping state
+    // Show stopping progress with indeterminate bar and text at top
     const indicator = document.getElementById('status-indicator');
-    if (indicator) {
-        indicator.className = `status-indicator executing`;
-        indicator.textContent = 'Stopping...';
-    }
-
-    // Show stopping progress with indeterminate bar
+    if (indicator) indicator.className = `status-indicator executing`;
     const progressRoot = document.getElementById('top-progress');
     const progressBar = document.getElementById('top-progress-bar');
     const progressText = document.getElementById('top-progress-text');
@@ -60,14 +55,16 @@ function forceCleanup() {
     const indicator = document.getElementById('status-indicator');
     if (indicator) {
         indicator.className = `status-indicator connected`;
-        indicator.textContent = 'Ready';
     }
-    // Ensure progress bar is hidden when execution stops
+    // Ensure progress bar shows idle status when execution stops
     const progressRoot = document.getElementById('top-progress');
     const progressBar = document.getElementById('top-progress-bar');
-    if (progressRoot && progressBar) {
+    const progressText = document.getElementById('top-progress-text');
+    if (progressRoot && progressBar && progressText) {
         (progressBar as HTMLElement).style.width = '0%';
-        progressRoot.style.display = 'none';
+        progressBar.classList.remove('indeterminate');
+        progressText.textContent = 'Ready';
+        progressRoot.style.display = 'block';
     }
 
     if (stopPromiseResolver) {
@@ -106,7 +103,9 @@ export function setupWebSocket(graph: LGraph, _canvas: LGraphCanvas) {
     const hideProgress = () => {
         if (progressRoot && progressBar) {
             (progressBar as HTMLElement).style.width = '0%';
-            progressRoot.style.display = 'none';
+            progressBar.classList.remove('indeterminate');
+            // Keep root visible so status text remains at the top
+            progressRoot.style.display = 'block';
         }
     };
 
@@ -134,7 +133,6 @@ export function setupWebSocket(graph: LGraph, _canvas: LGraphCanvas) {
         const indicator = document.getElementById('status-indicator');
         if (indicator) {
             indicator.className = `status-indicator executing`;
-            indicator.textContent = 'Connecting...';
         }
         document.getElementById('execute')!.style.display = 'none';
         document.getElementById('stop')!.style.display = 'inline-block';
@@ -149,10 +147,7 @@ export function setupWebSocket(graph: LGraph, _canvas: LGraphCanvas) {
 
         ws.onopen = () => {
             executionState = 'executing';
-            if (indicator) {
-                indicator.className = `status-indicator executing`;
-                indicator.textContent = 'Running...';
-            }
+            if (indicator) indicator.className = `status-indicator executing`;
             ws?.send(JSON.stringify({ type: "graph", graph_data: graphData }));
         };
 
@@ -160,10 +155,7 @@ export function setupWebSocket(graph: LGraph, _canvas: LGraphCanvas) {
             const data = JSON.parse(event.data);
 
             if (data.type === 'status') {
-                if (indicator) {
-                    indicator.className = `status-indicator executing`;
-                    indicator.textContent = data.message;
-                }
+                if (indicator) indicator.className = `status-indicator executing`;
                 // Keep progress visible and reflect coarse states
                 const msg: string = data.message || '';
                 if (/starting/i.test(msg)) {
@@ -189,10 +181,7 @@ export function setupWebSocket(graph: LGraph, _canvas: LGraphCanvas) {
             } else if (data.type === 'data') {
                 // Overlay is never shown during execution now
                 if (Object.keys(data.results).length === 0) {
-                    if (indicator) {
-                        indicator.className = `status-indicator executing`;
-                        indicator.textContent = 'Stream started...';
-                    }
+                    if (indicator) indicator.className = `status-indicator executing`;
                     showProgress('Streaming...', false);
                     return;
                 }
@@ -247,7 +236,6 @@ export function setupWebSocket(graph: LGraph, _canvas: LGraphCanvas) {
                 showError(data.message);
                 if (indicator) {
                     indicator.className = `status-indicator disconnected`;
-                    indicator.textContent = `Error: ${data.message}`;
                 }
                 forceCleanup();
                 hideProgress();
@@ -262,10 +250,7 @@ export function setupWebSocket(graph: LGraph, _canvas: LGraphCanvas) {
 
         ws.onerror = (err) => {
             console.error('WebSocket error:', err);
-            if (indicator) {
-                indicator.className = `status-indicator disconnected`;
-                indicator.textContent = 'Connection error';
-            }
+            if (indicator) indicator.className = `status-indicator disconnected`;
             forceCleanup();
             hideProgress();
         };

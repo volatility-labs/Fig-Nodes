@@ -43,6 +43,11 @@ async def _shutdown_queue_worker():
         await asyncio.gather(*tasks, return_exceptions=True)
 
 app.mount("/static", StaticFiles(directory=os.path.join(os.path.dirname(__file__), "static/dist")), name="static")
+app.mount(
+    "/examples",
+    StaticFiles(directory=os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "examples"))),
+    name="examples",
+)
 
 def _get_queue_for_current_loop(app) -> ExecutionQueue:
     """Get or create the ExecutionQueue for the current event loop."""

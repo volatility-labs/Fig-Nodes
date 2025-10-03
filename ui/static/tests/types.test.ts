@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'vitest';
-import { constructTypeString, getTypeColor, registerType, TYPE_COLORS } from '../types';
+import { constructTypeString, getTypeColor, registerTypeColorOverride, getTypeColorOverrides } from '../types';
 
 describe('types.ts', () => {
-    test('getTypeColor returns correct color for AssetSymbol', () => {
+    test('getTypeColor returns deterministic color for AssetSymbol (override present)', () => {
         expect(getTypeColor({ base: 'AssetSymbol' })).toBe('#FF6D00');
     });
 
@@ -18,15 +18,16 @@ describe('types.ts', () => {
             .toBe('multi<str, int>');
     });
 
-    test('getTypeColor falls back to default for unknown types', () => {
-        expect(getTypeColor({ base: 'UnknownType' })).toBe('#FFFFFF');
+    test('getTypeColor generates an hsl color for unknown types', () => {
+        const color = getTypeColor({ base: 'UnknownType' });
+        expect(color.startsWith('hsl(')).toBe(true);
     });
 
-    test('registerType adds and overwrites colors', () => {
+    test('registerTypeColorOverride adds and overwrites overrides', () => {
         const key = 'CustomType';
-        registerType(key, '#ABCDEF');
-        expect(TYPE_COLORS[key]).toBe('#ABCDEF');
-        registerType(key, '#123456');
-        expect(TYPE_COLORS[key]).toBe('#123456');
+        registerTypeColorOverride(key, '#ABCDEF');
+        expect(getTypeColorOverrides()[key]).toBe('#ABCDEF');
+        registerTypeColorOverride(key, '#123456');
+        expect(getTypeColorOverrides()[key]).toBe('#123456');
     });
 });

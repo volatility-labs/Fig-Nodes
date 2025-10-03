@@ -14,12 +14,23 @@
             <canvas id="litegraph-canvas" tabindex="0"></canvas>
         </div>
         <div id="footer">
-            <div id="status-indicator" class="status-indicator"></div>
-            <div class="controls">
-                <button id="execute">Execute Graph</button>
-                <button id="stop" style="display: none;">Stop</button>
-                <button id="save">Save Graph</button>
-                <button id="load">Load Graph</button>
+            <div class="footer-section footer-left">
+                <div id="status-indicator" class="status-indicator"></div>
+                <div class="graph-info">
+                    <span class="graph-name" id="graph-name">default-graph.json</span>
+                </div>
+            </div>
+            <div class="footer-section footer-center">
+                <div class="control-group file-controls">
+                    <button id="save" class="btn-secondary">Save</button>
+                    <button id="load" class="btn-secondary">Load</button>
+                </div>
+            </div>
+            <div class="footer-section footer-right">
+                <div class="control-group execution-controls">
+                    <button id="execute" class="btn-primary">Execute</button>
+                    <button id="stop" class="btn-stop" style="display: none;">Stop</button>
+                </div>
             </div>
         </div>
     </div>
