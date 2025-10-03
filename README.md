@@ -43,6 +43,8 @@ Then start the development local server:
 python main.py --dev
 ```
 
+The default graph should load. Press `Execute` at the bottom right of the canvas. 
+
 ## Testing
 
 To run the unit tests:
