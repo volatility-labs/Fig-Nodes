@@ -1,6 +1,6 @@
 # Fig Nodes (Beta)
 
-Inspired by ComfyUI for AI and litegraph, Fig Nodes makes it easy to build agentic finance and trading workflows.  
+Fig Nodes makes it easy to build agentic finance and trading workflows.  
 
 1. Intuitive plug and play UI to build asset universe scanning, trading, visualization, position management, and data services logic. 
 2. Modular node design allowing any developer to build new nodes with custom logic with plug and play architecture. 
