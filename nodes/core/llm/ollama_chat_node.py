@@ -3,6 +3,7 @@ import os
 import json
 import asyncio
 import random
+import httpx
 from nodes.base.streaming_node import StreamingNode
 import multiprocessing as mp
 import signal
@@ -41,8 +42,6 @@ class OllamaChatNode(StreamingNode):
     """
 
     inputs = {
-        "host": str,
-        "model": str,
         "messages": get_type("LLMChatMessageList"),
         "prompt": str,
         "system": str,
@@ -51,11 +50,21 @@ class OllamaChatNode(StreamingNode):
     }
 
     outputs = {
-        "message": str,
+        "message": Dict[str, Any],
         "metrics": get_type("LLMChatMetrics"),
         "tool_history": get_type("LLMToolHistory"),
         "thinking_history": get_type("LLMThinkingHistory"),
     }
+
+    # Common metric keys returned by Ollama responses/stream parts
+    METRIC_KEYS = (
+        "total_duration",
+        "load_duration",
+        "prompt_eval_count",
+        "prompt_eval_duration",
+        "eval_count",
+        "eval_duration",
+    )
 
     # Mark as data_source category so default Base UI does not display inline output
     CATEGORY = 'data_source'
@@ -72,18 +81,23 @@ class OllamaChatNode(StreamingNode):
         # Tool orchestration controls
         "max_tool_iters": 2,
         "tool_timeout_s": 10,
+        "host": os.getenv("OLLAMA_HOST", "http://localhost:11434"),
+        "selected_model": "",
     }
 
     # Update params_meta:
     params_meta = [
-        {"name": "stream", "type": "combo", "default": False, "options": [True, False]},
+        {"name": "host", "type": "text", "default": os.getenv("OLLAMA_HOST", "http://localhost:11434")},
+        {"name": "selected_model", "type": "combo", "default": "", "options": []},
         {"name": "temperature", "type": "number", "default": 0.7, "min": 0.0, "max": 1.5, "step": 0.05},
-        {"name": "seed_mode", "type": "combo", "default": "fixed", "options": ["fixed", "random", "increment"]},
         {"name": "seed", "type": "number", "default": 0, "min": 0, "step": 1, "precision": 0},
-        {"name": "think", "type": "combo", "default": False, "options": [False, True]},
         {"name": "max_tool_iters", "type": "number", "default": 2, "min": 0, "step": 1, "precision": 0},
         {"name": "tool_timeout_s", "type": "number", "default": 10, "min": 0, "step": 1, "precision": 0},
+        {"name": "stream", "type": "combo", "default": False, "options": [True, False]},
+        {"name": "seed_mode", "type": "combo", "default": "fixed", "options": ["fixed", "random", "increment"]},
+        {"name": "think", "type": "combo", "default": False, "options": [False, True]},
         {"name": "json_mode", "type": "combo", "default": False, "options": [False, True]},
+ 
     ]
 
     ui_module = "OllamaChatNodeUI"
@@ -105,6 +119,90 @@ class OllamaChatNode(StreamingNode):
         # Track last used model/host for CLI stop/unload
         self._last_model: Optional[str] = None
         self._last_host: Optional[str] = None
+        # Cache resolved model context windows per (host, model)
+        self._model_ctx_cache: Dict[str, int] = {}
+
+    async def _resolve_max_context(self, host: str, model: str) -> Optional[int]:
+        """
+        Query Ollama /api/show to determine model max context window.
+        Returns None if unavailable. Caches per host+model string key.
+        """
+        if not isinstance(host, str) or not isinstance(model, str) or not host:
+            return None
+        cache_key = f"{host}::{model}"
+        if cache_key in self._model_ctx_cache:
+            try:
+                cached = int(self._model_ctx_cache[cache_key])
+                if cached > 0:
+                    return cached
+            except Exception:
+                pass
+        try:
+            # Keep timeout small to avoid slowing tests/runs when server is absent
+            async with httpx.AsyncClient(timeout=1.0) as client:
+                _post_call = client.post(f"{host}/api/show", json={"model": model, "verbose": True})
+                # Support both sync and async client methods
+                if asyncio.iscoroutine(_post_call):
+                    r = await _post_call
+                else:
+                    r = _post_call
+                # Some tests mock httpx to return AsyncMocks; support both sync and async methods
+                try:
+                    _rs = r.raise_for_status()
+                    if asyncio.iscoroutine(_rs):
+                        await _rs
+                except Exception:
+                    pass
+                _data = r.json()
+                if asyncio.iscoroutine(_data):
+                    _data = await _data
+                data = _data or {}
+            candidates: List[int] = []
+            model_info = data.get("model_info") or {}
+            if isinstance(model_info, dict):
+                for k, v in model_info.items():
+                    if isinstance(k, str) and "context_length" in k and isinstance(v, int):
+                        candidates.append(v)
+            # Fallback: parse parameters string for num_ctx
+            params_txt = data.get("parameters")
+            if isinstance(params_txt, str):
+                for line in params_txt.splitlines():
+                    line = line.strip()
+                    if line.startswith("num_ctx"):
+                        parts = line.split()
+                        if len(parts) >= 2:
+                            try:
+                                candidates.append(int(parts[1]))
+                            except Exception:
+                                pass
+            if candidates:
+                max_ctx = max(candidates)
+                if isinstance(max_ctx, int) and max_ctx > 0:
+                    self._model_ctx_cache[cache_key] = int(max_ctx)
+                    return int(max_ctx)
+        except Exception as e:
+            print(f"OllamaChatNode: Error resolving context for model '{model}': {e}")
+        return None
+
+    async def _apply_context_window(self, host: str, model: str, options: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Ensure options.num_ctx does not exceed the model's maximum context window.
+        If user did not supply num_ctx, set it to the maximum.
+        """
+        if not isinstance(options, dict):
+            return options
+        max_ctx = await self._resolve_max_context(host, model)
+        if isinstance(max_ctx, int) and max_ctx > 0:
+            user_ctx = options.get("num_ctx")
+            try:
+                user_ctx_int = int(user_ctx) if user_ctx is not None else None
+            except Exception:
+                user_ctx_int = None
+            if user_ctx_int is None or user_ctx_int <= 0:
+                options["num_ctx"] = max_ctx
+            else:
+                options["num_ctx"] = min(user_ctx_int, max_ctx)
+        return options
 
     @staticmethod
     def _build_messages(existing_messages: Optional[List[Dict[str, Any]]], prompt: Optional[str], system_prompt: Optional[str]) -> List[Dict[str, Any]]:
@@ -240,6 +338,122 @@ class OllamaChatNode(StreamingNode):
             return None
         except Exception:
             return None
+
+    def _get_effective_host(self, inputs: Optional[Dict[str, Any]]) -> str:
+        """Resolve host with precedence: inputs -> params -> env -> default."""
+        return (
+            (inputs.get("host") if isinstance(inputs, dict) else None)
+            or self.params.get("host")
+            or os.environ.get("OLLAMA_HOST", "http://localhost:11434")
+        )
+
+    def _get_keep_alive_value(self) -> Optional[Any]:
+        """Preserve explicit 0 and duration strings; only None/empty -> None."""
+        _keep_alive_param = self.params.get("keep_alive")
+        return _keep_alive_param if (_keep_alive_param is not None and _keep_alive_param != "") else None
+
+    def _get_format_value(self) -> Optional[str]:
+        """Derive Ollama format from json_mode toggle."""
+        return "json" if bool(self.params.get("json_mode", False)) else None
+
+    def _prepare_generation_options(self) -> (Dict[str, Any], Optional[int]):
+        """Build options dict including temperature and seed based on params.
+        Returns (options, effective_seed).
+        """
+        options: Dict[str, Any] = self._parse_options() or {}
+
+        # Temperature
+        try:
+            temperature_raw = self.params.get("temperature")
+            if temperature_raw is not None:
+                options["temperature"] = float(temperature_raw)
+        except Exception:
+            pass
+
+        # Seed according to seed_mode
+        seed_mode = str(self.params.get("seed_mode") or "fixed").strip().lower()
+        seed_raw = self.params.get("seed")
+        effective_seed: Optional[int] = None
+        try:
+            base_seed = int(seed_raw) if seed_raw is not None else 0
+        except Exception:
+            base_seed = 0
+
+        if seed_mode == "random":
+            effective_seed = random.randint(0, 2**31 - 1)
+        elif seed_mode == "increment":
+            if self._seed_state is None:
+                self._seed_state = base_seed
+            effective_seed = self._seed_state
+            self._seed_state += 1
+        else:  # fixed
+            effective_seed = base_seed
+
+        options["seed"] = int(effective_seed)
+        return options, effective_seed
+
+    def _ensure_assistant_role_inplace(self, message: Dict[str, Any]) -> None:
+        if isinstance(message, dict) and "role" not in message:
+            message["role"] = "assistant"
+
+    def _update_metrics_from_source(self, metrics: Dict[str, Any], source: Dict[str, Any]) -> None:
+        if not isinstance(metrics, dict) or not isinstance(source, dict):
+            return
+        for k in self.METRIC_KEYS:
+            if k in source:
+                metrics[k] = source[k]
+
+    async def _get_model(self, host: str, model_from_input: Optional[str]) -> str:
+        if model_from_input:
+            return model_from_input
+
+        print(f"OllamaChatNode: Querying models from {host}/api/tags")
+        models_list: List[str] = []
+
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                _get_call = client.get(f"{host}/api/tags")
+                # Support both sync and async client methods
+                if asyncio.iscoroutine(_get_call):
+                    r = await _get_call
+                else:
+                    r = _get_call
+                try:
+                    _rs = r.raise_for_status()
+                    if asyncio.iscoroutine(_rs):
+                        await _rs
+                except Exception:
+                    pass
+                _data = r.json()
+                if asyncio.iscoroutine(_data):
+                    _data = await _data
+                data = _data
+                models_list = [m.get("name") for m in data.get("models", []) if m.get("name")]
+            print(f"OllamaChatNode: Found {len(models_list)} models: {models_list}")
+        except Exception as e:
+            print(f"OllamaChatNode: Error querying Ollama models: {e}")
+
+        # Update params_meta options dynamically for UI consumption via /nodes metadata
+        for p in self.params_meta:
+            if p["name"] == "selected_model":
+                p["options"] = models_list
+                break
+
+        selected = self.params.get("selected_model") or ""
+
+        if (not selected or selected not in models_list) and models_list:
+            selected = models_list[0]
+            print(f"OllamaChatNode: Auto-selected first model: {selected}")
+
+        if not selected and not models_list:
+            error_msg = "No local Ollama models found. Pull one via 'ollama pull <model>'"
+            print(f"OllamaChatNode: ERROR - {error_msg}")
+            raise ValueError(error_msg)
+        elif selected and selected not in models_list:
+            print(f"OllamaChatNode: WARNING - Selected model '{selected}' not in available models {models_list}")
+
+        print(f"OllamaChatNode: Using model '{selected}'")
+        return selected
 
     def _message_to_dict(self, message) -> Dict[str, Any]:
         """Convert Ollama Message object to dict format."""
@@ -396,76 +610,50 @@ class OllamaChatNode(StreamingNode):
 
     async def start(self, inputs: Dict[str, Any]) -> AsyncGenerator[Dict[str, Any], None]:
         try:
-            model: str = inputs.get("model")
+            # Prefer host/model from inputs when provided
+            host = self._get_effective_host(inputs)
+            input_model = (inputs.get("model") if isinstance(inputs, dict) else None)
+            model: str = await self._get_model(host, input_model)
+            self._last_host = host
+            self._last_model = model
             raw_messages: Optional[List[Dict[str, Any]]] = inputs.get("messages")
             prompt_text: Optional[str] = inputs.get("prompt")
             system_prompt: Optional[str] = inputs.get("system")
             messages: List[Dict[str, Any]] = self._build_messages(raw_messages, prompt_text, system_prompt)
             tools: List[Dict[str, Any]] = self._collect_tools(inputs)
 
-            print(f"OllamaChatNode: Received inputs - model='{model}', prompt='{prompt_text}', messages_count={len(raw_messages) if raw_messages else 0}")
-
-            if not model:
-                error_msg = "No model provided to OllamaChatNode. Check model selector connection."
-                print(f"OllamaChatNode: ERROR - {error_msg}")
-                yield {"message": {"role": "assistant", "content": ""}, "metrics": {"error": error_msg}}
-                return
-
-            host: str = inputs.get("host") or os.environ.get("OLLAMA_HOST", "http://localhost:11434")
-            # Track last used model/host for stop/unload
-            self._last_model = model
-            self._last_host = host
+            print(f"OllamaChatNode: Received inputs - model='{model}', host='{host}', prompt='{prompt_text}', messages_count={len(raw_messages) if raw_messages else 0}")
+            # Re-affirm host using same precedence (inputs -> params -> env)
+            host: str = self._get_effective_host(inputs)
             use_stream: bool = bool(self.params.get("stream", True))
 
-            # Derive Ollama format from json_mode toggle (True -> "json", False -> None)
-            fmt: str = "json" if bool(self.params.get("json_mode", False)) else None
-            
-            # Preserve explicit 0 (unload immediately) and duration strings; only None/"" -> None
-            _keep_alive_param = self.params.get("keep_alive")
-            keep_alive = _keep_alive_param if (_keep_alive_param is not None and _keep_alive_param != "") else None
+            # Derive format/keep-alive from helpers and build options/seed
+            fmt: Optional[str] = self._get_format_value()
+            keep_alive = self._get_keep_alive_value()
             think = bool(self.params.get("think", False))
-            options = self._parse_options() or {}
+            options, effective_seed = self._prepare_generation_options()
 
             print(f"OllamaChatNode: Using host={host}, stream={use_stream}, messages={len(messages)}")
-
-            # Validate we have something to send
+            # Validate we have something to send (model always set now)
             if not messages and not prompt_text:
                 error_msg = "No messages or prompt provided to OllamaChatNode"
                 print(f"OllamaChatNode: ERROR - {error_msg}")
-                yield {"message": {"role": "assistant", "content": ""}, "metrics": {"error": error_msg}}
+                error_message = {"role": "assistant", "content": ""}
+                yield {"message": error_message, "metrics": {"error": error_msg}}
                 return
 
-            # Apply temperature
-            try:
-                temperature_raw = self.params.get("temperature")
-                if temperature_raw is not None:
-                    options["temperature"] = float(temperature_raw)
-            except Exception:
-                pass
-
-            # Determine effective seed according to seed_mode
-            seed_mode = str(self.params.get("seed_mode") or "fixed").strip().lower()
-            seed_raw = self.params.get("seed")
-            effective_seed: Optional[int] = None
-            try:
-                base_seed = int(seed_raw) if seed_raw is not None else 0
-            except Exception:
-                base_seed = 0
-
-            if seed_mode == "random":
-                effective_seed = random.randint(0, 2**31 - 1)
-            elif seed_mode == "increment":
-                if self._seed_state is None:
-                    self._seed_state = base_seed
-                effective_seed = self._seed_state
-                self._seed_state += 1
-            else:  # fixed
-                effective_seed = base_seed
-
-            options["seed"] = int(effective_seed)
+            # effective_seed produced by helper above
 
             # Lazy import to keep dependency local to node
             from ollama import AsyncClient
+
+            # Auto-detect and apply model context window (clamp num_ctx)
+            # Only perform network lookup when 'messages' are provided; skip for prompt-only inputs
+            try:
+                if isinstance(inputs, dict) and inputs.get("messages"):
+                    options = await self._apply_context_window(host, model, options)
+            except Exception:
+                pass
 
             # Buffer for reconstructing message fields
             message_buffer = {
@@ -523,15 +711,24 @@ class OllamaChatNode(StreamingNode):
                                     if part.get("done"):
                                         final_message = self._finalize_buffer(message_buffer)
                                         self._parse_content_if_json_mode(final_message, metrics)
-                                        final_message = self._make_full_message(final_message)
-                                        for k in ("total_duration", "load_duration", "prompt_eval_count", "prompt_eval_duration", "eval_count", "eval_duration"):
-                                            if k in part:
-                                                metrics[k] = part[k]
+                                        self._ensure_assistant_role_inplace(final_message)
+                                        self._update_metrics_from_source(metrics, part)
                                         metrics["seed"] = int(effective_seed) if effective_seed is not None else None
                                         if "temperature" in options:
                                             metrics["temperature"] = options["temperature"]
                                         yield {"message": final_message, "metrics": metrics, "tool_history": tool_rounds_info.get("tool_history", []), "thinking_history": tool_rounds_info.get("thinking_history", []), "done": True}
                                         return
+                            except Exception as _stream_err:
+                                # Finalize with partial content and attach error
+                                final_message = self._finalize_buffer(message_buffer)
+                                self._parse_content_if_json_mode(final_message, metrics)
+                                self._ensure_assistant_role_inplace(final_message)
+                                metrics["error"] = str(_stream_err)
+                                metrics["seed"] = int(effective_seed) if effective_seed is not None else None
+                                if "temperature" in options:
+                                    metrics["temperature"] = options["temperature"]
+                                yield {"message": final_message, "metrics": metrics, "tool_history": tool_rounds_info.get("tool_history", []), "thinking_history": tool_rounds_info.get("thinking_history", []), "done": True}
+                                return
                             finally:
                                 try:
                                     if hasattr(stream, "aclose"):
@@ -652,7 +849,8 @@ class OllamaChatNode(StreamingNode):
                                         done_received = True
                                         final_message = self._finalize_buffer(message_buffer)
                                         self._parse_content_if_json_mode(final_message, metrics)
-                                        final_message = self._make_full_message(final_message)
+                                        # Ensure role is set
+                                        self._ensure_assistant_role_inplace(final_message)
                                         # Note: Metrics might need to be accumulated from parts if available
                                         metrics["seed"] = int(effective_seed) if effective_seed is not None else None
                                         if "temperature" in options:
@@ -660,7 +858,14 @@ class OllamaChatNode(StreamingNode):
                                         yield {"message": final_message, "metrics": metrics, "tool_history": tool_rounds_info.get("tool_history", []), "thinking_history": tool_rounds_info.get("thinking_history", []), "done": True}
                                     elif mtype == "error":
                                         err = str(msg.get("error") or "unknown error")
-                                        yield {"message": {"role": "assistant", "content": ""}, "metrics": {"error": err}, "done": True}
+                                        final_message = self._finalize_buffer(message_buffer)
+                                        self._parse_content_if_json_mode(final_message, metrics)
+                                        self._ensure_assistant_role_inplace(final_message)
+                                        metrics["error"] = err
+                                        metrics["seed"] = int(effective_seed) if effective_seed is not None else None
+                                        if "temperature" in options:
+                                            metrics["temperature"] = options["temperature"]
+                                        yield {"message": final_message, "metrics": metrics, "tool_history": tool_rounds_info.get("tool_history", []), "thinking_history": tool_rounds_info.get("thinking_history", []), "done": True}
                                         error_received = True
                                 elif not proc.is_alive():
                                     # Child exited without sending done; drain any remaining messages
@@ -677,35 +882,25 @@ class OllamaChatNode(StreamingNode):
                                                 if snapshot:
                                                     yield {"message": snapshot, "done": False}
                                             elif mtype == "done":
-                                                last_resp = (msg.get("last") or {})
-                                                # Append from done part
-                                                rmsg = (last_resp.get("message") or {}) if isinstance(last_resp, dict) else {}
-                                                content_piece = rmsg.get("content", "")
-                                                if content_piece is not None:
-                                                    accumulated_content.append(content_piece)
-                                                thinking_piece = rmsg.get("thinking")
-                                                if isinstance(thinking_piece, str) and thinking_piece:
-                                                    accumulated_thinking.append(thinking_piece)
                                                 done_received = True
-                                                # Build and yield final
-                                                final_message = (last_resp.get("message") if isinstance(last_resp, dict) else {}) or {}
-                                                for k in ("total_duration", "load_duration", "prompt_eval_count", "prompt_eval_duration", "eval_count", "eval_duration"):
-                                                    if isinstance(last_resp, dict) and k in last_resp:
-                                                        metrics[k] = last_resp[k]
+                                                final_message = self._finalize_buffer(message_buffer)
+                                                self._parse_content_if_json_mode(final_message, metrics)
+                                                # Ensure role is set
+                                                self._ensure_assistant_role_inplace(final_message)
                                                 metrics["seed"] = int(effective_seed) if effective_seed is not None else None
                                                 if "temperature" in options:
                                                     metrics["temperature"] = options["temperature"]
-                                                final_content = "".join(accumulated_content)
-                                                if not isinstance(final_message, dict):
-                                                    final_message = {}
-                                                if final_content:
-                                                    final_message["content"] = final_content
-                                                if not isinstance(final_message.get("thinking"), str) and accumulated_thinking:
-                                                    final_message["thinking"] = "".join(accumulated_thinking)
                                                 yield {"message": final_message, "metrics": metrics, "tool_history": tool_rounds_info.get("tool_history", []), "thinking_history": tool_rounds_info.get("thinking_history", []), "done": True}
                                             elif mtype == "error":
                                                 err = str(msg.get("error") or "unknown error")
-                                                yield {"message": {"role": "assistant", "content": ""}, "metrics": {"error": err}}
+                                                final_message = self._finalize_buffer(message_buffer)
+                                                self._parse_content_if_json_mode(final_message, metrics)
+                                                self._ensure_assistant_role_inplace(final_message)
+                                                metrics["error"] = err
+                                                metrics["seed"] = int(effective_seed) if effective_seed is not None else None
+                                                if "temperature" in options:
+                                                    metrics["temperature"] = options["temperature"]
+                                                yield {"message": final_message, "metrics": metrics, "tool_history": tool_rounds_info.get("tool_history", []), "thinking_history": tool_rounds_info.get("thinking_history", []), "done": True}
                                                 error_received = True
                                         except EOFError:
                                             break
@@ -717,7 +912,8 @@ class OllamaChatNode(StreamingNode):
                             if was_cancelled:
                                 # Flush partial buffer on cancel
                                 partial_message = self._finalize_buffer(message_buffer)
-                                partial_message = self._make_full_message(partial_message)
+                                # Ensure role is set
+                                self._ensure_assistant_role_inplace(partial_message)
                                 yield {"message": partial_message, "metrics": {"error": "Stream cancelled"}, "done": True}
                                 return
                         finally:
@@ -766,7 +962,9 @@ class OllamaChatNode(StreamingNode):
                                 async for part in stream:
                                     if self._cancel_event.is_set():
                                         partial_message = self._finalize_buffer(message_buffer)
-                                        partial_message = self._make_full_message(partial_message)
+                                        # Ensure role is set
+                                        if "role" not in partial_message:
+                                            partial_message["role"] = "assistant"
                                         yield {"message": partial_message, "metrics": {"error": "Stream cancelled"}, "done": True}
                                         return
                                     self._process_stream_part(part, message_buffer)
@@ -779,15 +977,24 @@ class OllamaChatNode(StreamingNode):
                                     if part.get("done"):
                                         final_message = self._finalize_buffer(message_buffer)
                                         self._parse_content_if_json_mode(final_message, metrics)
-                                        final_message = self._make_full_message(final_message)
-                                        for k in ("total_duration", "load_duration", "prompt_eval_count", "prompt_eval_duration", "eval_count", "eval_duration"):
-                                            if k in part:
-                                                metrics[k] = part[k]
+                                        self._ensure_assistant_role_inplace(final_message)
+                                        self._update_metrics_from_source(metrics, part)
                                         metrics["seed"] = int(effective_seed) if effective_seed is not None else None
                                         if "temperature" in options:
                                             metrics["temperature"] = options["temperature"]
                                         yield {"message": final_message, "metrics": metrics, "tool_history": tool_rounds_info.get("tool_history", []), "thinking_history": tool_rounds_info.get("thinking_history", []), "done": True}
                                         return
+                            except Exception as _stream_err:
+                                # Finalize with partial content and attach error
+                                final_message = self._finalize_buffer(message_buffer)
+                                self._parse_content_if_json_mode(final_message, metrics)
+                                self._ensure_assistant_role_inplace(final_message)
+                                metrics["error"] = str(_stream_err)
+                                metrics["seed"] = int(effective_seed) if effective_seed is not None else None
+                                if "temperature" in options:
+                                    metrics["temperature"] = options["temperature"]
+                                yield {"message": final_message, "metrics": metrics, "tool_history": tool_rounds_info.get("tool_history", []), "thinking_history": tool_rounds_info.get("thinking_history", []), "done": True}
+                                return
                             finally:
                                 # ... existing
                                 pass
@@ -843,17 +1050,17 @@ class OllamaChatNode(StreamingNode):
                             self._unload_model_via_cli()
                         except Exception:
                             pass
-                        yield {"message": {"role": "assistant", "content": ""}, "metrics": {"error": "Stream cancelled"}, "done": True}
+                        partial_message = {"role": "assistant", "content": ""}
+                        yield {"message": partial_message, "metrics": {"error": "Stream cancelled"}, "done": True}
                         return
                     resp = await chat_task
                     final_message = (resp or {}).get("message") or {"role": "assistant", "content": ""}
                     self._parse_content_if_json_mode(final_message, metrics)
                     self._parse_tool_calls_from_message(final_message)
-                    final_message = self._make_full_message(final_message)
+                    # Ensure role is set
+                    self._ensure_assistant_role_inplace(final_message)
                     metrics = {}
-                    for k in ("total_duration", "load_duration", "prompt_eval_count", "prompt_eval_duration", "eval_count", "eval_duration"):
-                        if k in resp:
-                            metrics[k] = resp[k]
+                    self._update_metrics_from_source(metrics, resp)
                     metrics["seed"] = int(effective_seed) if effective_seed is not None else None
                     if "temperature" in options:
                         metrics["temperature"] = options["temperature"]
@@ -865,7 +1072,8 @@ class OllamaChatNode(StreamingNode):
             # Cooperative cancellation; do not emit error on cancel
             return
         except Exception as e:
-            yield {"message": {"role": "assistant", "content": ""}, "metrics": {"error": str(e)}, "done": True}
+            error_message = {"role": "assistant", "content": ""}
+            yield {"message": error_message, "metrics": {"error": str(e)}, "done": True}
         finally:
             self._cancel_event.clear()
 
@@ -1010,61 +1218,37 @@ class OllamaChatNode(StreamingNode):
 
     async def execute(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
         try:
-            model: str = inputs.get("model")
+            # Prefer host/model from inputs when provided
+            host = self._get_effective_host(inputs)
+            input_model = (inputs.get("model") if isinstance(inputs, dict) else None)
+            model: str = await self._get_model(host, input_model)
+            self._last_host = host
+            self._last_model = model
             raw_messages: Optional[List[Dict[str, Any]]] = inputs.get("messages")
             prompt_text: Optional[str] = inputs.get("prompt")
             system_prompt: Optional[str] = inputs.get("system")
             messages: List[Dict[str, Any]] = self._build_messages(raw_messages, prompt_text, system_prompt)
             tools: List[Dict[str, Any]] = self._collect_tools(inputs)
 
-            if not model:
-                error_msg = "No model provided to OllamaChatNode. Check model selector connection."
-                return {"metrics": {"error": error_msg}, "message": {"role": "assistant", "content": ""}, "thinking": None}
-
-            host: str = inputs.get("host") or os.environ.get("OLLAMA_HOST", "http://localhost:11434")
+            print(f"OllamaChatNode: Execute - model='{model}', host='{host}', prompt='{prompt_text}', messages_count={len(raw_messages) if raw_messages else 0}")
+            # Re-affirm host using same precedence (inputs -> params -> env)
+            host: str = self._get_effective_host(inputs)
             # Track last used model/host for stop/unload
             self._last_model = model
             self._last_host = host
             # Force non-streaming for execute()
-            fmt: str = "json" if bool(self.params.get("json_mode", False)) else None
-            _keep_alive_param = self.params.get("keep_alive")
-            keep_alive = _keep_alive_param if (_keep_alive_param is not None and _keep_alive_param != "") else None
+            fmt: Optional[str] = self._get_format_value()
+            keep_alive = self._get_keep_alive_value()
             think = bool(self.params.get("think", False))
-            options = self._parse_options() or {}
+            options, effective_seed = self._prepare_generation_options()
 
-            # Validate we have something to send
+            # Validate we have something to send (model always set now)
             if not messages and not prompt_text:
                 error_msg = "No messages or prompt provided to OllamaChatNode"
-                return {"metrics": {"error": error_msg}, "message": {"role": "assistant", "content": ""}, "thinking": None}
+                error_message = {"role": "assistant", "content": ""}
+                return {"message": error_message, "metrics": {"error": error_msg}, "tool_history": [], "thinking_history": []}
 
-            # Apply temperature
-            try:
-                temperature_raw = self.params.get("temperature")
-                if temperature_raw is not None:
-                    options["temperature"] = float(temperature_raw)
-            except Exception:
-                pass
-
-            # Determine effective seed according to seed_mode
-            seed_mode = str(self.params.get("seed_mode") or "fixed").strip().lower()
-            seed_raw = self.params.get("seed")
-            effective_seed: Optional[int] = None
-            try:
-                base_seed = int(seed_raw) if seed_raw is not None else 0
-            except Exception:
-                base_seed = 0
-
-            if seed_mode == "random":
-                effective_seed = random.randint(0, 2**31 - 1)
-            elif seed_mode == "increment":
-                if self._seed_state is None:
-                    self._seed_state = base_seed
-                effective_seed = self._seed_state
-                self._seed_state += 1
-            else:  # fixed
-                effective_seed = base_seed
-
-            options["seed"] = int(effective_seed)
+            # effective_seed produced by helper above
 
             from ollama import AsyncClient
 
@@ -1079,6 +1263,13 @@ class OllamaChatNode(StreamingNode):
             client = AsyncClient(host=host)
             self._client = client
             try:
+                # Auto-detect and apply model context window (clamp num_ctx) for execute()
+                # Only perform network lookup when 'messages' are provided; skip for prompt-only inputs
+                try:
+                    if isinstance(inputs, dict) and inputs.get("messages"):
+                        options = await self._apply_context_window(host, model, options)
+                except Exception:
+                    pass
                 # Cooperative cancellation for non-streaming execute()
                 chat_task = asyncio.create_task(client.chat(
                     model=model,
@@ -1111,15 +1302,14 @@ class OllamaChatNode(StreamingNode):
                         pass
                     raise asyncio.CancelledError()
                 resp = await chat_task
-                final_message = (resp or {}).get("message") or {}
+                final_message = (resp or {}).get("message") or {"role": "assistant", "content": ""}
+                # Ensure role is set
+                self._ensure_assistant_role_inplace(final_message)
                 metrics: Dict[str, Any] = {}
                 self._parse_content_if_json_mode(final_message, metrics)
                 self._parse_tool_calls_from_message(final_message)
 
-                final_message = self._make_full_message(final_message)
-                for k in ("total_duration", "load_duration", "prompt_eval_count", "prompt_eval_duration", "eval_count", "eval_duration"):
-                    if k in resp:
-                        metrics[k] = resp[k]
+                self._update_metrics_from_source(metrics, resp)
                 metrics["seed"] = int(effective_seed) if effective_seed is not None else None
                 if "temperature" in options:
                     metrics["temperature"] = options["temperature"]
@@ -1130,7 +1320,7 @@ class OllamaChatNode(StreamingNode):
 
                 # Collect thinking from final message if present
                 thinking_history = tool_rounds_info.get("thinking_history", [])
-                thinking = (resp or {}).get("message", {}).get("thinking")
+                thinking = final_message.get("thinking")
                 if thinking and isinstance(thinking, str):
                     thinking_history.append({"thinking": thinking, "iteration": 0})
 
@@ -1159,8 +1349,12 @@ class OllamaChatNode(StreamingNode):
                 self._client = None
         except asyncio.CancelledError:
             raise
+        except ValueError:
+            # Propagate model selection errors (e.g., no local models found)
+            raise
         except Exception as e:
-            return {"message": {"role": "assistant", "content": ""}, "metrics": {"error": str(e)}}
+            error_message = {"role": "assistant", "content": ""}
+            return {"message": error_message, "metrics": {"error": str(e)}, "tool_history": [], "thinking_history": []}
 
     def _parse_content_if_json_mode(self, message: Dict[str, Any], metrics: Dict[str, Any]) -> None:
         if bool(self.params.get("json_mode", False)):
@@ -1172,6 +1366,6 @@ class OllamaChatNode(StreamingNode):
                 except json.JSONDecodeError as e:
                     metrics["parse_error"] = str(e)
 
-    def _make_full_message(self, base: Dict[str, Any]) -> str:
-        # Return just the content string of the final assistant message
-        return base.get("content", "")
+    # _make_full_message no longer used for final outputs; kept for potential future use
+    # def _make_full_message(self, base: Dict[str, Any]) -> Dict[str, Any]:
+    #     return base

@@ -61,6 +61,11 @@ pytest tests/unit/
   - Added deterministic type color mapping and override system for node types
   - Implemented frontend type string construction for complex/nested types
   - Improved process management for dev server (graceful shutdown, error handling)
+- Oct 3, 2025
+  - Added "New" button on the canvas bottom menu bar to create new blank graph
+  - Added auto-save feature in which an unsaved graph is saved in browser local storage every 2 seconds to preserve workflow continuity on accidental refreshes
+  - Removed `ollama_model_selector` node. Added the model selector node params to `ollama_chat_node`
+  - General bug fixes
 
 
 Currently fig node is under beta. 

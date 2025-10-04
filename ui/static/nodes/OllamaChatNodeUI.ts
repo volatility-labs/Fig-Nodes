@@ -3,20 +3,46 @@ import BaseCustomNode from './BaseCustomNode';
 export default class OllamaChatNodeUI extends BaseCustomNode {
     constructor(title: string, data: any) {
         super(title, data);
-        // Increase size to accommodate all parameter widgets
-        this.size = [320, 280];
+        this.size = [320, 300];  // Extra space for host and model selector
         this.color = '#1f2a44';
         this.bgcolor = '#0b1220';
 
-        // Convenience buttons only. Params come from backend via BaseCustomNode.
-        this.addWidget('button', 'Clear Stream', '', () => {
-            this.displayText = '';
+        // Model refresh before convenience buttons
+        this.addWidget('button', 'Refresh Models', '', async () => {
+            try { await this.fetchAndPopulateModels(); } catch { }
+        }, {});
+    }
+
+    onAdded() {
+        super.onAdded?.();
+        this.fetchAndPopulateModels().catch(() => { });
+    }
+
+    async fetchAndPopulateModels() {
+        const host = (this.properties['host'] as string) || 'http://localhost:11434';
+        try {
+            const res = await fetch(`${host.replace(/\/$/, '')}/api/tags`);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const data = await res.json();
+            const models = (data.models || []).map((m: any) => m.name).filter(Boolean);
+            const selectedWidget = this.widgets?.find((w: any) => w.name.startsWith('selected_model:'));
+            if (selectedWidget) {
+                selectedWidget.options = selectedWidget.options || {};
+                selectedWidget.options.values = models;
+            }
+            // Ensure the property reflects a valid selection
+            if (!models.includes(this.properties['selected_model'])) {
+                this.properties['selected_model'] = models[0] || '';
+            }
+            // Update the widget name to show the current selection
+            if (selectedWidget) {
+                const current = this.properties['selected_model'] || '';
+                selectedWidget.name = `selected_model: ${current}`;
+            }
             this.setDirtyCanvas(true, true);
-        }, {});
-        this.addWidget('button', 'Copy Last', '', () => {
-            const text = this.displayText || '';
-            if (text) navigator.clipboard.writeText(text);
-        }, {});
+        } catch {
+            // Keep existing options on failure
+        }
     }
 
     onStreamUpdate(_data: any) {

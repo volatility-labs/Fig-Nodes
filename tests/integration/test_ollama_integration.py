@@ -8,27 +8,24 @@ from core.node_registry import NODE_REGISTRY
 @pytest.mark.asyncio
 @patch("ollama.AsyncClient")
 async def test_ollama_integration(mock_ollama_client):
-    # Mock model list for selector
+    # Mock model list for selector (now for chat)
     with patch("httpx.AsyncClient.get") as mock_get:
         mock_get.return_value = AsyncMock()
         mock_get.return_value.json.return_value = {"models": [{"name": "test_model:latest"}]}
         mock_get.return_value.raise_for_status.return_value = None
         
         # Mock chat response
-        mock_chat = AsyncMock(return_value={"message": {"content": "Hello from Ollama"}})
+        mock_chat = AsyncMock(return_value={"message": {"role": "assistant", "content": "Hello from Ollama"}})
         mock_ollama_client.return_value.chat = mock_chat
         
-        # Define graph: ModelSelector -> OllamaChat
+        # Define graph: OllamaChat (with selected_model)
         graph_data = {
             "nodes": [
-                {"id": 1, "type": "OllamaModelSelectorNode", "properties": {"selected": "test_model:latest"}},
-                {"id": 2, "type": "OllamaChatNode", "properties": {"stream": False}},
-                {"id": 3, "type": "TextInputNode", "properties": {"text": "Hello"}}
+                {"id": 1, "type": "OllamaChatNode", "properties": {"stream": False, "selected_model": "test_model:latest"}},
+                {"id": 2, "type": "TextInputNode", "properties": {"text": "Hello"}}
             ],
             "links": [
-                [0, 1, 0, 2, 0],  # selector.host -> chat.host
-                [0, 1, 1, 2, 1],  # selector.model -> chat.model
-                [0, 3, 0, 2, 3]   # text.text -> chat.prompt (slot 3)
+                [0, 2, 0, 1, 1]   # text.text -> chat.prompt (slot 1)
             ]
         }
         
@@ -40,9 +37,10 @@ async def test_ollama_integration(mock_ollama_client):
         
         results = {**initial_results, **chat_results}
         
-        assert 2 in results
-        assert results[2]["message"] == "Hello from Ollama"
-        assert isinstance(results[2].get("metrics", {}), dict)
+        assert 1 in results
+        assert results[1]["message"]["content"] == "Hello from Ollama"
+        assert results[1]["message"]["role"] == "assistant"
+        assert isinstance(results[1].get("metrics", {}), dict)
         
         # Verify chat was called with expected args
         mock_chat.assert_called_once()
@@ -56,7 +54,7 @@ async def test_ollama_integration(mock_ollama_client):
 @patch("ollama.AsyncClient")
 @patch("httpx.AsyncClient")
 async def test_ollama_streaming_integration(mock_httpx_client, mock_ollama_client):
-    # Mock model list for selector
+    # Mock model list for selector (now for chat)
     httpx_response = MagicMock()
     httpx_response.json.return_value = {"models": [{"name": "test_model:latest"}]}
     httpx_response.raise_for_status.return_value = None
@@ -67,23 +65,20 @@ async def test_ollama_streaming_integration(mock_httpx_client, mock_ollama_clien
 
     # Mock chat stream for quick completion
     async def mock_stream():
-        yield {"message": {"content": "{}"}}
+        yield {"message": {"role": "assistant", "content": "{}"}}
         yield {"done": True, "total_duration": 50, "eval_count": 5}
 
     mock_chat = AsyncMock(return_value=mock_stream())
     mock_ollama_client.return_value.chat = mock_chat
 
-    # Define graph: TextInput -> OllamaChat (streaming)
+    # Define graph: OllamaChat (with selected_model, streaming) <- TextInput
     graph_data = {
         "nodes": [
-            {"id": 3, "type": "OllamaModelSelectorNode", "properties": {"selected": "test_model:latest"}},
-            {"id": 1, "type": "OllamaChatNode", "properties": {"stream": True, "json_mode": True}},
+            {"id": 1, "type": "OllamaChatNode", "properties": {"stream": True, "json_mode": True, "selected_model": "test_model:latest"}},
             {"id": 2, "type": "TextInputNode", "properties": {"text": "Output empty JSON"}}
         ],
         "links": [
-            [0, 3, 0, 1, 0],  # selector.host -> chat.host
-            [0, 3, 1, 1, 1],  # selector.model -> chat.model
-            [0, 2, 0, 1, 3]  # text -> prompt
+            [0, 2, 0, 1, 1]  # text -> prompt (slot 1)
         ]
     }
 
@@ -97,8 +92,8 @@ async def test_ollama_streaming_integration(mock_httpx_client, mock_ollama_clien
 
     results = {**initial_results, **stream_tick1, **stream_tick2, **final_tick}
 
-    assert 1 in results
-    assert results[1]["message"] == {}
+    assert 1 in results  # chat id1
+    assert results[1]["message"]["content"] == {}
     assert "total_duration" in results[1].get("metrics", {})
     assert "eval_count" in results[1].get("metrics", {})
 
@@ -107,16 +102,37 @@ async def test_ollama_streaming_integration(mock_httpx_client, mock_ollama_clien
 
 
 @pytest.mark.asyncio
-async def test_web_search_tool_with_ollama_integration():
+@patch("ollama.AsyncClient")
+@patch("httpx.AsyncClient")
+async def test_web_search_tool_with_ollama_integration(mock_httpx_client, mock_ollama_client):
+    # Mock model list for chat
+    httpx_response = MagicMock()
+    httpx_response.json.return_value = {"models": [{"name": "llama3.2:latest"}]}
+    httpx_response.raise_for_status.return_value = None
+    httpx_client_instance = MagicMock()
+    httpx_client_instance.get = AsyncMock(return_value=httpx_response)
+    mock_httpx_client.return_value.__aenter__.return_value = httpx_client_instance
+    mock_httpx_client.return_value.__aexit__ = AsyncMock(return_value=False)
+
+    # Mock the tool orchestration chat calls
+    def mock_chat_side_effect(*args, **kwargs):
+        if kwargs.get("tools"):
+            # First tool round: model calls tool
+            return {"message": {"role": "assistant", "tool_calls": [{"function": {"name": "web_search", "arguments": {"query": "artificial intelligence news"}}}]}}
+        else:
+            # Final response after tool
+            return {"message": {"role": "assistant", "content": "Summary of AI news: Recent advancements include..." }}
+
+    mock_ollama_client.return_value.chat = AsyncMock(side_effect=mock_chat_side_effect)
+
     """Test web search tool integration with OllamaChatNode."""
     # Skip if no API key is available
     if not os.getenv("TAVILY_API_KEY"):
         pytest.skip("TAVILY_API_KEY not set, skipping integration test")
 
-    # Define graph: WebSearchToolNode -> OllamaChatNode
+    # Define graph: WebSearchToolNode -> OllamaChatNode (with selected_model)
     graph_data = {
         "nodes": [
-            {"id": 1, "type": "OllamaModelSelectorNode", "properties": {"selected": "llama3.2:latest"}},
             {"id": 2, "type": "WebSearchToolNode", "properties": {
                 "provider": "tavily",
                 "default_k": 2,
@@ -127,17 +143,16 @@ async def test_web_search_tool_with_ollama_integration():
             {"id": 3, "type": "OllamaChatNode", "properties": {
                 "stream": False,
                 "max_tool_iters": 1,  # Limit iterations for test
-                "tool_timeout_s": 15
+                "tool_timeout_s": 15,
+                "selected_model": "llama3.2:latest"
             }},
             {"id": 4, "type": "TextInputNode", "properties": {
                 "text": "Search for the latest news about artificial intelligence and summarize the key findings."
             }}
         ],
         "links": [
-            [0, 1, 0, 3, 0],  # selector.host -> chat.host
-            [0, 1, 1, 3, 1],  # selector.model -> chat.model
-            [0, 2, 0, 3, 6],  # web_search_tool.tool -> chat.tools
-            [0, 4, 0, 3, 3]   # text.text -> chat.prompt
+            [0, 2, 0, 3, 4],  # web_search_tool.tool -> chat.tool (slot 4)
+            [0, 4, 0, 3, 1]   # text.text -> chat.prompt (slot 1)
         ]
     }
 
@@ -172,16 +187,38 @@ async def test_web_search_tool_with_ollama_integration():
 
 
 @pytest.mark.asyncio
-async def test_web_search_tool_streaming_with_ollama():
+@patch("ollama.AsyncClient")
+@patch("httpx.AsyncClient")
+async def test_web_search_tool_streaming_with_ollama(mock_httpx_client, mock_ollama_client):
+    # Mock model list for chat
+    httpx_response = MagicMock()
+    httpx_response.json.return_value = {"models": [{"name": "llama3.2:latest"}]}
+    httpx_response.raise_for_status.return_value = None
+    httpx_client_instance = MagicMock()
+    httpx_client_instance.get = AsyncMock(return_value=httpx_response)
+    mock_httpx_client.return_value.__aenter__.return_value = httpx_client_instance
+    mock_httpx_client.return_value.__aexit__ = AsyncMock(return_value=False)
+
+    # Mock the tool orchestration and streaming
+    async def mock_chat_stream(*args, **kwargs):
+        if kwargs.get("tools") and not kwargs["stream"]:
+            # Non-stream tool call
+            yield {"message": {"role": "assistant", "tool_calls": [{"function": {"name": "web_search", "arguments": {"query": "Bitcoin price"}}}]}}
+        else:
+            # Streaming final response
+            yield {"message": {"role": "assistant", "content": "Bitcoin is currently priced at approximately $60,000."}}
+            yield {"done": True, "total_duration": 100, "eval_count": 10}
+
+    mock_ollama_client.return_value.chat = AsyncMock(return_value=mock_chat_stream())
+
     """Test web search tool integration with streaming OllamaChatNode."""
     # Skip if no API key is available
     if not os.getenv("TAVILY_API_KEY"):
         pytest.skip("TAVILY_API_KEY not set, skipping integration test")
 
-    # Define graph: WebSearchToolNode -> OllamaChatNode (streaming)
+    # Define graph: WebSearchToolNode -> OllamaChatNode (streaming, with selected_model)
     graph_data = {
         "nodes": [
-            {"id": 1, "type": "OllamaModelSelectorNode", "properties": {"selected": "llama3.2:latest"}},
             {"id": 2, "type": "WebSearchToolNode", "properties": {
                 "provider": "tavily",
                 "default_k": 1,
@@ -192,17 +229,16 @@ async def test_web_search_tool_streaming_with_ollama():
             {"id": 3, "type": "OllamaChatNode", "properties": {
                 "stream": True,
                 "max_tool_iters": 1,
-                "tool_timeout_s": 10
+                "tool_timeout_s": 10,
+                "selected_model": "llama3.2:latest"
             }},
             {"id": 4, "type": "TextInputNode", "properties": {
                 "text": "What is the current price of Bitcoin?"
             }}
         ],
         "links": [
-            [0, 1, 0, 3, 0],  # selector.host -> chat.host
-            [0, 1, 1, 3, 1],  # selector.model -> chat.model
-            [0, 2, 0, 3, 6],  # web_search_tool.tool -> chat.tools
-            [0, 4, 0, 3, 3]   # text.text -> chat.prompt
+            [0, 2, 0, 3, 4],  # web_search_tool.tool -> chat.tool (slot 4)
+            [0, 4, 0, 3, 1]   # text.text -> chat.prompt (slot 1)
         ]
     }
 
