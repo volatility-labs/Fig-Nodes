@@ -153,7 +153,7 @@ describe('Node UI classes', () => {
             json: async () => ({ models: [{ name: 'llama' }, { name: 'qwen' }] }),
         }));
         await node.fetchAndPopulateModels();
-        const selectedWidget = (node as any).widgets.find((w: any) => w.name === 'selected');
+        const selectedWidget = (node as any).widgets.find((w: any) => w.name.startsWith('selected:'));
         expect(selectedWidget.options.values).toEqual(['llama', 'qwen']);
         expect(node.properties['selected']).toBe('llama');
     });
@@ -254,7 +254,7 @@ describe('BaseCustomNode comprehensive tests', () => {
         expect(widget.type).toBe('button');
         expect(widget.name).toBe('comboParam: opt1');
         expect(node.properties.comboParam).toBe('opt1');
-        expect((widget as any).options).toEqual(['opt1', 'opt2', 'opt3']);
+        expect((widget as any).options.values).toEqual(['opt1', 'opt2', 'opt3']);
 
         // Test that the widget updates the display when property changes
         node.properties.comboParam = 'opt2';
@@ -271,7 +271,7 @@ describe('BaseCustomNode comprehensive tests', () => {
         expect(widget.type).toBe('button');
         expect(widget.name).toBe('boolParam: true');
         expect(node.properties.boolParam).toBe(true);
-        expect((widget as any).options).toEqual([true, false]);
+        expect((widget as any).options.values).toEqual([true, false]);
 
         // Test that the widget updates the display when property changes
         node.properties.boolParam = false;

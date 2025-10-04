@@ -15,6 +15,24 @@ if (!(globalThis as any).fetch) {
     (globalThis as any).fetch = vi.fn(async () => ({ ok: true, json: async () => ({}) }));
 }
 
+// Ensure URL blob helpers exist
+if (!(globalThis as any).URL) {
+    (globalThis as any).URL = {} as any;
+}
+if (!(globalThis as any).URL.createObjectURL) {
+    (globalThis as any).URL.createObjectURL = vi.fn(() => 'blob:mock');
+}
+if (!(globalThis as any).URL.revokeObjectURL) {
+    (globalThis as any).URL.revokeObjectURL = vi.fn();
+}
+
+// Map global localStorage to window.localStorage in jsdom environment if missing
+try {
+    if (!(globalThis as any).localStorage && (globalThis as any).window?.localStorage) {
+        (globalThis as any).localStorage = (globalThis as any).window.localStorage;
+    }
+} catch { /* ignore */ }
+
 // Minimal LiteGraph mocks sufficient for UI node classes and app.ts
 vi.mock('@comfyorg/litegraph', () => {
     class LGraphNode {
@@ -74,6 +92,7 @@ vi.mock('@comfyorg/litegraph', () => {
         add(node: any) { this._nodes.push(node); }
         serialize() { return {}; }
         configure(_data: any) { }
+        clear() { this._nodes = []; }
         start() { }
     }
 

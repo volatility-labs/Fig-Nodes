@@ -14,10 +14,38 @@ async function createEditor(container: HTMLElement) {
         (canvas as any).showSearchBox = () => { };
 
         let currentGraphName = 'untitled.json';
+        const AUTOSAVE_KEY = 'fig-nodes:autosave:v1';
+        let lastSavedGraphJson = '';
+        let initialLoadCancelled = false;
+
+        const getGraphName = () => currentGraphName;
         const updateGraphName = (name: string) => {
             currentGraphName = name;
             const graphNameEl = document.getElementById('graph-name');
             if (graphNameEl) graphNameEl.textContent = name;
+        };
+
+        const safeLocalStorageSet = (key: string, value: string) => {
+            try {
+                localStorage.setItem(key, value);
+            } catch (err) {
+                console.error('Autosave failed:', err);
+                updateStatus('disconnected', 'Autosave failed: Check storage settings');
+            }
+        };
+        const safeLocalStorageGet = (key: string): string | null => {
+            try { return localStorage.getItem(key); } catch { return null; }
+        };
+        const doAutosave = () => {
+            try {
+                const data = graph.serialize();
+                const json = JSON.stringify(data);
+                if (json !== lastSavedGraphJson) {
+                    const payload = { graph: data, name: getGraphName() }; // Removed timestamp
+                    safeLocalStorageSet(AUTOSAVE_KEY, JSON.stringify(payload));
+                    lastSavedGraphJson = json;
+                }
+            } catch { }
         };
 
         let lastMouseEvent: MouseEvent | null = null;
@@ -116,18 +144,111 @@ async function createEditor(container: HTMLElement) {
         setupResize(canvasElement, canvas);
         setupKeyboard(graph);
 
+        // Attempt to restore from autosave first; fallback to default graph
+        let restoredFromAutosave = false;
         try {
-            const resp = await fetch('/examples/default-graph.json', { cache: 'no-store' });
-            if (!resp.ok) throw new Error('Response not OK');
-            const json = await resp.json();
-            if (json && json.nodes && json.links) {
-                graph.configure(json);
-                canvas.draw(true);
-                updateGraphName('default-graph.json');
+            const saved = safeLocalStorageGet(AUTOSAVE_KEY);
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                if (parsed && Array.isArray(parsed.graph?.nodes) && Array.isArray(parsed.graph?.links)) {
+                    // Set name immediately so UI reflects autosave even if configure fails
+                    updateGraphName(parsed.name || 'autosave.json');
+                    try {
+                        graph.configure(parsed.graph);
+                    } catch (configError) {
+                        // Keep going without throwing; we still consider autosave restored to avoid overwriting with default graph
+                        console.error('Failed to configure graph from autosave:', configError);
+                    }
+                    try { canvas.draw(true); } catch { /* ignore */ }
+                    try { lastSavedGraphJson = JSON.stringify(graph.serialize()); } catch { lastSavedGraphJson = ''; }
+                    restoredFromAutosave = true;
+                }
             }
-        } catch (e) { }
+        } catch {
+            restoredFromAutosave = false;
+        }
 
-        setupFileHandling(graph, canvas, updateGraphName, currentGraphName);
+        if (!restoredFromAutosave) {
+            try {
+                const resp = await fetch('/examples/default-graph.json', { cache: 'no-store' });
+                if (!resp.ok) throw new Error('Response not OK');
+                const json = await resp.json();
+                if (initialLoadCancelled) {
+                    // User initiated a new graph before default graph finished loading; skip applying default
+                } else if (json && json.nodes && json.links) {
+                    graph.configure(json);
+                    canvas.draw(true);
+                    updateGraphName('default-graph.json');
+                    try { lastSavedGraphJson = JSON.stringify(graph.serialize()); } catch { lastSavedGraphJson = ''; }
+                }
+            } catch (e) { }
+        }
+
+        // Autosave on interval and on unload
+        const autosaveInterval = window.setInterval(doAutosave, 2000);
+        window.addEventListener('beforeunload', () => {
+            doAutosave();
+            window.clearInterval(autosaveInterval);
+        });
+
+        // New graph handler
+        const newBtn = document.getElementById('new');
+        if (newBtn) {
+            newBtn.addEventListener('click', () => {
+                initialLoadCancelled = true;
+                graph.clear();
+                canvas.draw(true);
+                updateGraphName('untitled.json');
+                lastSavedGraphJson = '';
+                doAutosave();
+            });
+        }
+
+        const setupFileHandling = (graph: LGraph, canvas: LGraphCanvas, updateGraphName: (name: string) => void, getGraphName: () => string) => {
+            document.getElementById('save')?.addEventListener('click', () => {
+                const graphData = graph.serialize();
+                const blob = new Blob([JSON.stringify(graphData, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = getGraphName();
+                a.click();
+                URL.revokeObjectURL(url);
+            });
+
+            const fileInput = document.getElementById('graph-file') as HTMLInputElement;
+            document.getElementById('load')?.addEventListener('click', () => {
+                fileInput.click();
+            });
+
+            fileInput.addEventListener('change', async (event) => {
+                const file = (event.target as HTMLInputElement).files?.[0];
+                if (file) {
+                    const processContent = async (content: string) => {
+                        try {
+                            const graphData = JSON.parse(content);
+                            graph.configure(graphData);
+                            try { lastSavedGraphJson = JSON.stringify(graph.serialize()); } catch { lastSavedGraphJson = ''; }
+                            canvas.draw(true);
+                            updateGraphName(file.name);
+                        } catch (_error) {
+                            try { alert('Invalid graph file'); } catch { /* ignore in tests */ }
+                        }
+                    };
+
+                    if (typeof (file as any).text === 'function') {
+                        const content = await (file as any).text();
+                        await processContent(content);
+                    } else {
+                        const reader = new FileReader();
+                        reader.onload = async (e) => { await processContent(e.target?.result as string); };
+                        reader.readAsText(file);
+                    }
+                }
+            });
+        };
+
+        setupFileHandling(graph, canvas, updateGraphName, getGraphName);
 
         graph.start();
         updateStatus('connected', 'Ready');
@@ -249,42 +370,6 @@ function setupEventListeners(canvasElement: HTMLCanvasElement, canvas: LGraphCan
 
     canvasElement.addEventListener('click', () => {
         canvasElement.focus();
-    });
-}
-
-function setupFileHandling(graph: LGraph, canvas: LGraphCanvas, updateGraphName: (name: string) => void, currentGraphName: string) {
-    document.getElementById('save')?.addEventListener('click', () => {
-        const graphData = graph.serialize();
-        const blob = new Blob([JSON.stringify(graphData, null, 2)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = currentGraphName;
-        a.click();
-        URL.revokeObjectURL(url);
-    });
-
-    const fileInput = document.getElementById('graph-file') as HTMLInputElement;
-    document.getElementById('load')?.addEventListener('click', () => {
-        fileInput.click();
-    });
-
-    fileInput.addEventListener('change', (event) => {
-        const file = (event.target as HTMLInputElement).files?.[0];
-        if (file) {
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                try {
-                    const graphData = JSON.parse(e.target?.result as string);
-                    graph.configure(graphData);
-                    canvas.draw(true);
-                    updateGraphName(file.name);
-                } catch (error) {
-                    alert('Invalid graph file');
-                }
-            };
-            reader.readAsText(file);
-        }
     });
 }
 
