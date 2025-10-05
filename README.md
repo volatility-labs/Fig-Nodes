@@ -66,9 +66,13 @@ pytest tests/unit/
   - Added auto-save feature in which an unsaved graph is saved in browser local storage every 2 seconds to preserve workflow continuity on accidental refreshes
   - Removed `ollama_model_selector` node. Added the model selector node params to `ollama_chat_node`
   - General bug fixes
+  - Backend server tests pass
+- Oct 4, 2025
+  - Added CI workflow to run unit tests for both front and backend upon push / merge
+  - Removed streaming mode from Ollama Chat Node 
 
 
-Currently fig node is under beta. 
+Fig nodes is under **beta**. 
 
 ## License
 Fig Nodes is licensed under the Apache License 2.0. See [LICENSE](LICENSE) for details.
