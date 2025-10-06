@@ -58,6 +58,7 @@ tmp/
 node_modules
 
 # Application specific
+ui/static/coverage
 .coverage
 htmlcov/
 .tox/

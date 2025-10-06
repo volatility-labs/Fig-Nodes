@@ -26,6 +26,8 @@ For optimal results, consider the model size vs your local machine's available V
 
 ## Run Fig Node
 
+Requires Python 3.11 or later.
+
 After Ollama has been installed and models are downloaded, create a virtual environment to avoid dependency conflicts with your system Python installation.
 
 ```bash
@@ -84,7 +86,6 @@ Fig nodes is under **beta**.
 ## Hardware Requirements
 
 Minimum 16gb of VRAM on either a dedicated GPU or shared memory (Apple M series)
-
 
 ## License
 Fig Nodes is licensed under the Apache License 2.0. See [LICENSE](LICENSE) for details.
