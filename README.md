@@ -62,6 +62,7 @@ pytest tests/unit/
   - Refactored `type_registry.py` for better maintainability by consolidating type aliases
   - Added additional types in `types_registry.py` for `IndicatorResult`, and `MuliAssetIndicatorResult` for filtering
   - Various bug fixes
+  - Added additional unit tests
 
 - Oct 4, 2025
   - Added CI workflow to run unit tests for both front and backend upon push / merge
