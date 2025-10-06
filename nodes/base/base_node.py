@@ -81,8 +81,7 @@ class BaseNode:
 
     def validate_inputs(self, inputs: Dict[str, Any]) -> bool:
         def _is_typed_dict(t) -> bool:
-            # Heuristic: TypedDict types are not actual classes; treat them as dicts
-            return hasattr(t, '__annotations__') and not isinstance(t, type)
+            return typing.is_typeddict(t)
 
         def _matches_type(value: Any, expected) -> bool:
             if expected is Any or expected is TypingAny:

@@ -16,25 +16,20 @@ from starlette.websockets import WebSocketState
 # Add back missing imports
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+from contextlib import asynccontextmanager
 
 # Import the refactored queue components
 from .queue import ExecutionQueue, execution_worker, _serialize_results
 from .queue import JobState
 
-app = FastAPI()
-
-@app.on_event("startup")
-async def _startup_queue_worker():
-    # Initialize containers on app.state; workers will be created lazily per loop
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     if not hasattr(app.state, "loop_queues"):
         app.state.loop_queues = {}
     if not hasattr(app.state, "loop_workers"):
         app.state.loop_workers = {}
-
-@app.on_event("shutdown")
-async def _shutdown_queue_worker():
+    yield
     loop_workers = getattr(app.state, "loop_workers", {})
-    # Cancel tasks registered for this (current) loop
     current_loop_id = id(asyncio.get_running_loop())
     tasks: List[asyncio.Task] = loop_workers.get(current_loop_id, [])
     for t in tasks:
@@ -42,12 +37,16 @@ async def _shutdown_queue_worker():
     if tasks:
         await asyncio.gather(*tasks, return_exceptions=True)
 
-app.mount("/static", StaticFiles(directory=os.path.join(os.path.dirname(__file__), "static/dist")), name="static")
+app = FastAPI(lifespan=lifespan)
+
 app.mount(
     "/examples",
     StaticFiles(directory=os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "examples"))),
     name="examples",
 )
+
+if 'PYTEST_CURRENT_TEST' not in os.environ:
+    app.mount("/static", StaticFiles(directory=os.path.join(os.path.dirname(__file__), "static/dist")), name="static")
 
 def _get_queue_for_current_loop(app) -> ExecutionQueue:
     """Get or create the ExecutionQueue for the current event loop."""
