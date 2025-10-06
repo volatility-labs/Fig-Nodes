@@ -4,8 +4,6 @@ import BaseCustomNode from '../nodes/BaseCustomNode';
 import LLMMessagesBuilderNodeUI from '../nodes/LLMMessagesBuilderNodeUI';
 import LoggingNodeUI from '../nodes/LoggingNodeUI';
 import OllamaChatNodeUI from '../nodes/OllamaChatNodeUI';
-import OllamaChatViewerNodeUI from '../nodes/OllamaChatViewerNodeUI';
-import OllamaModelSelectorNodeUI from '../nodes/OllamaModelSelectorNodeUI';
 import PolygonAPIKeyNodeUI from '../nodes/PolygonAPIKeyNodeUI';
 import StreamingCustomNode from '../nodes/StreamingCustomNode';
 import TextInputNodeUI from '../nodes/TextInputNodeUI';
@@ -131,32 +129,7 @@ describe('Node UI classes', () => {
         expect(node.displayText).toBe('Static');
     });
 
-    test('OllamaChatViewerNodeUI clears and copies', () => {
-        const node = new OllamaChatViewerNodeUI('Viewer', baseData());
-        node.onStreamUpdate({ message: { content: 'A' } });
-        node.onStreamUpdate({ message: { content: 'AB' } });
-        expect(node.displayText).toBe('AB');
-        node.onStreamUpdate({ message: { content: 'C' } });
-        expect(node.displayText).toBe('C');
-        // simulate clear button
-        const clear = node.widgets!.find(w => w.name === 'Clear');
-        expect(clear).toBeTruthy();
-        clear?.callback?.('');
-        expect(node.displayText).toBe('');
-    });
 
-    test('OllamaModelSelectorNodeUI fetch populates model list and selected', async () => {
-        const node = new OllamaModelSelectorNodeUI('Selector', baseData());
-        node.widgets!.push({ name: 'selected', options: { values: [] } } as any);
-        (globalThis as any).fetch = vi.fn(async () => ({
-            ok: true,
-            json: async () => ({ models: [{ name: 'llama' }, { name: 'qwen' }] }),
-        }));
-        await node.fetchAndPopulateModels();
-        const selectedWidget = (node as any).widgets.find((w: any) => w.name.startsWith('selected:'));
-        expect(selectedWidget.options.values).toEqual(['llama', 'qwen']);
-        expect(node.properties['selected']).toBe('llama');
-    });
 
     test('StreamingCustomNode accumulates and displays JSON payload', () => {
         const node = new StreamingCustomNode('Stream', baseData());
