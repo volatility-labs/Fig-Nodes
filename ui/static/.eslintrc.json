@@ -10,21 +10,38 @@
     "rules": {
         "indent": [
             "error",
-            2
+            4
         ],
         "linebreak-style": [
             "error",
             "unix"
         ],
         "quotes": [
-            "error",
-            "single"
+            "warn",
+            "single",
+            {
+                "avoidEscape": true
+            }
         ],
         "semi": [
             "error",
             "always"
         ],
-        "no-unused-vars": "warn"
+        "no-unused-vars": "off",
+        "@typescript-eslint/no-unused-vars": [
+            "error",
+            {
+                "argsIgnorePattern": "^_",
+                "varsIgnorePattern": "^_"
+            }
+        ],
+        "@typescript-eslint/no-explicit-any": "off",
+        "no-empty": [
+            "error",
+            {
+                "allowEmptyCatch": true
+            }
+        ]
     },
     "ignorePatterns": [
         "dist/",

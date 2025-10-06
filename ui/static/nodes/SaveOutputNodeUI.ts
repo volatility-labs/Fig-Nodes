@@ -45,7 +45,7 @@ export default class SaveOutputNodeUI extends BaseCustomNode {
         // Draw status message
         if (this.statusMessage) {
             const lines = this.wrapText(this.statusMessage, maxWidth, ctx);
-            let y = startY;
+            const y = startY;
 
             lines.forEach((line, index) => {
                 // Color code based on status

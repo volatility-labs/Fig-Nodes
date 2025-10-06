@@ -50,12 +50,12 @@ export function setupResize(canvasElement: HTMLCanvasElement, canvas: any) {
     resizeCanvas();
 }
 
-export function setupKeyboard(graph: any) {
+export function setupKeyboard(_graph: any) {
     // Keyboard handling is now done in app.ts to avoid conflicts
     // This function is kept for backward compatibility but does nothing
 }
 
-export let showError: (message: string) => void = (message) => {
+export const showError: (message: string) => void = (message) => {
     const dialog = document.createElement('div');
     dialog.classList.add('error-dialog');
 

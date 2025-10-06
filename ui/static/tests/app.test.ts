@@ -128,7 +128,7 @@ describe('app.ts initialization', () => {
             if (url === '/examples/default-graph.json') return { ok: true, json: async () => ({ nodes: [], links: [] }) } as any;
             return { ok: true, json: async () => ({}) } as any;
         });
-        ; (globalThis as any).fetch = fetchSpy as any;
+        (globalThis as any).fetch = fetchSpy as any;
 
         await import('../app.ts');
         document.dispatchEvent(new (window as any).Event('DOMContentLoaded'));
@@ -156,7 +156,7 @@ describe('app.ts initialization', () => {
             if (url === '/examples/default-graph.json') return { ok: true, json: async () => ({ nodes: [], links: [] }) } as any;
             return { ok: true, json: async () => ({}) } as any;
         });
-        ; (globalThis as any).fetch = fetchSpy as any;
+        (globalThis as any).fetch = fetchSpy as any;
 
         await import('../app.ts');
         document.dispatchEvent(new (window as any).Event('DOMContentLoaded'));
@@ -277,8 +277,8 @@ describe('Autosave bug coverage', () => {
 
         // Setup localStorage mock that throws on setItem
         const localStorageMock = {
-            getItem: vi.fn((key) => null),
-            setItem: vi.fn((key, value) => { throw new Error('Storage error'); }),
+            getItem: vi.fn((_key) => null),
+            setItem: vi.fn((_key, _value) => { throw new Error('Storage error'); }),
             removeItem: vi.fn(),
             clear: vi.fn(),
         };

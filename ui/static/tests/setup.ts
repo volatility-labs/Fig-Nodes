@@ -52,7 +52,7 @@ vi.mock('@comfyorg/litegraph', () => {
             this.flags = {};
             this.pos = [0, 0];
         }
-        configure(info: any) { /* mock */ }
+        configure(_info: any) { /* mock */ }
         addInput(name: string, type: any) {
             const slot = { name, type };
             this.inputs.push(slot);
@@ -63,7 +63,7 @@ vi.mock('@comfyorg/litegraph', () => {
             this.outputs.push(slot);
             return slot;
         }
-        addWidget(type: string, name: string, value: any, callback: Function, options?: any) {
+        addWidget(type: string, name: string, value: any, callback: (...args: unknown[]) => unknown, options?: any) {
             const widget = { type, name, value, callback, options: options || {} };
             this.widgets.push(widget);
             return widget;

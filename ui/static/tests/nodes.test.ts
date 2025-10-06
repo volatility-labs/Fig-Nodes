@@ -189,7 +189,7 @@ describe('Node UI classes', () => {
         const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => { });
         securityButton!.callback!(null);
         expect(alertSpy).toHaveBeenCalledWith('API key is handled securely and not stored in workflow files.');
-        // @ts-ignore
+        // @ts-expect-error: Mock restore method may not be available in test environment
         alertSpy.mockRestore();
     });
 

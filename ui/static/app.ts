@@ -11,7 +11,7 @@ async function createEditor(container: HTMLElement) {
         const graph = new LGraph();
         const canvasElement = container.querySelector('#litegraph-canvas') as HTMLCanvasElement;
         const canvas = new LGraphCanvas(canvasElement, graph);
-        (canvas as any).showSearchBox = () => { };
+        (canvas as unknown as { showSearchBox: () => void }).showSearchBox = () => { };
 
         let currentGraphName = 'untitled.json';
         const AUTOSAVE_KEY = 'fig-nodes:autosave:v1';
@@ -45,14 +45,19 @@ async function createEditor(container: HTMLElement) {
                     safeLocalStorageSet(AUTOSAVE_KEY, JSON.stringify(payload));
                     lastSavedGraphJson = json;
                 }
-            } catch { }
+            } catch { /* ignore */ }
         };
 
         let lastMouseEvent: MouseEvent | null = null;
         canvasElement.addEventListener('mousemove', (e: MouseEvent) => { lastMouseEvent = e; });
-        (canvas as any).getLastMouseEvent = () => lastMouseEvent;
+        (canvas as unknown as { getLastMouseEvent: () => MouseEvent | null }).getLastMouseEvent = () => lastMouseEvent;
 
-        function showQuickPrompt(title: string, value: any, callback: (v: any) => void, options?: any) {
+        const showQuickPrompt = (
+            title: string,
+            value: unknown,
+            callback: (v: unknown) => void,
+            options?: { type?: 'number' | 'text'; input?: 'number' | 'text'; step?: number; min?: number }
+        ) => {
             const numericOnly = (options && (options.type === 'number' || options.input === 'number')) || typeof value === 'number';
 
             const overlay = document.createElement('div');
@@ -79,14 +84,14 @@ async function createEditor(container: HTMLElement) {
             okButton.textContent = 'OK';
 
             const submit = () => {
-                let out: any = input.value;
+                let out: string | number = input.value;
                 if (numericOnly) {
                     const n = Number(out);
                     if (!Number.isFinite(n)) return;
                     out = Math.floor(n);
                 }
                 if (overlay.parentNode) document.body.removeChild(overlay);
-                try { callback(out); } catch { }
+                try { callback(out); } catch { /* ignore */ }
             };
             const cancel = () => { if (overlay.parentNode) document.body.removeChild(overlay); };
 
@@ -112,18 +117,18 @@ async function createEditor(container: HTMLElement) {
                 dialog.style.left = `${ev.clientX}px`;
                 dialog.style.top = `${ev.clientY - 28}px`;
                 overlay.style.background = 'transparent';
-                (overlay.style as any).pointerEvents = 'none';
-                (dialog.style as any).pointerEvents = 'auto';
+                overlay.style.pointerEvents = 'none';
+                dialog.style.pointerEvents = 'auto';
             }
 
             input.focus();
             input.select();
-        }
+        };
 
-        (canvas as any).prompt = showQuickPrompt;
-        (LiteGraph as any).prompt = showQuickPrompt;
+        (canvas as unknown as { prompt: typeof showQuickPrompt }).prompt = showQuickPrompt;
+        (LiteGraph as unknown as { prompt: typeof showQuickPrompt }).prompt = showQuickPrompt;
 
-        const { allItems, categorizedNodes } = await registerNodes();
+        const { allItems } = await registerNodes();
 
         const palette = setupPalette(allItems, canvas, graph);
 
@@ -181,7 +186,7 @@ async function createEditor(container: HTMLElement) {
                     updateGraphName('default-graph.json');
                     try { lastSavedGraphJson = JSON.stringify(graph.serialize()); } catch { lastSavedGraphJson = ''; }
                 }
-            } catch (e) { }
+            } catch (e) { /* ignore */ }
         }
 
         // Autosave on interval and on unload
@@ -236,8 +241,8 @@ async function createEditor(container: HTMLElement) {
                         }
                     };
 
-                    if (typeof (file as any).text === 'function') {
-                        const content = await (file as any).text();
+                    if (typeof file.text === 'function') {
+                        const content = await file.text();
                         await processContent(content);
                     } else {
                         const reader = new FileReader();

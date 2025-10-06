@@ -44,7 +44,7 @@ export default class BaseCustomNode extends LGraphNode {
                 } else {
                     const inputSlot = this.addInput(inp, typeStr);
                     if (color) {
-                        // @ts-ignore: Custom color property
+                        // @ts-expect-error: Custom color property
                         inputSlot.color = color;
                     }
                 }
@@ -60,7 +60,7 @@ export default class BaseCustomNode extends LGraphNode {
                 this.addOutput(out, typeStr);
                 if (typeInfo) {
                     const color = getTypeColor(typeInfo);
-                    // @ts-ignore: Custom color property
+                    // @ts-expect-error: Custom color property
                     this.outputs[index].color = color;  // Set color on output slot
                 }
             });
@@ -135,7 +135,7 @@ export default class BaseCustomNode extends LGraphNode {
                 } else {
                     let widgetOpts = {};
                     let isBooleanCombo = false;
-                    let originalOptions = param.options || [];
+                    const originalOptions = param.options || [];
                     let displayValues = originalOptions;
                     if (paramType === 'combo' && originalOptions.length === 2 && typeof originalOptions[0] === 'boolean' && typeof originalOptions[1] === 'boolean') {
                         isBooleanCombo = true;
@@ -171,7 +171,7 @@ export default class BaseCustomNode extends LGraphNode {
         if (baseName === 'Any' || baseName === 'typing.Any' || baseName.toLowerCase() === 'any') {
             return 0; // LiteGraph wildcard
         }
-        let type = baseName;
+        const type = baseName;
         if (typeInfo.subtype) {
             const sub = this.parseType(typeInfo.subtype);
             return `${type}<${sub}>`;
@@ -203,7 +203,7 @@ export default class BaseCustomNode extends LGraphNode {
         if (typeof text !== 'string') return [];
         const lines: string[] = [];
         const paragraphs = text.split('\n');
-        for (let p of paragraphs) {
+        for (const p of paragraphs) {
             const words = p.split(' ');
             let currentLine = words[0] || '';
             for (let i = 1; i < words.length; i++) {
@@ -659,11 +659,11 @@ export default class BaseCustomNode extends LGraphNode {
                     if (widget.options) {
                         // Custom combo widget - update display name
                         const paramName = widget.name.split(':')[0].trim();
-                        if (this.properties.hasOwnProperty(paramName)) {
+                        if (Object.prototype.hasOwnProperty.call(this.properties, paramName)) {
                             widget.name = `${paramName}: ${this.formatComboValue(this.properties[paramName])}`;
                         }
                     } else if (widget.type === 'number' || widget.type === 'combo') {
-                        if (this.properties.hasOwnProperty(widget.name)) {
+                        if (Object.prototype.hasOwnProperty.call(this.properties, widget.name)) {
                             widget.value = this.properties[widget.name];
                         }
                     }
