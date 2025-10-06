@@ -19,6 +19,8 @@ def load_nodes(directories: List[str]) -> Dict[str, type]:
         Dictionary mapping node class names to their types.
     
     Note: Skips abstract classes and __init__.py files.
+    To support extensibility, explicitly imports __init__.py in each subdirectory first
+    to run any initialization code (e.g., type registrations via register_type).
     """
     registry = {}
     for dir_path in directories:
@@ -27,7 +29,22 @@ def load_nodes(directories: List[str]) -> Dict[str, type]:
             base_dir = dir_path
         else:
             base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', dir_path))
-        for root, _, files in os.walk(base_dir):
+        for root, subdirs, files in os.walk(base_dir):
+            # Explicitly import __init__.py if it exists to run extension registrations
+            init_path = os.path.join(root, '__init__.py')
+            if os.path.exists(init_path):
+                # Build module name for __init__.py
+                rel_path = os.path.relpath(root, start=os.path.dirname(os.path.dirname(__file__)))
+                module_name = rel_path.replace(os.sep, '.')
+                if module_name.endswith('.'):  # Handle root package
+                    module_name = module_name[:-1]
+                spec = importlib.util.spec_from_file_location(module_name, init_path)
+                module = importlib.util.module_from_spec(spec)
+                module.__package__ = module_name.rsplit('.', 1)[0] if '.' in module_name else module_name
+                try:
+                    spec.loader.exec_module(module)
+                except Exception as e:
+                    logger.warning(f"Failed to import __init__.py in {root}: {e}")
             for filename in files:
                 if filename.endswith('.py') and filename != '__init__.py':
                     module_path = os.path.join(root, filename)
@@ -57,3 +74,6 @@ NODE_REGISTRY = load_nodes(['nodes/core', 'custom_nodes', *extra_dirs])
 # 3. Implement required attributes (inputs, outputs, etc.) and execute() method.
 # 4. The node will be automatically registered and available in the system.
 # 5. For UI parameters, define params_meta list on the class. 
+# For extensions in custom_nodes:
+# - Add registration code (e.g., register_type) in your subdirectory's __init__.py.
+# - It will be auto-imported during loading for seamless integration. 

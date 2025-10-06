@@ -1,7 +1,9 @@
 import pytest
 from typing import Dict, Any, Type
-from core.types_registry import AssetClass, InstrumentType, Provider, AssetSymbol, TYPE_REGISTRY, get_type, register_type, register_asset_class, register_provider
+from core.types_registry import AssetClass, InstrumentType, Provider, AssetSymbol, TYPE_REGISTRY, get_type, register_type, register_asset_class, register_provider, register_indicator_type, IndicatorType
+import enum
 from enum import auto
+import logging
 
 @pytest.fixture
 def sample_asset_symbol():
@@ -54,26 +56,58 @@ def test_register_type_new():
     assert get_type("TestType") == TestType
 
 def test_register_type_duplicate():
-    with pytest.raises(ValueError, match="Type DuplicateType already registered"):
-        register_type("DuplicateType", int)
-        register_type("DuplicateType", int)
+    register_type("DuplicateType", int)
+    with pytest.warns(UserWarning, match="Type DuplicateType already registered"):
+        register_type("DuplicateType", str)
 
 def test_register_asset_class_new():
-    new_class = register_asset_class("commodities")
-    assert new_class == "COMMODITIES"
-    assert hasattr(AssetClass, "COMMODITIES")
-    assert AssetClass.COMMODITIES == "COMMODITIES"  # Assuming str values
+    new_class = register_asset_class("FOREX")
+    assert hasattr(AssetClass, "FOREX")
+    assert getattr(AssetClass, "FOREX") == "FOREX"
 
 def test_register_asset_class_existing():
     existing = register_asset_class("crypto")
     assert existing == AssetClass.CRYPTO
 
 def test_register_provider_new():
-    new_provider = register_provider("new_exchange")
-    assert new_provider.name == "NEW_EXCHANGE"
-    assert hasattr(Provider, "NEW_EXCHANGE")
-    assert Provider.NEW_EXCHANGE == auto()  # Enum value
+    new_provider = register_provider("COINBASE")
+    assert hasattr(Provider, "COINBASE")
+    assert new_provider.name == "COINBASE"
+    assert new_provider == enum.auto()  # Test sentinel equality
 
 def test_register_provider_existing():
     existing = register_provider("binance")
     assert existing == Provider.BINANCE
+
+def test_register_indicator_type_new():
+    new_type = register_indicator_type("STOCH")
+    assert hasattr(IndicatorType, "STOCH")
+    assert new_type.name == "STOCH"
+
+def test_register_type_duplicate_warning():
+    register_type("TestType", str)
+    with pytest.warns(UserWarning, match="already registered"):
+        register_type("TestType", int)  # Overwrite
+
+# Add tests for AssetSymbol
+def test_asset_symbol_str_non_crypto(sample_asset_symbol):
+    sym = AssetSymbol("AAPL", AssetClass.STOCKS)
+    assert str(sym) == "AAPL"
+
+def test_asset_symbol_from_string_with_metadata():
+    sym = AssetSymbol.from_string("ETHUSDT", AssetClass.CRYPTO, Provider.BINANCE, {"exchange": "binance"})
+    assert sym.ticker == "ETH"
+    assert sym.quote_currency == "USDT"
+    assert sym.metadata == {"exchange": "binance"}
+
+def test_asset_symbol_hash_equality():
+    sym1 = AssetSymbol("BTC", AssetClass.CRYPTO, "USDT")
+    sym2 = AssetSymbol("BTC", AssetClass.CRYPTO, "USDT")
+    assert hash(sym1) == hash(sym2)
+    assert sym1 == sym2  # Assuming __eq__ is implemented via frozen dataclass
+
+# Test sentinel for Provider
+def test_provider_sentinel_equality():
+    p1 = register_provider("TEST1")
+    p2 = enum.auto()
+    assert p1 == p2

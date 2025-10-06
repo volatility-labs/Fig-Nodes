@@ -55,24 +55,36 @@ pytest tests/unit/
 
 ## Changelog
 
-- Oct 2, 2025:
-  - Initial internal beta release of Fig Node
-  - Added default graph upon initial dev server start up
-  - Added deterministic type color mapping and override system for node types
-  - Implemented frontend type string construction for complex/nested types
-  - Improved process management for dev server (graceful shutdown, error handling)
+- Oct 5, 2025
+  - Added base indicator calculation, indicator filter nodes
+  - Refactored `type_registry.py` for better maintainability by consolidating type aliases
+  - Added additional types in `types_registry.py` for `IndicatorResult`, and `MuliAssetIndicatorResult` for filtering
+  - Various bug fixes
+
+- Oct 4, 2025
+  - Added CI workflow to run unit tests for both front and backend upon push / merge
+  - Removed streaming mode from Ollama Chat Node 
+
 - Oct 3, 2025
   - Added "New" button on the canvas bottom menu bar to create new blank graph
   - Added auto-save feature in which an unsaved graph is saved in browser local storage every 2 seconds to preserve workflow continuity on accidental refreshes
   - Removed `ollama_model_selector` node. Added the model selector node params to `ollama_chat_node`
   - General bug fixes
   - Backend server tests pass
-- Oct 4, 2025
-  - Added CI workflow to run unit tests for both front and backend upon push / merge
-  - Removed streaming mode from Ollama Chat Node 
 
+- Oct 2, 2025:
+  - Initial internal beta release of Fig Node
+  - Added default graph upon initial dev server start up
+  - Added deterministic type color mapping and override system for node types
+  - Implemented frontend type string construction for complex/nested types
+  - Improved process management for dev server (graceful shutdown, error handling)
 
 Fig nodes is under **beta**. 
+
+## Hardware Requirements
+
+Minimum 16gb of VRAM on either a dedicated GPU or shared memory (Apple M series)
+
 
 ## License
 Fig Nodes is licensed under the Apache License 2.0. See [LICENSE](LICENSE) for details.

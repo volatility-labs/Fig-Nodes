@@ -1,10 +1,11 @@
 import pytest
 import pandas as pd
 from typing import Dict, Any, List
-from nodes.core.market.sma_crossover_filter_node import SMACrossoverFilterNode
-from nodes.core.market.adx_filter_node import ADXFilterNode
-from nodes.core.market.rsi_filter_node import RSIFilterNode
+from nodes.core.market.filters.sma_crossover_filter_node import SMACrossoverFilterNode
+from nodes.core.market.filters.adx_filter_node import ADXFilterNode
+from nodes.core.market.filters.rsi_filter_node import RSIFilterNode
 from core.types_registry import AssetSymbol, AssetClass, OHLCVBar
+from core.types_registry import IndicatorType
 
 
 @pytest.fixture
@@ -99,13 +100,13 @@ class TestSMACrossoverFilterNode:
     async def test_execute_empty_inputs(self, sma_filter_node):
         """Test execution with empty inputs."""
         result = await sma_filter_node.execute({})
-        assert result == {"filtered_ohlcv_bundle": {}}
+        assert result == {"filtered_ohlcv_bundle": {}, "indicator_results": {}}
 
     @pytest.mark.asyncio
     async def test_execute_empty_bundle(self, sma_filter_node):
         """Test execution with empty OHLCV bundle."""
         result = await sma_filter_node.execute({"ohlcv_bundle": {}})
-        assert result == {"filtered_ohlcv_bundle": {}}
+        assert result == {"filtered_ohlcv_bundle": {}, "indicator_results": {}}
 
     @pytest.mark.asyncio
     async def test_execute_default_params(self, sma_filter_node, sample_ohlcv_bundle, sample_symbols):
@@ -169,9 +170,14 @@ class TestADXFilterNode:
 
         filtered_bundle = result["filtered_ohlcv_bundle"]
         assert isinstance(filtered_bundle, dict)
-
-        # TSLA has strong trend, should likely pass ADX filter
-        # AAPL may also pass depending on calculation
+        assert "indicator_results" in result
+        assert len(result["indicator_results"]) == len(sample_symbols)
+        for sym in sample_symbols:
+            assert sym in result["indicator_results"]
+            ind_res = result["indicator_results"][sym][0]
+            assert ind_res["indicator_type"] == IndicatorType.ADX
+            assert "values" in ind_res
+            assert "single" in ind_res["values"]
 
     @pytest.mark.asyncio
     async def test_execute_high_adx_threshold(self, sample_ohlcv_bundle):
@@ -199,6 +205,17 @@ class TestADXFilterNode:
 
         # Should return empty due to insufficient data for ADX calculation
         assert result["filtered_ohlcv_bundle"] == {}
+
+    @pytest.mark.asyncio
+    async def test_handle_nan_adx(self, adx_filter_node, sample_symbols):
+        bundle_with_nan = {
+            sample_symbols[0]: [OHLCVBar(timestamp=1, open=float('nan'), high=110, low=90, close=105, volume=1000)]
+        }
+        result = await adx_filter_node.execute({"ohlcv_bundle": bundle_with_nan})
+        assert result["filtered_ohlcv_bundle"] == {}
+        assert len(result["indicator_results"]) == 1
+        ind_res = result["indicator_results"][sample_symbols[0]][0]
+        assert "error" in ind_res or ind_res["values"]["single"] == 0.0  # Depending on handling
 
 
 class TestRSIFilterNode:
@@ -311,36 +328,37 @@ class TestNodeProperties:
         node = SMACrossoverFilterNode("test_id", {})
 
         expected_inputs = {"ohlcv_bundle": Dict[AssetSymbol, List[OHLCVBar]]}
-        expected_outputs = {"filtered_ohlcv_bundle": Dict[AssetSymbol, List[OHLCVBar]]}
+        from core.types_registry import MultiAssetIndicatorResults
+        expected_outputs = {"filtered_ohlcv_bundle": Dict[AssetSymbol, List[OHLCVBar]], "indicator_results": MultiAssetIndicatorResults}
 
         assert node.inputs == expected_inputs
         assert node.outputs == expected_outputs
 
-        expected_defaults = {"short_period": 20, "long_period": 50}
+        expected_defaults = {"short_period": 20, "long_period": 50, "timeframe": "1d"}
         assert node.default_params == expected_defaults
 
-        assert len(node.params_meta) == 2
+        assert len(node.params_meta) == 3
         param_names = [p["name"] for p in node.params_meta]
-        assert set(param_names) == {"short_period", "long_period"}
+        assert set(param_names) == {"short_period", "long_period", "timeframe"}
 
     def test_adx_node_properties(self):
         """Test ADX filter node properties."""
         node = ADXFilterNode("test_id", {})
 
-        expected_defaults = {"min_adx": 25.0, "timeperiod": 14}
+        expected_defaults = {"min_adx": 25.0, "timeperiod": 14, "timeframe": "1d"}
         assert node.default_params == expected_defaults
 
-        assert len(node.params_meta) == 2
+        assert len(node.params_meta) == 3
         param_names = [p["name"] for p in node.params_meta]
-        assert set(param_names) == {"min_adx", "timeperiod"}
+        assert set(param_names) == {"min_adx", "timeperiod", "timeframe"}
 
     def test_rsi_node_properties(self):
         """Test RSI filter node properties."""
         node = RSIFilterNode("test_id", {})
 
-        expected_defaults = {"min_rsi": 30.0, "max_rsi": 70.0, "timeperiod": 14}
+        expected_defaults = {"min_rsi": 30.0, "max_rsi": 70.0, "timeperiod": 14, "timeframe": "1d"}
         assert node.default_params == expected_defaults
 
-        assert len(node.params_meta) == 3
+        assert len(node.params_meta) == 4
         param_names = [p["name"] for p in node.params_meta]
-        assert set(param_names) == {"min_rsi", "max_rsi", "timeperiod"}
+        assert set(param_names) == {"min_rsi", "max_rsi", "timeperiod", "timeframe"}

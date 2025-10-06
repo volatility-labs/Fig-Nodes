@@ -3,6 +3,17 @@ import pandas as pd
 from datetime import datetime
 from dataclasses import dataclass, field
 from enum import Enum, auto
+import warnings
+
+# Type Definition Conventions:
+# - Use TypedDict for structured dicts with fixed, named fields (e.g., IndicatorResult).
+# - Use type aliases for dynamic dicts/lists (e.g., MultiAssetIndicatorResults) to improve readability and reuse.
+# - Register all types in TYPE_REGISTRY for centralized access.
+# - For extensibility: Use register_ functions to add to Enums dynamically without modifying this file.
+#   Custom nodes can call these in their __init__.py or module init to extend types.
+
+# ~~~~~ Enums ~~~~~
+# Core enums for shared concepts. Extend via register_ functions below.
 
 class AssetClass:
     CRYPTO = "CRYPTO"
@@ -18,6 +29,21 @@ class Provider(Enum):
     """Enum for data providers or venues (e.g., exchanges, aggregators). Extend via register_provider."""
     BINANCE = auto()
     POLYGON = auto()
+
+class IndicatorType(Enum):
+    EMA = auto()  # Exponential Moving Average
+    SMA = auto()  # Simple Moving Average
+    MACD = auto()  # Moving Average Convergence Divergence
+    RSI = auto()  # Relative Strength Index
+    ADX = auto()  # Average Directional Index
+    HURST = auto()  # Hurst Exponent
+    BOLLINGER = auto()  # Bollinger Bands
+    VOLUME_RATIO = auto()  # Volume Ratio
+    EIS = auto()  # Elder Impulse System
+    # Add more as needed
+
+# ~~~~~ TypedDicts ~~~~~
+# Structured dict types with fixed fields.
 
 class LLMToolFunction(TypedDict, total=False):
     name: str
@@ -72,6 +98,21 @@ class OHLCVBar(TypedDict, total=False):
     n: int  # Number of transactions (optional)
     otc: bool  # OTC ticker flag (optional)
 
+class IndicatorValue(TypedDict, total=False):
+    single: float  # For simple indicators like EMA
+    lines: Dict[str, float]  # For multi-line like MACD: {"macd": float, "signal": float, "histogram": float}
+    series: List[Dict[str, Any]]  # For time-series: list of {'timestamp': int, 'value': float} or similar
+
+class IndicatorResult(TypedDict, total=False):
+    indicator_type: IndicatorType  # e.g., IndicatorType.MACD
+    timestamp: Optional[int]  # Unix ms, for alignment with OHLCV
+    values: IndicatorValue  # Flexible payload
+    params: Dict[str, Any]  # e.g., {"period": 14} for RSI
+    error: Optional[str]  # For NaN or computation failures
+
+# ~~~~~ Dataclasses ~~~~~
+# For immutable, hashable types with methods.
+
 @dataclass(frozen=True)
 class AssetSymbol:
     ticker: str
@@ -110,29 +151,58 @@ class AssetSymbol:
     def __hash__(self):
         return hash((self.ticker, self.asset_class, self.quote_currency, self.provider, self.exchange, self.instrument_type, frozenset(self.metadata.items())))
 
+# ~~~~~ Type Aliases ~~~~~
+# For complex/composed types. Add new aliases here for reuse.
+
+MultiAssetIndicatorResults = Dict[AssetSymbol, List[IndicatorResult]]
+
+# Aliases for consistency with complex registry types
+AssetSymbolList = List[AssetSymbol]
+IndicatorDict = Dict[str, float]
+AnyList = List[Any]
+ConfigDict = Dict[str, Any]
+OHLCV = List[OHLCVBar]
+OHLCVBundle = Dict[AssetSymbol, List[OHLCVBar]]
+OHLCVStream = AsyncGenerator[Dict[AssetSymbol, List[OHLCVBar]], None]
+LLMChatMessageList = List[LLMChatMessage]
+LLMToolSpecList = List[LLMToolSpec]
+LLMToolHistory = List[LLMToolHistoryItem]
+LLMThinkingHistory = List[LLMThinkingHistoryItem]
+APIKey = str
+
+# ~~~~~ Type Registry ~~~~~
+# Centralized dict for type lookup. All types must be registered here.
+
 TYPE_REGISTRY: Dict[str, Type] = {
     "AssetSymbol": AssetSymbol,
-    "AssetSymbolList": List[AssetSymbol],
+    "AssetSymbolList": AssetSymbolList,
     "Exchange": str,
     "Timestamp": int,
-    "IndicatorDict": Dict[str, float],
-    "AnyList": List[Any],
-    "ConfigDict": Dict[str, Any],
-    "OHLCV": List[OHLCVBar],
-    "OHLCVBundle": Dict[AssetSymbol, List[OHLCVBar]],
+    "IndicatorDict": IndicatorDict,
+    "AnyList": AnyList,
+    "ConfigDict": ConfigDict,
+    "OHLCV": OHLCV,
+    "OHLCVBundle": OHLCVBundle,
     "Score": float,
-    "OHLCVStream": AsyncGenerator[Dict[AssetSymbol, List[OHLCVBar]], None],
+    "OHLCVStream": OHLCVStream,
     # LLM types
     "LLMChatMessage": LLMChatMessage,
-    "LLMChatMessageList": List[LLMChatMessage],
+    "LLMChatMessageList": LLMChatMessageList,
     "LLMToolSpec": LLMToolSpec,
-    "LLMToolSpecList": List[LLMToolSpec],
+    "LLMToolSpecList": LLMToolSpecList,
     "LLMChatMetrics": LLMChatMetrics,
-    "LLMToolHistory": List[LLMToolHistoryItem],
-    "LLMThinkingHistory": List[LLMThinkingHistoryItem],
+    "LLMToolHistory": LLMToolHistory,
+    "LLMThinkingHistory": LLMThinkingHistory,
+    "IndicatorValue": IndicatorValue,
+    "IndicatorResult": IndicatorResult,
+    "MultiAssetIndicatorResults": MultiAssetIndicatorResults,  # e.g., {"AAPL": [IndicatorResult for MACD, IndicatorResult for RSI, ...]}
     # API types
-    "APIKey": str,
+    "APIKey": APIKey,
 }
+
+# ~~~~~ Extension Functions ~~~~~
+# Functions to dynamically extend types without modifying this file.
+# Ideal for custom_nodes: Call these in your module's init to register new values.
 
 def get_type(type_name: str) -> Type:
     if type_name not in TYPE_REGISTRY:
@@ -141,7 +211,7 @@ def get_type(type_name: str) -> Type:
 
 def register_type(type_name: str, type_obj: Type):
     if type_name in TYPE_REGISTRY:
-        raise ValueError(f"Type {type_name} already registered")
+        warnings.warn(f"Type {type_name} already registered; overwriting with new definition.")
     TYPE_REGISTRY[type_name] = type_obj
 
 def register_asset_class(name: str) -> str:
@@ -180,17 +250,60 @@ def register_provider(name: str):
     setattr(Provider, upper, sentinel)  # type: ignore[attr-defined]
     return sentinel
 
+def register_indicator_type(name: str):
+    upper = name.upper()
+    if hasattr(IndicatorType, upper):
+        return getattr(IndicatorType, upper)
+    class _AutoSentinel:
+        def __init__(self, name_str: str):
+            self.name = name_str
+        def __eq__(self, other: object) -> bool:
+            try:
+                import enum as _enum
+                return isinstance(other, _enum.auto)
+            except Exception:
+                return False
+        def __repr__(self) -> str:
+            return "auto()"
+    sentinel = _AutoSentinel(upper)
+    setattr(IndicatorType, upper, sentinel)  # type: ignore[attr-defined]
+    return sentinel
+
 # Developer Notes:
 # To add a new type:
-# 1. Define the type (class, dataclass, Enum, etc.) in this file.
-# 2. Register it in TYPE_REGISTRY with a unique string key.
-#    Example: TYPE_REGISTRY["MyNewType"] = MyNewType
-# 3. If it's a complex type (e.g., List[MyType]), use typing constructs.
-# 4. For dynamic extensions (like AssetClass or Exchange), use the register_ functions.
-# 5. Update get_type if custom lookup is needed.
-# 6. Ensure any new types are importable and used consistently in node definitions. 
+# 1. Define the type in the appropriate section (e.g., new TypedDict under TypedDicts).
+# 2. If it's an alias or composed type, add it under Type Aliases.
+# 3. Register it in TYPE_REGISTRY with a unique string key.
+# 4. For dynamic extensions (e.g., new Enum values), use the register_ functions.
+# 5. Update __all__ if the type should be importable.
+# 6. Ensure any new types are used consistently in node definitions.
+
+# For custom_nodes extensions:
+# - To add a new type: Define it in your custom module, then call register_type("MyNewType", MyNewType) in your __init__.py.
+# - To extend an Enum: Call register_provider("NEW_PROVIDER") or similar.
+# - Example: In custom_nodes/my_plugin/__init__.py:
+#   from core.types_registry import register_type, register_provider
+#   class MyCustomType(TypedDict):
+#       field: str
+#   register_type("MyCustomType", MyCustomType)
+#   MY_PROVIDER = register_provider("MY_EXCHANGE")
 
 # Example: In a plugin, register a new provider and use it:
 # from core.types_registry import register_provider
 # MY_PROVIDER = register_provider("ALPHA_VANTAGE")
 # Then in AssetSymbol: AssetSymbol(..., provider=MY_PROVIDER) 
+
+__all__ = [
+    'AssetClass', 'InstrumentType', 'Provider', 'IndicatorType',
+    'LLMToolFunction', 'LLMToolSpec', 'LLMToolCallFunction', 'LLMToolCall',
+    'LLMChatMessage', 'LLMChatMetrics', 'LLMToolHistoryItem', 'LLMThinkingHistoryItem',
+    'OHLCVBar', 'AssetSymbol', 'IndicatorValue',
+    'IndicatorResult', 'MultiAssetIndicatorResults',
+    'TYPE_REGISTRY', 'get_type', 'register_type',
+    'register_asset_class', 'register_provider', 'register_indicator_type',
+    # Add new aliases here as needed
+    'AssetSymbolList', 'IndicatorDict', 'AnyList', 'ConfigDict',
+    'OHLCV', 'OHLCVBundle', 'OHLCVStream',
+    'LLMChatMessageList', 'LLMToolSpecList', 'LLMToolHistory', 'LLMThinkingHistory',
+    'APIKey',
+] 

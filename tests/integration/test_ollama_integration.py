@@ -64,17 +64,18 @@ async def test_ollama_streaming_integration(mock_httpx_client, mock_ollama_clien
     mock_httpx_client.return_value.__aenter__.return_value = httpx_client_instance
 
     # Mock chat stream for quick completion
-    async def mock_stream():
-        yield {"message": {"role": "assistant", "content": "{}"}}
-        yield {"done": True, "total_duration": 50, "eval_count": 5}
-
-    mock_chat = AsyncMock(return_value=mock_stream())
+    mock_response = {
+        "message": {"role": "assistant", "content": "{}"},
+        "total_duration": 50,
+        "eval_count": 5
+    }
+    mock_chat = AsyncMock(return_value=mock_response)
     mock_ollama_client.return_value.chat = mock_chat
 
-    # Define graph: OllamaChat (with selected_model, streaming) <- TextInput
+    # Define graph: OllamaChat (with selected_model, streaming) &lt;- TextInput
     graph_data = {
         "nodes": [
-            {"id": 1, "type": "OllamaChatNode", "properties": {"stream": True, "json_mode": True, "selected_model": "test_model:latest"}},
+            {"id": 1, "type": "OllamaChatNode", "properties": {"stream": False, "json_mode": True, "selected_model": "test_model:latest"}},
             {"id": 2, "type": "TextInputNode", "properties": {"text": "Output empty JSON"}}
         ],
         "links": [
@@ -86,13 +87,10 @@ async def test_ollama_streaming_integration(mock_httpx_client, mock_ollama_clien
     stream_gen = executor.stream()
 
     initial_results = await anext(stream_gen)
-    stream_tick1 = await anext(stream_gen)
-    stream_tick2 = await anext(stream_gen)
-    final_tick = await anext(stream_gen)
+    chat_results = await anext(stream_gen)
+    results = {**initial_results, **chat_results}
 
-    results = {**initial_results, **stream_tick1, **stream_tick2, **final_tick}
-
-    assert 1 in results  # chat id1
+    assert 1 in results
     assert results[1]["message"]["content"] == {}
     assert "total_duration" in results[1].get("metrics", {})
     assert "eval_count" in results[1].get("metrics", {})
@@ -115,15 +113,12 @@ async def test_web_search_tool_with_ollama_integration(mock_httpx_client, mock_o
     mock_httpx_client.return_value.__aexit__ = AsyncMock(return_value=False)
 
     # Mock the tool orchestration chat calls
-    def mock_chat_side_effect(*args, **kwargs):
-        if kwargs.get("tools"):
-            # First tool round: model calls tool
-            return {"message": {"role": "assistant", "tool_calls": [{"function": {"name": "web_search", "arguments": {"query": "artificial intelligence news"}}}]}}
-        else:
-            # Final response after tool
-            return {"message": {"role": "assistant", "content": "Summary of AI news: Recent advancements include..." }}
+    mock_responses = [
+        {"message": {"role": "assistant", "tool_calls": [{"function": {"name": "web_search", "arguments": {"query": "artificial intelligence news"}}}]}},
+        {"message": {"role": "assistant", "content": "Summary of AI news: Recent advancements include..." }}
+    ]
 
-    mock_ollama_client.return_value.chat = AsyncMock(side_effect=mock_chat_side_effect)
+    mock_ollama_client.return_value.chat = AsyncMock(side_effect=mock_responses)
 
     """Test web search tool integration with OllamaChatNode."""
     # Skip if no API key is available
@@ -200,16 +195,12 @@ async def test_web_search_tool_streaming_with_ollama(mock_httpx_client, mock_oll
     mock_httpx_client.return_value.__aexit__ = AsyncMock(return_value=False)
 
     # Mock the tool orchestration and streaming
-    async def mock_chat_stream(*args, **kwargs):
-        if kwargs.get("tools") and not kwargs["stream"]:
-            # Non-stream tool call
-            yield {"message": {"role": "assistant", "tool_calls": [{"function": {"name": "web_search", "arguments": {"query": "Bitcoin price"}}}]}}
-        else:
-            # Streaming final response
-            yield {"message": {"role": "assistant", "content": "Bitcoin is currently priced at approximately $60,000."}}
-            yield {"done": True, "total_duration": 100, "eval_count": 10}
+    mock_responses = [
+        {"message": {"role": "assistant", "tool_calls": [{"function": {"name": "web_search", "arguments": {"query": "Bitcoin price"}}}]}},
+        {"message": {"role": "assistant", "content": "Bitcoin is currently priced at approximately $60,000."}, "total_duration": 100, "eval_count": 10}
+    ]
 
-    mock_ollama_client.return_value.chat = AsyncMock(return_value=mock_chat_stream())
+    mock_ollama_client.return_value.chat = AsyncMock(side_effect=mock_responses)
 
     """Test web search tool integration with streaming OllamaChatNode."""
     # Skip if no API key is available
@@ -227,7 +218,7 @@ async def test_web_search_tool_streaming_with_ollama(mock_httpx_client, mock_oll
                 "require_api_key": True
             }},
             {"id": 3, "type": "OllamaChatNode", "properties": {
-                "stream": True,
+                "stream": False,
                 "max_tool_iters": 1,
                 "tool_timeout_s": 10,
                 "selected_model": "llama3.2:latest"

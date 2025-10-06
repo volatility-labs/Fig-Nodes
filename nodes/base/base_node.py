@@ -17,6 +17,8 @@ class BaseNode:
     Optional:
     - required_asset_class: AssetClass - For asset-specific nodes
     - validate_inputs(self, inputs) - Custom validation
+    
+    For specialized hierarchies (e.g., filter nodes), extend this class with abstract methods for shared behavior, then create concrete subclasses. Example: BaseFilterNode extends BaseNode with filtering logic, and BaseIndicatorFilterNode extends BaseFilterNode for indicator-specific filters.
     """
     inputs: Dict[str, Type] = {}
     outputs: Dict[str, Type] = {"output": Any}
