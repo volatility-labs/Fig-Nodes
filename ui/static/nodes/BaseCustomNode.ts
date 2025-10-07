@@ -680,7 +680,7 @@ export default class BaseCustomNode extends LGraphNode {
             }
 
             // For combo button widgets that render label as "param: value", refresh the name
-            if (widget.options && Object.prototype.hasOwnProperty.call(this.properties, paramKey)) {
+            if (widget.options?.values && Object.prototype.hasOwnProperty.call(this.properties, paramKey)) {
                 // Keep the left side of the label intact if custom UI overrides later
                 const leftLabel = (typeof widget.name === 'string' && widget.name.includes(':')) ? widget.name.split(':')[0] : String(paramKey);
                 widget.name = `${leftLabel}: ${this.formatComboValue(this.properties[paramKey])}`;
