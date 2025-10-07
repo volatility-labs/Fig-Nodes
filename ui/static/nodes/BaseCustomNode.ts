@@ -815,7 +815,7 @@ export default class BaseCustomNode extends LGraphNode {
         overlay.focus();
     }
 
-    onConnectInput(inputIndex: number, outputType: string | number, outputSlot: any, outputNode: any, outputIndex: number): boolean {
+    onConnectInput(inputIndex: number, outputType: string | number, _outputSlot: any, _outputNode: any, _outputIndex: number): boolean {
         const inputSlot = this.inputs[inputIndex];
         const inputType = inputSlot.type;
         if (typeof inputType === 'string' && inputType.includes(' | ')) {

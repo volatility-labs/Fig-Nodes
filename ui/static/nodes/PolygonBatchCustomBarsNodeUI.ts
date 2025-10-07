@@ -1,5 +1,4 @@
 import BaseCustomNode from './BaseCustomNode';
-import { executionState } from '../websocket';
 
 export default class PolygonBatchCustomBarsNodeUI extends BaseCustomNode {
     constructor(title: string, data: any) {

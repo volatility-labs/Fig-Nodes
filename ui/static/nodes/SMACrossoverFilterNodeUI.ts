@@ -34,7 +34,7 @@ export default class SMACrossoverFilterNodeUI extends BaseCustomNode {
         const shortPeriod = this.properties?.short_period || 20;
         const longPeriod = this.properties?.long_period || 50;
 
-        let summary = `SMA Crossover Filter Results:\n`;
+        let summary = 'SMA Crossover Filter Results:\n';
         summary += `${symbolCount} asset(s) passed filter\n`;
         summary += `Short SMA: ${shortPeriod} periods\n`;
         summary += `Long SMA: ${longPeriod} periods\n\n`;

@@ -35,7 +35,7 @@ export default class RSIFilterNodeUI extends BaseCustomNode {
         const maxRsi = this.properties?.max_rsi || 70.0;
         const timeperiod = this.properties?.timeperiod || 14;
 
-        let summary = `RSI Filter Results:\n`;
+        let summary = 'RSI Filter Results:\n';
         summary += `${symbolCount} asset(s) passed filter\n`;
         summary += `RSI Range: ${minRsi} - ${maxRsi}\n`;
         summary += `Time Period: ${timeperiod}\n\n`;

@@ -16,7 +16,7 @@ async function stopExecution(): Promise<void> {
 
     // Show stopping progress with indeterminate bar and text at top
     const indicator = document.getElementById('status-indicator');
-    if (indicator) indicator.className = `status-indicator executing`;
+    if (indicator) indicator.className = 'status-indicator executing';
     const progressRoot = document.getElementById('top-progress');
     const progressBar = document.getElementById('top-progress-bar');
     const progressText = document.getElementById('top-progress-text');
@@ -31,7 +31,7 @@ async function stopExecution(): Promise<void> {
         stopPromiseResolver = resolve;
         if (ws && ws.readyState === WebSocket.OPEN) {
             console.log('Stop execution: Sending stop message to backend');
-            ws.send(JSON.stringify({ type: "stop" }));
+            ws.send(JSON.stringify({ type: 'stop' }));
             // Wait for backend "stopped" confirmation (handled in onmessage)
         } else {
             console.log('Stop execution: No active WebSocket, forcing cleanup');
@@ -54,7 +54,7 @@ function forceCleanup() {
     document.getElementById('stop')!.style.display = 'none';
     const indicator = document.getElementById('status-indicator');
     if (indicator) {
-        indicator.className = `status-indicator connected`;
+        indicator.className = 'status-indicator connected';
     }
     // Ensure progress bar shows idle status when execution stops
     const progressRoot = document.getElementById('top-progress');
@@ -132,7 +132,7 @@ export function setupWebSocket(graph: LGraph, _canvas: LGraphCanvas) {
 
         const indicator = document.getElementById('status-indicator');
         if (indicator) {
-            indicator.className = `status-indicator executing`;
+            indicator.className = 'status-indicator executing';
         }
         document.getElementById('execute')!.style.display = 'none';
         document.getElementById('stop')!.style.display = 'inline-block';
@@ -147,15 +147,15 @@ export function setupWebSocket(graph: LGraph, _canvas: LGraphCanvas) {
 
         ws.onopen = () => {
             executionState = 'executing';
-            if (indicator) indicator.className = `status-indicator executing`;
-            ws?.send(JSON.stringify({ type: "graph", graph_data: graphData }));
+            if (indicator) indicator.className = 'status-indicator executing';
+            ws?.send(JSON.stringify({ type: 'graph', graph_data: graphData }));
         };
 
         ws.onmessage = (event) => {
             const data = JSON.parse(event.data);
 
             if (data.type === 'status') {
-                if (indicator) indicator.className = `status-indicator executing`;
+                if (indicator) indicator.className = 'status-indicator executing';
                 // Keep progress visible and reflect coarse states
                 const msg: string = data.message || '';
                 if (/starting/i.test(msg)) {
@@ -181,7 +181,7 @@ export function setupWebSocket(graph: LGraph, _canvas: LGraphCanvas) {
             } else if (data.type === 'data') {
                 // Overlay is never shown during execution now
                 if (Object.keys(data.results).length === 0) {
-                    if (indicator) indicator.className = `status-indicator executing`;
+                    if (indicator) indicator.className = 'status-indicator executing';
                     showProgress('Streaming...', false);
                     return;
                 }
@@ -235,7 +235,7 @@ export function setupWebSocket(graph: LGraph, _canvas: LGraphCanvas) {
                 console.error('Execution error:', data.message);
                 showError(data.message);
                 if (indicator) {
-                    indicator.className = `status-indicator disconnected`;
+                    indicator.className = 'status-indicator disconnected';
                 }
                 forceCleanup();
                 hideProgress();
@@ -250,7 +250,7 @@ export function setupWebSocket(graph: LGraph, _canvas: LGraphCanvas) {
 
         ws.onerror = (err) => {
             console.error('WebSocket error:', err);
-            if (indicator) indicator.className = `status-indicator disconnected`;
+            if (indicator) indicator.className = 'status-indicator disconnected';
             forceCleanup();
             hideProgress();
         };

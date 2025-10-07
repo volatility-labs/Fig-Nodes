@@ -5,7 +5,7 @@ export function getCanvasMenuOptions(canvas: LGraphCanvas, graph: LGraph, catego
         e.preventDefault();
         const options: IContextMenuValue[] = [
             {
-                content: "Add Node",
+                content: 'Add Node',
                 has_submenu: true,
                 callback: (value, options, event, parentMenu) => {
                     const submenu: IContextMenuValue[] = [];
@@ -34,8 +34,8 @@ export function getCanvasMenuOptions(canvas: LGraphCanvas, graph: LGraph, catego
                     new ContextMenu(submenu, { event, parentMenu });
                 }
             },
-            { content: "Fit to window", callback: () => canvas.setZoom(1, [0, 0]) }
+            { content: 'Fit to window', callback: () => canvas.setZoom(1, [0, 0]) }
         ];
-        new ContextMenu(options, { event: e, title: "Canvas Menu" });
+        new ContextMenu(options, { event: e, title: 'Canvas Menu' });
     };
 }

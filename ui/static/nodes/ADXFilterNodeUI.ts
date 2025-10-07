@@ -34,7 +34,7 @@ export default class ADXFilterNodeUI extends BaseCustomNode {
         const minAdx = this.properties?.min_adx || 25.0;
         const timeperiod = this.properties?.timeperiod || 14;
 
-        let summary = `ADX Filter Results:\n`;
+        let summary = 'ADX Filter Results:\n';
         summary += `${symbolCount} asset(s) passed filter\n`;
         summary += `Minimum ADX: ${minAdx}\n`;
         summary += `Time Period: ${timeperiod}\n\n`;

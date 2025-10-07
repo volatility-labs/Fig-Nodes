@@ -23,7 +23,7 @@ export function updateStatus(status: 'connected' | 'disconnected' | 'loading' | 
     }
 }
 
-export function showLoading(show: boolean, message: string = "Executing...") {
+export function showLoading(show: boolean, message: string = 'Executing...') {
     const overlay = document.getElementById('loading-overlay');
     const overlayText = overlay?.querySelector('span');
     if (overlay && overlayText) {
