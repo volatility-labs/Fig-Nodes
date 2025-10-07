@@ -1,4 +1,4 @@
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import httpx
 import logging
 from nodes.base.universe_node import UniverseNode
@@ -9,12 +9,17 @@ logger = logging.getLogger(__name__)
 
 class PolygonUniverseNode(UniverseNode):
     inputs = {"api_key": get_type("APIKey")}
+    uiModule = "PolygonUniverseNodeUI"
     params_meta = [
-        {"name": "market", "type": "combo", "default": "stocks", "options": ["stocks", "crypto", "fx", "otc", "indices"]},
+        {"name": "market", "type": "combo", "default": "stocks", "options": ["stocks", "crypto", "fx", "otc", "indices"], "label": "Market Type", "description": "Select the market type to fetch symbols from"},
+        {"name": "min_change_perc", "type": "number", "default": None, "optional": True, "label": "Min Change", "unit": "%", "description": "Minimum daily percentage change (e.g., 5 for 5%)", "step": 0.01},
+        {"name": "min_volume", "type": "number", "default": None, "optional": True, "label": "Min Volume", "unit": "shares/contracts", "description": "Minimum daily trading volume in shares or contracts"},
+        {"name": "min_price", "type": "number", "default": None, "optional": True, "label": "Min Price", "unit": "USD", "description": "Minimum closing price in USD"},
+        {"name": "max_price", "type": "number", "default": None, "optional": True, "label": "Max Price", "unit": "USD", "description": "Maximum closing price in USD"},
+        {"name": "include_otc", "type": "boolean", "default": False, "optional": True, "label": "Include OTC", "description": "Include over-the-counter symbols (stocks only)"},
     ]
 
     async def execute(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
-        # Store inputs for use in _fetch_symbols
         self._execute_inputs = inputs
         return await super().execute(inputs)
 
@@ -23,54 +28,83 @@ class PolygonUniverseNode(UniverseNode):
         if not api_key:
             raise ValueError("Polygon API key is required")
         market = self.params.get("market", "stocks")
-        if not hasattr(AssetClass, market.upper()):
-            register_asset_class(market)
-        asset_class = getattr(AssetClass, market.upper())
-        base_url = "https://api.polygon.io/v3/reference/tickers"
+
+        if market == "stocks" or market == "otc":
+            locale = "us"
+            markets = "stocks"
+        elif market == "indices":
+            locale = "us"
+            markets = "indices"
+        else:
+            locale = "global"
+            markets = market
+
+        base_url = f"https://api.polygon.io/v2/snapshot/locale/{locale}/markets/{markets}/tickers"
+        params: Dict[str, Any] = {}
+        if market == "otc" or (market == "stocks" and self.params.get("include_otc", False)):
+            params["include_otc"] = True
+
         headers = {"Authorization": f"Bearer {api_key}"}
-        params = {
-            "market": market,
-            "active": "true",
-            "limit": 1000,
-            "sort": "ticker",
-            "order": "asc",
-        }
         symbols: List[AssetSymbol] = []
         async with httpx.AsyncClient() as client:
-            next_url = base_url
-            while next_url:
-                request = client.get(next_url, headers=headers, params=params) if next_url == base_url else client.get(next_url, headers=headers)
-                response = await request
-                if response.status_code != 200:
-                    raise ValueError(f"Failed to fetch tickers: {response.status_code} - {getattr(response, 'text', '')}")
-                data = response.json()
-                for res in data.get("results", []):
-                    ticker = res["ticker"]
-                    quote_currency = None
-                    base_ticker = ticker
-                    if market in ["crypto", "fx"] and ":" in ticker:
-                        _, tick = ticker.split(":", 1)
-                        if len(tick) > 3 and tick[-3:].isalpha():
-                            base_ticker = tick[:-3]
-                            quote_currency = tick[-3:]
-                    symbols.append(
-                        AssetSymbol(
-                            ticker=base_ticker,
-                            asset_class=asset_class,
-                            quote_currency=quote_currency,
-                            exchange=res.get("primary_exchange"),
-                            metadata={
-                                "name": res.get("name"),
-                                "currency_name": res.get("currency_name"),
-                                "locale": res.get("locale"),
-                                "cik": res.get("cik"),
-                                "composite_figi": res.get("composite_figi"),
-                                "share_class_figi": res.get("share_class_figi"),
-                                "original_ticker": ticker,
-                            },
-                        )
+            response = await client.get(base_url, headers=headers, params=params)
+            if response.status_code != 200:
+                error_text = response.text if response.text else response.reason_phrase
+                raise ValueError(f"Failed to fetch snapshot: {response.status_code} - {error_text}")
+            data = response.json()
+            tickers_data = data.get("tickers", [])
+
+            min_change_perc = self.params.get("min_change_perc")
+            min_volume = self.params.get("min_volume")
+            min_price = self.params.get("min_price")
+            max_price = self.params.get("max_price")
+
+            for res in tickers_data:
+                ticker = res["ticker"]
+
+                # Apply filters
+                todays_change_perc = res.get("todaysChangePerc", 0)
+                if min_change_perc is not None and todays_change_perc < min_change_perc:
+                    continue
+
+                day = res.get("day", {})
+                volume = day.get("v", 0)
+                if min_volume is not None and volume < min_volume:
+                    continue
+
+                price = day.get("c", 0)
+                if min_price is not None and price < min_price:
+                    continue
+                if max_price is not None and price > max_price:
+                    continue
+
+                # Create AssetSymbol
+                quote_currency = None
+                base_ticker = ticker
+                if market in ["crypto", "fx"] and ":" in ticker:
+                    _, tick = ticker.split(":", 1)
+                    if len(tick) > 3 and tick[-3:].isalpha() and tick[-3:].isupper():
+                        base_ticker = tick[:-3]
+                        quote_currency = tick[-3:]
+
+                if not hasattr(AssetClass, market.upper()):
+                    register_asset_class(market)
+                asset_class = getattr(AssetClass, market.upper())
+
+                metadata = {
+                    "original_ticker": ticker,
+                    "snapshot": res,
+                }
+
+                symbols.append(
+                    AssetSymbol(
+                        ticker=base_ticker,
+                        asset_class=asset_class,
+                        quote_currency=quote_currency,
+                        exchange=res.get("primary_exchange"),  # May not be present
+                        metadata=metadata,
                     )
-                next_url = data.get("next_url")
+                )
         return symbols
 
 

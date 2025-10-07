@@ -165,8 +165,8 @@ async def execute_endpoint(websocket: WebSocket):
                 is_cancelling = False
             else:
                 await websocket.send_json({"type": "error", "message": "Unknown message type"})
-    except WebSocketDisconnect:
-        print("Client disconnected unexpectedly.")
+    except WebSocketDisconnect as e:
+        print(f"Client disconnected: code={e.code}, reason={e.reason or 'none'}")
         if job is not None and job.state not in [JobState.DONE, JobState.CANCELLED]:
             queue = _get_queue_for_current_loop(app)
             await queue.cancel_job(job)

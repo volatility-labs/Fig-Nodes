@@ -141,8 +141,12 @@ async def test_polygon_fetch_symbols(mock_client, polygon_node):
     mock_response = MagicMock()
     mock_response.status_code = 200
     mock_response.json.return_value = {
-        "results": [{"ticker": "X:BTCUSD", "name": "Bitcoin"}],
-        "next_url": None
+        "tickers": [{
+            "ticker": "X:BTCUSD",
+            "todaysChangePerc": 5.0,
+            "day": {"v": 1000, "c": 50000},
+            "primary_exchange": "Crypto"
+        }]
     }
     mock_get.return_value = mock_response
     mock_client.return_value.__aenter__.return_value.get = mock_get
@@ -152,6 +156,8 @@ async def test_polygon_fetch_symbols(mock_client, polygon_node):
     assert len(symbols) == 1
     assert symbols[0].ticker == "BTC"
     assert symbols[0].quote_currency == "USD"
+    assert symbols[0].asset_class == "CRYPTO"
+    assert symbols[0].exchange == "Crypto"
 
 @pytest.mark.asyncio
 @patch("httpx.AsyncClient")
@@ -163,16 +169,250 @@ async def test_polygon_no_api_key(mock_client, polygon_node):
 
 @pytest.mark.asyncio
 @patch("httpx.AsyncClient")
-async def test_polygon_pagination(mock_client, polygon_node):
-    mock_get = AsyncMock(side_effect=[
-        MagicMock(status_code=200, json=lambda: {"results": [{"ticker": "X:BTCUSD"}], "next_url": "next"}),
-        MagicMock(status_code=200, json=lambda: {"results": [{"ticker": "X:ETHUSD"}], "next_url": None})
-    ])
+async def test_polygon_single_request(mock_client, polygon_node):
+    # Current implementation only makes a single request, doesn't handle pagination
+    mock_get = AsyncMock()
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        "tickers": [
+            {"ticker": "X:BTCUSD", "todaysChangePerc": 1.0, "day": {"v": 100, "c": 50000}},
+            {"ticker": "X:ETHUSD", "todaysChangePerc": 2.0, "day": {"v": 200, "c": 3000}}
+        ]
+    }
+    mock_get.return_value = mock_response
     mock_client.return_value.__aenter__.return_value.get = mock_get
     # Set execute inputs that _fetch_symbols expects
     polygon_node._execute_inputs = {"api_key": "test_key"}
     symbols = await polygon_node._fetch_symbols()
     assert len(symbols) == 2
+
+@pytest.mark.asyncio
+@patch("httpx.AsyncClient")
+async def test_polygon_filtering_min_change_perc(mock_client):
+    node = PolygonUniverseNode("poly_id", {"market": "crypto", "min_change_perc": 2.0})
+    mock_get = AsyncMock()
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        "tickers": [
+            {"ticker": "X:BTCUSD", "todaysChangePerc": 1.0, "day": {"v": 1000, "c": 50000}},  # Below threshold
+            {"ticker": "X:ETHUSD", "todaysChangePerc": 3.0, "day": {"v": 1000, "c": 3000}}   # Above threshold
+        ]
+    }
+    mock_get.return_value = mock_response
+    mock_client.return_value.__aenter__.return_value.get = mock_get
+    node._execute_inputs = {"api_key": "test_key"}
+    symbols = await node._fetch_symbols()
+    assert len(symbols) == 1
+    assert symbols[0].ticker == "ETH"
+
+@pytest.mark.asyncio
+@patch("httpx.AsyncClient")
+async def test_polygon_filtering_min_volume(mock_client):
+    node = PolygonUniverseNode("poly_id", {"market": "crypto", "min_volume": 2000})
+    mock_get = AsyncMock()
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        "tickers": [
+            {"ticker": "X:BTCUSD", "todaysChangePerc": 1.0, "day": {"v": 1000, "c": 50000}},  # Below threshold
+            {"ticker": "X:ETHUSD", "todaysChangePerc": 1.0, "day": {"v": 3000, "c": 3000}}   # Above threshold
+        ]
+    }
+    mock_get.return_value = mock_response
+    mock_client.return_value.__aenter__.return_value.get = mock_get
+    node._execute_inputs = {"api_key": "test_key"}
+    symbols = await node._fetch_symbols()
+    assert len(symbols) == 1
+    assert symbols[0].ticker == "ETH"
+
+@pytest.mark.asyncio
+@patch("httpx.AsyncClient")
+async def test_polygon_filtering_price_range(mock_client):
+    node = PolygonUniverseNode("poly_id", {"market": "crypto", "min_price": 1000, "max_price": 40000})
+    mock_get = AsyncMock()
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        "tickers": [
+            {"ticker": "X:BTCUSD", "todaysChangePerc": 1.0, "day": {"v": 1000, "c": 50000}},  # Above max_price
+            {"ticker": "X:ETHUSD", "todaysChangePerc": 1.0, "day": {"v": 1000, "c": 3000}},  # Within range
+            {"ticker": "X:ADAUSD", "todaysChangePerc": 1.0, "day": {"v": 1000, "c": 500}}    # Below min_price
+        ]
+    }
+    mock_get.return_value = mock_response
+    mock_client.return_value.__aenter__.return_value.get = mock_get
+    node._execute_inputs = {"api_key": "test_key"}
+    symbols = await node._fetch_symbols()
+    assert len(symbols) == 1
+    assert symbols[0].ticker == "ETH"
+
+@pytest.mark.asyncio
+@patch("httpx.AsyncClient")
+async def test_polygon_market_stocks(mock_client):
+    node = PolygonUniverseNode("poly_id", {"market": "stocks"})
+    mock_get = AsyncMock()
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        "tickers": [{"ticker": "AAPL", "todaysChangePerc": 1.0, "day": {"v": 1000, "c": 150}}]
+    }
+    mock_get.return_value = mock_response
+    mock_client.return_value.__aenter__.return_value.get = mock_get
+    node._execute_inputs = {"api_key": "test_key"}
+    symbols = await node._fetch_symbols()
+    assert len(symbols) == 1
+    assert symbols[0].ticker == "AAPL"
+    assert symbols[0].asset_class == "STOCKS"
+    assert symbols[0].quote_currency is None
+
+@pytest.mark.asyncio
+@patch("httpx.AsyncClient")
+async def test_polygon_market_indices(mock_client):
+    node = PolygonUniverseNode("poly_id", {"market": "indices"})
+    mock_get = AsyncMock()
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        "tickers": [{"ticker": "SPY", "todaysChangePerc": 1.0, "day": {"v": 1000, "c": 400}}]
+    }
+    mock_get.return_value = mock_response
+    mock_client.return_value.__aenter__.return_value.get = mock_get
+    node._execute_inputs = {"api_key": "test_key"}
+    symbols = await node._fetch_symbols()
+    assert len(symbols) == 1
+    assert symbols[0].ticker == "SPY"
+    assert symbols[0].asset_class == "INDICES"
+
+@pytest.mark.asyncio
+@patch("httpx.AsyncClient")
+async def test_polygon_market_fx(mock_client):
+    node = PolygonUniverseNode("poly_id", {"market": "fx"})
+    mock_get = AsyncMock()
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        "tickers": [{"ticker": "C:EURUSD", "todaysChangePerc": 1.0, "day": {"v": 1000, "c": 1.05}}]
+    }
+    mock_get.return_value = mock_response
+    mock_client.return_value.__aenter__.return_value.get = mock_get
+    node._execute_inputs = {"api_key": "test_key"}
+    symbols = await node._fetch_symbols()
+    assert len(symbols) == 1
+    assert symbols[0].ticker == "EUR"
+    assert symbols[0].quote_currency == "USD"
+    assert symbols[0].asset_class == "FX"
+
+@pytest.mark.asyncio
+@patch("httpx.AsyncClient")
+async def test_polygon_market_otc(mock_client):
+    node = PolygonUniverseNode("poly_id", {"market": "otc"})
+    mock_get = AsyncMock()
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        "tickers": [{"ticker": "OTCTICKER", "todaysChangePerc": 1.0, "day": {"v": 1000, "c": 10}}]
+    }
+    mock_get.return_value = mock_response
+    mock_client.return_value.__aenter__.return_value.get = mock_get
+    node._execute_inputs = {"api_key": "test_key"}
+    symbols = await node._fetch_symbols()
+    assert len(symbols) == 1
+    assert symbols[0].ticker == "OTCTICKER"
+    assert symbols[0].asset_class == "OTC"
+
+@pytest.mark.asyncio
+@patch("httpx.AsyncClient")
+async def test_polygon_include_otc(mock_client):
+    node = PolygonUniverseNode("poly_id", {"market": "stocks", "include_otc": True})
+    mock_get = AsyncMock()
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        "tickers": [{"ticker": "AAPL", "todaysChangePerc": 1.0, "day": {"v": 1000, "c": 150}}]
+    }
+    mock_get.return_value = mock_response
+    mock_client.return_value.__aenter__.return_value.get = mock_get
+    node._execute_inputs = {"api_key": "test_key"}
+    symbols = await node._fetch_symbols()
+    # Verify that include_otc parameter is passed
+    call_args = mock_get.call_args
+    assert call_args[1]["params"]["include_otc"] is True
+
+@pytest.mark.asyncio
+@patch("httpx.AsyncClient")
+async def test_polygon_api_error(mock_client):
+    node = PolygonUniverseNode("poly_id", {"market": "crypto"})
+    mock_get = AsyncMock()
+    mock_response = MagicMock()
+    mock_response.status_code = 429
+    mock_response.text = "Rate limit exceeded"
+    mock_response.reason_phrase = "Too Many Requests"
+    mock_get.return_value = mock_response
+    mock_client.return_value.__aenter__.return_value.get = mock_get
+    node._execute_inputs = {"api_key": "test_key"}
+    with pytest.raises(ValueError, match="Failed to fetch snapshot: 429 - Rate limit exceeded"):
+        await node._fetch_symbols()
+
+@pytest.mark.asyncio
+@patch("httpx.AsyncClient")
+async def test_polygon_empty_response(mock_client):
+    node = PolygonUniverseNode("poly_id", {"market": "crypto"})
+    mock_get = AsyncMock()
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {"tickers": []}
+    mock_get.return_value = mock_response
+    mock_client.return_value.__aenter__.return_value.get = mock_get
+    node._execute_inputs = {"api_key": "test_key"}
+    symbols = await node._fetch_symbols()
+    assert symbols == []
+
+@pytest.mark.asyncio
+@patch("httpx.AsyncClient")
+async def test_polygon_invalid_ticker_format(mock_client):
+    node = PolygonUniverseNode("poly_id", {"market": "crypto"})
+    mock_get = AsyncMock()
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        "tickers": [{"ticker": "INVALID_FORMAT", "todaysChangePerc": 1.0, "day": {"v": 1000, "c": 50000}}]
+    }
+    mock_get.return_value = mock_response
+    mock_client.return_value.__aenter__.return_value.get = mock_get
+    node._execute_inputs = {"api_key": "test_key"}
+    symbols = await node._fetch_symbols()
+    assert len(symbols) == 1
+    assert symbols[0].ticker == "INVALID_FORMAT"
+    assert symbols[0].quote_currency is None  # Should be None since it doesn't match the crypto/fx pattern
+
+@pytest.mark.asyncio
+@patch("httpx.AsyncClient")
+async def test_polygon_symbols_hashable(mock_client, polygon_node):
+    # Mock response with nested structures in snapshot
+    mock_get = AsyncMock()
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        "tickers": [{
+            "ticker": "AAPL",
+            "todaysChangePerc": 1.0,
+            "day": {"v": 1000, "c": 150, "nested": {"key": "value"}},
+            "lastQuote": {"p": 149.5, "P": 150.0}
+        }]
+    }
+    mock_get.return_value = mock_response
+    mock_client.return_value.__aenter__.return_value.get = mock_get
+    polygon_node._execute_inputs = {"api_key": "test_key"}
+    
+    symbols = await polygon_node._fetch_symbols()
+    assert len(symbols) == 1
+    
+    # Test hashability
+    hash(symbols[0])
+    s = set(symbols)
+    assert symbols[0] in s
 
 # Tests for SampleCustomNode
 

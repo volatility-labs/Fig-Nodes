@@ -25,11 +25,8 @@ export default class PolygonBatchCustomBarsNodeUI extends BaseCustomNode {
     }
 
     setProgress(progress: number, text?: string) {
-        // Ignore progress updates if execution is stopping to prevent visual glitches
-        if (executionState === 'stopping') {
-            return;
-        }
         super.setProgress(progress, text);
+        this.setDirtyCanvas(true, true);  // Force immediate redraw
     }
 
     private copySummary() {

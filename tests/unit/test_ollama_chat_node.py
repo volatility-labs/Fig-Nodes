@@ -6,6 +6,7 @@ from nodes.core.llm.ollama_chat_node import OllamaChatNode
 from core.types_registry import LLMChatMessage, LLMChatMetrics
 import os
 import json
+import sys
 
 @pytest.fixture
 def chat_node():
@@ -193,7 +194,8 @@ async def test_seed_modes_comprehensive(chat_node):
 
 # New tests for CLI-based unload via `ollama stop <model>`
 
-def test_stop_triggers_cli_unload_with_model_and_host(chat_node):
+def test_stop_triggers_cli_unload_with_model_and_host(chat_node, monkeypatch):
+    monkeypatch.setattr(sys, 'platform', 'win32')
     chat_node._last_model = "llama3.2:latest"
     chat_node._last_host = "http://localhost:11434"
     with patch("nodes.core.llm.ollama_chat_node.sp.Popen") as popen:
@@ -206,6 +208,7 @@ def test_stop_triggers_cli_unload_with_model_and_host(chat_node):
 
 
 def test_stop_uses_env_host_when_no_last_host(chat_node, monkeypatch):
+    monkeypatch.setattr(sys, 'platform', 'win32')
     chat_node._last_model = "deepseek-r1:latest"
     chat_node._last_host = None
     monkeypatch.setenv("OLLAMA_HOST", "http://remote:11434")
@@ -225,7 +228,8 @@ def test_stop_does_not_call_cli_when_no_model(chat_node):
         popen.assert_not_called()
 
 
-def test_stop_handles_popen_exception(chat_node):
+def test_stop_handles_popen_exception(chat_node, monkeypatch):
+    monkeypatch.setattr(sys, 'platform', 'win32')
     chat_node._last_model = "llama3.2:latest"
     chat_node._last_host = "http://localhost:11434"
     with patch("nodes.core.llm.ollama_chat_node.sp.Popen") as popen:
@@ -257,7 +261,8 @@ async def test_execute_sets_last_model_and_host(chat_node):
         assert chat_node._last_host == "http://h2:11434"
 
 
-def test_force_stop_idempotent_unload_once(chat_node):
+def test_force_stop_idempotent_unload_once(chat_node, monkeypatch):
+    monkeypatch.setattr(sys, 'platform', 'win32')
     chat_node._last_model = "llama3.2:latest"
     chat_node._last_host = "http://localhost:11434"
     with patch("nodes.core.llm.ollama_chat_node.sp.Popen") as popen:
@@ -266,7 +271,8 @@ def test_force_stop_idempotent_unload_once(chat_node):
         popen.assert_called_once()
 
 
-def test_stop_with_alive_child_process_does_not_break_unload(chat_node):
+def test_stop_with_alive_child_process_does_not_break_unload(chat_node, monkeypatch):
+    monkeypatch.setattr(sys, 'platform', 'win32')
     class _FakeProc:
         def __init__(self):
             self.pid = 123
@@ -343,3 +349,119 @@ async def test_error_handling(chat_node):
 @pytest.mark.asyncio
 async def test_stop(chat_node):
     chat_node.stop()  # Should not raise
+
+@pytest.mark.asyncio
+async def test_system_input_strict_typing(chat_node):
+    # Valid str input
+    valid_str_inputs = {
+        "model": "test_model",
+        "messages": [{"role": "user", "content": "Hello"}],
+        "system": "Valid system string"
+    }
+    with patch("ollama.AsyncClient") as mock_client:
+        mock_response = {"message": {"role": "assistant", "content": "Response"}}
+        mock_chat = AsyncMock(return_value=mock_response)
+        mock_client.return_value.chat = mock_chat
+
+        result = await chat_node.execute(valid_str_inputs)
+        assert "error" not in result["metrics"]
+        assert result["message"]["content"] == "Response"
+
+    # Valid LLMChatMessage input
+    valid_msg_inputs = {
+        "model": "test_model",
+        "messages": [{"role": "user", "content": "Hello"}],
+        "system": {"role": "system", "content": "Valid system message"}
+    }
+    with patch("ollama.AsyncClient") as mock_client:
+        mock_response = {"message": {"role": "assistant", "content": "Response"}}
+        mock_chat = AsyncMock(return_value=mock_response)
+        mock_client.return_value.chat = mock_chat
+
+        result = await chat_node.execute(valid_msg_inputs)
+        assert "error" not in result["metrics"]
+        assert result["message"]["content"] == "Response"
+
+    # Invalid: int instead of str or LLMChatMessage
+    invalid_int_inputs = {
+        "model": "test_model",
+        "messages": [{"role": "user", "content": "Hello"}],
+        "system": 42
+    }
+    with patch("ollama.AsyncClient") as mock_client:
+        mock_response = {"message": {"role": "assistant", "content": "Response"}}
+        mock_chat = AsyncMock(return_value=mock_response)
+        mock_client.return_value.chat = mock_chat
+
+        # Should still execute but may log warnings; ensure no crash
+        result = await chat_node.execute(invalid_int_inputs)
+        assert "error" not in result["metrics"]  # Runtime accepts it, but UI prevents
+
+    # Invalid: dict without proper structure
+    invalid_dict_inputs = {
+        "model": "test_model",
+        "messages": [{"role": "user", "content": "Hello"}],
+        "system": {"role": "user", "content": "Wrong role"}
+    }
+    with patch("ollama.AsyncClient") as mock_client:
+        mock_response = {"message": {"role": "assistant", "content": "Response"}}
+        mock_chat = AsyncMock(return_value=mock_response)
+        mock_client.return_value.chat = mock_chat
+
+        # Should still execute, as runtime handles it
+        result = await chat_node.execute(invalid_dict_inputs)
+        assert "error" not in result["metrics"]
+
+# Tests for force kill in _unload_model_via_cli
+
+def test_unload_model_via_cli_force_kill_mac(chat_node, monkeypatch):
+    monkeypatch.setattr(sys, 'platform', 'darwin')
+    chat_node._last_model = "llama3.2:latest"
+    chat_node._last_host = "http://localhost:11434"
+    with patch("nodes.core.llm.ollama_chat_node.sp.Popen") as mock_popen:
+        chat_node._unload_model_via_cli()
+        assert mock_popen.call_count == 2
+        # First call: ollama stop
+        assert mock_popen.call_args_list[0][0][0] == ["ollama", "stop", "llama3.2:latest"]
+        # Second call: force kill
+        force_call = mock_popen.call_args_list[1][0][0]
+        assert force_call[0] == '/bin/sh'
+        assert force_call[1] == '-c'
+        cmd = force_call[2]
+        expected_cmd = 'sleep 2; pid=$(lsof -ti :11434); [ -n "$pid" ] && kill -9 $pid'
+        assert cmd == expected_cmd
+
+def test_unload_model_via_cli_force_kill_linux(chat_node, monkeypatch):
+    monkeypatch.setattr(sys, 'platform', 'linux')
+    chat_node._last_model = "llama3.2:latest"
+    chat_node._last_host = "http://localhost:12345"
+    with patch("nodes.core.llm.ollama_chat_node.sp.Popen") as mock_popen:
+        chat_node._unload_model_via_cli()
+        assert mock_popen.call_count == 2
+        # First call: ollama stop
+        assert mock_popen.call_args_list[0][0][0] == ["ollama", "stop", "llama3.2:latest"]
+        # Second call: force kill with custom port
+        force_call = mock_popen.call_args_list[1][0][0]
+        assert force_call[0] == '/bin/sh'
+        assert force_call[1] == '-c'
+        cmd = force_call[2]
+        expected_cmd = 'sleep 2; pid=$(lsof -ti :12345); [ -n "$pid" ] && kill -9 $pid'
+        assert cmd == expected_cmd
+
+def test_unload_model_via_cli_no_force_kill_windows(chat_node, monkeypatch):
+    monkeypatch.setattr(sys, 'platform', 'win32')
+    chat_node._last_model = "llama3.2:latest"
+    chat_node._last_host = "http://localhost:11434"
+    with patch("nodes.core.llm.ollama_chat_node.sp.Popen") as mock_popen:
+        chat_node._unload_model_via_cli()
+        assert mock_popen.call_count == 1  # Only ollama stop, no force kill
+        assert mock_popen.call_args[0][0] == ["ollama", "stop", "llama3.2:latest"]
+
+def test_unload_model_via_cli_force_kill_handles_exception(chat_node, monkeypatch):
+    monkeypatch.setattr(sys, 'platform', 'darwin')
+    chat_node._last_model = "llama3.2:latest"
+    chat_node._last_host = "invalid_url"
+    with patch("nodes.core.llm.ollama_chat_node.sp.Popen") as mock_popen:
+        mock_popen.side_effect = [None, OSError("command not found")]  # First succeeds, second fails
+        chat_node._unload_model_via_cli()  # Should not raise
+        assert mock_popen.call_count == 2

@@ -57,6 +57,13 @@ pytest tests/unit/
 
 ## Changelog
 
+- Oct 7, 2025
+  - Enhanced Polygon Universe node to allow for filtering of tickers based on volume, price change and other 1d OHLCV bar
+  - Enhanced Ollama Chat node to remove redundant tools/tool nodes
+  - Added system process kill for inprogress Ollama Chat nodes that causes memory overflows
+  - Simplified LLM Message Builder node to build standard LLM messages only without additional system messages etc
+  - Additional bug fixes
+
 - Oct 5, 2025
   - Added base indicator calculation, indicator filter nodes
   - Refactored `type_registry.py` for better maintainability by consolidating type aliases

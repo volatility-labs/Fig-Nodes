@@ -1,6 +1,6 @@
 import pytest
 from typing import Dict, Any, Type
-from core.types_registry import AssetClass, InstrumentType, Provider, AssetSymbol, TYPE_REGISTRY, get_type, register_type, register_asset_class, register_provider, register_indicator_type, IndicatorType
+from core.types_registry import AssetClass, InstrumentType, Provider, AssetSymbol, TYPE_REGISTRY, get_type, register_type, register_asset_class, register_provider, register_indicator_type, IndicatorType, LLMChatMessage
 import enum
 from enum import auto
 import logging
@@ -84,6 +84,28 @@ def test_register_indicator_type_new():
     assert hasattr(IndicatorType, "STOCH")
     assert new_type.name == "STOCH"
 
+def test_union_type_registration():
+    from typing import Union
+    register_type("UnionTest", Union[str, int])
+    union_type = get_type("UnionTest")
+    assert union_type == Union[str, int]  # Basic registration
+
+    # Test serialization
+    from core.types_utils import parse_type
+    parsed = parse_type(Union[str, int])
+    assert parsed == {"base": "union", "subtypes": [{"base": "str"}, {"base": "int"}]}
+
+def test_union_in_node_inputs():
+    from typing import Union
+    from nodes.base.base_node import BaseNode
+    from core.types_utils import parse_type
+
+    class TestNode(BaseNode):
+        inputs = {"union_input": Union[str, LLMChatMessage]}
+
+    parsed_inputs = {k: parse_type(v) for k, v in TestNode.inputs.items()}
+    assert parsed_inputs["union_input"] == {"base": "union", "subtypes": [{"base": "str"}, {"base": "LLMChatMessage"}]}
+
 def test_register_type_duplicate_warning():
     register_type("TestType", str)
     with pytest.warns(UserWarning, match="already registered"):
@@ -111,3 +133,16 @@ def test_provider_sentinel_equality():
     p1 = register_provider("TEST1")
     p2 = enum.auto()
     assert p1 == p2
+
+# Test AssetSymbol hashability with nested metadata
+def test_asset_symbol_hash_with_nested_metadata():
+    sym = AssetSymbol(
+        ticker="BTC",
+        asset_class=AssetClass.CRYPTO,
+        metadata={"nested": {"dict": {1: 2}, "list": [3, 4]}}
+    )
+    # Should not raise TypeError: unhashable type
+    hash(sym)
+    # Also test in a set
+    s = {sym}
+    assert sym in s

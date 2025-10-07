@@ -1,4 +1,4 @@
-from typing import Dict, Any, List, Optional, AsyncGenerator
+from typing import Dict, Any, List, Optional, AsyncGenerator, Union
 import os
 import json
 import asyncio
@@ -25,8 +25,7 @@ class OllamaChatNode(StreamingNode):
     - messages: List[Dict[str, Any]] (chat history with role, content, etc.)
     - prompt: str
     - system: str
-    - tools: List[Dict[str, Any]] (optional tool schemas)
-    - tool: Dict[str, Any] (optional single tool schema, supports multi-input)
+    - tools: Dict[str, Any] (optional tool schema, supports multi-input and list inputs)
 
     Outputs:
     - message: Dict[str, Any] (assistant message with role, content, thinking, tool_calls, etc.)
@@ -42,9 +41,8 @@ class OllamaChatNode(StreamingNode):
     inputs = {
         "messages": get_type("LLMChatMessageList"),
         "prompt": str,
-        "system": str,
-        "tools": get_type("LLMToolSpecList"),
-        "tool": get_type("LLMToolSpec"),  # Single tool input supporting multi-input slots
+        "system": Union[str, get_type("LLMChatMessage")],
+        "tools": get_type("LLMToolSpec"),  # Tool schemas (supports multi-input and lists)
     }
 
     outputs = {
@@ -196,7 +194,7 @@ class OllamaChatNode(StreamingNode):
         return options
 
     @staticmethod
-    def _build_messages(existing_messages: Optional[List[Dict[str, Any]]], prompt: Optional[str], system_prompt: Optional[str]) -> List[Dict[str, Any]]:
+    def _build_messages(existing_messages: Optional[List[Dict[str, Any]]], prompt: Optional[str], system_input: Optional[Any]) -> List[Dict[str, Any]]:
         """
         Construct a messages array compliant with Ollama chat API from either:
         - existing structured messages
@@ -204,8 +202,11 @@ class OllamaChatNode(StreamingNode):
         - both (prompt appended to existing)
         """
         result = list(existing_messages or [])
-        if system_prompt and not any(m.get("role") == "system" for m in result):
-            result.insert(0, {"role": "system", "content": system_prompt})
+        if system_input and not any(m.get("role") == "system" for m in result):
+            if isinstance(system_input, str):
+                result.insert(0, {"role": "system", "content": system_input})
+            elif isinstance(system_input, dict):
+                result.insert(0, system_input)
         if prompt:
             result.append({"role": "user", "content": prompt})
         return result
@@ -260,7 +261,7 @@ class OllamaChatNode(StreamingNode):
         self._cancel_event.set()
 
     def _unload_model_via_cli(self) -> None:
-        """Spawn a non-blocking CLI call to `ollama stop <model>` using last known host."""
+        """Spawn a non-blocking CLI call to `ollama stop &lt;model&gt;` using last known host."""
         model = getattr(self, "_last_model", None)
         if not model or not isinstance(model, str):
             return
@@ -274,6 +275,24 @@ class OllamaChatNode(StreamingNode):
         except Exception:
             # Swallow any errors (e.g., CLI not installed)
             pass
+
+        # Force kill the Ollama server process on Mac or Linux after a short delay
+        import sys
+        from urllib.parse import urlparse
+        if sys.platform in ('darwin', 'linux'):
+            port = '11434'
+            if host and isinstance(host, str):
+                try:
+                    parsed = urlparse(host if host.startswith('http') else f'http://{host}')
+                    if parsed.port:
+                        port = str(parsed.port)
+                except Exception:
+                    pass
+            try:
+                cmd = f'sleep 2; pid=$(lsof -ti :{port}); [ -n "$pid" ] && kill -9 $pid'
+                sp.Popen(['/bin/sh', '-c', cmd], stdout=sp.DEVNULL, stderr=sp.DEVNULL)
+            except Exception:
+                pass
 
     def _parse_options(self) -> Optional[Dict[str, Any]]:
         raw = self.params.get("options")
@@ -568,8 +587,8 @@ class OllamaChatNode(StreamingNode):
             self._last_model = model
             raw_messages: Optional[List[Dict[str, Any]]] = inputs.get("messages")
             prompt_text: Optional[str] = inputs.get("prompt")
-            system_prompt: Optional[str] = inputs.get("system")
-            messages: List[Dict[str, Any]] = self._build_messages(raw_messages, prompt_text, system_prompt)
+            system_input: Optional[Any] = inputs.get("system")
+            messages: List[Dict[str, Any]] = self._build_messages(raw_messages, prompt_text, system_input)
             tools: List[Dict[str, Any]] = self._collect_tools(inputs)
 
             print(f"OllamaChatNode: Received inputs - model='{model}', host='{host}', prompt='{prompt_text}', messages_count={len(raw_messages) if raw_messages else 0}")
@@ -739,8 +758,8 @@ class OllamaChatNode(StreamingNode):
             self._last_model = model
             raw_messages: Optional[List[Dict[str, Any]]] = inputs.get("messages")
             prompt_text: Optional[str] = inputs.get("prompt")
-            system_prompt: Optional[str] = inputs.get("system")
-            messages: List[Dict[str, Any]] = self._build_messages(raw_messages, prompt_text, system_prompt)
+            system_input: Optional[Any] = inputs.get("system")
+            messages: List[Dict[str, Any]] = self._build_messages(raw_messages, prompt_text, system_input)
             tools: List[Dict[str, Any]] = self._collect_tools(inputs)
 
             print(f"OllamaChatNode: Execute - model='{model}', host='{host}', prompt='{prompt_text}', messages_count={len(raw_messages) if raw_messages else 0}")

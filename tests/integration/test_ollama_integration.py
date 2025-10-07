@@ -146,7 +146,7 @@ async def test_web_search_tool_with_ollama_integration(mock_httpx_client, mock_o
             }}
         ],
         "links": [
-            [0, 2, 0, 3, 4],  # web_search_tool.tool -> chat.tool (slot 4)
+            [0, 2, 0, 3, 3],  # web_search_tool.tool -> chat.tools (slot 3)
             [0, 4, 0, 3, 1]   # text.text -> chat.prompt (slot 1)
         ]
     }
@@ -228,7 +228,7 @@ async def test_web_search_tool_streaming_with_ollama(mock_httpx_client, mock_oll
             }}
         ],
         "links": [
-            [0, 2, 0, 3, 4],  # web_search_tool.tool -> chat.tool (slot 4)
+            [0, 2, 0, 3, 3],  # web_search_tool.tool -> chat.tools (slot 3)
             [0, 4, 0, 3, 1]   # text.text -> chat.prompt (slot 1)
         ]
     }
@@ -265,3 +265,83 @@ async def test_web_search_tool_streaming_with_ollama(mock_httpx_client, mock_oll
     # Content should be non-empty
     assert isinstance(message["content"], str)
     assert len(message["content"]) > 0
+
+# Integration tests for force kill on stop
+
+@pytest.mark.asyncio
+@patch("subprocess.Popen")
+@patch("sys.platform", "darwin")
+async def test_ollama_integration_stop_triggers_force_kill_mac(mock_popen, mock_ollama_client):
+    # Mock model list
+    with patch("httpx.AsyncClient.get") as mock_get:
+        mock_get.return_value = AsyncMock()
+        mock_get.return_value.json.return_value = {"models": [{"name": "test_model:latest"}]}
+        mock_get.return_value.raise_for_status.return_value = None
+        
+        # Mock chat
+        mock_chat = AsyncMock(return_value={"message": {"role": "assistant", "content": "Hello"}})
+        mock_ollama_client.return_value.chat = mock_chat
+        
+        graph_data = {
+            "nodes": [
+                {"id": 1, "type": "OllamaChatNode", "properties": {"stream": False, "selected_model": "test_model:latest"}},
+                {"id": 2, "type": "TextInputNode", "properties": {"text": "Hello"}}
+            ],
+            "links": [[0, 2, 0, 1, 1]]
+        }
+        
+        executor = GraphExecutor(graph_data, NODE_REGISTRY)
+        
+        # Execute partially
+        stream_gen = executor.stream()
+        await anext(stream_gen)  # Initial
+        
+        # Stop the chat node specifically
+        chat_node = executor.nodes[1]
+        chat_node.stop()
+        
+        assert mock_popen.call_count >= 2  # ollama stop + force kill
+        # Check force kill command
+        force_kill_call = mock_popen.call_args_list[-1][0][0]
+        assert force_kill_call == ['/bin/sh', '-c']
+        cmd = mock_popen.call_args_list[-1][0][0][2]
+        assert 'sleep 2; pid=$(lsof -ti :11434); [ -n "$pid" ] && kill -9 $pid' in cmd
+
+@pytest.mark.asyncio
+@patch("subprocess.Popen")
+@patch("sys.platform", "linux")
+async def test_ollama_integration_stop_triggers_force_kill_linux(mock_popen, mock_ollama_client):
+    # Mock model list
+    with patch("httpx.AsyncClient.get") as mock_get:
+        mock_get.return_value = AsyncMock()
+        mock_get.return_value.json.return_value = {"models": [{"name": "test_model:latest"}]}
+        mock_get.return_value.raise_for_status.return_value = None
+        
+        # Mock chat
+        mock_chat = AsyncMock(return_value={"message": {"role": "assistant", "content": "Hello"}})
+        mock_ollama_client.return_value.chat = mock_chat
+        
+        graph_data = {
+            "nodes": [
+                {"id": 1, "type": "OllamaChatNode", "properties": {"stream": False, "selected_model": "test_model:latest", "host": "http://localhost:54321"}},
+                {"id": 2, "type": "TextInputNode", "properties": {"text": "Hello"}}
+            ],
+            "links": [[0, 2, 0, 1, 1]]
+        }
+        
+        executor = GraphExecutor(graph_data, NODE_REGISTRY)
+        
+        # Execute partially
+        stream_gen = executor.stream()
+        await anext(stream_gen)  # Initial
+        
+        # Stop the chat node
+        chat_node = executor.nodes[1]
+        chat_node.stop()
+        
+        assert mock_popen.call_count >= 2  # ollama stop + force kill
+        # Check force kill with custom port
+        force_kill_call = mock_popen.call_args_list[-1][0][0]
+        assert force_kill_call == ['/bin/sh', '-c']
+        cmd = mock_popen.call_args_list[-1][0][0][2]
+        assert 'sleep 2; pid=$(lsof -ti :54321); [ -n "$pid" ] && kill -9 $pid' in cmd

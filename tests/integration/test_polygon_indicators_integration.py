@@ -4,6 +4,7 @@ from unittest.mock import patch, AsyncMock, MagicMock
 from core.graph_executor import GraphExecutor
 from core.node_registry import NODE_REGISTRY
 from core.types_registry import AssetSymbol, AssetClass
+from custom_nodes.polygon.polygon_universe_node import PolygonUniverseNode
 
 @pytest.mark.asyncio
 async def test_polygon_indicators_filtering_pipeline():
@@ -386,3 +387,35 @@ async def test_polygon_indicators_filtering_pipeline_with_updated_defaults():
     # Note: ADX calculation may fail with mock data, so results might be empty
     assert isinstance(filter_result["indicator_results"], dict)
     assert isinstance(filter_result["filtered_ohlcv_bundle"], dict)
+
+
+@pytest.mark.asyncio
+async def test_polygon_universe_hashability_integration():
+    # Create node with test params
+    node = PolygonUniverseNode("test_id", {"market": "stocks", "min_volume": 1000000})
+    
+    # Mock the API response with nested metadata
+    with patch("httpx.AsyncClient") as mock_client:
+        mock_get = AsyncMock()
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "tickers": [{
+                "ticker": "AAPL",
+                "todaysChangePerc": 1.0,
+                "day": {"v": 1000000, "c": 150, "nested": {"sub": [1, 2]}},
+            }]
+        }
+        mock_get.return_value = mock_response
+        mock_client.return_value.__aenter__.return_value.get = mock_get
+        
+        node._execute_inputs = {"api_key": "test_key"}
+        symbols = await node._fetch_symbols()
+        
+        assert len(symbols) == 1
+        sym = symbols[0]
+        
+        # Test hashability with nested metadata
+        hash(sym)
+        symbol_set = set(symbols)
+        assert sym in symbol_set

@@ -7,6 +7,7 @@ import OllamaChatNodeUI from '../nodes/OllamaChatNodeUI';
 import PolygonAPIKeyNodeUI from '../nodes/PolygonAPIKeyNodeUI';
 import StreamingCustomNode from '../nodes/StreamingCustomNode';
 import TextInputNodeUI from '../nodes/TextInputNodeUI';
+import PolygonUniverseNodeUI from '../nodes/PolygonUniverseNodeUI';
 
 function baseData() {
     return {
@@ -272,18 +273,17 @@ describe('BaseCustomNode comprehensive tests', () => {
         expect(node.color).toBe('#FF0000');
     });
 
-    // Note: Number widget sync test disabled due to LiteGraph widget implementation details
-    // test('syncs widget values on configure', () => {
-    //     const data = baseData();
-    //     data.params = [{ name: 'syncParam', type: 'number', default: 10 }];
-    //     const node = new BaseCustomNode('Test', data);
-    //     // Set property and manually sync
-    //     node.properties.syncParam = 20;
-    //     node.syncWidgetValues();
-    //     expect(node.widgets).toBeDefined();
-    //     const widget = node.widgets![0];
-    //     expect(widget.value).toBe(20);
-    // });
+    test('syncs number widget values on configure using paramName mapping', () => {
+        const data = baseData();
+        data.params = [{ name: 'syncParam', type: 'number', default: 10 }];
+        const node = new BaseCustomNode('Test', data);
+        // Simulate graph.configure having set properties
+        node.properties.syncParam = 20;
+        node.configure({}); // triggers syncWidgetValues under the hood
+        expect(node.widgets).toBeDefined();
+        const widget = node.widgets![0];
+        expect(widget.value).toBe(20);
+    });
 
     test('syncs custom dropdown widget values on configure', () => {
         const data = baseData();
@@ -331,4 +331,224 @@ describe('BaseCustomNode comprehensive tests', () => {
     });
 });
 
+describe('Strict connection typing', () => {
+    test('parseType handles union types correctly', () => {
+        const unionType = {
+            base: 'union',
+            subtypes: [
+                { base: 'str' },
+                { base: 'LLMChatMessage' }
+            ]
+        };
+        const node = new BaseCustomNode('Test', baseData());
+        expect(node.parseType(unionType)).toBe('str | LLMChatMessage');
+    });
+
+    test('parseType handles simple types correctly', () => {
+        const node = new BaseCustomNode('Test', baseData());
+        expect(node.parseType({ base: 'str' })).toBe('str');
+        expect(node.parseType({ base: 'int' })).toBe('int');
+        expect(node.parseType({ base: 'Any' })).toBe(0); // Wildcard
+    });
+
+    test('parseType handles complex types like lists and dicts', () => {
+        const node = new BaseCustomNode('Test', baseData());
+        expect(node.parseType({ base: 'list', subtype: { base: 'str' } })).toBe('list<str>');
+        expect(node.parseType({ base: 'dict', key_type: { base: 'str' }, value_type: { base: 'int' } })).toBe('dict<str, int>');
+    });
+
+    test('onConnectInput allows connection if output matches one union type', () => {
+        // Mock a node with union input
+        const targetNode = new BaseCustomNode('Target', {
+            inputs: { system: { base: 'union', subtypes: [{ base: 'str' }, { base: 'LLMChatMessage' }] } },
+            outputs: {},
+            params: []
+        });
+        const inputIndex = targetNode.findInputSlot('system');
+
+        // Mock source nodes with different output types
+        const strSource = { outputs: [{ type: 'str' }] } as any;
+        const msgSource = { outputs: [{ type: 'LLMChatMessage' }] } as any;
+        const intSource = { outputs: [{ type: 'int' }] } as any;
+
+        // Valid: str to union
+        expect(targetNode.onConnectInput(inputIndex, 'str', strSource.outputs[0], strSource, 0)).toBe(true);
+
+        // Valid: LLMChatMessage to union
+        expect(targetNode.onConnectInput(inputIndex, 'LLMChatMessage', msgSource.outputs[0], msgSource, 0)).toBe(true);
+
+        // Invalid: int to union
+        expect(targetNode.onConnectInput(inputIndex, 'int', intSource.outputs[0], intSource, 0)).toBe(false);
+    });
+
+    test('onConnectInput handles Any (0) wildcard correctly with unions', () => {
+        const targetNode = new BaseCustomNode('Target', {
+            inputs: { system: { base: 'union', subtypes: [{ base: 'str' }, { base: 'LLMChatMessage' }] } },
+            outputs: {},
+            params: []
+        });
+        const inputIndex = targetNode.findInputSlot('system');
+
+        const anySource = { outputs: [{ type: 0 }] } as any; // 0 = Any
+
+        // Allow Any output to union input
+        expect(targetNode.onConnectInput(inputIndex, 0, anySource.outputs[0], anySource, 0)).toBe(true);
+    });
+
+    test('onConnectInput allows connection for exact type match (non-union)', () => {
+        const targetNode = new BaseCustomNode('Target', {
+            inputs: { input: { base: 'str' } },
+            outputs: {},
+            params: []
+        });
+        const inputIndex = targetNode.findInputSlot('input');
+
+        const strSource = { outputs: [{ type: 'str' }] } as any;
+        const intSource = { outputs: [{ type: 'int' }] } as any;
+
+        // Valid: str to str
+        expect(targetNode.onConnectInput(inputIndex, 'str', strSource.outputs[0], strSource, 0)).toBe(true);
+
+        // Invalid: int to str
+        expect(targetNode.onConnectInput(inputIndex, 'int', intSource.outputs[0], intSource, 0)).toBe(false);
+    });
+
+    test('onConnectInput allows Any input/output connections', () => {
+        const targetNode = new BaseCustomNode('Target', {
+            inputs: { input: { base: 'Any' } },
+            outputs: {},
+            params: []
+        });
+        const inputIndex = targetNode.findInputSlot('input');
+
+        const strSource = { outputs: [{ type: 'str' }] } as any;
+        const intSource = { outputs: [{ type: 'int' }] } as any;
+
+        // Allow any to Any input
+        expect(targetNode.onConnectInput(inputIndex, 'str', strSource.outputs[0], strSource, 0)).toBe(true);
+        expect(targetNode.onConnectInput(inputIndex, 'int', intSource.outputs[0], intSource, 0)).toBe(true);
+    });
+
+    test('full connection test between OllamaChatNode and compatible nodes', () => {
+        // Create OllamaChatNode with union input (simulated)
+        const chatNode = new OllamaChatNodeUI('OllamaChat', {
+            inputs: { system: { base: 'union', subtypes: [{ base: 'str' }, { base: 'LLMChatMessage' }] } },
+            outputs: {},
+            params: []
+        });
+        const systemIndex = chatNode.findInputSlot('system');
+
+        // Create source node with str output
+        const strSourceNode = new BaseCustomNode('StrSource', {
+            inputs: {},
+            outputs: { out: { base: 'str' } },
+            params: []
+        });
+
+        // Create source node with LLMChatMessage output
+        const msgSourceNode = new BaseCustomNode('MsgSource', {
+            inputs: {},
+            outputs: { out: { base: 'LLMChatMessage' } },
+            params: []
+        });
+
+        // Create invalid source with int output
+        const intSourceNode = new BaseCustomNode('IntSource', {
+            inputs: {},
+            outputs: { out: { base: 'int' } },
+            params: []
+        });
+
+        // Test connections
+        expect(chatNode.onConnectInput(systemIndex, strSourceNode.outputs[0].type, strSourceNode.outputs[0], strSourceNode, 0)).toBe(true);
+        expect(chatNode.onConnectInput(systemIndex, msgSourceNode.outputs[0].type, msgSourceNode.outputs[0], msgSourceNode, 0)).toBe(true);
+        expect(chatNode.onConnectInput(systemIndex, intSourceNode.outputs[0].type, intSourceNode.outputs[0], intSourceNode, 0)).toBe(false);
+    });
+
+    test('connection typing prevents invalid inputs across different node types', () => {
+        // Test with a different node type, e.g., a number input
+        const numberNode = new BaseCustomNode('NumberNode', {
+            inputs: { value: { base: 'int' } },
+            outputs: {},
+            params: []
+        });
+        const valueIndex = numberNode.findInputSlot('value');
+
+        const strSource = { outputs: [{ type: 'str' }] } as any;
+        const intSource = { outputs: [{ type: 'int' }] } as any;
+
+        // Invalid: str to int
+        expect(numberNode.onConnectInput(valueIndex, 'str', strSource.outputs[0], strSource, 0)).toBe(false);
+
+        // Valid: int to int
+        expect(numberNode.onConnectInput(valueIndex, 'int', intSource.outputs[0], intSource, 0)).toBe(true);
+    });
+
+    test('connection typing handles list and dict types', () => {
+        const listNode = new BaseCustomNode('ListNode', {
+            inputs: { items: { base: 'list', subtype: { base: 'str' } } },
+            outputs: {},
+            params: []
+        });
+        const itemsIndex = listNode.findInputSlot('items');
+
+        const strListSource = { outputs: [{ type: 'list<str>' }] } as any;
+        const intListSource = { outputs: [{ type: 'list<int>' }] } as any;
+
+        // Valid: list<str> to list<str>
+        expect(listNode.onConnectInput(itemsIndex, 'list<str>', strListSource.outputs[0], strListSource, 0)).toBe(true);
+
+        // Invalid: list<int> to list<str>
+        expect(listNode.onConnectInput(itemsIndex, 'list<int>', intListSource.outputs[0], intListSource, 0)).toBe(false);
+    });
+});
+
+describe('PolygonUniverseNodeUI param restoration', () => {
+    test('restores saved numeric and combo params and preserves labels', () => {
+        const polygonMeta = {
+            category: 'data_source',
+            inputs: { api_key: { base: 'APIKey' } },
+            outputs: { symbols: { base: 'list', subtype: { base: 'AssetSymbol' } } },
+            params: [
+                { name: 'market', type: 'combo', default: 'stocks', options: ['stocks', 'crypto', 'fx', 'otc', 'indices'], label: 'Market Type' },
+                { name: 'min_change_perc', type: 'number', default: null, label: 'Min Change', unit: '%', step: 0.01 },
+                { name: 'min_volume', type: 'number', default: null, label: 'Min Volume', unit: 'shares/contracts' },
+                { name: 'min_price', type: 'number', default: null, label: 'Min Price', unit: 'USD' },
+                { name: 'max_price', type: 'number', default: null, label: 'Max Price', unit: 'USD' },
+                { name: 'include_otc', type: 'boolean', default: false, label: 'Include OTC' },
+            ],
+        } as any;
+
+        const node = new PolygonUniverseNodeUI('PolygonUniverseNode', polygonMeta);
+        // Simulate a loaded graph with saved properties
+        node.properties.market = 'stocks';
+        node.properties.min_change_perc = 5;
+        node.properties.min_volume = 1_000_000;
+        node.properties.min_price = 1;
+        node.properties.max_price = 100_000;
+        node.properties.include_otc = false;
+
+        node.configure({}); // triggers sync
+
+        // Expect labels preserved with units
+        const labels = node.widgets!.map(w => String(w.name));
+        expect(labels[0]).toMatch(/^Market Type: /);
+        expect(labels.some(l => l.startsWith('Min Change (%)'))).toBe(true);
+        expect(labels.some(l => l.startsWith('Min Volume (shares/contracts)'))).toBe(true);
+        expect(labels.some(l => l.startsWith('Min Price (USD)'))).toBe(true);
+        expect(labels.some(l => l.startsWith('Max Price (USD)'))).toBe(true);
+
+        // Map widgets by paramName for robust assertions
+        const widgetByParam: Record<string, any> = {};
+        for (const w of node.widgets as any[]) {
+            if ((w as any).paramName) widgetByParam[(w as any).paramName] = w;
+        }
+
+        expect(widgetByParam.market.name).toMatch(/Market Type: stocks/);
+        expect(widgetByParam.min_change_perc.value).toBe(5);
+        expect(widgetByParam.min_volume.value).toBe(1_000_000);
+        expect(widgetByParam.min_price.value).toBe(1);
+        expect(widgetByParam.max_price.value).toBe(100_000);
+    });
+});
 

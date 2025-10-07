@@ -11,6 +11,12 @@ export default class OllamaChatNodeUI extends BaseCustomNode {
         this.addWidget('button', 'Refresh Models', '', async () => {
             try { await this.fetchAndPopulateModels(); } catch { }
         }, {});
+
+        // Add tooltip to system input slot
+        const systemSlotIndex = this.inputs?.findIndex(inp => inp.name === 'system');
+        if (systemSlotIndex !== undefined && systemSlotIndex !== -1) {
+            this.inputs[systemSlotIndex].tooltip = 'Accepts string or LLMChatMessage with role="system"';
+        }
     }
 
     onAdded() {

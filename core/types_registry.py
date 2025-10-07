@@ -149,7 +149,7 @@ class AssetSymbol:
         }
 
     def __hash__(self):
-        return hash((self.ticker, self.asset_class, self.quote_currency, self.provider, self.exchange, self.instrument_type, frozenset(self.metadata.items())))
+        return hash((self.ticker, self.asset_class, self.quote_currency, self.provider, self.exchange, self.instrument_type))
 
 # ~~~~~ Type Aliases ~~~~~
 # For complex/composed types. Add new aliases here for reuse.

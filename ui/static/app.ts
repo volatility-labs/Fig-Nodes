@@ -49,7 +49,62 @@ async function createEditor(container: HTMLElement) {
         };
 
         let lastMouseEvent: MouseEvent | null = null;
-        canvasElement.addEventListener('mousemove', (e: MouseEvent) => { lastMouseEvent = e; });
+
+        // Tooltip setup
+        const tooltip = document.createElement('div');
+        tooltip.className = 'litegraph-tooltip';
+        tooltip.style.display = 'none';
+        tooltip.style.position = 'absolute';
+        tooltip.style.pointerEvents = 'none';
+        tooltip.style.background = 'rgba(0, 0, 0, 0.85)';
+        tooltip.style.color = 'white';
+        tooltip.style.padding = '4px 8px';
+        tooltip.style.borderRadius = '4px';
+        tooltip.style.font = '12px Arial';
+        tooltip.style.zIndex = '1000';
+        document.body.appendChild(tooltip);
+
+        canvasElement.addEventListener('mousemove', (e: MouseEvent) => {
+            lastMouseEvent = e;
+            // Check for slot hover and show tooltip
+            const p = canvas.convertEventToCanvasOffset(e) as unknown as number[];
+            let hoveringSlot = false;
+            graph._nodes.forEach(node => {
+                // Check inputs
+                node.inputs?.forEach((input, i) => {
+                    if (input.tooltip) {
+                        const slotPos = node.getConnectionPos(true, i);
+                        const dx = p[0] - slotPos[0];
+                        const dy = p[1] - slotPos[1];
+                        if (dx * dx + dy * dy < 8 * 8) {  // Within ~8px radius
+                            tooltip.textContent = input.tooltip;
+                            tooltip.style.left = `${e.clientX + 15}px`;
+                            tooltip.style.top = `${e.clientY - 15}px`;
+                            tooltip.style.display = 'block';
+                            hoveringSlot = true;
+                        }
+                    }
+                });
+                // Check outputs similarly if needed
+                node.outputs?.forEach((output, i) => {
+                    if (output.tooltip) {
+                        const slotPos = node.getConnectionPos(false, i);
+                        const dx = p[0] - slotPos[0];
+                        const dy = p[1] - slotPos[1];
+                        if (dx * dx + dy * dy < 8 * 8) {
+                            tooltip.textContent = output.tooltip;
+                            tooltip.style.left = `${e.clientX + 15}px`;
+                            tooltip.style.top = `${e.clientY - 15}px`;
+                            tooltip.style.display = 'block';
+                            hoveringSlot = true;
+                        }
+                    }
+                });
+            });
+            if (!hoveringSlot) {
+                tooltip.style.display = 'none';
+            }
+        });
         (canvas as unknown as { getLastMouseEvent: () => MouseEvent | null }).getLastMouseEvent = () => lastMouseEvent;
 
         const showQuickPrompt = (

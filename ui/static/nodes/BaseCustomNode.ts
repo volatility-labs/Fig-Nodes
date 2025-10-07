@@ -6,6 +6,11 @@ import { showError } from '../utils/uiUtils';
 declare module '@comfyorg/litegraph' {
     interface INodeInputSlot {
         color?: string;
+        tooltip?: string;
+    }
+    interface INodeOutputSlot {
+        color?: string;
+        tooltip?: string;
     }
 }
 
@@ -44,7 +49,6 @@ export default class BaseCustomNode extends LGraphNode {
                 } else {
                     const inputSlot = this.addInput(inp, typeStr);
                     if (color) {
-                        // @ts-expect-error: Custom color property
                         inputSlot.color = color;
                     }
                 }
@@ -60,7 +64,6 @@ export default class BaseCustomNode extends LGraphNode {
                 this.addOutput(out, typeStr);
                 if (typeInfo) {
                     const color = getTypeColor(typeInfo);
-                    // @ts-expect-error: Custom color property
                     this.outputs[index].color = color;  // Set color on output slot
                 }
             });
@@ -103,11 +106,13 @@ export default class BaseCustomNode extends LGraphNode {
                             }
                         });
                     }, {});
+                    (widget as any).paramName = param.name;
                 } else if (paramType === 'textarea') {
                     // Multi-line input directly in the node UI (e.g., long prompts)
-                    this.addWidget('text', param.name, defaultValue, (v) => {
+                    const widget = this.addWidget('text', param.name, defaultValue, (v) => {
                         this.properties[param.name] = v;
                     }, { multiline: true });
+                    (widget as any).paramName = param.name;
                 } else if (paramType === 'number') {
                     const opts = { min: param.min ?? 0, max: param.max ?? undefined, step: param.step ?? 0.1, precision: param.precision ?? (param.step < 1 ? 2 : 0) };
                     const widget = this.addWidget('number', param.name, defaultValue, (v) => {
@@ -117,6 +122,7 @@ export default class BaseCustomNode extends LGraphNode {
                     }, opts);
                     // Ensure widget value stays in sync with properties
                     widget.value = this.properties[param.name];
+                    (widget as any).paramName = param.name;
                 } else if (paramType === 'combo') {
                     // Custom dropdown widget for combo parameters with dynamic options support
                     const initialOptions = param.options || [];
@@ -132,6 +138,7 @@ export default class BaseCustomNode extends LGraphNode {
                     }, {});
                     // Keep a place to receive dynamic options at runtime
                     (widget as any).options = { values: initialOptions };
+                    (widget as any).paramName = param.name;
                 } else {
                     let widgetOpts = {};
                     let isBooleanCombo = false;
@@ -153,6 +160,7 @@ export default class BaseCustomNode extends LGraphNode {
                     }, widgetOpts);
                     // Ensure widget value stays in sync with properties
                     widget.value = isBooleanCombo ? (this.properties[param.name] ? 'true' : 'false') : this.properties[param.name];
+                    (widget as any).paramName = param.name;
                 }
             });
         }
@@ -170,6 +178,10 @@ export default class BaseCustomNode extends LGraphNode {
         const baseName = typeof typeInfo.base === 'string' ? typeInfo.base : String(typeInfo.base);
         if (baseName === 'Any' || baseName === 'typing.Any' || baseName.toLowerCase() === 'any') {
             return 0; // LiteGraph wildcard
+        }
+        if (baseName === 'union' && typeInfo.subtypes) {
+            const subs = typeInfo.subtypes.map((st: any) => this.parseType(st)).join(' | ');
+            return subs;
         }
         const type = baseName;
         if (typeInfo.subtype) {
@@ -653,26 +665,30 @@ export default class BaseCustomNode extends LGraphNode {
     }
 
     syncWidgetValues() {
-        if (this.widgets) {
-            this.widgets.forEach((widget: any) => {
-                if (widget.name) {
-                    if (widget.options) {
-                        // Custom combo widget - update display name
-                        const paramName = widget.name.split(':')[0].trim();
-                        if (Object.prototype.hasOwnProperty.call(this.properties, paramName)) {
-                            widget.name = `${paramName}: ${this.formatComboValue(this.properties[paramName])}`;
-                        }
-                    } else if (widget.type === 'number' || widget.type === 'combo') {
-                        if (Object.prototype.hasOwnProperty.call(this.properties, widget.name)) {
-                            widget.value = this.properties[widget.name];
-                        }
-                    }
-                }
-            });
-        }
+        if (!this.widgets) return;
+        this.widgets.forEach((widget: any) => {
+            // Prefer an explicit paramName set at creation; fall back to parsing
+            const explicitName = (widget as any).paramName;
+            const parsedFromLabel = (widget && widget.options && typeof widget.name === 'string') ? widget.name.split(':')[0].trim() : widget?.name;
+            const paramKey = explicitName || parsedFromLabel;
+
+            if (!paramKey) return;
+
+            // Update widget values from saved properties (e.g., after graph.configure)
+            if ((widget.type === 'number' || widget.type === 'combo' || widget.type === 'text') && Object.prototype.hasOwnProperty.call(this.properties, paramKey)) {
+                widget.value = this.properties[paramKey];
+            }
+
+            // For combo button widgets that render label as "param: value", refresh the name
+            if (widget.options && Object.prototype.hasOwnProperty.call(this.properties, paramKey)) {
+                // Keep the left side of the label intact if custom UI overrides later
+                const leftLabel = (typeof widget.name === 'string' && widget.name.includes(':')) ? widget.name.split(':')[0] : String(paramKey);
+                widget.name = `${leftLabel}: ${this.formatComboValue(this.properties[paramKey])}`;
+            }
+        });
     }
 
-    private formatComboValue(value: any): string {
+    protected formatComboValue(value: any): string {
         if (typeof value === 'boolean') {
             return value ? 'true' : 'false';
         }
@@ -797,5 +813,20 @@ export default class BaseCustomNode extends LGraphNode {
 
         // Focus the overlay for keyboard events
         overlay.focus();
+    }
+
+    onConnectInput(inputIndex: number, outputType: string | number, outputSlot: any, outputNode: any, outputIndex: number): boolean {
+        const inputSlot = this.inputs[inputIndex];
+        const inputType = inputSlot.type;
+        if (typeof inputType === 'string' && inputType.includes(' | ')) {
+            if (outputType === 0) return true; // Any can connect to union
+            const allowed = inputType.split(' | ').map(t => t.trim());
+            if (typeof outputType === 'string' && allowed.includes(outputType)) {
+                return true;
+            }
+            return false;
+        }
+        // Default: allow if types match or any (0)
+        return inputType === 0 || outputType === 0 || inputType === outputType;
     }
 }
