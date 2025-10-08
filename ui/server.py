@@ -104,18 +104,18 @@ def list_nodes():
             "params": params,
             "category": category,
             "uiModule": getattr(cls, 'ui_module', None) or (
-                "TextInputNodeUI" if name == "TextInputNode" else
-                "LoggingNodeUI" if name == "LoggingNode" else
+                "io/TextInputNodeUI" if name == "TextInputNode" else
+                "io/LoggingNodeUI" if name == "LoggingNode" else
                 "OllamaModelSelectorNodeUI" if name == "OllamaModelSelectorNode" else
                 "OllamaChatViewerNodeUI" if name == "OllamaChatViewerNode" else
-                "PolygonUniverseNodeUI" if name == "PolygonUniverseNode" else
-                "PolygonAPIKeyNodeUI" if name == "PolygonAPIKeyNode" else
-                "PolygonCustomBarsNodeUI" if name == "PolygonCustomBarsNode" else
-                "PolygonBatchCustomBarsNodeUI" if name == "PolygonBatchCustomBarsNode" else
-                "SMACrossoverFilterNodeUI" if name == "SMACrossoverFilterNode" else
-                "ADXFilterNodeUI" if name == "ADXFilterNode" else
-                "RSIFilterNodeUI" if name == "RSIFilterNode" else
-                "ExtractSymbolsNodeUI" if name == "ExtractSymbolsNode" else
+                "market/PolygonUniverseNodeUI" if name == "PolygonUniverseNode" else
+                "market/PolygonAPIKeyNodeUI" if name == "PolygonAPIKeyNode" else
+                "market/PolygonCustomBarsNodeUI" if name == "PolygonCustomBarsNode" else
+                "market/PolygonBatchCustomBarsNodeUI" if name == "PolygonBatchCustomBarsNode" else
+                "market/SMACrossoverFilterNodeUI" if name == "SMACrossoverFilterNode" else
+                "market/ADXFilterNodeUI" if name == "ADXFilterNode" else
+                "market/RSIFilterNodeUI" if name == "RSIFilterNode" else
+                "io/ExtractSymbolsNodeUI" if name == "ExtractSymbolsNode" else
                 None
             )
         }

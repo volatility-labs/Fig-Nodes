@@ -1,8 +1,46 @@
 import { LGraph, LGraphCanvas, LiteGraph } from '@comfyorg/litegraph';
-import BaseCustomNode from './nodes/BaseCustomNode';
+import { BaseCustomNode } from './nodes';
 import { setupWebSocket } from './websocket';
 import { setupResize, setupKeyboard, updateStatus } from '@utils/uiUtils';
 import { setupPalette } from './utils/paletteUtils';
+
+// Import all UI modules statically to ensure they're bundled
+import TextInputNodeUI from './nodes/io/TextInputNodeUI';
+import LoggingNodeUI from './nodes/io/LoggingNodeUI';
+import SaveOutputNodeUI from './nodes/io/SaveOutputNodeUI';
+import ExtractSymbolsNodeUI from './nodes/io/ExtractSymbolsNodeUI';
+import LLMMessagesBuilderNodeUI from './nodes/llm/LLMMessagesBuilderNodeUI';
+import OllamaChatNodeUI from './nodes/llm/OllamaChatNodeUI';
+import SystemPromptLoaderNodeUI from './nodes/llm/SystemPromptLoaderNodeUI';
+import ADXFilterNodeUI from './nodes/market/ADXFilterNodeUI';
+import AtrXFilterNodeUI from './nodes/market/AtrXFilterNodeUI';
+import AtrXIndicatorNodeUI from './nodes/market/AtrXIndicatorNodeUI';
+import PolygonAPIKeyNodeUI from './nodes/market/PolygonAPIKeyNodeUI';
+import PolygonBatchCustomBarsNodeUI from './nodes/market/PolygonBatchCustomBarsNodeUI';
+import PolygonCustomBarsNodeUI from './nodes/market/PolygonCustomBarsNodeUI';
+import PolygonUniverseNodeUI from './nodes/market/PolygonUniverseNodeUI';
+import RSIFilterNodeUI from './nodes/market/RSIFilterNodeUI';
+import SMACrossoverFilterNodeUI from './nodes/market/SMACrossoverFilterNodeUI';
+
+// Static map of UI modules
+const UI_MODULES: { [key: string]: any } = {
+    'io/TextInputNodeUI': TextInputNodeUI,
+    'io/LoggingNodeUI': LoggingNodeUI,
+    'io/SaveOutputNodeUI': SaveOutputNodeUI,
+    'io/ExtractSymbolsNodeUI': ExtractSymbolsNodeUI,
+    'llm/LLMMessagesBuilderNodeUI': LLMMessagesBuilderNodeUI,
+    'llm/OllamaChatNodeUI': OllamaChatNodeUI,
+    'llm/SystemPromptLoaderNodeUI': SystemPromptLoaderNodeUI,
+    'market/ADXFilterNodeUI': ADXFilterNodeUI,
+    'market/AtrXFilterNodeUI': AtrXFilterNodeUI,
+    'market/AtrXIndicatorNodeUI': AtrXIndicatorNodeUI,
+    'market/PolygonAPIKeyNodeUI': PolygonAPIKeyNodeUI,
+    'market/PolygonBatchCustomBarsNodeUI': PolygonBatchCustomBarsNodeUI,
+    'market/PolygonCustomBarsNodeUI': PolygonCustomBarsNodeUI,
+    'market/PolygonUniverseNodeUI': PolygonUniverseNodeUI,
+    'market/RSIFilterNodeUI': RSIFilterNodeUI,
+    'market/SMACrossoverFilterNodeUI': SMACrossoverFilterNodeUI,
+};
 
 async function createEditor(container: HTMLElement) {
     try {
@@ -329,11 +367,11 @@ async function registerNodes() {
         let NodeClass = BaseCustomNode;
 
         if (data.uiModule) {
-            try {
-                const module = await import(`./nodes/${data.uiModule}.ts`);
-                NodeClass = module.default || NodeClass;
-            } catch (error) {
-                // Silent fail to base class
+            const uiClass = UI_MODULES[data.uiModule];
+            if (uiClass) {
+                NodeClass = uiClass;
+            } else {
+                console.warn(`UI module ${data.uiModule} not found in static map`);
             }
         }
 

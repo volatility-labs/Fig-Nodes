@@ -1,13 +1,6 @@
 import { describe, expect, test, vi, beforeEach } from 'vitest';
 
-import BaseCustomNode from '../nodes/BaseCustomNode';
-import LLMMessagesBuilderNodeUI from '../nodes/LLMMessagesBuilderNodeUI';
-import LoggingNodeUI from '../nodes/LoggingNodeUI';
-import OllamaChatNodeUI from '../nodes/OllamaChatNodeUI';
-import PolygonAPIKeyNodeUI from '../nodes/PolygonAPIKeyNodeUI';
-import StreamingCustomNode from '../nodes/StreamingCustomNode';
-import TextInputNodeUI from '../nodes/TextInputNodeUI';
-import PolygonUniverseNodeUI from '../nodes/PolygonUniverseNodeUI';
+import { BaseCustomNode, LLMMessagesBuilderNodeUI, LoggingNodeUI, OllamaChatNodeUI, PolygonAPIKeyNodeUI, StreamingCustomNode, TextInputNodeUI, PolygonUniverseNodeUI, AtrXIndicatorNodeUI, AtrXFilterNodeUI } from '../nodes';
 
 function baseData() {
     return {
@@ -163,7 +156,6 @@ describe('Node UI classes', () => {
         const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => { });
         securityButton!.callback!(null);
         expect(alertSpy).toHaveBeenCalledWith('API key is handled securely and not stored in workflow files.');
-        // @ts-expect-error: Mock restore method may not be available in test environment
         alertSpy.mockRestore();
     });
 
@@ -175,6 +167,26 @@ describe('Node UI classes', () => {
         expect(typeof (node as any).onDrawForeground).toBe('function');
         // Private ensureTextarea exists at runtime
         expect(typeof (node as any).ensureTextarea).toBe('function');
+    });
+
+    test('AtrXIndicatorNodeUI handles results output', () => {
+        const data = baseData();
+        data.outputs = { results: { base: 'IndicatorResult' } };
+        const node = new AtrXIndicatorNodeUI('AtrxIndicator', data);
+        // Note: removeOutput may not work in test environment
+        expect(node.findOutputSlot('results')).toBeGreaterThanOrEqual(0);
+        expect(node.outputs.length).toBeGreaterThanOrEqual(1);
+    });
+
+    test('AtrXFilterNodeUI does not have indicator_results output', () => {
+        const data = baseData();
+        data.outputs = {
+            filtered_ohlcv_bundle: { base: 'Dict<AssetSymbol, List<OHLCVBar>>' }
+        };
+        const node = new AtrXFilterNodeUI('AtrxFilter', data);
+        // indicator_results output has been removed from the Python node, so it shouldn't exist in UI
+        expect(node.findOutputSlot('indicator_results')).toBe(-1);
+        expect(node.outputs.length).toBe(1);
     });
 });
 
@@ -328,6 +340,35 @@ describe('BaseCustomNode comprehensive tests', () => {
         expect((node as any).formatComboValue(false)).toBe('false');
         expect((node as any).formatComboValue(null)).toBe('null');
         expect((node as any).formatComboValue(undefined)).toBe('undefined');
+    });
+});
+
+describe('Progress bar rendering', () => {
+    test('BaseCustomNode calls renderer.drawProgressBar when progress >= 0', () => {
+        const node = new BaseCustomNode('Test', baseData());
+        // Spy on renderer method through instance
+        const renderer: any = (node as any).renderer;
+        const spy = vi.spyOn(renderer, 'drawProgressBar');
+
+        // Prepare mocked canvas context
+        const ctx: any = {
+            save: () => { },
+            restore: () => { },
+            fillRect: () => { },
+            strokeRect: () => { },
+            measureText: (_t: string) => ({ width: 0 }),
+            fillText: (_t: string, _x: number, _y: number) => { },
+            beginPath: () => { },
+        };
+
+        // Initially, no progress -> should still call drawProgressBar (renderer handles visibility)
+        node.onDrawForeground(ctx as any);
+        expect(spy).toHaveBeenCalledTimes(1);
+
+        // Set progress and draw again -> should call again
+        node.setProgress(25, 'Loading 1/4');
+        node.onDrawForeground(ctx as any);
+        expect(spy).toHaveBeenCalledTimes(2);
     });
 });
 

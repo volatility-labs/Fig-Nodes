@@ -20,7 +20,7 @@ class SystemPromptLoaderNode(BaseNode):
     CATEGORY = 'io'
 
     # Custom UI component for file upload & preview
-    ui_module = "SystemPromptLoaderNodeUI"
+    ui_module = "llm/SystemPromptLoaderNodeUI"
 
     async def execute(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
         content = self.params.get("content") or ""

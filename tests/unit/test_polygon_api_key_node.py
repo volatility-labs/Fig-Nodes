@@ -1,5 +1,5 @@
 import pytest
-from custom_nodes.polygon.polygon_api_key_node import PolygonAPIKeyNode
+from nodes.custom.polygon.polygon_api_key_node import PolygonAPIKeyNode
 
 
 @pytest.fixture

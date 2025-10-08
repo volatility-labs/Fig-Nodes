@@ -56,6 +56,9 @@ pytest tests/unit/
 ``` 
 
 ## Changelog
+Oct 8, 2025
+  - Added ATRX filtering and calculation nodes
+  - Various bug fixes and minor improvements and code refactoring for better maintainability
 
 - Oct 7, 2025
   - Enhanced Polygon Universe node to allow for filtering of tickers based on volume, price change and other 1d OHLCV bar

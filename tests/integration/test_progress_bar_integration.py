@@ -295,7 +295,7 @@ class TestProgressBarIntegration:
 @pytest.mark.asyncio
 async def test_real_polygon_batch_progress_reporting():
     """Integration test with real PolygonBatchCustomBarsNode and mocked API calls."""
-    from custom_nodes.polygon.polygon_batch_custom_bars_node import PolygonBatchCustomBarsNode
+    from nodes.custom.polygon.polygon_batch_custom_bars_node import PolygonBatchCustomBarsNode
     from core.types_registry import AssetSymbol, AssetClass
     from unittest.mock import AsyncMock
 
@@ -325,7 +325,7 @@ async def test_real_polygon_batch_progress_reporting():
         return mock_bars_data
 
     # Patch the fetch_bars function
-    import custom_nodes.polygon.polygon_batch_custom_bars_node as polygon_module
+    import nodes.custom.polygon.polygon_batch_custom_bars_node as polygon_module
     original_fetch_bars = polygon_module.fetch_bars
 
     try:

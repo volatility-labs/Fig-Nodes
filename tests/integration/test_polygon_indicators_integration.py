@@ -4,7 +4,7 @@ from unittest.mock import patch, AsyncMock, MagicMock
 from core.graph_executor import GraphExecutor
 from core.node_registry import NODE_REGISTRY
 from core.types_registry import AssetSymbol, AssetClass
-from custom_nodes.polygon.polygon_universe_node import PolygonUniverseNode
+from nodes.custom.polygon.polygon_universe_node import PolygonUniverseNode
 
 @pytest.mark.asyncio
 async def test_polygon_indicators_filtering_pipeline():
@@ -137,7 +137,7 @@ async def test_polygon_indicators_filtering_with_strict_filters():
     ]
 
     # Mock the fetch_bars function in the polygon batch node module
-    with patch('custom_nodes.polygon.polygon_batch_custom_bars_node.fetch_bars', new_callable=AsyncMock) as mock_fetch_bars:
+    with patch('nodes.custom.polygon.polygon_batch_custom_bars_node.fetch_bars', new_callable=AsyncMock) as mock_fetch_bars:
         mock_fetch_bars.return_value = mock_ohlcv_data
 
         # Define the graph with strict ADX filter

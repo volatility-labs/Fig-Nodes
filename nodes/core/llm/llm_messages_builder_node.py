@@ -34,7 +34,7 @@ class LLMMessagesBuilderNode(BaseNode):
     ]
 
     CATEGORY = "llm"
-    ui_module = "LLMMessagesBuilderNodeUI"
+    ui_module = "llm/LLMMessagesBuilderNodeUI"
 
     async def execute(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
         merged = []

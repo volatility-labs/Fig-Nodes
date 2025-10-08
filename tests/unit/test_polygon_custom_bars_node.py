@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, patch, MagicMock
 import pandas as pd
 from nodes.core.io.asset_symbol_input_node import AssetSymbol
 from core.types_registry import AssetClass, Provider, InstrumentType
-from custom_nodes.polygon.polygon_custom_bars_node import PolygonCustomBarsNode
+from nodes.custom.polygon.polygon_custom_bars_node import PolygonCustomBarsNode
 
 
 @pytest.fixture

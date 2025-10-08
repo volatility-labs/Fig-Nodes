@@ -370,4 +370,28 @@ class IndicatorsService:
         bin_size = price_range / bins
         df['price_bin'] = ((df['Close'] - df['Low'].min()) / bin_size).astype(int) * bin_size + df['Low'].min()
         volume_profile = df.groupby('price_bin')['volume_usd'].sum().sort_index()
-        return volume_profile 
+        return volume_profile
+
+    def calculate_atrx(self, df: pd.DataFrame, length: int = 14, ma_length: int = 50, smoothing: str = 'RMA', price: str = 'Close') -> float:
+        if df.empty or len(df) < max(length, ma_length):
+            return np.nan
+        tr = pd.DataFrame({
+            'hl': df['High'] - df['Low'],
+            'h_pc': (df['High'] - df['Close'].shift()).abs(),
+            'l_pc': (df['Low'] - df['Close'].shift()).abs()
+        }).max(axis=1)
+        if smoothing == 'RMA':
+            alpha = 1 / length
+            atr = tr.ewm(alpha=alpha, adjust=False).mean()
+        elif smoothing == 'EMA':
+            atr = tr.ewm(span=length, adjust=False).mean()
+        elif smoothing == 'SMA':
+            atr = tr.rolling(window=length, min_periods=1).mean()
+        else:
+            raise ValueError(f"Unsupported smoothing {smoothing}")
+        ma = df[price].rolling(ma_length).mean().iloc[-1]
+        current_price = df[price].iloc[-1]
+        atr_last = atr.iloc[-1]
+        if atr_last == 0 or np.isnan(ma) or np.isnan(atr_last):
+            return np.nan
+        return (current_price - ma) / atr_last 

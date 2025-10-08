@@ -40,6 +40,7 @@ class IndicatorType(Enum):
     BOLLINGER = auto()  # Bollinger Bands
     VOLUME_RATIO = auto()  # Volume Ratio
     EIS = auto()  # Elder Impulse System
+    ATRX = auto()  # ATRX Indicator
     # Add more as needed
 
 # ~~~~~ TypedDicts ~~~~~
@@ -202,7 +203,7 @@ TYPE_REGISTRY: Dict[str, Type] = {
 
 # ~~~~~ Extension Functions ~~~~~
 # Functions to dynamically extend types without modifying this file.
-# Ideal for custom_nodes: Call these in your module's init to register new values.
+# Ideal for nodes/custom: Call these in your module's init to register new values.
 
 def get_type(type_name: str) -> Type:
     if type_name not in TYPE_REGISTRY:
@@ -278,7 +279,7 @@ def register_indicator_type(name: str):
 # 5. Update __all__ if the type should be importable.
 # 6. Ensure any new types are used consistently in node definitions.
 
-# For custom_nodes extensions:
+# For nodes/custom extensions:
 # - To add a new type: Define it in your custom module, then call register_type("MyNewType", MyNewType) in your __init__.py.
 # - To extend an Enum: Call register_provider("NEW_PROVIDER") or similar.
 # - Example: In custom_nodes/my_plugin/__init__.py:

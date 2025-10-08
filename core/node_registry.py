@@ -6,7 +6,10 @@ from typing import Dict, List
 import os
 import importlib.util
 import inspect
+import logging
 from nodes.base.base_node import BaseNode
+
+logger = logging.getLogger(__name__)
 
 def load_nodes(directories: List[str]) -> Dict[str, type]:
     """
@@ -65,7 +68,7 @@ def load_nodes(directories: List[str]) -> Dict[str, type]:
 extra_dirs_env = os.getenv('FIG_NODES_PATHS', '')
 extra_dirs: List[str] = [p for p in extra_dirs_env.split(':') if p]
 
-NODE_REGISTRY = load_nodes(['nodes/core', 'custom_nodes', *extra_dirs])
+NODE_REGISTRY = load_nodes(['nodes/core', 'nodes/custom', *extra_dirs])
 
 # Developer Notes:
 # To add a new node:
@@ -74,6 +77,6 @@ NODE_REGISTRY = load_nodes(['nodes/core', 'custom_nodes', *extra_dirs])
 # 3. Implement required attributes (inputs, outputs, etc.) and execute() method.
 # 4. The node will be automatically registered and available in the system.
 # 5. For UI parameters, define params_meta list on the class. 
-# For extensions in custom_nodes:
+# For extensions in nodes/custom:
 # - Add registration code (e.g., register_type) in your subdirectory's __init__.py.
 # - It will be auto-imported during loading for seamless integration. 

@@ -260,3 +260,41 @@ class TestIndicatorsService:
         else:
             assert pct is None
             assert tf is None
+
+    def test_calculate_atrx_happy_path(self, indicators_service, sample_ohlcv_data):
+        """Test ATRX calculation with sufficient data."""
+        atrx = indicators_service.calculate_atrx(sample_ohlcv_data)
+        assert isinstance(atrx, float)
+        assert not np.isnan(atrx)
+
+    def test_calculate_atrx_insufficient_data(self, indicators_service):
+        """Test ATRX with insufficient data."""
+        short_df = pd.DataFrame({
+            'High': [100, 101],
+            'Low': [99, 100],
+            'Close': [99.5, 100.5]
+        })
+        atrx = indicators_service.calculate_atrx(short_df)
+        assert np.isnan(atrx)
+
+    def test_calculate_atrx_zero_atr(self, indicators_service):
+        """Test ATRX when ATR is zero."""
+        # Create data where TR is zero
+        constant_df = pd.DataFrame({
+            'High': [100] * 60,
+            'Low': [100] * 60,
+            'Close': [100] * 60
+        })
+        atrx = indicators_service.calculate_atrx(constant_df)
+        assert np.isnan(atrx)
+
+    def test_calculate_atrx_invalid_smoothing(self, indicators_service, sample_ohlcv_data):
+        """Test ATRX with invalid smoothing."""
+        with pytest.raises(ValueError):
+            indicators_service.calculate_atrx(sample_ohlcv_data, smoothing='INVALID')
+
+    def test_calculate_atrx_different_price(self, indicators_service, sample_ohlcv_data):
+        """Test ATRX using different price field."""
+        atrx_close = indicators_service.calculate_atrx(sample_ohlcv_data, price='Close')
+        atrx_open = indicators_service.calculate_atrx(sample_ohlcv_data, price='Open')
+        assert atrx_close != atrx_open  # Should differ unless prices are identical

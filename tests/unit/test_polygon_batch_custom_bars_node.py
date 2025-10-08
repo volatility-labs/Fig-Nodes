@@ -3,7 +3,7 @@ import asyncio
 from unittest.mock import AsyncMock, patch, MagicMock
 from typing import Dict, Any, List
 import time
-from custom_nodes.polygon.polygon_batch_custom_bars_node import PolygonBatchCustomBarsNode, RateLimiter
+from nodes.custom.polygon.polygon_batch_custom_bars_node import PolygonBatchCustomBarsNode, RateLimiter
 from core.types_registry import AssetSymbol, AssetClass, OHLCVBar
 
 
@@ -155,7 +155,7 @@ class TestPolygonBatchCustomBarsNode:
     @pytest.mark.asyncio
     async def test_execute_successful_batch_fetch(self, polygon_batch_node, sample_symbols, mock_bars_response):
         """Test successful batch fetching of bars."""
-        with patch("custom_nodes.polygon.polygon_batch_custom_bars_node.fetch_bars", new_callable=AsyncMock) as mock_fetch:
+        with patch("nodes.custom.polygon.polygon_batch_custom_bars_node.fetch_bars", new_callable=AsyncMock) as mock_fetch:
             mock_fetch.return_value = mock_bars_response
 
             result = await polygon_batch_node.execute({
@@ -193,7 +193,7 @@ class TestPolygonBatchCustomBarsNode:
                 raise Exception("API rate limit exceeded")
             return mock_bars_response
 
-        with patch("custom_nodes.polygon.polygon_batch_custom_bars_node.fetch_bars", side_effect=mock_fetch_side_effect):
+        with patch("nodes.custom.polygon.polygon_batch_custom_bars_node.fetch_bars", side_effect=mock_fetch_side_effect):
             result = await polygon_batch_node.execute({
                 "symbols": sample_symbols,
                 "api_key": "test_api_key"
@@ -212,7 +212,7 @@ class TestPolygonBatchCustomBarsNode:
         # Create 60 symbols - should process all of them
         symbols = [AssetSymbol(f"SYMBOL_{i}", AssetClass.STOCKS) for i in range(60)]
 
-        with patch("custom_nodes.polygon.polygon_batch_custom_bars_node.fetch_bars", new_callable=AsyncMock) as mock_fetch:
+        with patch("nodes.custom.polygon.polygon_batch_custom_bars_node.fetch_bars", new_callable=AsyncMock) as mock_fetch:
             mock_fetch.return_value = mock_bars_response
 
             result = await polygon_batch_node.execute({
@@ -231,7 +231,7 @@ class TestPolygonBatchCustomBarsNode:
         node = PolygonBatchCustomBarsNode("test_id", {})
         symbols = [AssetSymbol(f"SYMBOL_{i}", AssetClass.STOCKS) for i in range(20)]
 
-        with patch("custom_nodes.polygon.polygon_batch_custom_bars_node.fetch_bars", new_callable=AsyncMock) as mock_fetch:
+        with patch("nodes.custom.polygon.polygon_batch_custom_bars_node.fetch_bars", new_callable=AsyncMock) as mock_fetch:
             mock_fetch.return_value = mock_bars_response
 
             result = await node.execute({
@@ -248,7 +248,7 @@ class TestPolygonBatchCustomBarsNode:
         # Create many symbols to test concurrency
         symbols = [AssetSymbol(f"SYMBOL_{i}", AssetClass.STOCKS) for i in range(20)]
 
-        with patch("custom_nodes.polygon.polygon_batch_custom_bars_node.fetch_bars", new_callable=AsyncMock) as mock_fetch:
+        with patch("nodes.custom.polygon.polygon_batch_custom_bars_node.fetch_bars", new_callable=AsyncMock) as mock_fetch:
             # Make fetch_bars take some time to test concurrency
             async def slow_fetch(*args, **kwargs):
                 await asyncio.sleep(0.01)
@@ -279,7 +279,7 @@ class TestPolygonBatchCustomBarsNode:
             await asyncio.sleep(0.01)
             return mock_bars_response
 
-        with patch("custom_nodes.polygon.polygon_batch_custom_bars_node.fetch_bars", side_effect=rate_limited_fetch):
+        with patch("nodes.custom.polygon.polygon_batch_custom_bars_node.fetch_bars", side_effect=rate_limited_fetch):
             start_time = time.time()
             result = await polygon_batch_node.execute({
                 "symbols": symbols,
@@ -299,7 +299,7 @@ class TestPolygonBatchCustomBarsNode:
             await asyncio.sleep(6)  # Longer than 5 minute timeout
             return []
 
-        with patch("custom_nodes.polygon.polygon_batch_custom_bars_node.fetch_bars", side_effect=slow_fetch):
+        with patch("nodes.custom.polygon.polygon_batch_custom_bars_node.fetch_bars", side_effect=slow_fetch):
             with patch("asyncio.wait_for", side_effect=asyncio.TimeoutError):
                 result = await polygon_batch_node.execute({
                     "symbols": sample_symbols,
@@ -315,7 +315,7 @@ class TestPolygonBatchCustomBarsNode:
         async def failing_fetch(*args, **kwargs):
             raise RuntimeError("Task failed")
 
-        with patch("custom_nodes.polygon.polygon_batch_custom_bars_node.fetch_bars", side_effect=failing_fetch):
+        with patch("nodes.custom.polygon.polygon_batch_custom_bars_node.fetch_bars", side_effect=failing_fetch):
             result = await polygon_batch_node.execute({
                 "symbols": sample_symbols,
                 "api_key": "test_api_key"
@@ -330,7 +330,7 @@ class TestPolygonBatchCustomBarsNode:
         async def empty_bars_fetch(*args, **kwargs):
             return []  # Return empty bars
 
-        with patch("custom_nodes.polygon.polygon_batch_custom_bars_node.fetch_bars", side_effect=empty_bars_fetch):
+        with patch("nodes.custom.polygon.polygon_batch_custom_bars_node.fetch_bars", side_effect=empty_bars_fetch):
             result = await polygon_batch_node.execute({
                 "symbols": sample_symbols,
                 "api_key": "test_api_key"
@@ -351,7 +351,7 @@ class TestPolygonBatchCustomBarsNode:
                 return []
             return mock_bars_response
 
-        with patch("custom_nodes.polygon.polygon_batch_custom_bars_node.fetch_bars", side_effect=mixed_fetch):
+        with patch("nodes.custom.polygon.polygon_batch_custom_bars_node.fetch_bars", side_effect=mixed_fetch):
             result = await polygon_batch_node.execute({
                 "symbols": sample_symbols,
                 "api_key": "test_api_key"
@@ -369,7 +369,7 @@ class TestPolygonBatchCustomBarsNode:
             AssetSymbol("ETH", AssetClass.CRYPTO, quote_currency="USDT"),
         ]
 
-        with patch("custom_nodes.polygon.polygon_batch_custom_bars_node.fetch_bars", new_callable=AsyncMock) as mock_fetch:
+        with patch("nodes.custom.polygon.polygon_batch_custom_bars_node.fetch_bars", new_callable=AsyncMock) as mock_fetch:
             mock_fetch.return_value = mock_bars_response
 
             result = await polygon_batch_node.execute({
@@ -398,7 +398,7 @@ class TestPolygonBatchCustomBarsNode:
         node = PolygonBatchCustomBarsNode("test_id", custom_params)
         symbols = [AssetSymbol("AAPL", AssetClass.STOCKS)]
 
-        with patch("custom_nodes.polygon.polygon_batch_custom_bars_node.fetch_bars", new_callable=AsyncMock) as mock_fetch:
+        with patch("nodes.custom.polygon.polygon_batch_custom_bars_node.fetch_bars", new_callable=AsyncMock) as mock_fetch:
             mock_fetch.return_value = mock_bars_response
 
             await node.execute({
@@ -430,7 +430,7 @@ class TestPolygonBatchCustomBarsNode:
             await asyncio.sleep(0.1)
             return []
 
-        with patch("custom_nodes.polygon.polygon_batch_custom_bars_node.fetch_bars", side_effect=slow_fetch):
+        with patch("nodes.custom.polygon.polygon_batch_custom_bars_node.fetch_bars", side_effect=slow_fetch):
             start_time = time.time()
             result = await node.execute({
                 "symbols": symbols,
@@ -450,7 +450,7 @@ class TestPolygonBatchCustomBarsNode:
             await asyncio.sleep(1.0)  # Simulate long fetch
             return []
 
-        with patch("custom_nodes.polygon.polygon_batch_custom_bars_node.fetch_bars", side_effect=slow_fetch):
+        with patch("nodes.custom.polygon.polygon_batch_custom_bars_node.fetch_bars", side_effect=slow_fetch):
             execute_task = asyncio.create_task(polygon_batch_node.execute({
                 "symbols": sample_symbols,
                 "api_key": "test_key"
@@ -477,7 +477,7 @@ class TestPolygonBatchCustomBarsNode:
             # Return immediately so progress gets reported before cancellation
             return []
 
-        with patch("custom_nodes.polygon.polygon_batch_custom_bars_node.fetch_bars", side_effect=fast_fetch):
+        with patch("nodes.custom.polygon.polygon_batch_custom_bars_node.fetch_bars", side_effect=fast_fetch):
             execute_task = asyncio.create_task(polygon_batch_node.execute({
                 "symbols": sample_symbols,
                 "api_key": "test_key"
@@ -563,7 +563,7 @@ class TestPolygonBatchCustomBarsNode:
             await asyncio.sleep(0.01)  # Brief delay for other calls
             return []
 
-        with patch("custom_nodes.polygon.polygon_batch_custom_bars_node.fetch_bars", side_effect=cancellable_fetch):
+        with patch("nodes.custom.polygon.polygon_batch_custom_bars_node.fetch_bars", side_effect=cancellable_fetch):
             execute_task = asyncio.create_task(node.execute({
                 "symbols": sample_symbols,
                 "api_key": "test_key"
@@ -598,7 +598,7 @@ class TestPolygonBatchCustomBarsNode:
             await asyncio.sleep(0.01)
             return []
 
-        with patch("custom_nodes.polygon.polygon_batch_custom_bars_node.fetch_bars", side_effect=cancellable_fetch):
+        with patch("nodes.custom.polygon.polygon_batch_custom_bars_node.fetch_bars", side_effect=cancellable_fetch):
             execute_task = asyncio.create_task(node.execute({
                 "symbols": sample_symbols,
                 "api_key": "test_key"
@@ -625,12 +625,12 @@ class TestPolygonBatchCustomBarsNode:
             # Simulate rate limiting delay
             await asyncio.sleep(0.01)
 
-        with patch("custom_nodes.polygon.polygon_batch_custom_bars_node.RateLimiter") as mock_rate_limiter_class:
+        with patch("nodes.custom.polygon.polygon_batch_custom_bars_node.RateLimiter") as mock_rate_limiter_class:
             mock_rate_limiter = MagicMock()
             mock_rate_limiter.acquire = cancellable_acquire
             mock_rate_limiter_class.return_value = mock_rate_limiter
 
-            with patch("custom_nodes.polygon.polygon_batch_custom_bars_node.fetch_bars", return_value=[]):
+            with patch("nodes.custom.polygon.polygon_batch_custom_bars_node.fetch_bars", return_value=[]):
                 execute_task = asyncio.create_task(polygon_batch_node.execute({
                     "symbols": sample_symbols,
                     "api_key": "test_key"
@@ -658,7 +658,7 @@ class TestPolygonBatchCustomBarsNode:
             await asyncio.sleep(0.1)
             return mock_bars_response
 
-        with patch("custom_nodes.polygon.polygon_batch_custom_bars_node.fetch_bars", side_effect=slow_cancellable_fetch):
+        with patch("nodes.custom.polygon.polygon_batch_custom_bars_node.fetch_bars", side_effect=slow_cancellable_fetch):
             execute_task = asyncio.create_task(node.execute({
                 "symbols": symbols,
                 "api_key": "test_key"
@@ -689,7 +689,7 @@ class TestPolygonBatchCustomBarsNode:
                 raise asyncio.CancelledError("Cancellation")  # Should propagate
             return []
 
-        with patch("custom_nodes.polygon.polygon_batch_custom_bars_node.fetch_bars", side_effect=mixed_fetch):
+        with patch("nodes.custom.polygon.polygon_batch_custom_bars_node.fetch_bars", side_effect=mixed_fetch):
             execute_task = asyncio.create_task(node.execute({
                 "symbols": sample_symbols,
                 "api_key": "test_key"
@@ -708,7 +708,7 @@ class TestPolygonBatchCustomBarsNode:
             await asyncio.sleep(0.5)  # Simulate ongoing fetch
             return mock_bars_response
 
-        with patch("custom_nodes.polygon.polygon_batch_custom_bars_node.fetch_bars", side_effect=slow_fetch):
+        with patch("nodes.custom.polygon.polygon_batch_custom_bars_node.fetch_bars", side_effect=slow_fetch):
             execute_task = asyncio.create_task(polygon_batch_node.execute({
                 "symbols": sample_symbols,
                 "api_key": "test_key"
