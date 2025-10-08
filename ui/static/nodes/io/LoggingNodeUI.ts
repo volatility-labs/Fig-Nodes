@@ -1,6 +1,20 @@
 
 import BaseCustomNode from '../base/BaseCustomNode';
+import { NodeRenderer } from '../utils/NodeRenderer';
 import { LiteGraph } from '@comfyorg/litegraph';
+
+class LoggingNodeRenderer extends NodeRenderer {
+    onDrawForeground(ctx: CanvasRenderingContext2D) {
+        // Call the node's custom drawing logic first
+        const loggingNode = this.node as LoggingNodeUI;
+        loggingNode.drawLoggingContent(ctx);
+
+        // Then call the standard renderer for highlights, progress, etc.
+        this.drawHighlight(ctx);
+        this.drawProgressBar(ctx);
+        this.drawError(ctx);
+    }
+}
 
 export default class LoggingNodeUI extends BaseCustomNode {
     private copyButton: any = null;
@@ -10,6 +24,9 @@ export default class LoggingNodeUI extends BaseCustomNode {
 
     constructor(title: string, data: any) {
         super(title, data);
+
+        // Use custom renderer for logging-specific drawing
+        this.renderer = new LoggingNodeRenderer(this);
 
         // Set larger size for displaying log data
         this.size = [400, 300];
@@ -84,6 +101,11 @@ export default class LoggingNodeUI extends BaseCustomNode {
                 text += '\n\nThinking: ' + this.tryFormat(value.thinking);
             }
             return text;
+        }
+
+        // Handle simple objects with content property (like streaming messages)
+        if (value && typeof value === 'object' && 'content' in value && Object.keys(value).length === 1) {
+            return this.tryFormat(value.content);
         }
 
         if (format === 'plain') {
@@ -196,7 +218,7 @@ export default class LoggingNodeUI extends BaseCustomNode {
         this.setDirtyCanvas(true, true);
     }
 
-    onDrawForeground(ctx: CanvasRenderingContext2D) {
+    drawLoggingContent(ctx: CanvasRenderingContext2D) {
         if (this.flags?.collapsed) {
             this.hideDisplayTextarea();
             return;
@@ -275,9 +297,10 @@ export default class LoggingNodeUI extends BaseCustomNode {
         // Ensure position up-to-date
         const padding = 8;
         const x = padding;
-        const y = LiteGraph.NODE_TITLE_HEIGHT + padding;
+        const widgetHeight = this.widgets ? this.widgets.length * LiteGraph.NODE_WIDGET_HEIGHT : 0;
+        const y = LiteGraph.NODE_TITLE_HEIGHT + widgetHeight + padding;
         const w = Math.max(0, this.size[0] - padding * 2);
-        const h = Math.max(0, this.size[1] - LiteGraph.NODE_TITLE_HEIGHT - padding * 2);
+        const h = Math.max(0, this.size[1] - LiteGraph.NODE_TITLE_HEIGHT - widgetHeight - padding * 2);
         this.positionDisplayTextarea(x, y, w, h);
     }
 

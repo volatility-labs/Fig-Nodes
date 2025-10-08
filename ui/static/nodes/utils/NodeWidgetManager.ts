@@ -1,4 +1,5 @@
 import { LGraphNode } from '@comfyorg/litegraph';
+import { NodeTypeSystem } from './NodeTypeSystem';
 
 export class NodeWidgetManager {
     private node: LGraphNode & { properties: { [key: string]: any } };
@@ -130,12 +131,7 @@ export class NodeWidgetManager {
         });
     }
 
-    private formatComboValue(value: any): string {
-        if (typeof value === 'boolean') {
-            return value ? 'true' : 'false';
-        }
-        return String(value);
-    }
+
 
     private showCustomPrompt(title: string, defaultValue: string, isPassword: boolean, callback: (value: string | null) => void) {
         if (!isPassword) {

@@ -1,7 +1,7 @@
 import { LGraphNode, LiteGraph } from '@comfyorg/litegraph';
 
 export class NodeRenderer {
-    private node: LGraphNode & {
+    protected node: LGraphNode & {
         displayResults: boolean;
         result: any;
         displayText: string;
@@ -56,7 +56,7 @@ export class NodeRenderer {
         this.drawError(ctx);
     }
 
-    private drawHighlight(ctx: CanvasRenderingContext2D) {
+    protected drawHighlight(ctx: CanvasRenderingContext2D) {
         if (this.node.highlightStartTs !== null) {
             const now = performance.now();
             const elapsed = now - this.node.highlightStartTs;
@@ -121,7 +121,7 @@ export class NodeRenderer {
         }
     }
 
-    private drawContent(ctx: CanvasRenderingContext2D) {
+    protected drawContent(ctx: CanvasRenderingContext2D) {
         if ((this.node as any).flags?.collapsed || !this.node.displayResults || !this.node.displayText) {
             return;
         }
@@ -158,7 +158,7 @@ export class NodeRenderer {
         });
     }
 
-    private drawError(ctx: CanvasRenderingContext2D) {
+    protected drawError(ctx: CanvasRenderingContext2D) {
         if (this.node.error) {
             ctx.fillStyle = '#FF0000';
             ctx.font = 'bold 12px Arial';

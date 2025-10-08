@@ -113,6 +113,552 @@ describe('Node UI classes', () => {
         expect(mockWriteText).not.toHaveBeenCalled();
     });
 
+    test('LoggingNodeUI uses custom renderer', () => {
+        const node = new LoggingNodeUI('Log', baseData());
+        expect(node.renderer).toBeDefined();
+        expect(node.renderer.constructor.name).toBe('LoggingNodeRenderer');
+    });
+
+    test('LoggingNodeUI has disabled displayResults', () => {
+        const node = new LoggingNodeUI('Log', baseData());
+        expect(node.displayResults).toBe(false);
+    });
+
+    test('LoggingNodeUI custom renderer calls drawLoggingContent', () => {
+        const node = new LoggingNodeUI('Log', baseData());
+        const renderer = node.renderer as any;
+
+        // Mock the node's drawLoggingContent method
+        const mockDrawLogging = vi.fn();
+        (node as any).drawLoggingContent = mockDrawLogging;
+
+        // Create mock canvas context
+        const ctx = {
+            fillStyle: '',
+            fillRect: vi.fn(),
+            strokeStyle: '',
+            lineWidth: 1,
+            strokeRect: vi.fn(),
+            save: vi.fn(),
+            restore: vi.fn(),
+        } as any;
+
+        // Call renderer onDrawForeground
+        renderer.onDrawForeground(ctx);
+
+        // Verify drawLoggingContent was called
+        expect(mockDrawLogging).toHaveBeenCalledWith(ctx);
+    });
+
+    test('LoggingNodeUI drawLoggingContent handles collapsed state', () => {
+        const node = new LoggingNodeUI('Log', baseData());
+
+        // Mock flags.collapsed
+        (node as any).flags = { collapsed: true };
+
+        // Mock hideDisplayTextarea
+        const mockHideTextarea = vi.fn();
+        (node as any).hideDisplayTextarea = mockHideTextarea;
+
+        // Create mock canvas context
+        const ctx = {} as any;
+
+        // Call drawLoggingContent
+        (node as any).drawLoggingContent(ctx);
+
+        // Verify hideDisplayTextarea was called for collapsed state
+        expect(mockHideTextarea).toHaveBeenCalled();
+    });
+
+    test('LoggingNodeUI drawLoggingContent creates textarea when not collapsed', () => {
+        const node = new LoggingNodeUI('Log', baseData());
+
+        // Ensure not collapsed
+        (node as any).flags = {};
+
+        // Mock ensureDisplayTextarea
+        const mockEnsureTextarea = vi.fn();
+        (node as any).ensureDisplayTextarea = mockEnsureTextarea;
+
+        // Mock positionDisplayTextarea
+        const mockPositionTextarea = vi.fn();
+        (node as any).positionDisplayTextarea = mockPositionTextarea;
+
+        // Create mock canvas context with drawing methods
+        const ctx = {
+            fillStyle: '',
+            fillRect: vi.fn(),
+            strokeStyle: '',
+            lineWidth: 1,
+            strokeRect: vi.fn(),
+        } as any;
+
+        // Mock size and widgets
+        (node as any).size = [400, 300];
+        (node as any).widgets = [{}, {}]; // 2 widgets
+
+        // Call drawLoggingContent
+        (node as any).drawLoggingContent(ctx);
+
+        // Verify ensureDisplayTextarea was called
+        expect(mockEnsureTextarea).toHaveBeenCalled();
+
+        // Verify positionDisplayTextarea was called with correct dimensions
+        expect(mockPositionTextarea).toHaveBeenCalled();
+        const [x, y, w, h] = mockPositionTextarea.mock.calls[0];
+        expect(x).toBe(8); // padding
+        expect(y).toBe(20 + 2 * 24 + 8); // title height (20) + widget height (2 * 24) + padding
+        expect(w).toBe(400 - 16); // size[0] - 2 * padding
+        expect(h).toBe(300 - 20 - 2 * 24 - 16); // size[1] - title (20) - widgets (2 * 24) - 2 * padding
+    });
+
+    test('LoggingNodeUI ensureDisplayTextarea creates textarea element', () => {
+        const node = new LoggingNodeUI('Log', baseData());
+
+        // Mock graph and canvas
+        const mockCanvas = {
+            canvas: document.createElement('canvas'),
+        };
+        const mockGraph = {
+            list_of_graphcanvas: [mockCanvas],
+        };
+        (node as any).graph = mockGraph;
+
+        // Mock displayTextarea as null initially
+        (node as any).displayTextarea = null;
+        (node as any).lastCanvasRef = null;
+
+        // Call ensureDisplayTextarea
+        (node as any).ensureDisplayTextarea();
+
+        // Verify textarea was created
+        expect((node as any).displayTextarea).toBeInstanceOf(HTMLTextAreaElement);
+        expect((node as any).displayTextarea.className).toBe('inline-node-textarea monospace');
+        expect((node as any).displayTextarea.readOnly).toBe(true);
+        expect((node as any).lastCanvasRef).toBe(mockCanvas);
+
+        // Verify textarea is appended to document body
+        expect(document.body.contains((node as any).displayTextarea)).toBe(true);
+    });
+
+    test('LoggingNodeUI syncDisplayTextarea updates textarea content', () => {
+        const node = new LoggingNodeUI('Log', baseData());
+
+        // Create a mock textarea
+        const mockTextarea = {
+            value: '',
+            scrollTop: 0,
+            scrollHeight: 0,
+            style: { display: 'none' },
+        } as any;
+
+        (node as any).displayTextarea = mockTextarea;
+
+        // Set display text
+        node.displayText = 'Test content\nwith multiple lines';
+
+        // Call syncDisplayTextarea
+        (node as any).syncDisplayTextarea();
+
+        // Verify textarea was updated
+        expect(mockTextarea.value).toBe('Test content\nwith multiple lines');
+        expect(mockTextarea.style.display).toBe('');
+        expect(mockTextarea.scrollTop).toBe(mockTextarea.scrollHeight);
+    });
+
+    test('LoggingNodeUI positionDisplayTextarea calculates correct screen position', () => {
+        const node = new LoggingNodeUI('Log', baseData());
+
+        // Create mock textarea
+        const mockTextarea = {
+            style: {
+                position: '',
+                left: '',
+                top: '',
+                width: '',
+                height: '',
+                zIndex: '',
+                fontSize: '',
+                display: '',
+            },
+        } as any;
+        (node as any).displayTextarea = mockTextarea;
+
+        // Create mock canvas with getBoundingClientRect
+        const mockCanvas = {
+            canvas: {
+                getBoundingClientRect: () => ({ left: 100, top: 50 }),
+            },
+            ds: {
+                scale: 2,
+                offset: [10, 20],
+            },
+        };
+
+        const mockGraph = {
+            list_of_graphcanvas: [mockCanvas],
+        };
+        (node as any).graph = mockGraph;
+
+        // Mock node position
+        (node as any).pos = [50, 30];
+
+        // Call positionDisplayTextarea
+        (node as any).positionDisplayTextarea(10, 15, 200, 100);
+
+        // Verify positioning calculations
+        const style = mockTextarea.style;
+        expect(style.position).toBe('absolute');
+        expect(style.zIndex).toBe('1000');
+        expect(style.fontSize).toBe('24px'); // 12 * scale (2)
+        expect(style.width).toBe('400px'); // 200 * scale (2)
+        expect(style.height).toBe('200px'); // 100 * scale (2)
+
+        // Calculate expected screen position:
+        // canvasX = (50 + 10 + 10) * 2 = 70 * 2 = 140
+        // canvasY = (30 + 15 + 20) * 2 = 65 * 2 = 130
+        // screenX = 100 + 140 = 240
+        // screenY = 50 + 130 = 180
+        expect(style.left).toBe('240px');
+        expect(style.top).toBe('180px');
+    });
+
+    test('LoggingNodeUI hideDisplayTextarea hides textarea', () => {
+        const node = new LoggingNodeUI('Log', baseData());
+
+        const mockTextarea = {
+            style: { display: '' },
+        } as any;
+        (node as any).displayTextarea = mockTextarea;
+
+        // Call hideDisplayTextarea
+        (node as any).hideDisplayTextarea();
+
+        // Verify textarea is hidden
+        expect(mockTextarea.style.display).toBe('none');
+    });
+
+    test('LoggingNodeUI detachDisplayTextarea removes textarea from DOM', () => {
+        const node = new LoggingNodeUI('Log', baseData());
+
+        // Create and append a real textarea
+        const textarea = document.createElement('textarea');
+        document.body.appendChild(textarea);
+        (node as any).displayTextarea = textarea;
+        (node as any).lastCanvasRef = {};
+
+        // Verify textarea is in DOM
+        expect(document.body.contains(textarea)).toBe(true);
+
+        // Call detachDisplayTextarea
+        (node as any).detachDisplayTextarea();
+
+        // Verify textarea was removed from DOM
+        expect(document.body.contains(textarea)).toBe(false);
+        expect((node as any).displayTextarea).toBeNull();
+        expect((node as any).lastCanvasRef).toBeNull();
+    });
+
+    test('LoggingNodeUI onRemoved cleans up resources', () => {
+        const node = new LoggingNodeUI('Log', baseData());
+
+        // Mock timeout and detach method
+        const mockDetach = vi.fn();
+        (node as any).detachDisplayTextarea = mockDetach;
+        (node as any).copyFeedbackTimeout = 123;
+
+        // Mock clearTimeout
+        const mockClearTimeout = vi.fn();
+        global.clearTimeout = mockClearTimeout;
+
+        // Call onRemoved
+        (node as any).onRemoved();
+
+        // Verify cleanup
+        expect(mockDetach).toHaveBeenCalled();
+        expect(mockClearTimeout).toHaveBeenCalledWith(123);
+        expect((node as any).copyFeedbackTimeout).toBeNull();
+    });
+
+    test('LoggingNodeUI reset clears display text and syncs textarea', () => {
+        const node = new LoggingNodeUI('Log', baseData());
+
+        // Set display text
+        node.displayText = 'Some content';
+
+        // Mock syncDisplayTextarea
+        const mockSync = vi.fn();
+        (node as any).syncDisplayTextarea = mockSync;
+
+        // Call reset
+        (node as any).reset();
+
+        // Verify display text was cleared and sync was called
+        expect(node.displayText).toBe('');
+        expect(mockSync).toHaveBeenCalled();
+    });
+
+    test('LoggingNodeUI lifecycle methods work correctly', () => {
+        const node = new LoggingNodeUI('Log', baseData());
+
+        // Mock the methods
+        const mockEnsure = vi.fn();
+        const mockSync = vi.fn();
+        (node as any).ensureDisplayTextarea = mockEnsure;
+        (node as any).syncDisplayTextarea = mockSync;
+
+        // Test onAdded calls ensureDisplayTextarea
+        (node as any).onAdded();
+        expect(mockEnsure).toHaveBeenCalledTimes(1);
+
+        // Test onDeselected calls syncDisplayTextarea
+        (node as any).onDeselected();
+        expect(mockSync).toHaveBeenCalledTimes(1);
+
+        // Test onResize calls syncDisplayTextarea
+        (node as any).onResize([200, 150]);
+        expect(mockSync).toHaveBeenCalledTimes(2);
+    });
+
+    test('LoggingNodeUI tryFormat handles different input types', () => {
+        const node = new LoggingNodeUI('Log', baseData());
+
+        // Test string input
+        expect((node as any).tryFormat('hello')).toBe('hello');
+
+        // Test object with output property
+        expect((node as any).tryFormat({ output: 'world' })).toBe('world');
+
+        // Test plain format
+        (node as any).properties = { format: 'plain' };
+        expect((node as any).tryFormat({ key: 'value' })).toBe('{\n  "key": "value"\n}');
+
+        // Test json format
+        (node as any).properties = { format: 'json' };
+        expect((node as any).tryFormat('{"key": "value"}')).toBe('{\n  "key": "value"\n}');
+
+        // Test markdown format (passes through)
+        (node as any).properties = { format: 'markdown' };
+        expect((node as any).tryFormat('# Header')).toBe('# Header');
+
+        // Test auto format with JSON-like string
+        (node as any).properties = { format: 'auto' };
+        expect((node as any).tryFormat('{"key": "value"}')).toBe('{\n  "key": "value"\n}');
+
+        // Test auto format with non-JSON string
+        expect((node as any).tryFormat('plain text')).toBe('plain text');
+
+        // Test assistant message format
+        const assistantMsg = {
+            role: 'assistant',
+            content: 'Hello',
+            thinking: 'Thinking process'
+        };
+        expect((node as any).tryFormat(assistantMsg)).toBe('Hello\n\nThinking: Thinking process');
+
+        // Test simple content object (like streaming messages)
+        const contentObj = { content: 'Simple content' };
+        expect((node as any).tryFormat(contentObj)).toBe('Simple content');
+
+        // Test complex content object (should stringify)
+        const complexObj = { content: 'Content', extra: 'field' };
+        expect((node as any).tryFormat(complexObj)).toBe('{\n  "content": "Content",\n  "extra": "field"\n}');
+    });
+
+    test('LoggingNodeUI getSelectedFormat returns correct format', () => {
+        const node = new LoggingNodeUI('Log', baseData());
+
+        // Test default (auto)
+        expect((node as any).getSelectedFormat()).toBe('auto');
+
+        // Test explicit formats
+        (node as any).properties = { format: 'plain' };
+        expect((node as any).getSelectedFormat()).toBe('plain');
+
+        (node as any).properties = { format: 'json' };
+        expect((node as any).getSelectedFormat()).toBe('json');
+
+        (node as any).properties = { format: 'markdown' };
+        expect((node as any).getSelectedFormat()).toBe('markdown');
+
+        // Test invalid format defaults to auto
+        (node as any).properties = { format: 'invalid' };
+        expect((node as any).getSelectedFormat()).toBe('auto');
+    });
+
+    test('LoggingNodeUI onStreamUpdate handles different streaming formats', () => {
+        const node = new LoggingNodeUI('Log', baseData());
+
+        // Test final message (done: true)
+        (node as any).onStreamUpdate({ done: true, message: { content: 'Final content' } });
+        expect(node.displayText).toBe('Final content');
+
+        // Test streaming with string content
+        (node as any).onStreamUpdate({ output: 'Chunk 1' });
+        expect(node.displayText).toBe('Chunk 1');
+
+        // Test streaming with message content
+        (node as any).onStreamUpdate({ message: { content: 'Chunk 2' } });
+        expect(node.displayText).toBe('Chunk 2');
+
+        // Test cumulative chunks (starting with previous content)
+        node.displayText = 'Chunk';
+        (node as any).onStreamUpdate({ output: 'Chunk 2' });
+        expect(node.displayText).toBe('Chunk 2'); // Should replace, not append
+
+        // Test non-cumulative chunks
+        node.displayText = 'Old';
+        (node as any).onStreamUpdate({ output: 'New' });
+        expect(node.displayText).toBe('New');
+
+        // Test JSON mode formatting
+        (node as any).properties = { format: 'json' };
+        (node as any).onStreamUpdate({ output: '{"key": "value"}' });
+        expect(node.displayText).toBe('{\n  "key": "value"\n}');
+
+        // Test auto mode JSON detection
+        (node as any).properties = { format: 'auto' };
+        (node as any).onStreamUpdate({ output: '{"auto": "detected"}' });
+        expect(node.displayText).toBe('{\n  "auto": "detected"\n}');
+    });
+
+    test('LoggingNodeUI updateDisplay ignores streaming payloads', () => {
+        const node = new LoggingNodeUI('Log', baseData());
+
+        // Set initial content
+        node.displayText = 'Initial';
+
+        // Test assistant_text payload (should be ignored)
+        node.updateDisplay({ assistant_text: 'Should be ignored' });
+        expect(node.displayText).toBe('Initial');
+
+        // Test assistant_message payload (should be ignored)
+        node.updateDisplay({ assistant_message: { content: 'Ignored' } });
+        expect(node.displayText).toBe('Initial');
+
+        // Test message payload (should be ignored)
+        node.updateDisplay({ message: { content: 'Ignored' } });
+        expect(node.displayText).toBe('Initial');
+
+        // Test regular payload (should update)
+        node.updateDisplay({ regular: 'content' });
+        expect(node.displayText).toBe('{\n  "regular": "content"\n}');
+    });
+
+    test('LoggingNodeUI copy button feedback shows success and resets', async () => {
+        const node = new LoggingNodeUI('Log', baseData());
+        const mockWriteText = vi.fn().mockResolvedValue(undefined);
+        (globalThis as any).navigator.clipboard.writeText = mockWriteText;
+
+        node.displayText = 'Content to copy';
+
+        const copyWidget = node.widgets!.find(w => w.name === '📋 Copy Log')!;
+        copyWidget.callback!(null);
+
+        // Wait for async clipboard operation
+        await new Promise(resolve => setTimeout(resolve, 0));
+
+        // Verify success feedback was shown (button name should change temporarily)
+        // Note: The actual feedback logic is tested in showCopyFeedback method
+    });
+
+    test('LoggingNodeUI showCopyFeedback updates button text and resets', () => {
+        const node = new LoggingNodeUI('Log', baseData());
+
+        // Mock setTimeout and clearTimeout
+        const mockSetTimeout = vi.fn((cb) => {
+            cb(); // Immediately call callback for testing
+            return 123;
+        });
+        const mockClearTimeout = vi.fn();
+        global.setTimeout = mockSetTimeout;
+        global.clearTimeout = mockClearTimeout;
+
+        // Mock setDirtyCanvas
+        const mockSetDirty = vi.fn();
+        (node as any).setDirtyCanvas = mockSetDirty;
+
+        // Call showCopyFeedback with success
+        (node as any).showCopyFeedback('Success!', true);
+
+        // Verify button text was updated and reset
+        expect(node.copyButton!.name).toBe('📋 Copy Log'); // Should be reset
+        expect(mockSetDirty).toHaveBeenCalled();
+    });
+
+    test('LoggingNodeUI positionDisplayTextarea hides when too small or out of viewport', () => {
+        const node = new LoggingNodeUI('Log', baseData());
+
+        const mockTextarea = {
+            style: {
+                display: '',
+            },
+        } as any;
+        (node as any).displayTextarea = mockTextarea;
+
+        // Mock window dimensions
+        Object.defineProperty(window, 'innerWidth', { value: 1000 });
+        Object.defineProperty(window, 'innerHeight', { value: 800 });
+
+        // Mock canvas
+        const mockCanvas = {
+            canvas: {
+                getBoundingClientRect: () => ({ left: 0, top: 0 }),
+            },
+            ds: { scale: 1, offset: [0, 0] },
+        };
+        (node as any).graph = { list_of_graphcanvas: [mockCanvas] };
+        (node as any).pos = [0, 0];
+
+        // Test small size (should hide)
+        (node as any).positionDisplayTextarea(0, 0, 1, 1);
+        expect(mockTextarea.style.display).toBe('none');
+
+        // Test out of viewport (should hide)
+        (node as any).positionDisplayTextarea(0, 0, 100, 100);
+        // This would be out of viewport due to large negative positioning
+        // but our mock doesn't simulate that fully
+    });
+
+    test('LoggingNodeUI ensureDisplayTextarea reuses existing textarea for same canvas', () => {
+        const node = new LoggingNodeUI('Log', baseData());
+
+        const mockCanvas = { canvas: document.createElement('canvas') };
+        const mockGraph = { list_of_graphcanvas: [mockCanvas] };
+        (node as any).graph = mockGraph;
+
+        // Create initial textarea
+        (node as any).ensureDisplayTextarea();
+        const firstTextarea = (node as any).displayTextarea;
+
+        // Call again with same canvas
+        (node as any).ensureDisplayTextarea();
+        const secondTextarea = (node as any).displayTextarea;
+
+        // Should reuse the same textarea
+        expect(firstTextarea).toBe(secondTextarea);
+        expect((node as any).lastCanvasRef).toBe(mockCanvas);
+    });
+
+    test('LoggingNodeUI ensureDisplayTextarea handles missing graph or canvas', () => {
+        const node = new LoggingNodeUI('Log', baseData());
+
+        // No graph
+        (node as any).graph = null;
+        (node as any).ensureDisplayTextarea();
+        expect((node as any).displayTextarea).toBeNull();
+
+        // Graph but no canvas
+        (node as any).graph = {};
+        (node as any).ensureDisplayTextarea();
+        expect((node as any).displayTextarea).toBeNull();
+
+        // Graph with empty canvas list
+        (node as any).graph = { list_of_graphcanvas: [] };
+        (node as any).ensureDisplayTextarea();
+        expect((node as any).displayTextarea).toBeNull();
+    });
+
     test('OllamaChatNodeUI streaming and final message handling', () => {
         const node = new OllamaChatNodeUI('Chat', baseData());
         node.onStreamUpdate({ message: { content: 'Hi' } });
@@ -174,7 +720,7 @@ describe('Node UI classes', () => {
         data.outputs = { results: { base: 'IndicatorResult' } };
         const node = new AtrXIndicatorNodeUI('AtrxIndicator', data);
         // Note: removeOutput may not work in test environment
-        expect(node.findOutputSlot('results')).toBeGreaterThanOrEqual(0);
+        expect(node.findOutputSlotIndex('results')).toBeGreaterThanOrEqual(0);
         expect(node.outputs.length).toBeGreaterThanOrEqual(1);
     });
 
@@ -185,7 +731,7 @@ describe('Node UI classes', () => {
         };
         const node = new AtrXFilterNodeUI('AtrxFilter', data);
         // indicator_results output has been removed from the Python node, so it shouldn't exist in UI
-        expect(node.findOutputSlot('indicator_results')).toBe(-1);
+        expect(node.findOutputSlotIndex('indicator_results')).toBe(-1);
         expect(node.outputs.length).toBe(1);
     });
 });

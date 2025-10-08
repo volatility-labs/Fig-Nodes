@@ -81,4 +81,4 @@ dmypy.json
 cursor_project_rules
 testing_artifacts/
 __pycache__
-.cursor
+output/*.json

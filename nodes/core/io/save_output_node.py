@@ -114,61 +114,71 @@ class SaveOutputNode(BaseNode):
         """Check if dict represents an LLMThinkingHistoryItem."""
         return isinstance(value, dict) and "thinking" in value and "iteration" in value
 
-    def _generate_filename(self, data: Any) -> str:
-        """Generate a unique filename based on data type and timestamp."""
+    def _generate_filename(self, base_name: str, data: Any, format_ext: str = '.json') -> str:
+        """Generate a unique filename based on base name, data type, timestamp, and increment if needed."""
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-
-        # Determine data type for filename
+        
+        # Determine type prefix
         if isinstance(data, AssetSymbol):
-            type_name = "assetsymbol"
+            type_prefix = "assetsymbol"
         elif isinstance(data, list):
             if data and isinstance(data[0], AssetSymbol):
-                type_name = "assetsymbol_list"
+                type_prefix = "assetsymbol_list"
             elif data and self._is_ohlcv_bar(data[0]):
-                type_name = "ohlcv"
+                type_prefix = "ohlcv"
             else:
-                type_name = "list"
+                type_prefix = "list"
         elif isinstance(data, dict):
             if self._is_ohlcv_bar(data):
-                type_name = "ohlcv_bar"
+                type_prefix = "ohlcv_bar"
             elif self._is_llm_chat_message(data):
-                type_name = "llm_message"
+                type_prefix = "llm_message"
             else:
-                type_name = "dict"
+                type_prefix = "dict"
         elif isinstance(data, str):
-            type_name = "text"
+            type_prefix = "text"
         else:
-            type_name = type(data).__name__.lower()
-
-        return f"{type_name}_{timestamp}_{str(uuid.uuid4())[:8]}.json"
+            type_prefix = type(data).__name__.lower()
+        
+        if not base_name:
+            base_name = f"{type_prefix}_{timestamp}_{str(uuid.uuid4())[:8]}"
+        
+        # Ensure extension
+        if not base_name.endswith(format_ext):
+            base_name += format_ext
+        
+        return base_name
 
     async def execute(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
         data = inputs.get("data")
         if data is None:
             raise ValueError("No data provided to save")
-
-        # Determine filename
-        filename = self.params.get("filename", "").strip()
-        if not filename:
-            filename = self._generate_filename(data)
-
-        # Ensure .json extension
-        if not filename.endswith('.json'):
-            filename += '.json'
-
+        
+        # Get parameters
+        base_filename = self.params.get("filename", "").strip()
+        format_type = self.params.get("format", "json")
+        overwrite = self.params.get("overwrite", False)
+        format_ext = '.jsonl' if format_type == 'jsonl' else '.json'
+        
+        # Generate initial filename
+        filename = self._generate_filename(base_filename, data, format_ext)
+        
         # Create output directory if it doesn't exist
         output_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), 'output')
         os.makedirs(output_dir, exist_ok=True)
-
+        
         filepath = os.path.join(output_dir, filename)
-
-        # Check if file exists and overwrite is disabled
-        if os.path.exists(filepath) and not self.params.get("overwrite", False):
-            raise ValueError(f"File {filepath} already exists. Set overwrite=True to overwrite.")
-
+        
+        # If not overwrite, find unique name with counter
+        if not overwrite:
+            counter = 1
+            name_parts = filename.rsplit(format_ext, 1)
+            while os.path.exists(filepath):
+                filename = f"{name_parts[0]}_{counter:03d}{format_ext}"
+                filepath = os.path.join(output_dir, filename)
+                counter += 1
+        
         # Serialize data
-        format_type = self.params.get("format", "json")
-
         if format_type == "jsonl" and isinstance(data, list):
             # JSON Lines format for lists
             serialized_data = {
@@ -179,7 +189,7 @@ class SaveOutputNode(BaseNode):
                     "timestamp": datetime.now().isoformat()
                 }
             }
-
+            
             with open(filepath, 'w', encoding='utf-8') as f:
                 # Write metadata as first line
                 f.write(json.dumps(serialized_data, ensure_ascii=False) + '\n')
@@ -197,10 +207,10 @@ class SaveOutputNode(BaseNode):
                 },
                 "data": self._serialize_value(data)
             }
-
+            
             with open(filepath, 'w', encoding='utf-8') as f:
                 json.dump(serialized_data, f, ensure_ascii=False, indent=2)
-
+        
         return {"filepath": filepath}
 
     def _infer_data_type(self, data: Any) -> str:

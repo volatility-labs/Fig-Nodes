@@ -269,6 +269,7 @@ async def test_web_search_tool_streaming_with_ollama(mock_httpx_client, mock_oll
 # Integration tests for force kill on stop
 
 @pytest.mark.asyncio
+@patch("ollama.AsyncClient")
 @patch("subprocess.Popen")
 @patch("sys.platform", "darwin")
 async def test_ollama_integration_stop_triggers_force_kill_mac(mock_popen, mock_ollama_client):
@@ -291,23 +292,37 @@ async def test_ollama_integration_stop_triggers_force_kill_mac(mock_popen, mock_
         }
         
         executor = GraphExecutor(graph_data, NODE_REGISTRY)
-        
-        # Execute partially
+
+        # Start streaming execution
         stream_gen = executor.stream()
         await anext(stream_gen)  # Initial
-        
+
+        # Start the streaming task
+        streaming_task = asyncio.create_task(anext(stream_gen))
+
+        # Give it a moment to start
+        await asyncio.sleep(0.1)
+
         # Stop the chat node specifically
         chat_node = executor.nodes[1]
         chat_node.stop()
-        
+
+        # Wait for the task to complete
+        try:
+            await streaming_task
+        except StopAsyncIteration:
+            pass
+
         assert mock_popen.call_count >= 2  # ollama stop + force kill
         # Check force kill command
         force_kill_call = mock_popen.call_args_list[-1][0][0]
-        assert force_kill_call == ['/bin/sh', '-c']
-        cmd = mock_popen.call_args_list[-1][0][0][2]
+        assert force_kill_call[0] == '/bin/sh'
+        assert force_kill_call[1] == '-c'
+        cmd = force_kill_call[2]
         assert 'sleep 2; pid=$(lsof -ti :11434); [ -n "$pid" ] && kill -9 $pid' in cmd
 
 @pytest.mark.asyncio
+@patch("ollama.AsyncClient")
 @patch("subprocess.Popen")
 @patch("sys.platform", "linux")
 async def test_ollama_integration_stop_triggers_force_kill_linux(mock_popen, mock_ollama_client):
@@ -330,18 +345,31 @@ async def test_ollama_integration_stop_triggers_force_kill_linux(mock_popen, moc
         }
         
         executor = GraphExecutor(graph_data, NODE_REGISTRY)
-        
-        # Execute partially
+
+        # Start streaming execution
         stream_gen = executor.stream()
         await anext(stream_gen)  # Initial
-        
+
+        # Start the streaming task
+        streaming_task = asyncio.create_task(anext(stream_gen))
+
+        # Give it a moment to start
+        await asyncio.sleep(0.1)
+
         # Stop the chat node
         chat_node = executor.nodes[1]
         chat_node.stop()
-        
+
+        # Wait for the task to complete
+        try:
+            await streaming_task
+        except StopAsyncIteration:
+            pass
+
         assert mock_popen.call_count >= 2  # ollama stop + force kill
         # Check force kill with custom port
         force_kill_call = mock_popen.call_args_list[-1][0][0]
-        assert force_kill_call == ['/bin/sh', '-c']
-        cmd = mock_popen.call_args_list[-1][0][0][2]
+        assert force_kill_call[0] == '/bin/sh'
+        assert force_kill_call[1] == '-c'
+        cmd = force_kill_call[2]
         assert 'sleep 2; pid=$(lsof -ti :54321); [ -n "$pid" ] && kill -9 $pid' in cmd

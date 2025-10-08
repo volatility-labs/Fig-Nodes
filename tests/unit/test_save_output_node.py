@@ -113,14 +113,14 @@ async def test_filename_generation(save_node):
     test_data = "test data"
 
     # Test with string data
-    filename = save_node._generate_filename(test_data)
+    filename = save_node._generate_filename("", test_data)
     assert filename.startswith("text_")
     assert filename.endswith(".json")
     assert len(filename) > 20  # Should include timestamp and UUID
 
     # Test with AssetSymbol
     symbol = AssetSymbol(ticker="BTC", asset_class=AssetClass.CRYPTO)
-    filename = save_node._generate_filename(symbol)
+    filename = save_node._generate_filename("", symbol)
     assert filename.startswith("assetsymbol_")
     assert filename.endswith(".json")
 
@@ -157,23 +157,37 @@ async def test_no_data_error(save_node):
 
 
 @pytest.mark.asyncio
-async def test_file_exists_no_overwrite(save_node, temp_output_dir):
-    """Test behavior when file exists and overwrite is False."""
+async def test_auto_increment_filename(save_node, temp_output_dir):
+    """Test auto-incrementing filename when file exists and overwrite=False."""
     test_data = "test data"
-    save_node.params["filename"] = "existing_file"
+    base_filename = "existing_file"
+    save_node.params["filename"] = base_filename
+    save_node.params["overwrite"] = False
 
     with unittest.mock.patch('os.path.dirname') as mock_dirname, \
          unittest.mock.patch('os.makedirs') as mock_makedirs, \
-         unittest.mock.patch('os.path.exists') as mock_exists, \
-         unittest.mock.patch('builtins.open') as mock_open:
+         unittest.mock.patch('builtins.open', unittest.mock.mock_open()) as mock_open, \
+         unittest.mock.patch('os.path.exists') as mock_exists:
 
         mock_dirname.return_value = temp_output_dir
         mock_makedirs.return_value = None
-        mock_exists.return_value = True  # File exists
-        save_node.params["overwrite"] = False
 
-        with pytest.raises(ValueError, match="already exists"):
-            await save_node.execute({"data": test_data})
+        # Simulate first file exists, second doesn't
+        def exists_side_effect(path):
+            if 'existing_file.json' in path:
+                return True
+            if 'existing_file_001.json' in path:
+                return False
+            return False
+
+        mock_exists.side_effect = exists_side_effect
+
+        result = await save_node.execute({"data": test_data})
+
+        # Verify opened the incremented file
+        filepath = mock_open.call_args[0][0]
+        assert 'existing_file_001.json' in filepath
+        assert result["filepath"] == filepath
 
 
 @pytest.mark.asyncio

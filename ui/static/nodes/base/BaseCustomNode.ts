@@ -24,8 +24,8 @@ export default class BaseCustomNode extends LGraphNode {
     displayText: string = '';
     properties: { [key: string]: any } = {};
     error: string = '';
-    private highlightStartTs: number | null = null;
-    private readonly highlightDurationMs: number = 900;
+    highlightStartTs: number | null = null;
+    readonly highlightDurationMs: number = 900;
     // Local progress state in percent (0-100). We override LiteGraph's built-in
     // drawProgressBar so this field will not conflict with the library's
     // internal 0..1 progress property.
@@ -65,7 +65,9 @@ export default class BaseCustomNode extends LGraphNode {
         if (!inputs) return;
 
         const isArray = Array.isArray(inputs);
-        const inputEntries = isArray ? inputs.map((name: string) => [name, null]) : Object.entries(inputs);
+        const inputEntries: Array<[string, any]> = isArray
+            ? (inputs as string[]).map((name: string) => [name, null])
+            : (Object.entries(inputs) as Array<[string, any]>);
 
         inputEntries.forEach(([inp, typeInfo]: [string, any]) => {
             const typeStr = NodeTypeSystem.parseType(typeInfo);
@@ -90,7 +92,9 @@ export default class BaseCustomNode extends LGraphNode {
         if (!outputs) return;
 
         const isArray = Array.isArray(outputs);
-        const outputEntries = isArray ? outputs.map((name: string) => [name, null]) : Object.entries(outputs);
+        const outputEntries: Array<[string, any]> = isArray
+            ? (outputs as string[]).map((name: string) => [name, null])
+            : (Object.entries(outputs) as Array<[string, any]>);
 
         outputEntries.forEach(([out, typeInfo]: [string, any], index: number) => {
             const typeStr = NodeTypeSystem.parseType(typeInfo);
@@ -189,7 +193,7 @@ export default class BaseCustomNode extends LGraphNode {
         return NodeTypeSystem.parseType(typeInfo);
     }
 
-    findOutputSlot(name: string): number {
+    findOutputSlotIndex(name: string): number {
         return this.outputs?.findIndex(output => output.name === name) ?? -1;
     }
 }

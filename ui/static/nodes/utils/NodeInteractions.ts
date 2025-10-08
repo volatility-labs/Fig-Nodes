@@ -1,13 +1,13 @@
 import { LGraphNode, LiteGraph } from '@comfyorg/litegraph';
 
 export class NodeInteractions {
-    private node: LGraphNode & { title: string; pos: [number, number]; size: [number, number] };
+    private node: LGraphNode & { title: string; pos: any; size: any };
 
-    constructor(node: LGraphNode & { title: string; pos: [number, number]; size: [number, number] }) {
+    constructor(node: LGraphNode & { title: string; pos: any; size: any }) {
         this.node = node;
     }
 
-    onDblClick(event: MouseEvent, pos: [number, number], _canvas: any): boolean {
+    onDblClick(_event: MouseEvent, pos: [number, number], _canvas: any): boolean {
         const bounds = this.getTitleTextBounds();
         if (!bounds) return false;
         const [x, y] = pos;
