@@ -1,0 +1,1254 @@
+{
+  "__metadata__": {
+    "type": "json",
+    "data_type": "AssetSymbolList",
+    "timestamp": "2025-10-07T23:03:44.261942"
+  },
+  "data": {
+    "__type__": "list",
+    "items": [
+      {
+        "__type__": "AssetSymbol",
+        "data": {
+          "ticker": "RGTIW",
+          "asset_class": "STOCKS",
+          "quote_currency": null,
+          "provider": null,
+          "instrument_type": "SPOT",
+          "metadata": {
+            "original_ticker": "RGTIW",
+            "snapshot": {
+              "ticker": "RGTIW",
+              "todaysChangePerc": 7.6744955342375025,
+              "todaysChange": 2.3199999999999967,
+              "updated": 1759880520000000000,
+              "day": {
+                "o": 32.24,
+                "h": 34.6527,
+                "l": 29.29,
+                "c": 32.33,
+                "v": 1002500.0,
+                "vw": 31.788
+              },
+              "min": {
+                "av": 1002500.0,
+                "t": 1759880460000,
+                "n": 130,
+                "o": 32.55,
+                "h": 32.55,
+                "l": 32.55,
+                "c": 32.55,
+                "v": 13315,
+                "vw": 32.55
+              },
+              "prevDay": {
+                "o": 27.45,
+                "h": 31.56,
+                "l": 26.97,
+                "c": 30.23,
+                "v": 644563,
+                "vw": 28.9899
+              }
+            }
+          }
+        }
+      },
+      {
+        "__type__": "AssetSymbol",
+        "data": {
+          "ticker": "TMC",
+          "asset_class": "STOCKS",
+          "quote_currency": null,
+          "provider": null,
+          "instrument_type": "SPOT",
+          "metadata": {
+            "original_ticker": "TMC",
+            "snapshot": {
+              "ticker": "TMC",
+              "todaysChangePerc": 21.373056994818647,
+              "todaysChange": 1.6499999999999995,
+              "updated": 1759881600000000000,
+              "day": {
+                "o": 8.025,
+                "h": 9.55,
+                "l": 7.96,
+                "c": 9.28,
+                "v": 33983739.0,
+                "vw": 8.9433
+              },
+              "min": {
+                "av": 33983739.0,
+                "t": 1759881540000,
+                "n": 9,
+                "o": 9.35,
+                "h": 9.37,
+                "l": 9.35,
+                "c": 9.37,
+                "v": 662,
+                "vw": 9.3543
+              },
+              "prevDay": {
+                "o": 7.63,
+                "h": 7.905,
+                "l": 7.3212,
+                "c": 7.72,
+                "v": 11383287.0,
+                "vw": 7.6974
+              }
+            }
+          }
+        }
+      },
+      {
+        "__type__": "AssetSymbol",
+        "data": {
+          "ticker": "SES",
+          "asset_class": "STOCKS",
+          "quote_currency": null,
+          "provider": null,
+          "instrument_type": "SPOT",
+          "metadata": {
+            "original_ticker": "SES",
+            "snapshot": {
+              "ticker": "SES",
+              "todaysChangePerc": 16.30452674897119,
+              "todaysChange": 0.3961999999999999,
+              "updated": 1759881600000000000,
+              "day": {
+                "o": 2.67,
+                "h": 3.05,
+                "l": 2.57,
+                "c": 2.71,
+                "v": 45159811.0,
+                "vw": 2.7553
+              },
+              "min": {
+                "av": 45159811.0,
+                "t": 1759881540000,
+                "n": 10,
+                "o": 2.83,
+                "h": 2.83,
+                "l": 2.8262,
+                "c": 2.8262,
+                "v": 759,
+                "vw": 2.8272
+              },
+              "prevDay": {
+                "o": 2.13,
+                "h": 2.5288,
+                "l": 2.11,
+                "c": 2.43,
+                "v": 28190620.0,
+                "vw": 2.3431
+              }
+            }
+          }
+        }
+      },
+      {
+        "__type__": "AssetSymbol",
+        "data": {
+          "ticker": "CCCX",
+          "asset_class": "STOCKS",
+          "quote_currency": null,
+          "provider": null,
+          "instrument_type": "SPOT",
+          "metadata": {
+            "original_ticker": "CCCX",
+            "snapshot": {
+              "ticker": "CCCX",
+              "todaysChangePerc": 17.97185741088181,
+              "todaysChange": 2.8737000000000013,
+              "updated": 1759881600000000000,
+              "day": {
+                "o": 17.5,
+                "h": 19.14,
+                "l": 16.27,
+                "c": 18.23,
+                "v": 12917115.0,
+                "vw": 17.8096
+              },
+              "min": {
+                "av": 12917115.0,
+                "t": 1759881540000,
+                "n": 13,
+                "o": 18.8637,
+                "h": 18.8637,
+                "l": 18.8637,
+                "c": 18.8637,
+                "v": 298,
+                "vw": 18.8586
+              },
+              "prevDay": {
+                "o": 15.75,
+                "h": 17.19,
+                "l": 14.81,
+                "c": 15.99,
+                "v": 11372463.0,
+                "vw": 15.9853
+              }
+            }
+          }
+        }
+      },
+      {
+        "__type__": "AssetSymbol",
+        "data": {
+          "ticker": "RGTX",
+          "asset_class": "STOCKS",
+          "quote_currency": null,
+          "provider": null,
+          "instrument_type": "SPOT",
+          "metadata": {
+            "original_ticker": "RGTX",
+            "snapshot": {
+              "ticker": "RGTX",
+              "todaysChangePerc": 11.939275926727252,
+              "todaysChange": 33.110000000000014,
+              "updated": 1759881540000000000,
+              "day": {
+                "o": 301.87,
+                "h": 335.63,
+                "l": 264.875,
+                "c": 305.97,
+                "v": 1425955.0,
+                "vw": 298.0581
+              },
+              "min": {
+                "av": 1425701.0,
+                "t": 1759881480000,
+                "n": 21,
+                "o": 310.43,
+                "h": 310.43,
+                "l": 310.43,
+                "c": 310.43,
+                "v": 157,
+                "vw": 310.656
+              },
+              "prevDay": {
+                "o": 239.69,
+                "h": 294.52,
+                "l": 234.5706,
+                "c": 277.32,
+                "v": 719060,
+                "vw": 261.9295
+              }
+            }
+          }
+        }
+      },
+      {
+        "__type__": "AssetSymbol",
+        "data": {
+          "ticker": "RR",
+          "asset_class": "STOCKS",
+          "quote_currency": null,
+          "provider": null,
+          "instrument_type": "SPOT",
+          "metadata": {
+            "original_ticker": "RR",
+            "snapshot": {
+              "ticker": "RR",
+              "todaysChangePerc": 7.902735562310023,
+              "todaysChange": 0.5199999999999996,
+              "updated": 1759881600000000000,
+              "day": {
+                "o": 6.56,
+                "h": 7.43,
+                "l": 6.4,
+                "c": 7.06,
+                "v": 86831781.0,
+                "vw": 7.0082
+              },
+              "min": {
+                "av": 86831781.0,
+                "t": 1759881540000,
+                "n": 11,
+                "o": 7.11,
+                "h": 7.11,
+                "l": 7.1,
+                "c": 7.1,
+                "v": 3060,
+                "vw": 7.1061
+              },
+              "prevDay": {
+                "o": 6.76,
+                "h": 7.12,
+                "l": 6.38,
+                "c": 6.58,
+                "v": 79734052.0,
+                "vw": 6.658
+              }
+            }
+          }
+        }
+      },
+      {
+        "__type__": "AssetSymbol",
+        "data": {
+          "ticker": "ALM",
+          "asset_class": "STOCKS",
+          "quote_currency": null,
+          "provider": null,
+          "instrument_type": "SPOT",
+          "metadata": {
+            "original_ticker": "ALM",
+            "snapshot": {
+              "ticker": "ALM",
+              "todaysChangePerc": 7.324364723467852,
+              "todaysChange": 0.4899999999999993,
+              "updated": 1759879320000000000,
+              "day": {
+                "o": 7.07,
+                "h": 7.28,
+                "l": 6.81,
+                "c": 7.12,
+                "v": 2554731.0,
+                "vw": 7.0752
+              },
+              "min": {
+                "av": 2554712.0,
+                "t": 1759879260000,
+                "n": 8,
+                "o": 7.16,
+                "h": 7.19,
+                "l": 7.12,
+                "c": 7.18,
+                "v": 3150,
+                "vw": 7.1452
+              },
+              "prevDay": {
+                "o": 6.48,
+                "h": 7.18,
+                "l": 6.41,
+                "c": 6.69,
+                "v": 3548248.0,
+                "vw": 6.8992
+              }
+            }
+          }
+        }
+      },
+      {
+        "__type__": "AssetSymbol",
+        "data": {
+          "ticker": "ONDS",
+          "asset_class": "STOCKS",
+          "quote_currency": null,
+          "provider": null,
+          "instrument_type": "SPOT",
+          "metadata": {
+            "original_ticker": "ONDS",
+            "snapshot": {
+              "ticker": "ONDS",
+              "todaysChangePerc": 5.625703564727958,
+              "todaysChange": 0.5997000000000003,
+              "updated": 1759881600000000000,
+              "day": {
+                "o": 11,
+                "h": 11.545,
+                "l": 10.45,
+                "c": 11.09,
+                "v": 56847154.0,
+                "vw": 10.9857
+              },
+              "min": {
+                "av": 56847154.0,
+                "t": 1759881540000,
+                "n": 8,
+                "o": 11.2597,
+                "h": 11.2597,
+                "l": 11.2597,
+                "c": 11.2597,
+                "v": 326,
+                "vw": 11.2515
+              },
+              "prevDay": {
+                "o": 10.56,
+                "h": 11.63,
+                "l": 10.27,
+                "c": 10.66,
+                "v": 82293055.0,
+                "vw": 10.7976
+              }
+            }
+          }
+        }
+      },
+      {
+        "__type__": "AssetSymbol",
+        "data": {
+          "ticker": "RGTI",
+          "asset_class": "STOCKS",
+          "quote_currency": null,
+          "provider": null,
+          "instrument_type": "SPOT",
+          "metadata": {
+            "original_ticker": "RGTI",
+            "snapshot": {
+              "ticker": "RGTI",
+              "todaysChangePerc": 6.070726444497722,
+              "todaysChange": 2.5321,
+              "updated": 1759881600000000000,
+              "day": {
+                "o": 43.65,
+                "h": 46.18,
+                "l": 40.71,
+                "c": 43.91,
+                "v": 174838530.0,
+                "vw": 43.3017
+              },
+              "min": {
+                "av": 174838530.0,
+                "t": 1759881540000,
+                "n": 106,
+                "o": 44.3477,
+                "h": 44.3477,
+                "l": 44.2421,
+                "c": 44.2421,
+                "v": 3723,
+                "vw": 44.3042
+              },
+              "prevDay": {
+                "o": 38.805,
+                "h": 43.1099,
+                "l": 38.367,
+                "c": 41.71,
+                "v": 110767863.0,
+                "vw": 40.6466
+              }
+            }
+          }
+        }
+      },
+      {
+        "__type__": "AssetSymbol",
+        "data": {
+          "ticker": "PL",
+          "asset_class": "STOCKS",
+          "quote_currency": null,
+          "provider": null,
+          "instrument_type": "SPOT",
+          "metadata": {
+            "original_ticker": "PL",
+            "snapshot": {
+              "ticker": "PL",
+              "todaysChangePerc": 5.971128608923873,
+              "todaysChange": 0.9099999999999984,
+              "updated": 1759881600000000000,
+              "day": {
+                "o": 15,
+                "h": 16.01,
+                "l": 14.78,
+                "c": 15.68,
+                "v": 16764301.0,
+                "vw": 15.4251
+              },
+              "min": {
+                "av": 16764301.0,
+                "t": 1759881540000,
+                "n": 9,
+                "o": 16.2,
+                "h": 16.2,
+                "l": 16.15,
+                "c": 16.15,
+                "v": 3152,
+                "vw": 16.1615
+              },
+              "prevDay": {
+                "o": 15.8,
+                "h": 15.89,
+                "l": 15.19,
+                "c": 15.24,
+                "v": 17077852.0,
+                "vw": 15.5844
+              }
+            }
+          }
+        }
+      },
+      {
+        "__type__": "AssetSymbol",
+        "data": {
+          "ticker": "EGAN",
+          "asset_class": "STOCKS",
+          "quote_currency": null,
+          "provider": null,
+          "instrument_type": "SPOT",
+          "metadata": {
+            "original_ticker": "EGAN",
+            "snapshot": {
+              "ticker": "EGAN",
+              "todaysChangePerc": 24.33206106870228,
+              "todaysChange": 2.549999999999999,
+              "updated": 1759880820000000000,
+              "day": {
+                "o": 10.9,
+                "h": 13.1999,
+                "l": 10.75,
+                "c": 12.92,
+                "v": 1861023.0,
+                "vw": 12.0423
+              },
+              "min": {
+                "av": 1861017.0,
+                "t": 1759880760000,
+                "n": 1,
+                "o": 13.03,
+                "h": 13.03,
+                "l": 13.03,
+                "c": 13.03,
+                "v": 150,
+                "vw": 13.03
+              },
+              "prevDay": {
+                "o": 10.515,
+                "h": 10.73,
+                "l": 10.22,
+                "c": 10.48,
+                "v": 694976,
+                "vw": 10.4476
+              }
+            }
+          }
+        }
+      },
+      {
+        "__type__": "AssetSymbol",
+        "data": {
+          "ticker": "MSPR",
+          "asset_class": "STOCKS",
+          "quote_currency": null,
+          "provider": null,
+          "instrument_type": "SPOT",
+          "metadata": {
+            "original_ticker": "MSPR",
+            "snapshot": {
+              "ticker": "MSPR",
+              "todaysChangePerc": 18.090000000000007,
+              "todaysChange": 0.18090000000000006,
+              "updated": 1759881600000000000,
+              "day": {
+                "o": 1,
+                "h": 1.2555,
+                "l": 0.99,
+                "c": 1.2,
+                "v": 1197683.0,
+                "vw": 1.1339
+              },
+              "min": {
+                "av": 1197683.0,
+                "t": 1759881540000,
+                "n": 1,
+                "o": 1.1809,
+                "h": 1.1809,
+                "l": 1.1809,
+                "c": 1.1809,
+                "v": 200,
+                "vw": 1.1809
+              },
+              "prevDay": {
+                "o": 1,
+                "h": 1.19,
+                "l": 0.9701,
+                "c": 1,
+                "v": 1107245.0,
+                "vw": 1.0871
+              }
+            }
+          }
+        }
+      },
+      {
+        "__type__": "AssetSymbol",
+        "data": {
+          "ticker": "KALA",
+          "asset_class": "STOCKS",
+          "quote_currency": null,
+          "provider": null,
+          "instrument_type": "SPOT",
+          "metadata": {
+            "original_ticker": "KALA",
+            "snapshot": {
+              "ticker": "KALA",
+              "todaysChangePerc": 7.2368421052631495,
+              "todaysChange": 0.10999999999999988,
+              "updated": 1759881480000000000,
+              "day": {
+                "o": 1.5,
+                "h": 1.68,
+                "l": 1.5,
+                "c": 1.64,
+                "v": 1151557.0,
+                "vw": 1.5851
+              },
+              "min": {
+                "av": 1151557.0,
+                "t": 1759881420000,
+                "n": 1,
+                "o": 1.63,
+                "h": 1.63,
+                "l": 1.63,
+                "c": 1.63,
+                "v": 258,
+                "vw": 1.63
+              },
+              "prevDay": {
+                "o": 1.55,
+                "h": 1.61,
+                "l": 1.51,
+                "c": 1.52,
+                "v": 934148,
+                "vw": 1.5362
+              }
+            }
+          }
+        }
+      },
+      {
+        "__type__": "AssetSymbol",
+        "data": {
+          "ticker": "RLAY",
+          "asset_class": "STOCKS",
+          "quote_currency": null,
+          "provider": null,
+          "instrument_type": "SPOT",
+          "metadata": {
+            "original_ticker": "RLAY",
+            "snapshot": {
+              "ticker": "RLAY",
+              "todaysChangePerc": 6.440071556350632,
+              "todaysChange": 0.3600000000000003,
+              "updated": 1759875780000000000,
+              "day": {
+                "o": 5.665,
+                "h": 5.88,
+                "l": 5.47,
+                "c": 5.83,
+                "v": 2161630.0,
+                "vw": 5.6778
+              },
+              "min": {
+                "av": 2161540.0,
+                "t": 1759875720000,
+                "n": 1,
+                "o": 5.95,
+                "h": 5.95,
+                "l": 5.95,
+                "c": 5.95,
+                "v": 5155,
+                "vw": 5.95
+              },
+              "prevDay": {
+                "o": 5.55,
+                "h": 5.715,
+                "l": 5.51,
+                "c": 5.59,
+                "v": 1163596.0,
+                "vw": 5.606
+              }
+            }
+          }
+        }
+      },
+      {
+        "__type__": "AssetSymbol",
+        "data": {
+          "ticker": "BIAF",
+          "asset_class": "STOCKS",
+          "quote_currency": null,
+          "provider": null,
+          "instrument_type": "SPOT",
+          "metadata": {
+            "original_ticker": "BIAF",
+            "snapshot": {
+              "ticker": "BIAF",
+              "todaysChangePerc": 16.796875000000007,
+              "todaysChange": 0.43000000000000016,
+              "updated": 1759881600000000000,
+              "day": {
+                "o": 2.53,
+                "h": 2.6192,
+                "l": 2.41,
+                "c": 2.45,
+                "v": 2487573.0,
+                "vw": 3.1286
+              },
+              "min": {
+                "av": 2487573.0,
+                "t": 1759881540000,
+                "n": 90,
+                "o": 2.9599,
+                "h": 2.99,
+                "l": 2.9001,
+                "c": 2.99,
+                "v": 15095,
+                "vw": 2.9386
+              },
+              "prevDay": {
+                "o": 2.52,
+                "h": 2.65,
+                "l": 2.3401,
+                "c": 2.56,
+                "v": 565423,
+                "vw": 2.5268
+              }
+            }
+          }
+        }
+      },
+      {
+        "__type__": "AssetSymbol",
+        "data": {
+          "ticker": "HIVE",
+          "asset_class": "STOCKS",
+          "quote_currency": null,
+          "provider": null,
+          "instrument_type": "SPOT",
+          "metadata": {
+            "original_ticker": "HIVE",
+            "snapshot": {
+              "ticker": "HIVE",
+              "todaysChangePerc": 11.490125673249544,
+              "todaysChange": 0.6399999999999997,
+              "updated": 1759881600000000000,
+              "day": {
+                "o": 6.045,
+                "h": 6.26,
+                "l": 5.57,
+                "c": 6.2,
+                "v": 81901004.0,
+                "vw": 5.9575
+              },
+              "min": {
+                "av": 81901004.0,
+                "t": 1759881540000,
+                "n": 18,
+                "o": 6.21,
+                "h": 6.21,
+                "l": 6.2,
+                "c": 6.21,
+                "v": 7628,
+                "vw": 6.2056
+              },
+              "prevDay": {
+                "o": 4.7,
+                "h": 5.6,
+                "l": 4.69,
+                "c": 5.57,
+                "v": 72856596.0,
+                "vw": 5.3963
+              }
+            }
+          }
+        }
+      },
+      {
+        "__type__": "AssetSymbol",
+        "data": {
+          "ticker": "NAK",
+          "asset_class": "STOCKS",
+          "quote_currency": null,
+          "provider": null,
+          "instrument_type": "SPOT",
+          "metadata": {
+            "original_ticker": "NAK",
+            "snapshot": {
+              "ticker": "NAK",
+              "todaysChangePerc": 24.50331125827814,
+              "todaysChange": 0.3699999999999999,
+              "updated": 1759881600000000000,
+              "day": {
+                "o": 1.99,
+                "h": 2.01,
+                "l": 1.73,
+                "c": 1.88,
+                "v": 55886325.0,
+                "vw": 1.8721
+              },
+              "min": {
+                "av": 55886325.0,
+                "t": 1759881540000,
+                "n": 8,
+                "o": 1.9,
+                "h": 1.92,
+                "l": 1.9,
+                "c": 1.9199,
+                "v": 1650,
+                "vw": 1.9121
+              },
+              "prevDay": {
+                "o": 1.47,
+                "h": 1.66,
+                "l": 1.42,
+                "c": 1.51,
+                "v": 46023363.0,
+                "vw": 1.6451
+              }
+            }
+          }
+        }
+      },
+      {
+        "__type__": "AssetSymbol",
+        "data": {
+          "ticker": "SMX",
+          "asset_class": "STOCKS",
+          "quote_currency": null,
+          "provider": null,
+          "instrument_type": "SPOT",
+          "metadata": {
+            "original_ticker": "SMX",
+            "snapshot": {
+              "ticker": "SMX",
+              "todaysChangePerc": 10.60975609756098,
+              "todaysChange": 0.13050000000000006,
+              "updated": 1759881600000000000,
+              "day": {
+                "o": 1.25,
+                "h": 1.41,
+                "l": 1.25,
+                "c": 1.4,
+                "v": 2373916.0,
+                "vw": 1.3474
+              },
+              "min": {
+                "av": 2373916.0,
+                "t": 1759881540000,
+                "n": 6,
+                "o": 1.36,
+                "h": 1.3605,
+                "l": 1.36,
+                "c": 1.3605,
+                "v": 1097,
+                "vw": 1.3621
+              },
+              "prevDay": {
+                "o": 1.33,
+                "h": 1.36,
+                "l": 1.22,
+                "c": 1.23,
+                "v": 4283006.0,
+                "vw": 1.2735
+              }
+            }
+          }
+        }
+      },
+      {
+        "__type__": "AssetSymbol",
+        "data": {
+          "ticker": "SOXS",
+          "asset_class": "STOCKS",
+          "quote_currency": null,
+          "provider": null,
+          "instrument_type": "SPOT",
+          "metadata": {
+            "original_ticker": "SOXS",
+            "snapshot": {
+              "ticker": "SOXS",
+              "todaysChangePerc": 6.557377049180333,
+              "todaysChange": 0.28000000000000025,
+              "updated": 1759881600000000000,
+              "day": {
+                "o": 4.16,
+                "h": 4.58,
+                "l": 4.14,
+                "c": 4.55,
+                "v": 283753542.0,
+                "vw": 4.4153
+              },
+              "min": {
+                "av": 283753542.0,
+                "t": 1759881540000,
+                "n": 18,
+                "o": 4.52,
+                "h": 4.52,
+                "l": 4.51,
+                "c": 4.5102,
+                "v": 18149,
+                "vw": 4.5141
+              },
+              "prevDay": {
+                "o": 4.14,
+                "h": 4.27,
+                "l": 4.09,
+                "c": 4.27,
+                "v": 279674983.0,
+                "vw": 4.1756
+              }
+            }
+          }
+        }
+      },
+      {
+        "__type__": "AssetSymbol",
+        "data": {
+          "ticker": "TSLQ",
+          "asset_class": "STOCKS",
+          "quote_currency": null,
+          "provider": null,
+          "instrument_type": "SPOT",
+          "metadata": {
+            "original_ticker": "TSLQ",
+            "snapshot": {
+              "ticker": "TSLQ",
+              "todaysChangePerc": 6.982872200263496,
+              "todaysChange": 0.5299999999999994,
+              "updated": 1759881600000000000,
+              "day": {
+                "o": 7.78,
+                "h": 8.3,
+                "l": 7.62,
+                "c": 8.27,
+                "v": 67712157.0,
+                "vw": 7.9255
+              },
+              "min": {
+                "av": 67712157.0,
+                "t": 1759881540000,
+                "n": 23,
+                "o": 8.13,
+                "h": 8.13,
+                "l": 8.12,
+                "c": 8.12,
+                "v": 3581,
+                "vw": 8.1296
+              },
+              "prevDay": {
+                "o": 8.09,
+                "h": 8.25,
+                "l": 7.59,
+                "c": 7.59,
+                "v": 60769790.0,
+                "vw": 7.8728
+              }
+            }
+          }
+        }
+      },
+      {
+        "__type__": "AssetSymbol",
+        "data": {
+          "ticker": "MLTX",
+          "asset_class": "STOCKS",
+          "quote_currency": null,
+          "provider": null,
+          "instrument_type": "SPOT",
+          "metadata": {
+            "original_ticker": "MLTX",
+            "snapshot": {
+              "ticker": "MLTX",
+              "todaysChangePerc": 6.697459584295613,
+              "todaysChange": 0.5800000000000001,
+              "updated": 1759881600000000000,
+              "day": {
+                "o": 8.63,
+                "h": 9.54,
+                "l": 8.1773,
+                "c": 9.28,
+                "v": 14844038.0,
+                "vw": 8.9292
+              },
+              "min": {
+                "av": 14844038.0,
+                "t": 1759881540000,
+                "n": 4,
+                "o": 9.17,
+                "h": 9.24,
+                "l": 9.17,
+                "c": 9.24,
+                "v": 430,
+                "vw": 9.1947
+              },
+              "prevDay": {
+                "o": 8.94,
+                "h": 9.52,
+                "l": 8.53,
+                "c": 8.66,
+                "v": 13015275.0,
+                "vw": 8.9492
+              }
+            }
+          }
+        }
+      },
+      {
+        "__type__": "AssetSymbol",
+        "data": {
+          "ticker": "DVLT",
+          "asset_class": "STOCKS",
+          "quote_currency": null,
+          "provider": null,
+          "instrument_type": "SPOT",
+          "metadata": {
+            "original_ticker": "DVLT",
+            "snapshot": {
+              "ticker": "DVLT",
+              "todaysChangePerc": 23.504807692307697,
+              "todaysChange": 0.4889000000000001,
+              "updated": 1759881600000000000,
+              "day": {
+                "o": 2.7097,
+                "h": 3.1,
+                "l": 2.39,
+                "c": 2.53,
+                "v": 173265991.0,
+                "vw": 2.6783
+              },
+              "min": {
+                "av": 173265991.0,
+                "t": 1759881540000,
+                "n": 34,
+                "o": 2.5697,
+                "h": 2.57,
+                "l": 2.56,
+                "c": 2.5689,
+                "v": 26247,
+                "vw": 2.5649
+              },
+              "prevDay": {
+                "o": 1.45,
+                "h": 2.19,
+                "l": 1.35,
+                "c": 2.08,
+                "v": 165503894.0,
+                "vw": 1.8033
+              }
+            }
+          }
+        }
+      },
+      {
+        "__type__": "AssetSymbol",
+        "data": {
+          "ticker": "QURE",
+          "asset_class": "STOCKS",
+          "quote_currency": null,
+          "provider": null,
+          "instrument_type": "SPOT",
+          "metadata": {
+            "original_ticker": "QURE",
+            "snapshot": {
+              "ticker": "QURE",
+              "todaysChangePerc": 13.400113400113408,
+              "todaysChange": 7.090000000000003,
+              "updated": 1759881600000000000,
+              "day": {
+                "o": 53.28,
+                "h": 58.66,
+                "l": 50.8,
+                "c": 57.92,
+                "v": 4613254.0,
+                "vw": 54.8336
+              },
+              "min": {
+                "av": 4613254.0,
+                "t": 1759881540000,
+                "n": 3,
+                "o": 59.9995,
+                "h": 60,
+                "l": 59.9995,
+                "c": 60,
+                "v": 822,
+                "vw": 60.0095
+              },
+              "prevDay": {
+                "o": 55.55,
+                "h": 56.99,
+                "l": 52.5,
+                "c": 52.91,
+                "v": 3572968.0,
+                "vw": 54.0715
+              }
+            }
+          }
+        }
+      },
+      {
+        "__type__": "AssetSymbol",
+        "data": {
+          "ticker": "DGNX",
+          "asset_class": "STOCKS",
+          "quote_currency": null,
+          "provider": null,
+          "instrument_type": "SPOT",
+          "metadata": {
+            "original_ticker": "DGNX",
+            "snapshot": {
+              "ticker": "DGNX",
+              "todaysChangePerc": 24.5959595959596,
+              "todaysChange": 4.870000000000001,
+              "updated": 1759881600000000000,
+              "day": {
+                "o": 23.35,
+                "h": 25.14,
+                "l": 21.2,
+                "c": 24.2,
+                "v": 1380059.0,
+                "vw": 23.2724
+              },
+              "min": {
+                "av": 1380059.0,
+                "t": 1759881540000,
+                "n": 1,
+                "o": 24.67,
+                "h": 24.67,
+                "l": 24.67,
+                "c": 24.67,
+                "v": 100,
+                "vw": 24.67
+              },
+              "prevDay": {
+                "o": 18.25,
+                "h": 20,
+                "l": 17,
+                "c": 19.8,
+                "v": 864987,
+                "vw": 18.5523
+              }
+            }
+          }
+        }
+      },
+      {
+        "__type__": "AssetSymbol",
+        "data": {
+          "ticker": "TSDD",
+          "asset_class": "STOCKS",
+          "quote_currency": null,
+          "provider": null,
+          "instrument_type": "SPOT",
+          "metadata": {
+            "original_ticker": "TSDD",
+            "snapshot": {
+              "ticker": "TSDD",
+              "todaysChangePerc": 6.849315068493154,
+              "todaysChange": 0.6500000000000004,
+              "updated": 1759881360000000000,
+              "day": {
+                "o": 9.72,
+                "h": 10.34,
+                "l": 9.52,
+                "c": 10.31,
+                "v": 13747033.0,
+                "vw": 9.8626
+              },
+              "min": {
+                "av": 13746933.0,
+                "t": 1759881300000,
+                "n": 3,
+                "o": 10.14,
+                "h": 10.14,
+                "l": 10.14,
+                "c": 10.14,
+                "v": 209,
+                "vw": 10.14
+              },
+              "prevDay": {
+                "o": 10.08,
+                "h": 10.2852,
+                "l": 9.4603,
+                "c": 9.49,
+                "v": 13255559.0,
+                "vw": 9.8021
+              }
+            }
+          }
+        }
+      },
+      {
+        "__type__": "AssetSymbol",
+        "data": {
+          "ticker": "TMQ",
+          "asset_class": "STOCKS",
+          "quote_currency": null,
+          "provider": null,
+          "instrument_type": "SPOT",
+          "metadata": {
+            "original_ticker": "TMQ",
+            "snapshot": {
+              "ticker": "TMQ",
+              "todaysChangePerc": 211.00478468899522,
+              "todaysChange": 4.41,
+              "updated": 1759881600000000000,
+              "day": {
+                "o": 7.23,
+                "h": 7.98,
+                "l": 5.96,
+                "c": 6.5,
+                "v": 212412197.0,
+                "vw": 6.7968
+              },
+              "min": {
+                "av": 212412197.0,
+                "t": 1759881540000,
+                "n": 62,
+                "o": 6.6988,
+                "h": 6.7,
+                "l": 6.68,
+                "c": 6.7,
+                "v": 24211,
+                "vw": 6.6922
+              },
+              "prevDay": {
+                "o": 2.09,
+                "h": 2.21,
+                "l": 2.085,
+                "c": 2.09,
+                "v": 42424303.0,
+                "vw": 5.3111
+              }
+            }
+          }
+        }
+      },
+      {
+        "__type__": "AssetSymbol",
+        "data": {
+          "ticker": "MIGI",
+          "asset_class": "STOCKS",
+          "quote_currency": null,
+          "provider": null,
+          "instrument_type": "SPOT",
+          "metadata": {
+            "original_ticker": "MIGI",
+            "snapshot": {
+              "ticker": "MIGI",
+              "todaysChangePerc": 26.41820580474934,
+              "todaysChange": 0.24029999999999996,
+              "updated": 1759881600000000000,
+              "day": {
+                "o": 0.928,
+                "h": 1.17,
+                "l": 0.88,
+                "c": 1.12,
+                "v": 2885431.0,
+                "vw": 1.0358
+              },
+              "min": {
+                "av": 2885431.0,
+                "t": 1759881540000,
+                "n": 1,
+                "o": 1.1499,
+                "h": 1.1499,
+                "l": 1.1499,
+                "c": 1.1499,
+                "v": 984,
+                "vw": 1.1499
+              },
+              "prevDay": {
+                "o": 0.81,
+                "h": 0.91,
+                "l": 0.7505,
+                "c": 0.9096,
+                "v": 1369996.0,
+                "vw": 0.8269
+              }
+            }
+          }
+        }
+      }
+    ]
+  }
+}

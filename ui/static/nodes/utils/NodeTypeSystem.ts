@@ -1,4 +1,3 @@
-import { LGraphNode } from '@comfyorg/litegraph';
 
 export class NodeTypeSystem {
     static parseType(typeInfo: any): string | number {

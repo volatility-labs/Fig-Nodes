@@ -1,4 +1,4 @@
-import { LGraphNode, LiteGraph } from '@comfyorg/litegraph';
+import { LGraphNode } from '@comfyorg/litegraph';
 import { getTypeColor } from '../../types';
 import { showError } from '../../utils/uiUtils';
 import { NodeTypeSystem } from '../utils/NodeTypeSystem';

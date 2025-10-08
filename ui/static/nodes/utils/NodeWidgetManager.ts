@@ -1,4 +1,4 @@
-import { LGraphNode, LiteGraph } from '@comfyorg/litegraph';
+import { LGraphNode } from '@comfyorg/litegraph';
 
 export class NodeWidgetManager {
     private node: LGraphNode & { properties: { [key: string]: any } };
@@ -39,7 +39,7 @@ export class NodeWidgetManager {
 
     private createTextWidget(param: any) {
         const isSecret = param.name.toLowerCase().includes('key') || param.name.toLowerCase().includes('password');
-        let displayValue = isSecret ? (param.default ? '********' : 'Not set') : param.default;
+        const displayValue = isSecret ? (param.default ? '********' : 'Not set') : param.default;
         const initialLabel = `${param.name}: ${displayValue}`;
         const widget = this.node.addWidget('button', initialLabel, param.default, () => {
             this.showCustomPrompt('Value', this.node.properties[param.name], isSecret, (newVal: string | null) => {

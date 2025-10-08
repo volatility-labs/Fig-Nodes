@@ -457,7 +457,7 @@ describe('Top progress bar behavior via WebSocket', () => {
         }
 
         // Mock fetch for /nodes metadata
-        ; (globalThis as any).fetch = vi.fn(async (url: string) => {
+        (globalThis as any).fetch = vi.fn(async (url: string) => {
             if (url === '/nodes') {
                 return { ok: true, json: async () => ({ nodes: {} }) } as any;
             }

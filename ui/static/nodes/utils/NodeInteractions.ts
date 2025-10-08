@@ -7,7 +7,7 @@ export class NodeInteractions {
         this.node = node;
     }
 
-    onDblClick(event: MouseEvent, pos: [number, number], canvas: any): boolean {
+    onDblClick(event: MouseEvent, pos: [number, number], _canvas: any): boolean {
         const bounds = this.getTitleTextBounds();
         if (!bounds) return false;
         const [x, y] = pos;
