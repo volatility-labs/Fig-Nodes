@@ -145,22 +145,18 @@ class TestBaseIndicatorFilterNode:
         result = await ind_filter_node.execute(inputs)
         assert "filtered_ohlcv_bundle" in result
         assert len(result["filtered_ohlcv_bundle"]) == 1  # Should pass
-        assert "indicator_results" in result
-        assert len(result["indicator_results"]) == 1
 
     @pytest.mark.asyncio
     async def test_execute_empty_bundle(self, ind_filter_node, empty_ohlcv_bundle):
         inputs = {"ohlcv_bundle": empty_ohlcv_bundle}
         result = await ind_filter_node.execute(inputs)
         assert result["filtered_ohlcv_bundle"] == {}
-        assert result["indicator_results"] == {}
 
     @pytest.mark.asyncio
     async def test_execute_insufficient_data(self, ind_filter_node, insufficient_ohlcv_bundle):
         inputs = {"ohlcv_bundle": insufficient_ohlcv_bundle}
         result = await ind_filter_node.execute(inputs)
         assert result["filtered_ohlcv_bundle"] == {}  # Should not pass
-        assert len(result["indicator_results"]) == 1  # Still computes indicators
 
     @pytest.mark.asyncio
     async def test_execute_computation_error(self, ind_filter_node, sample_ohlcv_bundle):
@@ -170,4 +166,3 @@ class TestBaseIndicatorFilterNode:
         inputs = {"ohlcv_bundle": sample_ohlcv_bundle}
         result = await ind_filter_node.execute(inputs)
         assert result["filtered_ohlcv_bundle"] == {}  # Skip on error
-        assert len(result["indicator_results"]) == 1  # Still records

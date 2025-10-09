@@ -7,3 +7,6 @@ export { default as PolygonCustomBarsNodeUI } from './PolygonCustomBarsNodeUI';
 export { default as PolygonUniverseNodeUI } from './PolygonUniverseNodeUI';
 export { default as RSIFilterNodeUI } from './RSIFilterNodeUI';
 export { default as SMACrossoverFilterNodeUI } from './SMACrossoverFilterNodeUI';
+export { default as SMAFilterNodeUI } from './SMAFilterNodeUI';
+export { default as ATRIndicatorNodeUI } from './ATRIndicatorNodeUI';
+export { default as ATRFilterNodeUI } from './ATRFilterNodeUI';

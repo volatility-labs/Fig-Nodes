@@ -298,3 +298,35 @@ class TestIndicatorsService:
         atrx_close = indicators_service.calculate_atrx(sample_ohlcv_data, price='Close')
         atrx_open = indicators_service.calculate_atrx(sample_ohlcv_data, price='Open')
         assert atrx_close != atrx_open  # Should differ unless prices are identical
+
+    def test_calculate_sma_happy_path(self, indicators_service, sample_ohlcv_data):
+        """Test SMA calculation with sufficient data."""
+        period = 10
+        sma = indicators_service.calculate_sma(sample_ohlcv_data, period)
+        assert isinstance(sma, float)
+        assert not np.isnan(sma)
+        # Verify against manual calculation
+        expected = sample_ohlcv_data['Close'].tail(period).mean()
+        assert abs(sma - expected) < 1e-6
+
+    def test_calculate_sma_insufficient_data(self, indicators_service):
+        """Test SMA with insufficient data."""
+        period = 10
+        short_df = pd.DataFrame({
+            'Close': [100] * 5
+        })
+        sma = indicators_service.calculate_sma(short_df, period)
+        assert np.isnan(sma)
+
+    def test_calculate_sma_empty_data(self, indicators_service):
+        """Test SMA with empty dataframe."""
+        period = 10
+        empty_df = pd.DataFrame()
+        sma = indicators_service.calculate_sma(empty_df, period)
+        assert np.isnan(sma)
+
+    def test_calculate_sma_invalid_price_column(self, indicators_service, sample_ohlcv_data):
+        """Test SMA with invalid price column."""
+        period = 10
+        sma = indicators_service.calculate_sma(sample_ohlcv_data, period, price='Invalid')
+        assert np.isnan(sma)

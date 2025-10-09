@@ -89,6 +89,21 @@ def sample_ohlcv_bundle(sample_symbols):
     }
 
 
+@pytest.fixture
+def sample_ohlcv_bars():
+    base_timestamp = 1640995200000
+    return [
+        OHLCVBar(
+            timestamp=base_timestamp + i * 86400000,
+            open=100 + i,
+            high=110 + i,
+            low=90 + i,
+            close=105 + i,
+            volume=1000
+        ) for i in range(20)
+    ]
+
+
 class TestSMACrossoverFilterNode:
     """Tests for SMA Crossover Filter Node."""
 
@@ -100,13 +115,13 @@ class TestSMACrossoverFilterNode:
     async def test_execute_empty_inputs(self, sma_filter_node):
         """Test execution with empty inputs."""
         result = await sma_filter_node.execute({})
-        assert result == {"filtered_ohlcv_bundle": {}, "indicator_results": {}}
+        assert result == {"filtered_ohlcv_bundle": {}}
 
     @pytest.mark.asyncio
     async def test_execute_empty_bundle(self, sma_filter_node):
         """Test execution with empty OHLCV bundle."""
         result = await sma_filter_node.execute({"ohlcv_bundle": {}})
-        assert result == {"filtered_ohlcv_bundle": {}, "indicator_results": {}}
+        assert result == {"filtered_ohlcv_bundle": {}}
 
     @pytest.mark.asyncio
     async def test_execute_default_params(self, sma_filter_node, sample_ohlcv_bundle, sample_symbols):
@@ -170,14 +185,6 @@ class TestADXFilterNode:
 
         filtered_bundle = result["filtered_ohlcv_bundle"]
         assert isinstance(filtered_bundle, dict)
-        assert "indicator_results" in result
-        assert len(result["indicator_results"]) == len(sample_symbols)
-        for sym in sample_symbols:
-            assert sym in result["indicator_results"]
-            ind_res = result["indicator_results"][sym][0]
-            assert ind_res["indicator_type"] == IndicatorType.ADX
-            assert "values" in ind_res
-            assert "single" in ind_res["values"]
 
     @pytest.mark.asyncio
     async def test_execute_high_adx_threshold(self, sample_ohlcv_bundle):
@@ -213,9 +220,6 @@ class TestADXFilterNode:
         }
         result = await adx_filter_node.execute({"ohlcv_bundle": bundle_with_nan})
         assert result["filtered_ohlcv_bundle"] == {}
-        assert len(result["indicator_results"]) == 1
-        ind_res = result["indicator_results"][sample_symbols[0]][0]
-        assert "error" in ind_res or ind_res["values"]["single"] == 0.0  # Depending on handling
 
 
 class TestRSIFilterNode:
@@ -328,8 +332,7 @@ class TestNodeProperties:
         node = SMACrossoverFilterNode("test_id", {})
 
         expected_inputs = {"ohlcv_bundle": Dict[AssetSymbol, List[OHLCVBar]]}
-        from core.types_registry import MultiAssetIndicatorResults
-        expected_outputs = {"filtered_ohlcv_bundle": Dict[AssetSymbol, List[OHLCVBar]], "indicator_results": MultiAssetIndicatorResults}
+        expected_outputs = {"filtered_ohlcv_bundle": Dict[AssetSymbol, List[OHLCVBar]]}
 
         assert node.inputs == expected_inputs
         assert node.outputs == expected_outputs
@@ -362,3 +365,45 @@ class TestNodeProperties:
         assert len(node.params_meta) == 4
         param_names = [p["name"] for p in node.params_meta]
         assert set(param_names) == {"min_rsi", "max_rsi", "timeperiod", "timeframe"}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("timeperiod, expected_pass", [(10, True), (101, False)])  # Test different timeperiods including insufficient data case
+async def test_custom_timeperiod(sample_ohlcv_bundle, timeperiod, expected_pass):
+    node = ADXFilterNode("adx_filter_id", {"min_adx": 25.0, "timeperiod": timeperiod})
+    result = await node.execute({"ohlcv_bundle": sample_ohlcv_bundle})
+    filtered_count = len(result["filtered_ohlcv_bundle"])
+    if expected_pass:
+        assert filtered_count > 0
+    else:
+        assert filtered_count == 0
+
+@pytest.mark.asyncio
+async def test_large_dataset():
+    node = ADXFilterNode("adx_filter_id", {})
+    large_bundle = {AssetSymbol(f"SYM_{i}", AssetClass.STOCKS): [OHLCVBar(timestamp=j, open=100+j, high=110+j, low=90+j, close=105+j, volume=1000) for j in range(1000)] for i in range(10)}
+    result = await node.execute({"ohlcv_bundle": large_bundle})
+    assert isinstance(result["filtered_ohlcv_bundle"], dict)
+
+@pytest.mark.asyncio
+async def test_all_nan_data(sample_symbols):
+    node = ADXFilterNode("adx_filter_id", {})
+    nan_bundle = {sample_symbols[0]: [OHLCVBar(timestamp=1, open=float('nan'), high=float('nan'), low=float('nan'), close=float('nan'), volume=float('nan')) for _ in range(20)]}
+    result = await node.execute({"ohlcv_bundle": nan_bundle})
+    assert result["filtered_ohlcv_bundle"] == {}
+
+@pytest.mark.asyncio
+async def test_mixed_nan_valid_data(sample_symbols, sample_ohlcv_bars):
+    node = ADXFilterNode("adx_filter_id", {})
+    mixed_bars = sample_ohlcv_bars[:10] + [OHLCVBar(timestamp=11, open=float('nan'), high=110, low=90, close=105, volume=1000)] + sample_ohlcv_bars[11:]
+    mixed_bundle = {sample_symbols[0]: mixed_bars}
+    result = await node.execute({"ohlcv_bundle": mixed_bundle})
+    assert sample_symbols[0] not in result["filtered_ohlcv_bundle"]
+
+def test_invalid_parameters():
+    with pytest.raises(ValueError, match="Minimum ADX cannot be negative"):
+        ADXFilterNode("test_id", {"min_adx": -5.0})
+    with pytest.raises(ValueError, match="Time period must be positive"):
+        ADXFilterNode("test_id", {"timeperiod": 0})
+    with pytest.raises(ValueError, match="Invalid timeframe"):
+        ADXFilterNode("test_id", {"timeframe": "invalid_tf"})

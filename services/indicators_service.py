@@ -395,3 +395,10 @@ class IndicatorsService:
         if atr_last == 0 or np.isnan(ma) or np.isnan(atr_last):
             return np.nan
         return (current_price - ma) / atr_last 
+
+    def calculate_sma(self, df: pd.DataFrame, period: int, price: str = 'Close') -> float:
+        if df.empty or len(df) < period:
+            return np.nan
+        if price not in df.columns:
+            return np.nan
+        return df[price].rolling(window=period).mean().iloc[-1] 

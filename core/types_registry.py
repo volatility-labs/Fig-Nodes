@@ -41,6 +41,7 @@ class IndicatorType(Enum):
     VOLUME_RATIO = auto()  # Volume Ratio
     EIS = auto()  # Elder Impulse System
     ATRX = auto()  # ATRX Indicator
+    ATR = auto()   # Average True Range
     # Add more as needed
 
 # ~~~~~ TypedDicts ~~~~~
@@ -155,8 +156,6 @@ class AssetSymbol:
 # ~~~~~ Type Aliases ~~~~~
 # For complex/composed types. Add new aliases here for reuse.
 
-MultiAssetIndicatorResults = Dict[AssetSymbol, List[IndicatorResult]]
-
 # Aliases for consistency with complex registry types
 AssetSymbolList = List[AssetSymbol]
 IndicatorDict = Dict[str, float]
@@ -196,7 +195,6 @@ TYPE_REGISTRY: Dict[str, Type] = {
     "LLMThinkingHistory": LLMThinkingHistory,
     "IndicatorValue": IndicatorValue,
     "IndicatorResult": IndicatorResult,
-    "MultiAssetIndicatorResults": MultiAssetIndicatorResults,  # e.g., {"AAPL": [IndicatorResult for MACD, IndicatorResult for RSI, ...]}
     # API types
     "APIKey": APIKey,
 }
@@ -299,7 +297,7 @@ __all__ = [
     'LLMToolFunction', 'LLMToolSpec', 'LLMToolCallFunction', 'LLMToolCall',
     'LLMChatMessage', 'LLMChatMetrics', 'LLMToolHistoryItem', 'LLMThinkingHistoryItem',
     'OHLCVBar', 'AssetSymbol', 'IndicatorValue',
-    'IndicatorResult', 'MultiAssetIndicatorResults',
+    'IndicatorResult',
     'TYPE_REGISTRY', 'get_type', 'register_type',
     'register_asset_class', 'register_provider', 'register_indicator_type',
     # Add new aliases here as needed

@@ -59,6 +59,9 @@ pytest tests/unit/
 Oct 8, 2025
   - Added ATRX filtering and calculation nodes
   - Various bug fixes and minor improvements and code refactoring for better maintainability
+  - Fixed a bug in which logging node is not displaying the text due to bug in saving output
+  - Added SMA_n > sma_n (x-days ago) indicator filter
+  - Added ATR filtering and indicator calculation nodes
 
 - Oct 7, 2025
   - Enhanced Polygon Universe node to allow for filtering of tickers based on volume, price change and other 1d OHLCV bar

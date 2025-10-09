@@ -101,12 +101,11 @@ async def test_polygon_indicators_filtering_pipeline():
     # Verify that indicators were computed and filtered
     assert 3 in results  # ADXFilterNode results
     filter_result = results[3]
-    assert "indicator_results" in filter_result
     assert "filtered_ohlcv_bundle" in filter_result
     # Note: ADX calculation may fail with mock data, so results might be empty
-    assert isinstance(filter_result["indicator_results"], dict)
     assert isinstance(filter_result["filtered_ohlcv_bundle"], dict)
-    
+
+
 @pytest.mark.asyncio
 async def test_polygon_indicators_filtering_with_strict_filters():
     """Test the pipeline with strict filtering that should filter out some symbols"""
@@ -278,7 +277,6 @@ async def test_polygon_indicators_pipeline_empty_symbols():
         assert 3 in results  # ADXFilterNode results
         filter_result = results[3]
         assert filter_result["filtered_ohlcv_bundle"] == {}
-        assert filter_result["indicator_results"] == {}
 
         assert 2 in results  # PolygonBatchCustomBarsNode results
         bars_result = results[2]
@@ -382,10 +380,8 @@ async def test_polygon_indicators_filtering_pipeline_with_updated_defaults():
     # Verify that indicators were computed and filtered
     assert 3 in results  # ADXFilterNode results
     filter_result = results[3]
-    assert "indicator_results" in filter_result
     assert "filtered_ohlcv_bundle" in filter_result
     # Note: ADX calculation may fail with mock data, so results might be empty
-    assert isinstance(filter_result["indicator_results"], dict)
     assert isinstance(filter_result["filtered_ohlcv_bundle"], dict)
 
 

@@ -22,6 +22,15 @@ class ADXFilterNode(BaseIndicatorFilterNode):
         {"name": "timeframe", "type": "combo", "default": "1d", "options": ["1m", "5m", "15m", "1h", "4h", "1d", "1w", "1M"]},
     ]
 
+    def _validate_indicator_params(self):
+        if self.params["min_adx"] < 0:
+            raise ValueError("Minimum ADX cannot be negative")
+        if self.params["timeperiod"] <= 0:
+            raise ValueError("Time period must be positive")
+        valid_timeframes = ["1m", "5m", "15m", "1h", "4h", "1d", "1w", "1M"]
+        if self.params["timeframe"] not in valid_timeframes:
+            raise ValueError("Invalid timeframe")
+
     def _calculate_indicator(self, ohlcv_data: List[OHLCVBar]) -> IndicatorResult:
         """Calculate ADX and return as IndicatorResult."""
         if not ohlcv_data:
