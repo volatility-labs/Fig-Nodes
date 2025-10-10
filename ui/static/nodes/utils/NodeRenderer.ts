@@ -139,9 +139,17 @@ export class NodeRenderer {
         if ((this.node as any).widgets) {
             y += (this.node as any).widgets.length * LiteGraph.NODE_WIDGET_HEIGHT;
         }
-        y += 10;
+
+        const hasContent = lines.length > 0;
+        if (hasContent) {
+            y += 10;
+        }
+
         const contentHeight = lines.length * 15;
-        const neededHeight = y + contentHeight + 10;
+        let neededHeight = y + contentHeight;
+        if (hasContent) {
+            neededHeight += 10;
+        }
 
         if (Math.abs((this.node as any).size[1] - neededHeight) > 1) {
             (this.node as any).size[1] = neededHeight;

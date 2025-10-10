@@ -1,6 +1,6 @@
 import BaseCustomNode from '../base/BaseCustomNode';
 
-export default class ADXFilterNodeUI extends BaseCustomNode {
+export default class OrbFilterNodeUI extends BaseCustomNode {
     constructor(title: string, data: any) {
         super(title, data);
         this.size = [360, 120];
@@ -12,6 +12,12 @@ export default class ADXFilterNodeUI extends BaseCustomNode {
         // Store result for other functionality but don't display in node
         this.result = result;
         this.displayText = '';
+        this.setDirtyCanvas(true, true);
+    }
+
+    setProgress(progress: number, text?: string) {
+        super.setProgress(progress, text);
+        // Force immediate redraw to reflect progress updates
         this.setDirtyCanvas(true, true);
     }
 }

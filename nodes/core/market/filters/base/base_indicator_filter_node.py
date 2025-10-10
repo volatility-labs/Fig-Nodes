@@ -45,9 +45,23 @@ class BaseIndicatorFilterNode(BaseFilterNode):
             return {"filtered_ohlcv_bundle": {}}
 
         filtered_bundle = {}
+        total_symbols = len(ohlcv_bundle)
+        processed_symbols = 0
+
+        # Initial progress signal
+        try:
+            self.report_progress(0.0, f"0/{total_symbols}")
+        except Exception:
+            pass
 
         for symbol, ohlcv_data in ohlcv_bundle.items():
             if not ohlcv_data:
+                processed_symbols += 1
+                try:
+                    progress = (processed_symbols / max(1, total_symbols)) * 100.0
+                    self.report_progress(progress, f"{processed_symbols}/{total_symbols}")
+                except Exception:
+                    pass
                 continue
 
             try:
@@ -58,7 +72,22 @@ class BaseIndicatorFilterNode(BaseFilterNode):
 
             except Exception as e:
                 logger.warning(f"Failed to process indicator for {symbol}: {e}")
+                # Progress should still advance even on failure
+                processed_symbols += 1
+                try:
+                    progress = (processed_symbols / max(1, total_symbols)) * 100.0
+                    self.report_progress(progress, f"{processed_symbols}/{total_symbols}")
+                except Exception:
+                    pass
                 continue
+
+            # Advance progress after successful processing
+            processed_symbols += 1
+            try:
+                progress = (processed_symbols / max(1, total_symbols)) * 100.0
+                self.report_progress(progress, f"{processed_symbols}/{total_symbols}")
+            except Exception:
+                pass
 
         return {
             "filtered_ohlcv_bundle": filtered_bundle,

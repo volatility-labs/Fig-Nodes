@@ -8,6 +8,8 @@ import importlib.util
 import inspect
 import logging
 from nodes.base.base_node import BaseNode
+from nodes.core.market.filters.atrx_filter_node import AtrXFilterNode
+from nodes.core.market.filters.orb_filter_node import OrbFilterNode
 
 logger = logging.getLogger(__name__)
 

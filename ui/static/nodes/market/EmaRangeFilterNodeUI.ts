@@ -1,6 +1,7 @@
+
 import BaseCustomNode from '../base/BaseCustomNode';
 
-export default class ADXFilterNodeUI extends BaseCustomNode {
+export default class EmaRangeFilterNodeUI extends BaseCustomNode {
     constructor(title: string, data: any) {
         super(title, data);
         this.size = [360, 120];
@@ -15,3 +16,4 @@ export default class ADXFilterNodeUI extends BaseCustomNode {
         this.setDirtyCanvas(true, true);
     }
 }
+

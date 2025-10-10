@@ -42,6 +42,8 @@ class IndicatorType(Enum):
     EIS = auto()  # Elder Impulse System
     ATRX = auto()  # ATRX Indicator
     ATR = auto()   # Average True Range
+    EMA_RANGE = auto()  # EMA on price range
+    ORB = auto()  # Custom Indicator
     # Add more as needed
 
 # ~~~~~ TypedDicts ~~~~~

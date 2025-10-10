@@ -56,6 +56,13 @@ pytest tests/unit/
 ``` 
 
 ## Changelog
+
+Oct 10, 2025
+  - Bug fixes and minor improvements
+  - Fixed Polygon universe node to allow for both positive % change as well as negative % change scans
+  - Added ORB filtering node based on opening range calculations. [Link](https://www.sfi.ch/en/publications/n-24-98-a-profitable-day-trading-strategy-for-the-u.s.-equity-market)
+  - Added progress check on all indicator filtering node base
+
 Oct 8, 2025
   - Added ATRX filtering and calculation nodes
   - Various bug fixes and minor improvements and code refactoring for better maintainability

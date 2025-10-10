@@ -337,34 +337,34 @@ class TestNodeProperties:
         assert node.inputs == expected_inputs
         assert node.outputs == expected_outputs
 
-        expected_defaults = {"short_period": 20, "long_period": 50, "timeframe": "1d"}
+        expected_defaults = {"short_period": 20, "long_period": 50}
         assert node.default_params == expected_defaults
 
-        assert len(node.params_meta) == 3
+        assert len(node.params_meta) == 2
         param_names = [p["name"] for p in node.params_meta]
-        assert set(param_names) == {"short_period", "long_period", "timeframe"}
+        assert set(param_names) == {"short_period", "long_period"}
 
     def test_adx_node_properties(self):
         """Test ADX filter node properties."""
         node = ADXFilterNode("test_id", {})
 
-        expected_defaults = {"min_adx": 25.0, "timeperiod": 14, "timeframe": "1d"}
+        expected_defaults = {"min_adx": 25.0, "timeperiod": 14}
         assert node.default_params == expected_defaults
 
-        assert len(node.params_meta) == 3
+        assert len(node.params_meta) == 2
         param_names = [p["name"] for p in node.params_meta]
-        assert set(param_names) == {"min_adx", "timeperiod", "timeframe"}
+        assert set(param_names) == {"min_adx", "timeperiod"}
 
     def test_rsi_node_properties(self):
         """Test RSI filter node properties."""
         node = RSIFilterNode("test_id", {})
 
-        expected_defaults = {"min_rsi": 30.0, "max_rsi": 70.0, "timeperiod": 14, "timeframe": "1d"}
+        expected_defaults = {"min_rsi": 30.0, "max_rsi": 70.0, "timeperiod": 14}
         assert node.default_params == expected_defaults
 
-        assert len(node.params_meta) == 4
+        assert len(node.params_meta) == 3
         param_names = [p["name"] for p in node.params_meta]
-        assert set(param_names) == {"min_rsi", "max_rsi", "timeperiod", "timeframe"}
+        assert set(param_names) == {"min_rsi", "max_rsi", "timeperiod"}
 
 
 @pytest.mark.asyncio
@@ -405,5 +405,3 @@ def test_invalid_parameters():
         ADXFilterNode("test_id", {"min_adx": -5.0})
     with pytest.raises(ValueError, match="Time period must be positive"):
         ADXFilterNode("test_id", {"timeperiod": 0})
-    with pytest.raises(ValueError, match="Invalid timeframe"):
-        ADXFilterNode("test_id", {"timeframe": "invalid_tf"})

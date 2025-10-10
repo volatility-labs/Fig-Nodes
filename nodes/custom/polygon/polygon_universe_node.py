@@ -13,6 +13,7 @@ class PolygonUniverseNode(UniverseNode):
     params_meta = [
         {"name": "market", "type": "combo", "default": "stocks", "options": ["stocks", "crypto", "fx", "otc", "indices"], "label": "Market Type", "description": "Select the market type to fetch symbols from"},
         {"name": "min_change_perc", "type": "number", "default": None, "optional": True, "label": "Min Change", "unit": "%", "description": "Minimum daily percentage change (e.g., 5 for 5%)", "step": 0.01},
+        {"name": "max_change_perc", "type": "number", "default": None, "optional": True, "label": "Max Change", "unit": "%", "description": "Maximum daily percentage change (e.g., 10 for 10%)", "step": 0.01},
         {"name": "min_volume", "type": "number", "default": None, "optional": True, "label": "Min Volume", "unit": "shares/contracts", "description": "Minimum daily trading volume in shares or contracts"},
         {"name": "min_price", "type": "number", "default": None, "optional": True, "label": "Min Price", "unit": "USD", "description": "Minimum closing price in USD"},
         {"name": "max_price", "type": "number", "default": None, "optional": True, "label": "Max Price", "unit": "USD", "description": "Maximum closing price in USD"},
@@ -55,9 +56,16 @@ class PolygonUniverseNode(UniverseNode):
             tickers_data = data.get("tickers", [])
 
             min_change_perc = self.params.get("min_change_perc")
+            max_change_perc = self.params.get("max_change_perc")
             min_volume = self.params.get("min_volume")
             min_price = self.params.get("min_price")
             max_price = self.params.get("max_price")
+
+            # Validate change percentage range if both provided
+            if min_change_perc is not None and max_change_perc is not None:
+                assert isinstance(min_change_perc, (int, float)) and isinstance(max_change_perc, (int, float)), "Change bounds must be numeric"
+                if min_change_perc > max_change_perc:
+                    raise ValueError("min_change_perc cannot be greater than max_change_perc")
 
             for res in tickers_data:
                 ticker = res["ticker"]
@@ -65,6 +73,8 @@ class PolygonUniverseNode(UniverseNode):
                 # Apply filters
                 todays_change_perc = res.get("todaysChangePerc", 0)
                 if min_change_perc is not None and todays_change_perc < min_change_perc:
+                    continue
+                if max_change_perc is not None and todays_change_perc > max_change_perc:
                     continue
 
                 day = res.get("day", {})

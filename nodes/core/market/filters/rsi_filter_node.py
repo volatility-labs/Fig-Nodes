@@ -15,14 +15,12 @@ class RSIFilterNode(BaseIndicatorFilterNode):
         "min_rsi": 30.0,
         "max_rsi": 70.0,
         "timeperiod": 14,
-        "timeframe": "1d"  # Added for consistency with other nodes
     }
 
     params_meta = [
         {"name": "min_rsi", "type": "number", "default": 30.0, "min": 0.0, "max": 100.0, "step": 1.0},
         {"name": "max_rsi", "type": "number", "default": 70.0, "min": 0.0, "max": 100.0, "step": 1.0},
         {"name": "timeperiod", "type": "number", "default": 14, "min": 1, "step": 1},
-        {"name": "timeframe", "type": "combo", "default": "1d", "options": ["1m", "5m", "15m", "1h", "4h", "1d", "1w", "1M"]},
     ]
 
     def _validate_indicator_params(self):

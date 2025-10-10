@@ -66,7 +66,7 @@ export class NodeWidgetManager {
         const stepFromParam = (typeof param.step === 'number' && Number.isFinite(param.step)) ? param.step : (isInteger ? 1 : 0.1);
         const precisionFromParam = (typeof param.precision === 'number' && Number.isFinite(param.precision)) ? param.precision : (isInteger ? 0 : (stepFromParam < 1 ? 2 : 0));
         const opts = {
-            min: (typeof param.min === 'number') ? param.min : 0,
+            min: (typeof param.min === 'number') ? param.min : undefined,
             max: (typeof param.max === 'number') ? param.max : undefined,
             step: stepFromParam,
             precision: precisionFromParam,

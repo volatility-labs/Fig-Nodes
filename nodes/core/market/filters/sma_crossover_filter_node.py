@@ -14,13 +14,11 @@ class SMACrossoverFilterNode(BaseIndicatorFilterNode):
     default_params = {
         "short_period": 20,
         "long_period": 50,
-        "timeframe": "1d"  # Added for consistency
     }
 
     params_meta = [
         {"name": "short_period", "type": "number", "default": 20, "min": 1, "step": 1},
         {"name": "long_period", "type": "number", "default": 50, "min": 1, "step": 1},
-        {"name": "timeframe", "type": "combo", "default": "1d", "options": ["1m", "5m", "15m", "1h", "4h", "1d", "1w", "1M"]},
     ]
 
     def _validate_indicator_params(self):

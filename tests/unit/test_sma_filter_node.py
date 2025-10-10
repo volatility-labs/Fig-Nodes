@@ -32,7 +32,7 @@ def sample_ohlcv_bars() -> List[OHLCVBar]:
 
 @pytest.mark.asyncio
 async def test_sma_filter_happy_path(sma_filter_node, sample_ohlcv_bars):
-    """Test filter passes when current SMA > previous SMA."""
+    """Test filter passes when current SMA &gt; previous SMA."""
     # Mock SMA calculations
     sma_filter_node.indicators_service.calculate_sma.side_effect = lambda df, p, price='Close': df[price].tail(p).mean()
 
@@ -43,15 +43,10 @@ async def test_sma_filter_happy_path(sma_filter_node, sample_ohlcv_bars):
 
     assert "filtered_ohlcv_bundle" in result
     assert AssetSymbol("TEST", "STOCKS") in result["filtered_ohlcv_bundle"]  # Should pass since closes are increasing
-    assert "indicator_results" in result
-    ind_result = result["indicator_results"][AssetSymbol("TEST", "STOCKS")][0]
-    assert ind_result["indicator_type"] == IndicatorType.SMA
-    assert not ind_result.get("error")
-    assert ind_result["values"]["lines"]["current"] > ind_result["values"]["lines"]["previous"]
 
 @pytest.mark.asyncio
 async def test_sma_filter_does_not_pass(sma_filter_node, sample_ohlcv_bars):
-    """Test filter does not pass when current SMA <= previous SMA."""
+    """Test filter does not pass when current SMA &lt;= previous SMA."""
     # Reverse the closes to decreasing
     for i, bar in enumerate(sample_ohlcv_bars):
         bar['close'] = 100 - i * 2
@@ -66,11 +61,6 @@ async def test_sma_filter_does_not_pass(sma_filter_node, sample_ohlcv_bars):
 
     assert "filtered_ohlcv_bundle" in result
     assert AssetSymbol("TEST", "STOCKS") not in result["filtered_ohlcv_bundle"]  # Should not pass
-    assert "indicator_results" in result
-    ind_result = result["indicator_results"][AssetSymbol("TEST", "STOCKS")][0]
-    assert ind_result["indicator_type"] == IndicatorType.SMA
-    assert not ind_result.get("error")
-    assert ind_result["values"]["lines"]["current"] < ind_result["values"]["lines"]["previous"]
 
 @pytest.mark.asyncio
 async def test_sma_filter_insufficient_data(sma_filter_node):
@@ -82,9 +72,6 @@ async def test_sma_filter_insufficient_data(sma_filter_node):
     result = await sma_filter_node.execute(inputs)
 
     assert result["filtered_ohlcv_bundle"] == {}
-    assert "indicator_results" in result
-    # Empty data is skipped, so no indicator results
-    assert result["indicator_results"] == {}
 
 @pytest.mark.asyncio
 async def test_sma_filter_nan_values(sma_filter_node, sample_ohlcv_bars):
@@ -97,8 +84,6 @@ async def test_sma_filter_nan_values(sma_filter_node, sample_ohlcv_bars):
     result = await sma_filter_node.execute(inputs)
 
     assert AssetSymbol("TEST", "STOCKS") not in result["filtered_ohlcv_bundle"]  # Should not pass due to NaN
-    ind_result = result["indicator_results"][AssetSymbol("TEST", "STOCKS")][0]
-    assert ind_result.get("error") is not None
 
 @pytest.mark.asyncio
 async def test_sma_filter_multiple_symbols(sma_filter_node, sample_ohlcv_bars):
@@ -126,7 +111,6 @@ async def test_sma_filter_multiple_symbols(sma_filter_node, sample_ohlcv_bars):
 
     assert AssetSymbol("PASS", "STOCKS") in result["filtered_ohlcv_bundle"]
     assert AssetSymbol("FAIL", "STOCKS") not in result["filtered_ohlcv_bundle"]
-    assert set(result["indicator_results"].keys()) == {AssetSymbol("PASS", "STOCKS"), AssetSymbol("FAIL", "STOCKS")}
 
 @pytest.mark.asyncio
 async def test_sma_filter_equal_smas(sma_filter_node, sample_ohlcv_bars):
@@ -144,9 +128,6 @@ async def test_sma_filter_equal_smas(sma_filter_node, sample_ohlcv_bars):
     result = await sma_filter_node.execute(inputs)
 
     assert AssetSymbol("TEST", "STOCKS") not in result["filtered_ohlcv_bundle"]
-    ind_result = result["indicator_results"][AssetSymbol("TEST", "STOCKS")][0]
-    assert ind_result["values"]["lines"]["current"] == ind_result["values"]["lines"]["previous"]
-    assert not ind_result.get("error")
 
 @pytest.mark.asyncio
 async def test_sma_filter_zero_prior_days(sma_filter_node, sample_ohlcv_bars):
@@ -160,11 +141,6 @@ async def test_sma_filter_zero_prior_days(sma_filter_node, sample_ohlcv_bars):
     }
     result = await sma_filter_node.execute(inputs)
 
-    # With 0 days, previous_df would be empty or same, but code uses < cutoff, with cutoff_ts = last_ts - 0, so previous_df < last_ts
-    # Assuming it calculates, but test if it passes or not
-    assert "indicator_results" in result
-    ind_result = result["indicator_results"][AssetSymbol("TEST", "STOCKS")][0]
-    # Depending on data, but for increasing, current > previous (which is up to before last)
     assert AssetSymbol("TEST", "STOCKS") in result["filtered_ohlcv_bundle"]  # Likely passes for increasing data
 
 @pytest.mark.asyncio
@@ -182,11 +158,6 @@ async def test_sma_filter_large_prior_days(sma_filter_node, sample_ohlcv_bars):
     result = await sma_filter_node.execute(inputs)
 
     assert AssetSymbol("TEST", "STOCKS") not in result["filtered_ohlcv_bundle"]
-    ind_result = result["indicator_results"][AssetSymbol("TEST", "STOCKS")][0]
-    assert ind_result["error"] == "Insufficient data for previous SMA"
-    # Should still have current value
-    assert "current" in ind_result["values"]["lines"]
-    assert np.isnan(ind_result["values"]["lines"]["previous"])
 
 @pytest.mark.asyncio
 async def test_sma_filter_data_with_gaps(sma_filter_node):
@@ -240,8 +211,6 @@ async def test_sma_filter_single_bar(sma_filter_node):
     result = await sma_filter_node.execute(inputs)
 
     assert AssetSymbol("TEST", "STOCKS") not in result["filtered_ohlcv_bundle"]
-    ind_result = result["indicator_results"][AssetSymbol("TEST", "STOCKS")][0]
-    assert ind_result["error"].startswith("Insufficient data")
 
 @pytest.mark.asyncio
 async def test_sma_filter_nan_in_data(sma_filter_node, sample_ohlcv_bars):
@@ -262,8 +231,6 @@ async def test_sma_filter_nan_in_data(sma_filter_node, sample_ohlcv_bars):
     result = await sma_filter_node.execute(inputs)
 
     assert AssetSymbol("TEST", "STOCKS") not in result["filtered_ohlcv_bundle"]
-    ind_result = result["indicator_results"][AssetSymbol("TEST", "STOCKS")][0]
-    assert ind_result["error"] == "Unable to compute current SMA"
 
 @pytest.mark.asyncio
 async def test_sma_filter_empty_bundle(sma_filter_node):
@@ -272,7 +239,6 @@ async def test_sma_filter_empty_bundle(sma_filter_node):
     result = await sma_filter_node.execute(inputs)
 
     assert result["filtered_ohlcv_bundle"] == {}
-    assert result["indicator_results"] == {}
 
 @pytest.mark.asyncio
 async def test_sma_filter_negative_params(sma_filter_node, sample_ohlcv_bars):
@@ -286,8 +252,8 @@ async def test_sma_filter_negative_params(sma_filter_node, sample_ohlcv_bars):
     result = await sma_filter_node.execute(inputs)
 
     # Should not crash, but likely produce error results
-    assert "indicator_results" in result
-    assert AssetSymbol("TEST", "STOCKS") in result["indicator_results"]
+    assert "filtered_ohlcv_bundle" in result
+    assert AssetSymbol("TEST", "STOCKS") not in result["filtered_ohlcv_bundle"]
 
 @pytest.mark.asyncio
 async def test_sma_filter_period_equals_data_length(sma_filter_node, sample_ohlcv_bars):
@@ -305,5 +271,3 @@ async def test_sma_filter_period_equals_data_length(sma_filter_node, sample_ohlc
 
     # Previous would have len-1 < period, so NaN, shouldn't pass
     assert AssetSymbol("TEST", "STOCKS") not in result["filtered_ohlcv_bundle"]
-    ind_result = result["indicator_results"][AssetSymbol("TEST", "STOCKS")][0]
-    assert ind_result["error"] == "Insufficient data for previous SMA"

@@ -5,6 +5,7 @@ from core.graph_executor import GraphExecutor
 from core.node_registry import NODE_REGISTRY
 from core.types_registry import AssetSymbol, AssetClass
 from nodes.custom.polygon.polygon_universe_node import PolygonUniverseNode
+from nodes.core.market.filters.orb_filter_node import OrbFilterNode
 
 @pytest.mark.asyncio
 async def test_polygon_indicators_filtering_pipeline():
@@ -53,7 +54,6 @@ async def test_polygon_indicators_filtering_pipeline():
             {"id": 3, "type": "ADXFilterNode", "properties": {
                 "min_adx": 0.0,
                 "timeperiod": 14,
-                "timeframe": "1d",
             }},
             {"id": 4, "type": "LoggingNode", "properties": {"format": "auto"}}
         ],
@@ -156,7 +156,6 @@ async def test_polygon_indicators_filtering_with_strict_filters():
                 {"id": 3, "type": "ADXFilterNode", "properties": {
                     "min_adx": 50.0,  # Very high threshold that should filter out most symbols
                     "timeperiod": 14,
-                    "timeframe": "1d",
                 }},
                 {"id": 4, "type": "LoggingNode", "properties": {"format": "auto"}}
             ],
@@ -235,7 +234,6 @@ async def test_polygon_indicators_pipeline_empty_symbols():
                 {"id": 3, "type": "ADXFilterNode", "properties": {
                     "min_adx": 0.0,
                     "timeperiod": 14,
-                    "timeframe": "1d",
                 }},
                 {"id": 4, "type": "LoggingNode", "properties": {"format": "auto"}}
             ],
@@ -331,7 +329,6 @@ async def test_polygon_indicators_filtering_pipeline_with_updated_defaults():
                     # Using updated defaults that should allow most symbols through
                     "min_adx": 0.0,
                     "timeperiod": 14,
-                    "timeframe": "1d",
                 }},
                 {"id": 4, "type": "LoggingNode", "properties": {"format": "auto"}}
             ],
@@ -415,3 +412,35 @@ async def test_polygon_universe_hashability_integration():
         hash(sym)
         symbol_set = set(symbols)
         assert sym in symbol_set
+
+
+@pytest.mark.asyncio
+async def test_orb_filter_integration():
+    # Create mock OHLCV data
+    mock_ohlcv_data = [
+        {"timestamp": 1000000000, "open": 100.0, "high": 110.0, "low": 95.0, "close": 105.0, "volume": 10000.0},
+        {"timestamp": 1000864000, "open": 105.0, "high": 115.0, "low": 100.0, "close": 110.0, "volume": 12000.0},
+        {"timestamp": 1001728000, "open": 110.0, "high": 120.0, "low": 105.0, "close": 115.0, "volume": 15000.0},
+        {"timestamp": 1002592000, "open": 115.0, "high": 125.0, "low": 110.0, "close": 120.0, "volume": 18000.0},
+        {"timestamp": 1003456000, "open": 120.0, "high": 130.0, "low": 115.0, "close": 125.0, "volume": 20000.0},
+        {"timestamp": 1004320000, "open": 125.0, "high": 135.0, "low": 120.0, "close": 130.0, "volume": 22000.0},
+        {"timestamp": 1005184000, "open": 130.0, "high": 140.0, "low": 125.0, "close": 135.0, "volume": 25000.0},
+        {"timestamp": 1006048000, "open": 135.0, "high": 145.0, "low": 130.0, "close": 140.0, "volume": 28000.0},
+        {"timestamp": 1006912000, "open": 140.0, "high": 150.0, "low": 135.0, "close": 145.0, "volume": 30000.0},
+        {"timestamp": 1007776000, "open": 145.0, "high": 155.0, "low": 140.0, "close": 150.0, "volume": 32000.0},
+        {"timestamp": 1008640000, "open": 150.0, "high": 160.0, "low": 145.0, "close": 155.0, "volume": 35000.0},
+        {"timestamp": 1009504000, "open": 155.0, "high": 165.0, "low": 150.0, "close": 160.0, "volume": 38000.0},
+        {"timestamp": 1010368000, "open": 160.0, "high": 170.0, "low": 155.0, "close": 165.0, "volume": 40000.0},
+        {"timestamp": 1011232000, "open": 165.0, "high": 175.0, "low": 160.0, "close": 170.0, "volume": 42000.0},
+        {"timestamp": 1012096000, "open": 170.0, "high": 180.0, "low": 165.0, "close": 175.0, "volume": 45000.0},
+    ]
+
+    node = OrbFilterNode("orb_id", {})
+    bundle = {"AAPL": mock_ohlcv_data}
+
+    inputs = {"ohlcv_bundle": bundle, "api_key": "test_api_key"}
+
+    result = await node.execute(inputs)
+
+    assert "filtered_ohlcv_bundle" in result
+    # Add assertions
