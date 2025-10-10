@@ -44,6 +44,7 @@ class IndicatorType(Enum):
     ATR = auto()   # Average True Range
     EMA_RANGE = auto()  # EMA on price range
     ORB = auto()  # Custom Indicator
+    LOD = auto()  # Low of Day Distance
     # Add more as needed
 
 # ~~~~~ TypedDicts ~~~~~
