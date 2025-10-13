@@ -3,12 +3,13 @@ import httpx
 import logging
 from nodes.base.universe_node import UniverseNode
 from core.types_registry import AssetSymbol, AssetClass, register_asset_class, get_type
+from core.api_key_vault import APIKeyVault
 
 logger = logging.getLogger(__name__)
 
 
 class PolygonUniverseNode(UniverseNode):
-    inputs = {"api_key": get_type("APIKey")}
+    required_keys = ["POLYGON_API_KEY"]
     uiModule = "PolygonUniverseNodeUI"
     params_meta = [
         {"name": "market", "type": "combo", "default": "stocks", "options": ["stocks", "crypto", "fx", "otc", "indices"], "label": "Market Type", "description": "Select the market type to fetch symbols from"},
@@ -21,13 +22,12 @@ class PolygonUniverseNode(UniverseNode):
     ]
 
     async def execute(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
-        self._execute_inputs = inputs
         return await super().execute(inputs)
 
     async def _fetch_symbols(self) -> List[AssetSymbol]:
-        api_key = self._execute_inputs.get("api_key")
+        api_key = APIKeyVault().get("POLYGON_API_KEY")
         if not api_key:
-            raise ValueError("Polygon API key is required")
+            raise ValueError("POLYGON_API_KEY is required but not set in vault")
         market = self.params.get("market", "stocks")
 
         if market == "stocks" or market == "otc":

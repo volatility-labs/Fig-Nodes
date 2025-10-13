@@ -8,7 +8,7 @@ export default defineConfig({
     base: '/static/',
     server: {
         proxy: {
-            '^/(nodes|execute|examples)': {
+            '^/(nodes|execute|examples|api_keys)': {
                 target: 'http://localhost:8000',
                 changeOrigin: true,
                 ws: true,

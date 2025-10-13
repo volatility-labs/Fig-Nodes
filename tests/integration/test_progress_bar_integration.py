@@ -328,42 +328,43 @@ async def test_real_polygon_batch_progress_reporting():
     import nodes.custom.polygon.polygon_batch_custom_bars_node as polygon_module
     original_fetch_bars = polygon_module.fetch_bars
 
-    try:
-        polygon_module.fetch_bars = mock_fetch_bars
+    with patch("core.api_key_vault.APIKeyVault.get", return_value="test_key"):
+        try:
+            polygon_module.fetch_bars = mock_fetch_bars
 
-        # Execute the node
-        start_time = time.time()
-        result = await node.execute({"symbols": symbols, "api_key": "test_key"})
-        end_time = time.time()
+            # Execute the node
+            start_time = time.time()
+            result = await node.execute({"symbols": symbols})
+            end_time = time.time()
 
-        # Verify execution took reasonable time (concurrent execution should be fast)
-        assert end_time - start_time >= 0.08, "Execution should take at least 80ms due to concurrency and API delays"
-        assert end_time - start_time <= 0.3, "Execution should not take more than 300ms with concurrency"
+            # Verify execution took reasonable time (concurrent execution should be fast)
+            assert end_time - start_time >= 0.08, "Execution should take at least 80ms due to concurrency and API delays"
+            assert end_time - start_time <= 0.3, "Execution should not take more than 300ms with concurrency"
 
-        # Verify result structure
-        assert "ohlcv_bundle" in result
-        assert len(result["ohlcv_bundle"]) == 5
+            # Verify result structure
+            assert "ohlcv_bundle" in result
+            assert len(result["ohlcv_bundle"]) == 5
 
-        # Verify progress updates - should have 5 updates (one per symbol)
-        assert len(progress_updates) == 5, f"Expected 5 progress updates, got {len(progress_updates)}"
+            # Verify progress updates - should have 5 updates (one per symbol)
+            assert len(progress_updates) == 5, f"Expected 5 progress updates, got {len(progress_updates)}"
 
-        # Verify progress values are correct
-        for i, update in enumerate(progress_updates):
-            expected_progress = ((i + 1) / 5) * 100
-            assert abs(update["progress"] - expected_progress) < 0.1, f"Progress should be ~{expected_progress}, got {update['progress']}"
-            expected_text = f"{i + 1}/5"
-            assert update["text"] == expected_text, f"Progress text should be '{expected_text}', got '{update['text']}'"
+            # Verify progress values are correct
+            for i, update in enumerate(progress_updates):
+                expected_progress = ((i + 1) / 5) * 100
+                assert abs(update["progress"] - expected_progress) < 0.1, f"Progress should be ~{expected_progress}, got {update['progress']}"
+                expected_text = f"{i + 1}/5"
+                assert update["text"] == expected_text, f"Progress text should be '{expected_text}', got '{update['text']}'"
 
-        # Verify final progress is 100%
-        assert abs(progress_updates[-1]["progress"] - 100.0) < 0.1
+            # Verify final progress is 100%
+            assert abs(progress_updates[-1]["progress"] - 100.0) < 0.1
 
-        # Verify timestamps are reasonable
-        for update in progress_updates:
-            assert start_time <= update["timestamp"] <= end_time
+            # Verify timestamps are reasonable
+            for update in progress_updates:
+                assert start_time <= update["timestamp"] <= end_time
 
-    finally:
-        # Restore original function
-        polygon_module.fetch_bars = original_fetch_bars
+        finally:
+            # Restore original function
+            polygon_module.fetch_bars = original_fetch_bars
 
 
 @pytest.mark.asyncio

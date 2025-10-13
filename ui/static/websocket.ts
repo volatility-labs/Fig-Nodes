@@ -116,6 +116,27 @@ export function setupWebSocket(graph: LGraph, _canvas: LGraphCanvas) {
             return;
         }
 
+        // Preflight API key check BEFORE any progress/ui changes or websocket connection
+        const graphData = graph.serialize();
+        try {
+            const getRequiredKeysForGraph = (window as any).getRequiredKeysForGraph as undefined | ((g: any) => Promise<string[]>);
+            const checkMissingKeys = (window as any).checkMissingKeys as undefined | ((keys: string[]) => Promise<string[]>);
+            if (typeof getRequiredKeysForGraph === 'function' && typeof checkMissingKeys === 'function') {
+                const requiredKeys = await getRequiredKeysForGraph(graphData);
+                if (requiredKeys.length > 0) {
+                    const missing = await checkMissingKeys(requiredKeys);
+                    if (missing.length > 0) {
+                        try { alert(`Missing API keys for this graph: ${missing.join(', ')}. Please set them in the settings menu.`); } catch { /* ignore in tests */ }
+                        (window as any).setLastMissingKeys?.(missing);
+                        (window as any).openSettings?.(missing);
+                        return; // Abort execution; do not show progress bar or change state
+                    }
+                }
+            }
+        } catch {
+            // If preflight fails silently, fall back to server-side validation later
+        }
+
         // Reset LoggingNode UIs before each execution so logs start fresh
         const nodes = ((graph as any)._nodes as any[]) || [];
         nodes.forEach((node: any) => {
@@ -138,7 +159,6 @@ export function setupWebSocket(graph: LGraph, _canvas: LGraphCanvas) {
         document.getElementById('stop')!.style.display = 'inline-block';
 
         executionState = 'connecting';
-        const graphData = graph.serialize();
         showProgress('Starting...', false);
         const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
         const backendHost = window.location.hostname;
@@ -154,7 +174,15 @@ export function setupWebSocket(graph: LGraph, _canvas: LGraphCanvas) {
         ws.onmessage = (event) => {
             const data = JSON.parse(event.data);
 
-            if (data.type === 'status') {
+            if (data.type === 'error') {
+                if (data.code === 'MISSING_API_KEYS' && Array.isArray(data.missing_keys)) {
+                    try { alert(data.message || 'Missing API keys. Opening settings...'); } catch { /* ignore */ }
+                    (window as any).setLastMissingKeys?.(data.missing_keys);
+                    (window as any).openSettings?.(data.missing_keys);
+                } else {
+                    alert('Error: ' + data.message);
+                }
+            } else if (data.type === 'status') {
                 if (indicator) indicator.className = 'status-indicator executing';
                 // Keep progress visible and reflect coarse states
                 const msg: string = data.message || '';

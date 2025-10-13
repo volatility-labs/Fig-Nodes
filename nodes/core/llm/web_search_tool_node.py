@@ -4,14 +4,12 @@ from nodes.base.base_node import BaseNode
 from core.types_registry import get_type
 from services.tools.web_search import WebSearchTool
 from services.tools.registry import register_credential_provider, get_tool_schema
+from core.api_key_vault import APIKeyVault
 
 
 class WebSearchToolNode(BaseNode):
     """
     Atomic tool node that outputs the web_search tool schema configured by params.
-
-    Inputs:
-    - api_key: APIKey (Tavily API key for authentication)
 
     Params:
     - provider: combo [tavily]
@@ -22,12 +20,10 @@ class WebSearchToolNode(BaseNode):
     Output:
     - tool: LLMToolSpec
 
-    Note: API key is supplied via input connection. The handler will use the provided key at execution time.
+    Note: API key is retrieved from the APIKeyVault. The handler will use the key at execution time.
     """
 
-    inputs = {
-        "api_key": get_type("APIKey"),
-    }
+    required_keys = ["TAVILY_API_KEY"]
     outputs = {
         "tool": get_type("LLMToolSpec"),
     }
@@ -51,9 +47,10 @@ class WebSearchToolNode(BaseNode):
     CATEGORY = "llm"
 
     async def execute(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
-        api_key = inputs.get("api_key", "").strip()
+        vault = APIKeyVault()
+        api_key = vault.get("TAVILY_API_KEY")
         if not api_key:
-            raise ValueError("Tavily API key is required")
+            raise ValueError("TAVILY_API_KEY is required but not set in vault")
 
         # Register the credential provider so tools can access the API key
         def _get_api_key() -> str:

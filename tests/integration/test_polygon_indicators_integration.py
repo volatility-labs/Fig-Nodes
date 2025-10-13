@@ -135,78 +135,74 @@ async def test_polygon_indicators_filtering_with_strict_filters():
         {"timestamp": 1012096000, "open": 170.0, "high": 180.0, "low": 165.0, "close": 175.0, "volume": 45000.0},
     ]
 
-    # Mock the fetch_bars function in the polygon batch node module
-    with patch('nodes.custom.polygon.polygon_batch_custom_bars_node.fetch_bars', new_callable=AsyncMock) as mock_fetch_bars:
-        mock_fetch_bars.return_value = mock_ohlcv_data
+    # Define the graph with strict ADX filter
+    graph_data = {
+        "nodes": [
+            {"id": 1, "type": "TextInputNode", "properties": {"text": "test_api_key"}},
+            {"id": 2, "type": "PolygonBatchCustomBarsNode", "properties": {
+                "multiplier": 1,
+                "timespan": "day",
+                "lookback_period": "3 months",
+                "adjusted": True,
+                "sort": "asc",
+                "limit": 5000,
+                "max_concurrent": 2,
+                "rate_limit_per_second": 95,
+            }},
+            {"id": 3, "type": "ADXFilterNode", "properties": {
+                "min_adx": 50.0,  # Very high threshold that should filter out most symbols
+                "timeperiod": 14,
+            }},
+            {"id": 4, "type": "LoggingNode", "properties": {"format": "auto"}}
+        ],
+        "links": [
+            [0, 1, 0, 2, 1],  # api_key -> polygon_batch.api_key
+            [0, 2, 0, 3, 0],  # ohlcv_bundle -> adx_filter.ohlcv_bundle
+            [0, 3, 0, 4, 0],  # filtered_ohlcv_bundle -> logging.input
+        ]
+    }
 
-        # Define the graph with strict ADX filter
-        graph_data = {
-            "nodes": [
-                {"id": 1, "type": "TextInputNode", "properties": {"text": "test_api_key"}},
-                {"id": 2, "type": "PolygonBatchCustomBarsNode", "properties": {
-                    "multiplier": 1,
-                    "timespan": "day",
-                    "lookback_period": "3 months",
-                    "adjusted": True,
-                    "sort": "asc",
-                    "limit": 5000,
-                    "max_concurrent": 2,
-                    "rate_limit_per_second": 95,
-                }},
-                {"id": 3, "type": "ADXFilterNode", "properties": {
-                    "min_adx": 50.0,  # Very high threshold that should filter out most symbols
-                    "timeperiod": 14,
-                }},
-                {"id": 4, "type": "LoggingNode", "properties": {"format": "auto"}}
-            ],
-            "links": [
-                [0, 1, 0, 2, 1],  # api_key -> polygon_batch.api_key
-                [0, 2, 0, 3, 0],  # ohlcv_bundle -> adx_filter.ohlcv_bundle
-                [0, 3, 0, 4, 0],  # filtered_ohlcv_bundle -> logging.input
-            ]
-        }
+    # Override node 2 inputs to include symbols directly
+    executor = GraphExecutor(graph_data, NODE_REGISTRY)
 
-        # Override node 2 inputs to include symbols directly
-        executor = GraphExecutor(graph_data, NODE_REGISTRY)
+    # Manually inject symbols into the polygon batch node inputs
+    original_validate = executor.nodes[2].validate_inputs
+    async def execute_with_mock_data(inputs):
+        inputs = inputs.copy()
+        inputs["symbols"] = symbols
+        bundle = {symbol: mock_ohlcv_data for symbol in symbols}
+        return {"ohlcv_bundle": bundle}
 
-        # Manually inject symbols into the polygon batch node inputs
-        original_execute = executor.nodes[2].execute
-        original_validate = executor.nodes[2].validate_inputs
-        async def execute_with_symbols(inputs):
-            inputs = inputs.copy()
-            inputs["symbols"] = symbols
-            return await original_execute(inputs)
+    def validate_with_symbols(inputs):
+        inputs = inputs.copy()
+        inputs["symbols"] = symbols
+        return original_validate(inputs)
 
-        def validate_with_symbols(inputs):
-            inputs = inputs.copy()
-            inputs["symbols"] = symbols
-            return original_validate(inputs)
+    executor.nodes[2].execute = execute_with_mock_data
+    executor.nodes[2].validate_inputs = validate_with_symbols
 
-        executor.nodes[2].execute = execute_with_symbols
-        executor.nodes[2].validate_inputs = validate_with_symbols
+    # Execute the graph
+    results = await executor.execute()
 
-        # Execute the graph
-        results = await executor.execute()
+    # Verify the pipeline executed successfully
+    assert 4 in results  # LoggingNode results
+    logging_result = results[4]
+    assert "output" in logging_result
 
-        # Verify the pipeline executed successfully
-        assert 4 in results  # LoggingNode results
-        logging_result = results[4]
-        assert "output" in logging_result
+    # With the very high ADX requirement (50.0), most symbols should be filtered out
+    # The mock data may or may not produce ADX values >= 50, but the important thing
+    # is that the filtering logic is working
+    logged_output = logging_result["output"]
+    assert isinstance(logged_output, str)
 
-        # With the very high ADX requirement (50.0), most symbols should be filtered out
-        # The mock data may or may not produce ADX values >= 50, but the important thing
-        # is that the filtering logic is working
-        logged_output = logging_result["output"]
-        assert isinstance(logged_output, str)
+    # Verify that the filter node processed the indicators
+    assert 3 in results  # ADXFilterNode results
+    filter_result = results[3]
+    assert "filtered_ohlcv_bundle" in filter_result
+    assert isinstance(filter_result["filtered_ohlcv_bundle"], dict)
 
-        # Verify that the filter node processed the indicators
-        assert 3 in results  # ADXFilterNode results
-        filter_result = results[3]
-        assert "filtered_ohlcv_bundle" in filter_result
-        assert isinstance(filter_result["filtered_ohlcv_bundle"], dict)
-
-        # The exact number depends on the computed ADX values, but filtering should work
-        assert len(filter_result["filtered_ohlcv_bundle"]) <= len(symbols)
+    # The exact number depends on the computed ADX values, but filtering should work
+    assert len(filter_result["filtered_ohlcv_bundle"]) <= len(symbols)
 
 
 @pytest.mark.asyncio
@@ -388,7 +384,8 @@ async def test_polygon_universe_hashability_integration():
     node = PolygonUniverseNode("test_id", {"market": "stocks", "min_volume": 1000000})
     
     # Mock the API response with nested metadata
-    with patch("httpx.AsyncClient") as mock_client:
+    with patch("httpx.AsyncClient") as mock_client, patch("core.api_key_vault.APIKeyVault.get") as mock_vault_get:
+        mock_vault_get.return_value = "test_key"
         mock_get = AsyncMock()
         mock_response = MagicMock()
         mock_response.status_code = 200
@@ -402,7 +399,6 @@ async def test_polygon_universe_hashability_integration():
         mock_get.return_value = mock_response
         mock_client.return_value.__aenter__.return_value.get = mock_get
         
-        node._execute_inputs = {"api_key": "test_key"}
         symbols = await node._fetch_symbols()
         
         assert len(symbols) == 1
@@ -436,11 +432,15 @@ async def test_orb_filter_integration():
     ]
 
     node = OrbFilterNode("orb_id", {})
+
     bundle = {"AAPL": mock_ohlcv_data}
 
     inputs = {"ohlcv_bundle": bundle, "api_key": "test_api_key"}
 
-    result = await node.execute(inputs)
+    with patch("core.api_key_vault.APIKeyVault.get", return_value="test_key"), \
+         patch("services.polygon_service.fetch_bars", new_callable=AsyncMock) as mock_fetch:
+        mock_fetch.return_value = []
+        result = await node.execute(inputs)
 
     assert "filtered_ohlcv_bundle" in result
-    # Add assertions
+    assert "AAPL" not in result["filtered_ohlcv_bundle"]

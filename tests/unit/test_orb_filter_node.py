@@ -24,8 +24,7 @@ def sample_ohlcv():
 async def test_execute_happy_path(sample_params, sample_ohlcv):
     node = OrbFilterNode("test_id", sample_params)
     inputs = {
-        "ohlcv_bundle": {AssetSymbol("AAPL", AssetClass.STOCKS): sample_ohlcv},
-        "api_key": "test_key"
+        "ohlcv_bundle": {AssetSymbol("AAPL", AssetClass.STOCKS): sample_ohlcv}
     }
 
     mock_bars = [
@@ -47,7 +46,8 @@ async def test_execute_happy_path(sample_params, sample_ohlcv):
             )
         node._calculate_orb_indicator = mock_calc
 
-        result = await node.execute(inputs)
+        with patch("core.api_key_vault.APIKeyVault.get", return_value="test_key"):
+            result = await node.execute(inputs)
 
         assert "filtered_ohlcv_bundle" in result
         assert AssetSymbol("AAPL", AssetClass.STOCKS) in result["filtered_ohlcv_bundle"]
@@ -58,13 +58,12 @@ async def test_execute_insufficient_days(sample_params, sample_ohlcv):
     node = OrbFilterNode("test_id", sample_params)
     inputs = {
         "ohlcv_bundle": {AssetSymbol("AAPL", AssetClass.STOCKS): sample_ohlcv},
-        "api_key": "test_key"
     }
 
     with patch('nodes.core.market.filters.orb_filter_node.fetch_bars', new_callable=AsyncMock) as mock_fetch:
         mock_fetch.return_value = [{"timestamp": 1234567890000, "open": 100, "high": 110, "low": 90, "close": 105, "volume": 1000}]  # Only one day
-
-        result = await node.execute(inputs)
+        with patch("core.api_key_vault.APIKeyVault.get", return_value="test_key"):
+            result = await node.execute(inputs)
 
         assert "filtered_ohlcv_bundle" in result
         assert AssetSymbol("AAPL", AssetClass.STOCKS) not in result["filtered_ohlcv_bundle"]  # Should not pass due to insufficient days
@@ -74,7 +73,6 @@ async def test_execute_doji_direction(sample_params, sample_ohlcv):
     node = OrbFilterNode("test_id", sample_params)
     inputs = {
         "ohlcv_bundle": {AssetSymbol("AAPL", AssetClass.STOCKS): sample_ohlcv},
-        "api_key": "test_key"
     }
 
     async def mock_calc(symbol, api_key):
@@ -86,7 +84,8 @@ async def test_execute_doji_direction(sample_params, sample_ohlcv):
         )
     node._calculate_orb_indicator = mock_calc
 
-    result = await node.execute(inputs)
+    with patch("core.api_key_vault.APIKeyVault.get", return_value="test_key"):
+        result = await node.execute(inputs)
 
     assert "filtered_ohlcv_bundle" in result
     assert AssetSymbol("AAPL", AssetClass.STOCKS) not in result["filtered_ohlcv_bundle"]  # Fails on doji
@@ -96,7 +95,6 @@ async def test_execute_low_rel_vol(sample_params, sample_ohlcv):
     node = OrbFilterNode("test_id", sample_params)
     inputs = {
         "ohlcv_bundle": {AssetSymbol("AAPL", AssetClass.STOCKS): sample_ohlcv},
-        "api_key": "test_key"
     }
 
     async def mock_calc(symbol, api_key):
@@ -108,7 +106,8 @@ async def test_execute_low_rel_vol(sample_params, sample_ohlcv):
         )
     node._calculate_orb_indicator = mock_calc
 
-    result = await node.execute(inputs)
+    with patch("core.api_key_vault.APIKeyVault.get", return_value="test_key"):
+        result = await node.execute(inputs)
 
     assert "filtered_ohlcv_bundle" in result
     assert AssetSymbol("AAPL", AssetClass.STOCKS) not in result["filtered_ohlcv_bundle"]  # Fails on low rel_vol
@@ -118,13 +117,12 @@ async def test_execute_fetch_error(sample_params, empty_ohlcv):
     node = OrbFilterNode("test_id", sample_params)
     inputs = {
         "ohlcv_bundle": {AssetSymbol("AAPL", AssetClass.STOCKS): empty_ohlcv},
-        "api_key": "test_key"
     }
 
     with patch('nodes.core.market.filters.orb_filter_node.fetch_bars', new_callable=AsyncMock) as mock_fetch:
         mock_fetch.side_effect = Exception("Fetch error")
-
-        result = await node.execute(inputs)
+        with patch("core.api_key_vault.APIKeyVault.get", return_value="test_key"):
+            result = await node.execute(inputs)
 
         assert "filtered_ohlcv_bundle" in result
         assert AssetSymbol("AAPL", AssetClass.STOCKS) not in result["filtered_ohlcv_bundle"]  # Skipped due to error
@@ -134,10 +132,10 @@ async def test_execute_empty_ohlcv(sample_params):
     node = OrbFilterNode("test_id", sample_params)
     inputs = {
         "ohlcv_bundle": {AssetSymbol("AAPL", AssetClass.STOCKS): []},
-        "api_key": "test_key"
     }
 
-    result = await node.execute(inputs)
+    with patch("core.api_key_vault.APIKeyVault.get", return_value="test_key"):
+        result = await node.execute(inputs)
 
     assert "filtered_ohlcv_bundle" in result
     assert AssetSymbol("AAPL", AssetClass.STOCKS) not in result["filtered_ohlcv_bundle"]  # Empty data skipped
@@ -147,11 +145,11 @@ async def test_execute_no_api_key(sample_params, sample_ohlcv):
     node = OrbFilterNode("test_id", sample_params)
     inputs = {
         "ohlcv_bundle": {AssetSymbol("AAPL", AssetClass.STOCKS): sample_ohlcv},
-        "api_key": None
     }
 
-    with pytest.raises(ValueError, match="API key is required"):
-        await node.execute(inputs)
+    with pytest.raises(ValueError, match="Polygon API key not found in vault"):
+        with patch("core.api_key_vault.APIKeyVault.get", return_value=None):
+            await node.execute(inputs)
 
 @pytest.mark.asyncio
 async def test_execute_direction_specific(sample_params, sample_ohlcv):
@@ -160,7 +158,6 @@ async def test_execute_direction_specific(sample_params, sample_ohlcv):
     node = OrbFilterNode("test_id", params)
     inputs = {
         "ohlcv_bundle": {AssetSymbol("AAPL", AssetClass.STOCKS): sample_ohlcv},
-        "api_key": "test_key"
     }
 
     async def mock_calc_bullish(symbol, api_key):
@@ -170,10 +167,12 @@ async def test_execute_direction_specific(sample_params, sample_ohlcv):
         return IndicatorResult(values={"rel_vol": 150.0, "direction": "bearish"})
 
     node._calculate_orb_indicator = mock_calc_bullish
-    result = await node.execute(inputs)
+    with patch("core.api_key_vault.APIKeyVault.get", return_value="test_key"):
+        result = await node.execute(inputs)
     assert AssetSymbol("AAPL", AssetClass.STOCKS) in result["filtered_ohlcv_bundle"]  # Passes for bullish
 
     node._calculate_orb_indicator = mock_calc_bearish
-    result = await node.execute(inputs)
+    with patch("core.api_key_vault.APIKeyVault.get", return_value="test_key"):
+        result = await node.execute(inputs)
     assert AssetSymbol("AAPL", AssetClass.STOCKS) not in result["filtered_ohlcv_bundle"]  # Fails for bearish
 

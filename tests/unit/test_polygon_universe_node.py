@@ -3,6 +3,7 @@ from typing import Dict, Any
 from unittest.mock import AsyncMock, patch, MagicMock
 
 from nodes.custom.polygon.polygon_universe_node import PolygonUniverseNode
+from core.api_key_vault import APIKeyVault
 
 
 @pytest.fixture
@@ -11,8 +12,10 @@ def polygon_node():
 
 
 @pytest.mark.asyncio
+@patch("core.api_key_vault.APIKeyVault.get")
 @patch("httpx.AsyncClient")
-async def test_polygon_fetch_symbols(mock_client, polygon_node):
+async def test_polygon_fetch_symbols(mock_client, mock_vault_get, polygon_node):
+    mock_vault_get.return_value = "test_key"
     mock_get = AsyncMock()
     mock_response = MagicMock()
     mock_response.status_code = 200
@@ -26,8 +29,8 @@ async def test_polygon_fetch_symbols(mock_client, polygon_node):
     }
     mock_get.return_value = mock_response
     mock_client.return_value.__aenter__.return_value.get = mock_get
-    polygon_node._execute_inputs = {"api_key": "test_key"}
-    symbols = await polygon_node._fetch_symbols()
+    result = await polygon_node.execute({})
+    symbols = result["symbols"]
     assert len(symbols) == 1
     assert symbols[0].ticker == "BTC"
     assert symbols[0].quote_currency == "USD"
@@ -36,11 +39,11 @@ async def test_polygon_fetch_symbols(mock_client, polygon_node):
 
 
 @pytest.mark.asyncio
-@patch("httpx.AsyncClient")
-async def test_polygon_no_api_key(mock_client, polygon_node):
-    polygon_node._execute_inputs = {"api_key": ""}
-    with pytest.raises(ValueError):
-        await polygon_node._fetch_symbols()
+@patch("core.api_key_vault.APIKeyVault.get")
+async def test_polygon_no_api_key(mock_vault_get, polygon_node):
+    mock_vault_get.return_value = None
+    with pytest.raises(ValueError, match="POLYGON_API_KEY is required but not set in vault"):
+        await polygon_node.execute({})
 
 
 @pytest.mark.asyncio

@@ -57,6 +57,11 @@ pytest tests/unit/
 
 ## Changelog
 
+Oct 12, 2025
+  - Consolidated API key management via UI interface - API Key Vault that abstracts management of api keys required by graphs via .env file IO
+  - Removed various API key nodes - consolidated all API key management via `api_key_vault.py`
+  - Added .env.example 
+
 Oct 10, 2025
   - Bug fixes and minor improvements
   - Fixed Polygon universe node to allow for both positive % change as well as negative % change scans

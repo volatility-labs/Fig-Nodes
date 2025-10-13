@@ -5,6 +5,7 @@ from nodes.core.flow.for_each_node import ForEachNode
 import asyncio
 from nodes.base.streaming_node import StreamingNode
 from collections import defaultdict
+from core.api_key_vault import APIKeyVault
 
 class GraphExecutor:
     def __init__(self, graph: Dict[str, Any], node_registry: Dict[str, type]):
@@ -19,6 +20,7 @@ class GraphExecutor:
         self._stopped = False
         self._is_force_stopped = False  # For idempotency
         self._progress_callback = None
+        self.vault = APIKeyVault()
         self._build_graph()
 
     def set_progress_callback(self, callback):

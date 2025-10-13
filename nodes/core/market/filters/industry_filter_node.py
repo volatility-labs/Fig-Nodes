@@ -3,7 +3,8 @@ import asyncio
 import httpx
 from typing import Dict, Any, List
 from nodes.core.market.filters.base.base_filter_node import BaseFilterNode
-from core.types_registry import get_type, AssetSymbol, OHLCVBar, APIKey
+from core.types_registry import get_type, AssetSymbol, OHLCVBar
+from core.api_key_vault import APIKeyVault
 
 logger = logging.getLogger(__name__)
 
@@ -12,11 +13,10 @@ class IndustryFilterNode(BaseFilterNode):
     """
     Filters OHLCV bundles based on company industry from Polygon.io Ticker Overview API.
     Uses sic_description for matching (e.g., 'Computer Programming Services').
-    Requires Polygon API key as input.
+    Requires Polygon API key from vault.
     """
     inputs = {
-        "ohlcv_bundle": get_type("OHLCVBundle"),
-        "api_key": get_type("APIKey")
+        "ohlcv_bundle": get_type("OHLCVBundle")
     }
     outputs = {"filtered_ohlcv_bundle": get_type("OHLCVBundle")}
     default_params = {
@@ -49,11 +49,31 @@ class IndustryFilterNode(BaseFilterNode):
                 logger.warning(f"Failed to fetch industry for {symbol}: {e}")
                 return ""
 
-    def _filter_condition(self, symbol: AssetSymbol, ohlcv_data: List[OHLCVBar]) -> bool:
-        api_key = self.inputs.get("api_key")  # Assuming API key is passed in execute inputs
+    async def _filter_condition_async(self, symbol: AssetSymbol, ohlcv_data: List[OHLCVBar]) -> bool:
+        api_key = APIKeyVault().get("POLYGON_API_KEY")
         if not api_key:
-            raise ValueError("API key required for industry filtering")
+            raise ValueError("Polygon API key not found in vault")
 
-        # Run async fetch in sync context (use asyncio.run for simplicity, or make execute handle it)
-        industry = asyncio.run(self._fetch_industry(symbol, api_key))
+        industry = await self._fetch_industry(symbol, api_key)
         return industry in self.allowed_industries
+
+    async def execute(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        ohlcv_bundle: Dict[AssetSymbol, List[OHLCVBar]] = inputs.get("ohlcv_bundle", {})
+
+        if not ohlcv_bundle:
+            return {"filtered_ohlcv_bundle": {}}
+
+        filtered_bundle = {}
+
+        for symbol, ohlcv_data in ohlcv_bundle.items():
+            if not ohlcv_data:
+                continue
+
+            try:
+                if await self._filter_condition_async(symbol, ohlcv_data):
+                    filtered_bundle[symbol] = ohlcv_data
+            except Exception as e:
+                logger.warning(f"Failed to process filter for {symbol}: {e}")
+                continue
+
+        return {"filtered_ohlcv_bundle": filtered_bundle}

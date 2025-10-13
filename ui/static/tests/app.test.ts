@@ -349,7 +349,7 @@ describe('End-to-end: PolygonUniverseNode parameters restore from saved graph', 
                         nodes: {
                             'PolygonUniverseNode': {
                                 category: 'Data',
-                                inputs: { api_key: { base: 'APIKey' } },
+                                inputs: {},
                                 outputs: { symbols: { base: 'list', subtype: { base: 'AssetSymbol' } } },
                                 params: [
                                     { name: 'market', type: 'combo', default: 'stocks', options: ['stocks', 'crypto', 'fx', 'otc', 'indices'], label: 'Market Type' },

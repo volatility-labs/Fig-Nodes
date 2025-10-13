@@ -171,7 +171,6 @@ LLMChatMessageList = List[LLMChatMessage]
 LLMToolSpecList = List[LLMToolSpec]
 LLMToolHistory = List[LLMToolHistoryItem]
 LLMThinkingHistory = List[LLMThinkingHistoryItem]
-APIKey = str
 
 # ~~~~~ Type Registry ~~~~~
 # Centralized dict for type lookup. All types must be registered here.
@@ -198,8 +197,6 @@ TYPE_REGISTRY: Dict[str, Type] = {
     "LLMThinkingHistory": LLMThinkingHistory,
     "IndicatorValue": IndicatorValue,
     "IndicatorResult": IndicatorResult,
-    # API types
-    "APIKey": APIKey,
 }
 
 # ~~~~~ Extension Functions ~~~~~
@@ -307,5 +304,4 @@ __all__ = [
     'AssetSymbolList', 'IndicatorDict', 'AnyList', 'ConfigDict',
     'OHLCV', 'OHLCVBundle', 'OHLCVStream',
     'LLMChatMessageList', 'LLMToolSpecList', 'LLMToolHistory', 'LLMThinkingHistory',
-    'APIKey',
 ] 

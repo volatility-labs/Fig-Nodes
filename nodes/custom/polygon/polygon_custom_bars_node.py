@@ -4,6 +4,7 @@ import logging
 from datetime import datetime, timedelta
 from nodes.base.base_node import BaseNode
 from core.types_registry import get_type, AssetSymbol, OHLCVBar
+from core.api_key_vault import APIKeyVault
 from services.polygon_service import fetch_bars
 
 logger = logging.getLogger(__name__)
@@ -14,7 +15,7 @@ class PolygonCustomBarsNode(BaseNode):
     """
     Fetches custom aggregate bars (OHLCV) for a symbol from Polygon.io
     """
-    inputs = {"symbol": get_type("AssetSymbol"), "api_key": get_type("APIKey")}
+    inputs = {"symbol": get_type("AssetSymbol")}
     outputs = {"ohlcv": get_type("OHLCV")}
     default_params = {
         "multiplier": 1,
@@ -38,9 +39,9 @@ class PolygonCustomBarsNode(BaseNode):
         if not symbol:
             raise ValueError("Symbol input is required")
 
-        api_key = inputs.get("api_key")
+        api_key = APIKeyVault().get("POLYGON_API_KEY")
         if not api_key:
-            raise ValueError("Polygon API key input is required")
+            raise ValueError("Polygon API key not found in vault")
 
         bars = await fetch_bars(symbol, api_key, self.params)
         return {"ohlcv": bars}

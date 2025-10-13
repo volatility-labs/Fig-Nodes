@@ -189,6 +189,16 @@ body {
     box-shadow: none;
 }
 
+/* API Keys button styling in footer */
+#footer #api-keys-btn {
+    font-size: 12px;
+    padding: 7px 14px;
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
 #footer button:active:not(:disabled) {
     transform: translateY(0);
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
@@ -599,4 +609,369 @@ body {
     background: rgba(0, 0, 0, 0.35);
     z-index: 2501;
     pointer-events: none;
+}
+
+/* Settings Modal Styles - Compact & Professional */
+#settings-modal {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: linear-gradient(135deg, #2d2d2d 0%, #262626 100%);
+    border: 1px solid #444;
+    border-radius: 10px;
+    padding: 16px 20px;
+    z-index: 3000;
+    box-shadow: 0 12px 48px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.05);
+    min-width: 460px;
+    max-width: 520px;
+    max-height: 75vh;
+    overflow-y: auto;
+}
+
+#settings-modal::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.6);
+    z-index: -1;
+}
+
+#settings-modal h2 {
+    color: #ffffff;
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 12px;
+    border-bottom: 2px solid #444;
+    padding-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+#settings-modal h2::before {
+    content: '🔑';
+    font-size: 18px;
+}
+
+#settings-form {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+#settings-form label {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    color: #d0d0d0;
+    font-size: 13px;
+    font-weight: 500;
+}
+
+#settings-form input[type="password"],
+#settings-form input[type="text"] {
+    background: #1e1e1e;
+    border: 1px solid #444;
+    border-radius: 5px;
+    color: white;
+    padding: 7px 9px;
+    font-size: 12px;
+    outline: none;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    transition: all 0.2s ease;
+}
+
+#settings-form input:focus {
+    border-color: #2196f3;
+    box-shadow: 0 0 8px rgba(33, 150, 243, 0.4);
+    background: #252525;
+}
+
+#settings-modal .button-group {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 2px solid #444;
+}
+
+#settings-modal .button-group-left,
+#settings-modal .button-group-right {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+
+#settings-modal button[type="submit"],
+#settings-modal button[type="button"] {
+    padding: 7px 16px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 500;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+}
+
+#settings-modal button[type="submit"] {
+    background: linear-gradient(135deg, #2196f3 0%, #1976d2 100%);
+    color: white;
+}
+
+#settings-modal button[type="submit"]:hover {
+    background: linear-gradient(135deg, #1976d2 0%, #1565c0 100%);
+    box-shadow: 0 3px 10px rgba(33, 150, 243, 0.5);
+    transform: translateY(-1px);
+}
+
+#settings-modal button[type="button"] {
+    background: linear-gradient(135deg, #616161 0%, #424242 100%);
+    color: white;
+}
+
+#settings-modal button[type="button"]:hover {
+    background: linear-gradient(135deg, #757575 0%, #616161 100%);
+    transform: translateY(-1px);
+}
+
+#settings-modal .key-entry {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    padding: 8px;
+    margin-bottom: 5px;
+    border-radius: 5px;
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid transparent;
+    transition: all 0.2s ease;
+}
+
+#settings-modal .key-entry:hover {
+    background: rgba(0, 0, 0, 0.3);
+    border-color: rgba(255, 255, 255, 0.05);
+}
+
+#settings-modal .key-entry.missing-key {
+    background: rgba(255, 107, 107, 0.08);
+    border-color: rgba(255, 107, 107, 0.3);
+    box-shadow: 0 0 12px rgba(255, 107, 107, 0.15);
+}
+
+#settings-modal .key-entry.missing-key label {
+    color: #ff9999;
+}
+
+#settings-modal .key-entry.missing-key .key-label::before {
+    content: '⚠️ ';
+    margin-right: 4px;
+}
+
+#settings-modal .key-entry.missing-key input {
+    border-color: #ff6b6b;
+    box-shadow: 0 0 8px rgba(255, 107, 107, 0.3);
+}
+
+#settings-modal .key-entry-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 4px;
+}
+
+#settings-modal .key-label {
+    cursor: help;
+    position: relative;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+}
+
+#settings-modal .remove-key-btn {
+    background: rgba(244, 67, 54, 0.15);
+    color: #ff8a80;
+    border: 1px solid rgba(244, 67, 54, 0.3);
+    padding: 3px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 11px;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+}
+
+#settings-modal .remove-key-btn:hover {
+    background: #f44336;
+    color: white;
+    border-color: #f44336;
+}
+
+#settings-modal #add-key {
+    background: linear-gradient(135deg, #4caf50 0%, #43a047 100%);
+    color: white;
+    border: none;
+    padding: 7px 14px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 500;
+    transition: all 0.2s ease;
+}
+
+#settings-modal #add-key:hover {
+    background: linear-gradient(135deg, #43a047 0%, #388e3c 100%);
+    box-shadow: 0 3px 10px rgba(76, 175, 80, 0.5);
+    transform: translateY(-1px);
+}
+
+#settings-modal #validate-keys {
+    background: linear-gradient(135deg, #ff9800 0%, #f57c00 100%);
+    color: white;
+    border: none;
+    padding: 7px 14px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 500;
+    transition: all 0.2s ease;
+}
+
+#settings-modal #validate-keys:hover {
+    background: linear-gradient(135deg, #f57c00 0%, #ef6c00 100%);
+    box-shadow: 0 3px 10px rgba(255, 152, 0, 0.5);
+    transform: translateY(-1px);
+}
+
+/* Missing Keys Banner - Compact */
+#missing-keys-banner {
+    margin: 0 0 10px 0;
+    padding: 8px 10px;
+    border-radius: 6px;
+    background: linear-gradient(135deg, rgba(255, 107, 107, 0.12), rgba(244, 67, 54, 0.08));
+    border: 1px solid rgba(255, 107, 107, 0.3);
+    box-shadow: 0 2px 8px rgba(255, 107, 107, 0.15);
+}
+
+#missing-keys-banner>div:first-child {
+    margin-bottom: 8px;
+    font-weight: 600;
+    color: #ff9999;
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+#missing-keys-banner>div:first-child::before {
+    content: '⚠️';
+    font-size: 16px;
+}
+
+.missing-chip {
+    display: inline-block;
+    margin: 2px 4px 2px 0;
+    padding: 3px 10px;
+    border-radius: 12px;
+    background: rgba(244, 67, 54, 0.2);
+    color: #ffcccc;
+    font-size: 11px;
+    font-weight: 600;
+    border: 1px solid rgba(255, 107, 107, 0.4);
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    letter-spacing: 0.5px;
+}
+
+#missing-keys-banner>div:last-child {
+    margin-top: 8px;
+    font-size: 11px;
+    opacity: 0.85;
+    color: #d0d0d0;
+    line-height: 1.4;
+}
+
+/* Inline Add Key Form */
+.add-key-inline {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px;
+    margin-bottom: 10px;
+    border-radius: 6px;
+    background: rgba(76, 175, 80, 0.08);
+    border: 1px solid rgba(76, 175, 80, 0.3);
+    box-shadow: 0 2px 8px rgba(76, 175, 80, 0.12);
+}
+
+.add-key-inputs {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.new-key-input {
+    flex: 1;
+    background: #1e1e1e;
+    border: 1px solid rgba(76, 175, 80, 0.4);
+    border-radius: 5px;
+    color: white;
+    padding: 7px 9px;
+    font-size: 12px;
+    outline: none;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    transition: all 0.2s ease;
+}
+
+.new-key-input:focus {
+    border-color: #4caf50;
+    box-shadow: 0 0 8px rgba(76, 175, 80, 0.4);
+    background: #252525;
+}
+
+.new-key-input::placeholder {
+    color: #666;
+    font-style: italic;
+}
+
+.add-key-actions {
+    display: flex;
+    gap: 6px;
+    justify-content: flex-end;
+}
+
+.btn-confirm-add,
+.btn-cancel-add {
+    padding: 5px 12px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 11px;
+    font-weight: 500;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+}
+
+.btn-confirm-add {
+    background: linear-gradient(135deg, #4caf50 0%, #43a047 100%);
+    color: white;
+}
+
+.btn-confirm-add:hover {
+    background: linear-gradient(135deg, #43a047 0%, #388e3c 100%);
+    box-shadow: 0 2px 6px rgba(76, 175, 80, 0.4);
+    transform: translateY(-1px);
+}
+
+.btn-cancel-add {
+    background: rgba(158, 158, 158, 0.2);
+    color: #ccc;
+    border: 1px solid rgba(158, 158, 158, 0.3);
+}
+
+.btn-cancel-add:hover {
+    background: rgba(158, 158, 158, 0.3);
+    border-color: rgba(158, 158, 158, 0.5);
 }

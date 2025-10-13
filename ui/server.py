@@ -17,10 +17,12 @@ from starlette.websockets import WebSocketState
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from contextlib import asynccontextmanager
+from dotenv import unset_key, find_dotenv
 
 # Import the refactored queue components
 from .queue import ExecutionQueue, execution_worker, _serialize_results
 from .queue import JobState
+from core.api_key_vault import APIKeyVault
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -47,6 +49,11 @@ app.mount(
 
 if 'PYTEST_CURRENT_TEST' not in os.environ:
     app.mount("/static", StaticFiles(directory=os.path.join(os.path.dirname(__file__), "static/dist")), name="static")
+
+@app.get("/style.css")
+def serve_style():
+    css_path = os.path.join(os.path.dirname(__file__), "static", "style.css")
+    return FileResponse(css_path, media_type="text/css")
 
 def _get_queue_for_current_loop(app) -> ExecutionQueue:
     """Get or create the ExecutionQueue for the current event loop."""
@@ -103,13 +110,13 @@ def list_nodes():
             "outputs": outputs_meta,
             "params": params,
             "category": category,
+            "required_keys": getattr(cls, 'required_keys', []),
             "uiModule": getattr(cls, 'ui_module', None) or (
                 "io/TextInputNodeUI" if name == "TextInputNode" else
                 "io/LoggingNodeUI" if name == "LoggingNode" else
                 "OllamaModelSelectorNodeUI" if name == "OllamaModelSelectorNode" else
                 "OllamaChatViewerNodeUI" if name == "OllamaChatViewerNode" else
                 "market/PolygonUniverseNodeUI" if name == "PolygonUniverseNode" else
-                "market/PolygonAPIKeyNodeUI" if name == "PolygonAPIKeyNode" else
                 "market/PolygonCustomBarsNodeUI" if name == "PolygonCustomBarsNode" else
                 "market/PolygonBatchCustomBarsNodeUI" if name == "PolygonBatchCustomBarsNode" else
                 "market/SMACrossoverFilterNodeUI" if name == "SMACrossoverFilterNode" else
@@ -120,6 +127,42 @@ def list_nodes():
             )
         }
     return {"nodes": nodes_meta}
+
+@app.get("/api_keys")
+def get_api_keys():
+    vault = APIKeyVault()
+    return {"keys": vault.get_all()}
+
+@app.get("/api_keys/meta")
+def get_api_keys_meta():
+    vault = APIKeyVault()
+    return {"meta": vault.get_known_key_metadata()}
+
+@app.post("/api_keys")
+async def set_api_key(request: Dict[str, Any]):
+    key_name = request.get("key_name")
+    value = request.get("value")
+    if not key_name:
+        return {"error": "key_name required"}
+    vault = APIKeyVault()
+    vault.set(key_name, value or "")
+    return {"status": "success"}
+
+@app.delete("/api_keys")
+async def delete_api_key(request: Dict[str, Any]):
+    key_name = request.get("key_name")
+    if not key_name:
+        return {"error": "key_name required"}
+    vault = APIKeyVault()
+    # Assuming we add unset to vault; for now, implement directly
+    if key_name in vault._keys:
+        del vault._keys[key_name]
+    if key_name in os.environ:
+        del os.environ[key_name]
+    dotenv_path = find_dotenv()
+    if dotenv_path:
+        unset_key(dotenv_path, key_name)
+    return {"status": "success"}
 
 @app.websocket("/execute")
 async def execute_endpoint(websocket: WebSocket):
@@ -136,6 +179,18 @@ async def execute_endpoint(websocket: WebSocket):
             if msg_type == "graph" or is_raw_graph:
                 # Normalize graph payload
                 graph_data = data.get("graph_data") if msg_type == "graph" else {"nodes": data.get("nodes", []), "links": data.get("links", [])}
+                # Validate required keys
+                vault = APIKeyVault()
+                required_keys = vault.get_required_for_graph(graph_data)
+                missing = [k for k in required_keys if not vault.get(k)]
+                if missing:
+                    await websocket.send_json({
+                        "type": "error",
+                        "code": "MISSING_API_KEYS",
+                        "missing_keys": missing,
+                        "message": f"Missing API keys: {', '.join(missing)}. Please set them in the settings menu."
+                    })
+                    continue
                 # Always use queue mode
                 await websocket.send_json({"type": "status", "message": "Starting execution..."})
                 queue = _get_queue_for_current_loop(app)

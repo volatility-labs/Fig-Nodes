@@ -5,6 +5,7 @@ from typing import Dict, Any, List
 from nodes.base.base_node import BaseNode
 from core.types_registry import get_type, AssetSymbol, OHLCVBar
 from services.polygon_service import fetch_bars
+from core.api_key_vault import APIKeyVault
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +43,8 @@ class PolygonBatchCustomBarsNode(BaseNode):
     Fetches custom aggregate bars (OHLCV) for multiple symbols from Polygon.io in batch.
     Outputs a bundle (dict of symbol to list of bars).
     """
-    inputs = {"symbols": get_type("AssetSymbolList"), "api_key": get_type("APIKey")}
+    required_keys = ["POLYGON_API_KEY"]
+    inputs = {"symbols": get_type("AssetSymbolList")}
     outputs = {"ohlcv_bundle": Dict[AssetSymbol, List[OHLCVBar]]}
     default_params = {
         "multiplier": 1,
@@ -84,9 +86,10 @@ class PolygonBatchCustomBarsNode(BaseNode):
         if not symbols:
             return {"ohlcv_bundle": {}}
 
-        api_key = inputs.get("api_key")
+        vault = APIKeyVault()
+        api_key = vault.get("POLYGON_API_KEY")
         if not api_key:
-            raise ValueError("Polygon API key input is required")
+            raise ValueError("Polygon API key not found in vault")
 
         max_concurrent = self.params.get("max_concurrent", 10)
         rate_limit = self.params.get("rate_limit_per_second", 95)

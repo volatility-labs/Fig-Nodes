@@ -128,29 +128,29 @@ class TestPolygonBatchCustomBarsNode:
     @pytest.mark.asyncio
     async def test_execute_empty_symbols(self, polygon_batch_node):
         """Test execution with empty symbols list."""
-        result = await polygon_batch_node.execute({
-            "symbols": [],
-            "api_key": "test_key"
-        })
+        with patch("core.api_key_vault.APIKeyVault.get", return_value="test_key"):
+            result = await polygon_batch_node.execute({
+                "symbols": []
+            })
         assert result == {"ohlcv_bundle": {}}
 
     @pytest.mark.asyncio
     async def test_execute_missing_api_key(self, polygon_batch_node, sample_symbols):
-        """Test error when API key is missing."""
-        with pytest.raises(ValueError, match="Polygon API key input is required"):
-            await polygon_batch_node.execute({
-                "symbols": sample_symbols,
-                "api_key": None
-            })
+        """Test error when API key is not found in vault."""
+        with patch("core.api_key_vault.APIKeyVault.get", return_value=None):
+            with pytest.raises(ValueError, match="Polygon API key not found in vault"):
+                await polygon_batch_node.execute({
+                    "symbols": sample_symbols
+                })
 
     @pytest.mark.asyncio
     async def test_execute_missing_api_key_empty_string(self, polygon_batch_node, sample_symbols):
-        """Test error when API key is empty string."""
-        with pytest.raises(ValueError, match="Polygon API key input is required"):
-            await polygon_batch_node.execute({
-                "symbols": sample_symbols,
-                "api_key": ""
-            })
+        """Test error when API key is empty string in vault."""
+        with patch("core.api_key_vault.APIKeyVault.get", return_value=""):
+            with pytest.raises(ValueError, match="Polygon API key not found in vault"):
+                await polygon_batch_node.execute({
+                    "symbols": sample_symbols
+                })
 
     @pytest.mark.asyncio
     async def test_execute_successful_batch_fetch(self, polygon_batch_node, sample_symbols, mock_bars_response):
@@ -158,10 +158,10 @@ class TestPolygonBatchCustomBarsNode:
         with patch("nodes.custom.polygon.polygon_batch_custom_bars_node.fetch_bars", new_callable=AsyncMock) as mock_fetch:
             mock_fetch.return_value = mock_bars_response
 
-            result = await polygon_batch_node.execute({
-                "symbols": sample_symbols,
-                "api_key": "test_api_key"
-            })
+            with patch("core.api_key_vault.APIKeyVault.get", return_value="test_api_key"):
+                result = await polygon_batch_node.execute({
+                    "symbols": sample_symbols
+                })
 
             assert "ohlcv_bundle" in result
             bundle = result["ohlcv_bundle"]
@@ -215,10 +215,10 @@ class TestPolygonBatchCustomBarsNode:
         with patch("nodes.custom.polygon.polygon_batch_custom_bars_node.fetch_bars", new_callable=AsyncMock) as mock_fetch:
             mock_fetch.return_value = mock_bars_response
 
-            result = await polygon_batch_node.execute({
-                "symbols": symbols,
-                "api_key": "test_api_key"
-            })
+            with patch("core.api_key_vault.APIKeyVault.get", return_value="test_api_key"):
+                result = await polygon_batch_node.execute({
+                    "symbols": symbols
+                })
 
             # Should process all 60 symbols
             assert mock_fetch.call_count == 60
@@ -234,10 +234,10 @@ class TestPolygonBatchCustomBarsNode:
         with patch("nodes.custom.polygon.polygon_batch_custom_bars_node.fetch_bars", new_callable=AsyncMock) as mock_fetch:
             mock_fetch.return_value = mock_bars_response
 
-            result = await node.execute({
-                "symbols": symbols,
-                "api_key": "test_api_key"
-            })
+            with patch("core.api_key_vault.APIKeyVault.get", return_value="test_api_key"):
+                result = await node.execute({
+                    "symbols": symbols
+                })
 
             # Should process all 20 symbols
             assert mock_fetch.call_count == 20
@@ -257,10 +257,10 @@ class TestPolygonBatchCustomBarsNode:
             mock_fetch.side_effect = slow_fetch
 
             start_time = time.time()
-            result = await polygon_batch_node.execute({
-                "symbols": symbols,
-                "api_key": "test_api_key"
-            })
+            with patch("core.api_key_vault.APIKeyVault.get", return_value="test_api_key"):
+                result = await polygon_batch_node.execute({
+                    "symbols": symbols
+                })
             elapsed = time.time() - start_time
 
             # With max_concurrent=5, should take longer than if all ran in parallel
@@ -281,10 +281,10 @@ class TestPolygonBatchCustomBarsNode:
 
         with patch("nodes.custom.polygon.polygon_batch_custom_bars_node.fetch_bars", side_effect=rate_limited_fetch):
             start_time = time.time()
-            result = await polygon_batch_node.execute({
-                "symbols": symbols,
-                "api_key": "test_api_key"
-            })
+            with patch("core.api_key_vault.APIKeyVault.get", return_value="test_api_key"):
+                result = await polygon_batch_node.execute({
+                    "symbols": symbols
+                })
             elapsed = time.time() - start_time
 
             # With rate limiting and concurrency control, should take some time
@@ -302,8 +302,7 @@ class TestPolygonBatchCustomBarsNode:
         with patch("nodes.custom.polygon.polygon_batch_custom_bars_node.fetch_bars", side_effect=slow_fetch):
             with patch("asyncio.wait_for", side_effect=asyncio.TimeoutError):
                 result = await polygon_batch_node.execute({
-                    "symbols": sample_symbols,
-                    "api_key": "test_api_key"
+                    "symbols": sample_symbols
                 })
 
                 # Should return empty bundle on timeout
@@ -317,8 +316,7 @@ class TestPolygonBatchCustomBarsNode:
 
         with patch("nodes.custom.polygon.polygon_batch_custom_bars_node.fetch_bars", side_effect=failing_fetch):
             result = await polygon_batch_node.execute({
-                "symbols": sample_symbols,
-                "api_key": "test_api_key"
+                "symbols": sample_symbols
             })
 
             # Should return empty bundle when all tasks fail
@@ -332,8 +330,7 @@ class TestPolygonBatchCustomBarsNode:
 
         with patch("nodes.custom.polygon.polygon_batch_custom_bars_node.fetch_bars", side_effect=empty_bars_fetch):
             result = await polygon_batch_node.execute({
-                "symbols": sample_symbols,
-                "api_key": "test_api_key"
+                "symbols": sample_symbols
             })
 
             # Should return empty bundle when all symbols return empty bars
@@ -353,8 +350,7 @@ class TestPolygonBatchCustomBarsNode:
 
         with patch("nodes.custom.polygon.polygon_batch_custom_bars_node.fetch_bars", side_effect=mixed_fetch):
             result = await polygon_batch_node.execute({
-                "symbols": sample_symbols,
-                "api_key": "test_api_key"
+                "symbols": sample_symbols
             })
 
             bundle = result["ohlcv_bundle"]
@@ -372,10 +368,10 @@ class TestPolygonBatchCustomBarsNode:
         with patch("nodes.custom.polygon.polygon_batch_custom_bars_node.fetch_bars", new_callable=AsyncMock) as mock_fetch:
             mock_fetch.return_value = mock_bars_response
 
-            result = await polygon_batch_node.execute({
-                "symbols": crypto_symbols,
-                "api_key": "test_api_key"
-            })
+            with patch("core.api_key_vault.APIKeyVault.get", return_value="test_api_key"):
+                result = await polygon_batch_node.execute({
+                    "symbols": crypto_symbols
+                })
 
             assert len(result["ohlcv_bundle"]) == 2
 
@@ -401,10 +397,10 @@ class TestPolygonBatchCustomBarsNode:
         with patch("nodes.custom.polygon.polygon_batch_custom_bars_node.fetch_bars", new_callable=AsyncMock) as mock_fetch:
             mock_fetch.return_value = mock_bars_response
 
-            await node.execute({
-                "symbols": symbols,
-                "api_key": "test_key"
-            })
+            with patch("core.api_key_vault.APIKeyVault.get", return_value="test_api_key"):
+                await node.execute({
+                    "symbols": symbols
+                })
 
             # Verify parameters were passed to fetch_bars
             args, kwargs = mock_fetch.call_args
@@ -432,10 +428,10 @@ class TestPolygonBatchCustomBarsNode:
 
         with patch("nodes.custom.polygon.polygon_batch_custom_bars_node.fetch_bars", side_effect=slow_fetch):
             start_time = time.time()
-            result = await node.execute({
-                "symbols": symbols,
-                "api_key": "test_key"
-            })
+            with patch("core.api_key_vault.APIKeyVault.get", return_value="test_api_key"):
+                result = await node.execute({
+                    "symbols": symbols
+                })
             elapsed = time.time() - start_time
 
             # With low concurrency (2) and rate limit (5/sec), plus simulated fetch time,
@@ -452,8 +448,7 @@ class TestPolygonBatchCustomBarsNode:
 
         with patch("nodes.custom.polygon.polygon_batch_custom_bars_node.fetch_bars", side_effect=slow_fetch):
             execute_task = asyncio.create_task(polygon_batch_node.execute({
-                "symbols": sample_symbols,
-                "api_key": "test_key"
+                "symbols": sample_symbols
             }))
 
             await asyncio.sleep(0.1)  # Let it start
@@ -479,8 +474,7 @@ class TestPolygonBatchCustomBarsNode:
 
         with patch("nodes.custom.polygon.polygon_batch_custom_bars_node.fetch_bars", side_effect=fast_fetch):
             execute_task = asyncio.create_task(polygon_batch_node.execute({
-                "symbols": sample_symbols,
-                "api_key": "test_key"
+                "symbols": sample_symbols
             }))
 
             # Wait a bit for some progress to be reported
@@ -505,7 +499,6 @@ class TestPolygonBatchCustomBarsNode:
 
         assert polygon_batch_node.inputs == {
             "symbols": get_type("AssetSymbolList"),
-            "api_key": get_type("APIKey")
         }
         assert polygon_batch_node.outputs == {"ohlcv_bundle": Dict[AssetSymbol, List[OHLCVBar]]}
 
@@ -534,18 +527,15 @@ class TestPolygonBatchCustomBarsNode:
         # Valid inputs
         assert polygon_batch_node.validate_inputs({
             "symbols": sample_symbols,
-            "api_key": "test_key"
         }) is True
 
-        # Missing api_key
+        # Missing symbols invalid
         assert polygon_batch_node.validate_inputs({
-            "symbols": sample_symbols
         }) is False
 
         # Empty symbols list (should be valid, returns empty bundle)
         assert polygon_batch_node.validate_inputs({
-            "symbols": [],
-            "api_key": "test_key"
+            "symbols": []
         }) is True
 
     @pytest.mark.asyncio
@@ -565,8 +555,7 @@ class TestPolygonBatchCustomBarsNode:
 
         with patch("nodes.custom.polygon.polygon_batch_custom_bars_node.fetch_bars", side_effect=cancellable_fetch):
             execute_task = asyncio.create_task(node.execute({
-                "symbols": sample_symbols,
-                "api_key": "test_key"
+                "symbols": sample_symbols
             }))
 
             with pytest.raises(asyncio.CancelledError):
@@ -600,8 +589,7 @@ class TestPolygonBatchCustomBarsNode:
 
         with patch("nodes.custom.polygon.polygon_batch_custom_bars_node.fetch_bars", side_effect=cancellable_fetch):
             execute_task = asyncio.create_task(node.execute({
-                "symbols": sample_symbols,
-                "api_key": "test_key"
+                "symbols": sample_symbols
             }))
 
             with pytest.raises(asyncio.CancelledError):
@@ -632,8 +620,7 @@ class TestPolygonBatchCustomBarsNode:
 
             with patch("nodes.custom.polygon.polygon_batch_custom_bars_node.fetch_bars", return_value=[]):
                 execute_task = asyncio.create_task(polygon_batch_node.execute({
-                    "symbols": sample_symbols,
-                    "api_key": "test_key"
+                    "symbols": sample_symbols
                 }))
 
                 with pytest.raises(asyncio.CancelledError):
@@ -660,8 +647,7 @@ class TestPolygonBatchCustomBarsNode:
 
         with patch("nodes.custom.polygon.polygon_batch_custom_bars_node.fetch_bars", side_effect=slow_cancellable_fetch):
             execute_task = asyncio.create_task(node.execute({
-                "symbols": symbols,
-                "api_key": "test_key"
+                "symbols": symbols
             }))
 
             # Let some workers start
@@ -691,8 +677,7 @@ class TestPolygonBatchCustomBarsNode:
 
         with patch("nodes.custom.polygon.polygon_batch_custom_bars_node.fetch_bars", side_effect=mixed_fetch):
             execute_task = asyncio.create_task(node.execute({
-                "symbols": sample_symbols,
-                "api_key": "test_key"
+                "symbols": sample_symbols
             }))
 
             with pytest.raises(asyncio.CancelledError):
@@ -710,8 +695,7 @@ class TestPolygonBatchCustomBarsNode:
 
         with patch("nodes.custom.polygon.polygon_batch_custom_bars_node.fetch_bars", side_effect=slow_fetch):
             execute_task = asyncio.create_task(polygon_batch_node.execute({
-                "symbols": sample_symbols,
-                "api_key": "test_key"
+                "symbols": sample_symbols
             }))
 
             await asyncio.sleep(0.1)  # Let workers start

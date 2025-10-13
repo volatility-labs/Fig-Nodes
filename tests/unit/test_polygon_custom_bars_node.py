@@ -76,10 +76,10 @@ async def test_execute_success(polygon_custom_bars_node, sample_symbol):
         mock_client_class.return_value.__aenter__.return_value = mock_client
         mock_client_class.return_value.__aexit__.return_value = None
 
-        result = await polygon_custom_bars_node.execute({
-            "symbol": sample_symbol,
-            "api_key": "test_api_key"
-        })
+        with patch("core.api_key_vault.APIKeyVault.get", return_value="test_api_key"):
+            result = await polygon_custom_bars_node.execute({
+                "symbol": sample_symbol
+            })
 
         assert "ohlcv" in result
         ohlcv_data = result["ohlcv"]
@@ -109,22 +109,22 @@ async def test_execute_success(polygon_custom_bars_node, sample_symbol):
 
 @pytest.mark.asyncio
 async def test_execute_missing_api_key(polygon_custom_bars_node, sample_symbol):
-    """Test error when API key input is missing."""
-    with pytest.raises(ValueError, match="Polygon API key input is required"):
-        await polygon_custom_bars_node.execute({
-            "symbol": sample_symbol,
-            "api_key": None
-        })
+    """Test error when API key is not found in vault."""
+    with patch("core.api_key_vault.APIKeyVault.get", return_value=None):
+        with pytest.raises(ValueError, match="Polygon API key not found in vault"):
+            await polygon_custom_bars_node.execute({
+                "symbol": sample_symbol
+            })
 
 
 @pytest.mark.asyncio
 async def test_execute_missing_symbol(polygon_custom_bars_node):
     """Test error when symbol input is missing."""
-    with pytest.raises(ValueError, match="Symbol input is required"):
-        await polygon_custom_bars_node.execute({
-            "symbol": None,
-            "api_key": "test_key"
-        })
+    with patch("core.api_key_vault.APIKeyVault.get", return_value="test_api_key"):
+        with pytest.raises(ValueError, match="Symbol input is required"):
+            await polygon_custom_bars_node.execute({
+                "symbol": None
+            })
 
 
 @pytest.mark.asyncio
@@ -140,11 +140,11 @@ async def test_execute_api_error(polygon_custom_bars_node, sample_symbol):
         mock_client_class.return_value.__aenter__.return_value = mock_client
         mock_client_class.return_value.__aexit__.return_value = None
 
-        with pytest.raises(ValueError, match="Failed to fetch bars: HTTP 403"):
-            await polygon_custom_bars_node.execute({
-                "symbol": sample_symbol,
-                "api_key": "invalid_key"
-            })
+        with patch("core.api_key_vault.APIKeyVault.get", return_value="invalid_key"):
+            with pytest.raises(ValueError, match="Failed to fetch bars: HTTP 403"):
+                await polygon_custom_bars_node.execute({
+                    "symbol": sample_symbol
+                })
 
 
 @pytest.mark.asyncio
@@ -165,11 +165,11 @@ async def test_execute_api_status_error(polygon_custom_bars_node, sample_symbol)
         mock_client_class.return_value.__aenter__.return_value = mock_client
         mock_client_class.return_value.__aexit__.return_value = None
 
-        with pytest.raises(ValueError, match="Polygon API error: Invalid ticker"):
-            await polygon_custom_bars_node.execute({
-                "symbol": sample_symbol,
-                "api_key": "test_key"
-            })
+        with patch("core.api_key_vault.APIKeyVault.get", return_value="test_api_key"):
+            with pytest.raises(ValueError, match="Polygon API error: Invalid ticker"):
+                await polygon_custom_bars_node.execute({
+                    "symbol": sample_symbol
+                })
 
 
 @pytest.mark.asyncio
@@ -190,10 +190,10 @@ async def test_execute_empty_results(polygon_custom_bars_node, sample_symbol):
         mock_client_class.return_value.__aenter__.return_value = mock_client
         mock_client_class.return_value.__aexit__.return_value = None
 
-        result = await polygon_custom_bars_node.execute({
-            "symbol": sample_symbol,
-            "api_key": "test_key"
-        })
+        with patch("core.api_key_vault.APIKeyVault.get", return_value="test_api_key"):
+            result = await polygon_custom_bars_node.execute({
+                "symbol": sample_symbol
+            })
 
         assert "ohlcv" in result
         ohlcv_data = result["ohlcv"]
@@ -234,10 +234,10 @@ async def test_execute_different_parameters(polygon_custom_bars_node, sample_sym
         mock_client_class.return_value.__aenter__.return_value = mock_client
         mock_client_class.return_value.__aexit__.return_value = None
 
-        result = await polygon_custom_bars_node.execute({
-            "symbol": sample_symbol,
-            "api_key": "test_key"
-        })
+        with patch("core.api_key_vault.APIKeyVault.get", return_value="test_api_key"):
+            result = await polygon_custom_bars_node.execute({
+                "symbol": sample_symbol
+            })
 
         # Verify API call with updated params
         call_args = mock_client.get.call_args
@@ -281,10 +281,10 @@ async def test_execute_crypto_symbol(polygon_custom_bars_node):
         mock_client_class.return_value.__aenter__.return_value = mock_client
         mock_client_class.return_value.__aexit__.return_value = None
 
-        result = await polygon_custom_bars_node.execute({
-            "symbol": crypto_symbol,
-            "api_key": "test_key"
-        })
+        with patch("core.api_key_vault.APIKeyVault.get", return_value="test_api_key"):
+            result = await polygon_custom_bars_node.execute({
+                "symbol": crypto_symbol,
+            })
 
         # Verify ticker formatting for crypto
         call_args = mock_client.get.call_args

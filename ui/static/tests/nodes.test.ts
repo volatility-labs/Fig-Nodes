@@ -1,6 +1,6 @@
 import { describe, expect, test, vi, beforeEach } from 'vitest';
 
-import { BaseCustomNode, LLMMessagesBuilderNodeUI, LoggingNodeUI, OllamaChatNodeUI, PolygonAPIKeyNodeUI, StreamingCustomNode, TextInputNodeUI, PolygonUniverseNodeUI, AtrXIndicatorNodeUI, AtrXFilterNodeUI } from '../nodes';
+import { BaseCustomNode, LLMMessagesBuilderNodeUI, LoggingNodeUI, OllamaChatNodeUI, StreamingCustomNode, TextInputNodeUI, PolygonUniverseNodeUI, AtrXIndicatorNodeUI, AtrXFilterNodeUI } from '../nodes';
 
 function baseData() {
     return {
@@ -678,32 +678,6 @@ describe('Node UI classes', () => {
         expect(node.displayText).toContain('"message"');
     });
 
-    test('PolygonAPIKeyNodeUI security button and provider styling', () => {
-        const data = {
-            category: 'data_source',
-            inputs: {},
-            outputs: { api_key: { base: 'APIKey' } },
-            params: [{ name: 'api_key', type: 'text', default: '', secret: true }],
-        };
-        const node = new PolygonAPIKeyNodeUI('API Key', data);
-        expect(node.displayResults).toBe(false); // Provider node, no display
-        expect(node.color).toBe('#8b5a3c'); // Brown security theme
-        expect(node.bgcolor).toBe('#3d2818');
-
-        // Should have API key widget from base class and security info button
-        expect(node.widgets).toBeDefined();
-        expect(node.widgets!.length).toBe(2);
-        const apiKeyWidget = node.widgets!.find(w => w.name?.includes('api_key'));
-        expect(apiKeyWidget).toBeTruthy();
-        const securityButton = node.widgets!.find(w => w.name === '🔒 Secure Key');
-        expect(securityButton).toBeTruthy();
-
-        // Mock alert to test security button callback
-        const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => { });
-        securityButton!.callback!(null);
-        expect(alertSpy).toHaveBeenCalledWith('API key is handled securely and not stored in workflow files.');
-        alertSpy.mockRestore();
-    });
 
     test('TextInputNodeUI inline editor behavior', () => {
         const node = new TextInputNodeUI('Text', baseData());
@@ -1094,7 +1068,7 @@ describe('PolygonUniverseNodeUI param restoration', () => {
     test('restores saved numeric and combo params and preserves labels', () => {
         const polygonMeta = {
             category: 'data_source',
-            inputs: { api_key: { base: 'APIKey' } },
+            inputs: {},
             outputs: { symbols: { base: 'list', subtype: { base: 'AssetSymbol' } } },
             params: [
                 { name: 'market', type: 'combo', default: 'stocks', options: ['stocks', 'crypto', 'fx', 'otc', 'indices'], label: 'Market Type' },

@@ -4,6 +4,7 @@ from typing import Dict, Any, List
 from datetime import datetime, timedelta
 from nodes.core.market.filters.base.base_indicator_filter_node import BaseIndicatorFilterNode
 from core.types_registry import AssetSymbol, OHLCVBar, IndicatorResult, IndicatorType
+from core.api_key_vault import APIKeyVault
 from services.polygon_service import fetch_bars
 import pytz
 
@@ -18,7 +19,6 @@ class OrbFilterNode(BaseIndicatorFilterNode):
 
     inputs = {
         "ohlcv_bundle": Dict[AssetSymbol, List[OHLCVBar]],
-        "api_key": str,
     }
 
     default_params = {
@@ -161,9 +161,9 @@ class OrbFilterNode(BaseIndicatorFilterNode):
         return direction == param_dir
 
     async def execute(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
-        self.api_key = inputs.get("api_key")
+        self.api_key = APIKeyVault().get("POLYGON_API_KEY")
         if not self.api_key:
-            raise ValueError("API key is required")
+            raise ValueError("Polygon API key not found in vault")
 
         ohlcv_bundle: Dict[AssetSymbol, List[OHLCVBar]] = inputs.get("ohlcv_bundle", {})
 

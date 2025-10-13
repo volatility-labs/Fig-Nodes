@@ -30,7 +30,8 @@ def web_search_tool_node():
 @pytest.mark.asyncio
 async def test_execute_returns_tool_schema(web_search_tool_node):
     """Test that execute returns the tool schema with injected defaults."""
-    result = await web_search_tool_node.execute({"api_key": "test_key"})
+    with patch("core.api_key_vault.APIKeyVault.get", return_value="test_key"):
+        result = await web_search_tool_node.execute({})
 
     assert "tool" in result
     tool_schema = result["tool"]
@@ -57,7 +58,8 @@ async def test_execute_with_custom_params():
         "require_api_key": True,
     })
 
-    result = await node.execute({"api_key": "test_key"})
+    with patch("core.api_key_vault.APIKeyVault.get", return_value="test_key"):
+        result = await node.execute({})
 
     props = result["tool"]["function"]["parameters"]["properties"]
     assert props["k"]["default"] == 3
@@ -86,8 +88,9 @@ async def test_execute_handles_missing_properties_gracefully(web_search_tool_nod
 
     with patch("nodes.core.llm.web_search_tool_node.get_tool_schema", return_value=mock_schema):
         # Should not raise an exception even if properties are missing
-        result = await web_search_tool_node.execute({"api_key": "test_key"})
-        assert "tool" in result
+        with patch("core.api_key_vault.APIKeyVault.get", return_value="test_key"):
+            result = await web_search_tool_node.execute({})
+            assert "tool" in result
 
 
 @pytest.mark.asyncio
@@ -101,7 +104,8 @@ async def test_execute_with_none_params():
         "require_api_key": True,
     })
 
-    result = await node.execute({"api_key": "test_key"})
+    with patch("core.api_key_vault.APIKeyVault.get", return_value="test_key"):
+        result = await node.execute({})
 
     props = result["tool"]["function"]["parameters"]["properties"]
     # Should use fallback defaults when params are None
@@ -121,7 +125,8 @@ async def test_execute_with_empty_params():
         "require_api_key": True,
     })
 
-    result = await node.execute({"api_key": "test_key"})
+    with patch("core.api_key_vault.APIKeyVault.get", return_value="test_key"):
+        result = await node.execute({})
 
     props = result["tool"]["function"]["parameters"]["properties"]
     # Should use fallback defaults when params are empty strings
@@ -142,7 +147,8 @@ async def test_execute_with_invalid_time_range():
     })
 
     # The schema now comes from the registry, not from WebSearchTool
-    result = await node.execute({"api_key": "test_key"})
+    with patch("core.api_key_vault.APIKeyVault.get", return_value="test_key"):
+        result = await node.execute({})
 
     props = result["tool"]["function"]["parameters"]["properties"]
     # Invalid time_range should not override the registry default
@@ -161,7 +167,8 @@ async def test_execute_with_k_out_of_bounds():
         "require_api_key": True,
     })
 
-    result = await node.execute({"api_key": "test_key"})
+    with patch("core.api_key_vault.APIKeyVault.get", return_value="test_key"):
+        result = await node.execute({})
 
     props = result["tool"]["function"]["parameters"]["properties"]
     # Should still set the value even if out of bounds (validation happens at tool execution)
@@ -171,7 +178,7 @@ async def test_execute_with_k_out_of_bounds():
 def test_node_inputs_outputs(web_search_tool_node):
     """Test that the node has correct inputs and outputs."""
     from core.types_registry import get_type
-    expected_inputs = {"api_key": get_type("APIKey")}
+    expected_inputs = {}
     assert web_search_tool_node.inputs == expected_inputs
     assert web_search_tool_node.outputs == {"tool": web_search_tool_node.outputs["tool"]}
 
