@@ -654,7 +654,7 @@ body {
 }
 
 #settings-modal h2::before {
-    content: '🔑';
+    content: '🔐';
     font-size: 18px;
 }
 
@@ -891,6 +891,23 @@ body {
     font-size: 11px;
     opacity: 0.85;
     color: #d0d0d0;
+    line-height: 1.4;
+}
+
+/* Privacy Note */
+.privacy-note {
+    margin: 0 0 10px 0;
+    padding: 8px 10px;
+    border-radius: 6px;
+    background: linear-gradient(135deg, rgba(76, 175, 80, 0.12), rgba(76, 175, 80, 0.08));
+    border: 1px solid rgba(76, 175, 80, 0.3);
+    box-shadow: 0 2px 8px rgba(76, 175, 80, 0.15);
+    color: #d0d0d0;
+    font-size: 12px;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 6px;
     line-height: 1.4;
 }
 

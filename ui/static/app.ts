@@ -100,7 +100,13 @@ async function openSettings(missingKeys: string[] = []) {
         </div>`
             : '';
 
-        let formHtml = `<h2>API Key Settings</h2>${banner}<form id="settings-form">`;
+        const privacyNote = `
+            <div class="privacy-note">
+                🔒 API keys are stored locally in your .env file and never sent to remote servers.
+            </div>
+        `;
+
+        let formHtml = `<h2>API Key Settings</h2>${banner}${privacyNote}<form id="settings-form">`;
         for (const [key, value] of entries) {
             const isMissing = missingKeys.includes(key);
             const desc = keyDescriptions[key] || 'Custom API key';
@@ -646,7 +652,7 @@ async function createEditor(container: HTMLElement) {
         if (footerCenter) {
             const apiKeysBtn = document.createElement('button');
             apiKeysBtn.id = 'api-keys-btn';
-            apiKeysBtn.innerHTML = '🔑 API Keys';
+            apiKeysBtn.innerHTML = '🔐 API Keys';
             apiKeysBtn.className = 'btn-secondary';
             apiKeysBtn.title = 'Manage API keys for external services';
             apiKeysBtn.addEventListener('click', () => openSettings());

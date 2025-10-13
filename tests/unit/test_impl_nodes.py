@@ -120,8 +120,8 @@ async def test_logging_node_execute_list_symbols(mock_print, logging_node):
     symbols = [AssetSymbol("BTC", AssetClass.CRYPTO), AssetSymbol("ETH", AssetClass.CRYPTO)]
     inputs = {"input": symbols}
     result = await logging_node.execute(inputs)
-    assert result == {"output": "Preview of first 100 symbols:\nBTC\nETH"}
-    mock_print.assert_called()
+    assert result == {"output": "BTC, ETH"}
+    mock_print.assert_called_with("BTC, ETH")
 
 @pytest.mark.asyncio
 @patch("builtins.print")
@@ -130,7 +130,8 @@ async def test_logging_node_execute_long_list(mock_print, logging_node):
     inputs = {"input": symbols}
     await logging_node.execute(inputs)
     call_arg = mock_print.call_args[0][0]
-    assert "and 1 more" in call_arg
+    expected = ", ".join(str(i) for i in range(101))
+    assert call_arg == expected
 
 # Tests for ScoreNode
 
