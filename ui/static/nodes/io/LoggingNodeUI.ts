@@ -261,10 +261,6 @@ export default class LoggingNodeUI extends BaseCustomNode {
             ta.value = this.displayText || '';
             ta.style.resize = 'none'; // Prevent manual resizing
             ta.style.overflowY = 'auto'; // Allow scrolling for long content
-            // Prevent text selection and editing
-            ta.addEventListener('keydown', (ev) => ev.preventDefault());
-            ta.addEventListener('mousedown', (ev) => ev.preventDefault());
-            ta.addEventListener('contextmenu', (ev) => ev.preventDefault());
             parent.appendChild(ta);
             this.displayTextarea = ta;
         }

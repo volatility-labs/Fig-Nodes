@@ -385,6 +385,7 @@ body {
     padding: 8px;
     resize: none;
     outline: none;
+    user-select: text;
 }
 
 .inline-node-textarea:focus {

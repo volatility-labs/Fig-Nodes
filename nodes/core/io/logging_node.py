@@ -41,10 +41,7 @@ class LoggingNode(BaseNode):
             
             text = content  # Full current text for output/UI
         elif isinstance(value, list) and value and all(isinstance(x, AssetSymbol) for x in value):
-            preview_symbols = [str(sym) for sym in value[:100]]
-            text = "Preview of first 100 symbols:\n" + "\n".join(preview_symbols)
-            if len(value) > 100:
-                text += f"\n... and {len(value) - 100} more"
+            text = ", ".join(str(sym) for sym in value)
             print(text)
         elif isinstance(value, list) and value and all(isinstance(x, dict) and 'timestamp' in x and 'open' in x and 'high' in x and 'low' in x and 'close' in x for x in value):
             # OHLCV data preview
