@@ -61,7 +61,7 @@ async function openSettings(missingKeys: string[] = []) {
 
         // If there are missing keys, ensure they are in the form (with empty value)
         missingKeys.forEach(key => {
-            if (!keys.hasOwnProperty(key)) {
+            if (!Object.prototype.hasOwnProperty.call(keys, key)) {
                 keys[key] = '';
             }
         });

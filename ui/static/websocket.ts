@@ -176,12 +176,19 @@ export function setupWebSocket(graph: LGraph, _canvas: LGraphCanvas) {
 
             if (data.type === 'error') {
                 if (data.code === 'MISSING_API_KEYS' && Array.isArray(data.missing_keys)) {
-                    try { alert(data.message || 'Missing API keys. Opening settings...'); } catch { /* ignore */ }
+                    try { alert(data.message || 'Missing API keys. Opening settings...'); } catch { /* ignore in tests */ }
                     (window as any).setLastMissingKeys?.(data.missing_keys);
                     (window as any).openSettings?.(data.missing_keys);
                 } else {
                     alert('Error: ' + data.message);
                 }
+                console.error('Execution error:', data.message);
+                showError(data.message);
+                if (indicator) {
+                    indicator.className = 'status-indicator disconnected';
+                }
+                forceCleanup();
+                hideProgress();
             } else if (data.type === 'status') {
                 if (indicator) indicator.className = 'status-indicator executing';
                 // Keep progress visible and reflect coarse states
@@ -259,14 +266,6 @@ export function setupWebSocket(graph: LGraph, _canvas: LGraphCanvas) {
                 if (node && typeof node.setProgress === 'function') {
                     node.setProgress(data.progress, data.text);
                 }
-            } else if (data.type === 'error') {
-                console.error('Execution error:', data.message);
-                showError(data.message);
-                if (indicator) {
-                    indicator.className = 'status-indicator disconnected';
-                }
-                forceCleanup();
-                hideProgress();
             }
         };
 
