@@ -63,7 +63,8 @@ class LLMToolCallFunction(TypedDict, total=False):
     name: str
     arguments: Dict[str, Any]
 
-class LLMToolCall(TypedDict):
+class LLMToolCall(TypedDict, total=False):
+    id: str
     function: LLMToolCallFunction
 
 class LLMChatMessage(TypedDict, total=True):

@@ -11,6 +11,7 @@ import SaveOutputNodeUI from './nodes/io/SaveOutputNodeUI';
 import ExtractSymbolsNodeUI from './nodes/io/ExtractSymbolsNodeUI';
 import LLMMessagesBuilderNodeUI from './nodes/llm/LLMMessagesBuilderNodeUI';
 import OllamaChatNodeUI from './nodes/llm/OllamaChatNodeUI';
+import OpenRouterChatNodeUI from './nodes/llm/OpenRouterChatNodeUI';
 import SystemPromptLoaderNodeUI from './nodes/llm/SystemPromptLoaderNodeUI';
 import ADXFilterNodeUI from './nodes/market/ADXFilterNodeUI';
 import AtrXFilterNodeUI from './nodes/market/AtrXFilterNodeUI';
@@ -29,6 +30,7 @@ const UI_MODULES: { [key: string]: any } = {
     'io/ExtractSymbolsNodeUI': ExtractSymbolsNodeUI,
     'llm/LLMMessagesBuilderNodeUI': LLMMessagesBuilderNodeUI,
     'llm/OllamaChatNodeUI': OllamaChatNodeUI,
+    'llm/OpenRouterChatNodeUI': OpenRouterChatNodeUI,
     'llm/SystemPromptLoaderNodeUI': SystemPromptLoaderNodeUI,
     'market/ADXFilterNodeUI': ADXFilterNodeUI,
     'market/AtrXFilterNodeUI': AtrXFilterNodeUI,

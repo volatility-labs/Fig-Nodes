@@ -269,6 +269,24 @@ export class NodeWidgetManager {
         const menu = document.createElement('div');
         menu.className = 'custom-dropdown-menu';
 
+        // Add search bar if there are many options
+        const hasSearch = options.length > 10;
+        let searchInput: HTMLInputElement | null = null;
+        let filteredOptions = options.slice();
+
+        if (hasSearch) {
+            searchInput = document.createElement('input');
+            searchInput.type = 'text';
+            searchInput.className = 'custom-dropdown-search';
+            searchInput.placeholder = 'Search...';
+            searchInput.spellcheck = false;
+            menu.appendChild(searchInput);
+        }
+
+        const itemsContainer = document.createElement('div');
+        itemsContainer.className = 'custom-dropdown-items';
+        menu.appendChild(itemsContainer);
+
         const graph = (this.node as any).graph;
         const canvas = graph?.list_of_graphcanvas?.[0];
         if (canvas && canvas.canvas) {
@@ -279,8 +297,9 @@ export class NodeWidgetManager {
                 let menuX = lastMouseEvent.clientX;
                 let menuY = lastMouseEvent.clientY + 5;
 
-                const menuWidth = 200;
-                const menuHeight = Math.min(150, options.length * 28 + 16);
+                const menuWidth = 280;
+                const searchHeight = hasSearch ? 36 : 0;
+                const menuHeight = Math.min(300, options.length * 26 + searchHeight + 8);
 
                 if (menuX + menuWidth > window.innerWidth) {
                     menuX = window.innerWidth - menuWidth - 10;
@@ -300,27 +319,68 @@ export class NodeWidgetManager {
                 const screenY = canvasRect.top + (this.node.pos[1] + offset[1] + (this.node as any).size[1]) * scale;
                 menu.style.left = `${screenX}px`;
                 menu.style.top = `${screenY + 5}px`;
-                menu.style.width = '200px';
-                menu.style.maxHeight = '150px';
+                menu.style.width = '280px';
+                menu.style.maxHeight = '300px';
             }
         }
 
-        options.forEach((option) => {
-            const item = document.createElement('div');
-            item.className = 'custom-dropdown-item';
-            item.textContent = this.formatComboValue(option);
+        const renderItems = (itemsToRender: any[]) => {
+            itemsContainer.innerHTML = '';
+            itemsToRender.forEach((option) => {
+                const item = document.createElement('div');
+                item.className = 'custom-dropdown-item';
+                item.textContent = this.formatComboValue(option);
+                item.setAttribute('data-value', String(option));
 
-            if (option === this.node.properties[paramName]) {
-                item.classList.add('selected');
-            }
+                if (option === this.node.properties[paramName]) {
+                    item.classList.add('selected');
+                }
 
-            item.addEventListener('click', () => {
-                callback(option);
-                document.body.removeChild(overlay);
+                item.addEventListener('click', () => {
+                    callback(option);
+                    document.body.removeChild(overlay);
+                });
+
+                itemsContainer.appendChild(item);
+            });
+        };
+
+        renderItems(filteredOptions);
+
+        if (searchInput) {
+            searchInput.addEventListener('input', () => {
+                const query = searchInput.value.toLowerCase().trim();
+                if (!query) {
+                    filteredOptions = options.slice();
+                } else {
+                    filteredOptions = options.filter((opt: any) =>
+                        String(opt).toLowerCase().includes(query)
+                    );
+                }
+                renderItems(filteredOptions);
+                selectedIndex = 0;
+                updateSelection();
             });
 
-            menu.appendChild(item);
-        });
+            searchInput.addEventListener('keydown', (e) => {
+                if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Enter') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (e.key === 'ArrowDown') {
+                        selectedIndex = Math.min(selectedIndex + 1, filteredOptions.length - 1);
+                        updateSelection();
+                    } else if (e.key === 'ArrowUp') {
+                        selectedIndex = Math.max(selectedIndex - 1, 0);
+                        updateSelection();
+                    } else if (e.key === 'Enter' && filteredOptions[selectedIndex] !== undefined) {
+                        callback(filteredOptions[selectedIndex]);
+                        document.body.removeChild(overlay);
+                    }
+                } else if (e.key === 'Escape') {
+                    document.body.removeChild(overlay);
+                }
+            });
+        }
 
         overlay.appendChild(menu);
         overlay.tabIndex = -1;
@@ -332,11 +392,11 @@ export class NodeWidgetManager {
             }
         });
 
-        let selectedIndex = options.findIndex(opt => opt === this.node.properties[paramName]);
+        let selectedIndex = filteredOptions.findIndex(opt => opt === this.node.properties[paramName]);
         if (selectedIndex === -1) selectedIndex = 0;
 
         const updateSelection = () => {
-            const items = menu.querySelectorAll('.custom-dropdown-item');
+            const items = itemsContainer.querySelectorAll('.custom-dropdown-item');
             items.forEach((item, i) => {
                 if (i === selectedIndex) {
                     item.classList.add('selected');
@@ -352,23 +412,30 @@ export class NodeWidgetManager {
         updateSelection();
 
         overlay.addEventListener('keydown', (e) => {
+            if (searchInput && document.activeElement === searchInput) {
+                return;
+            }
             e.preventDefault();
             e.stopPropagation();
 
             if (e.key === 'ArrowDown') {
-                selectedIndex = (selectedIndex + 1) % options.length;
+                selectedIndex = (selectedIndex + 1) % filteredOptions.length;
                 updateSelection();
             } else if (e.key === 'ArrowUp') {
-                selectedIndex = (selectedIndex - 1 + options.length) % options.length;
+                selectedIndex = (selectedIndex - 1 + filteredOptions.length) % filteredOptions.length;
                 updateSelection();
-            } else if (e.key === 'Enter') {
-                callback(options[selectedIndex]);
+            } else if (e.key === 'Enter' && filteredOptions[selectedIndex] !== undefined) {
+                callback(filteredOptions[selectedIndex]);
                 document.body.removeChild(overlay);
             } else if (e.key === 'Escape') {
                 document.body.removeChild(overlay);
             }
         });
 
-        overlay.focus();
+        if (searchInput) {
+            setTimeout(() => searchInput?.focus(), 0);
+        } else {
+            overlay.focus();
+        }
     }
 }
