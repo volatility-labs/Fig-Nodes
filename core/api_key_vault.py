@@ -12,8 +12,8 @@ class APIKeyVault:
     def __new__(cls):
         if cls._instance is None:
             cls._instance = super().__new__(cls)
-            # Load environment variables from .env file, allowing file to override existing env vars
-            load_dotenv(find_dotenv(), override=True)
+            # Load environment variables from resolved .env, allowing file to override existing env vars
+            load_dotenv(cls._resolve_dotenv_path(), override=True)
             # Cache all keys that start with typical API key prefixes or known keys
             for key, value in os.environ.items():
                 if any(prefix in key.upper() for prefix in ['API', 'KEY', 'TOKEN', 'SECRET']) or \
@@ -28,9 +28,9 @@ class APIKeyVault:
     def set(self, key: str, value: str) -> None:
         """Set an API key and persist it to the .env file."""
         self._keys[key] = value
-        dotenv_path = find_dotenv()
+        dotenv_path = self._resolve_dotenv_path()
         if not dotenv_path:
-            # Create .env file if it doesn't exist
+            # Create .env file relative to cwd only when no test override provided
             dotenv_path = '.env'
         set_key(dotenv_path, key, value)
         # Update environment variable
@@ -96,7 +96,12 @@ class APIKeyVault:
             del self._keys[key]
         if key in os.environ:
             del os.environ[key]
-        dotenv_path = find_dotenv()
+        dotenv_path = self._resolve_dotenv_path()
         if dotenv_path:
             unset_key(dotenv_path, key)
         # No error if key didn't exist or .env missing - idempotent
+
+    @staticmethod
+    def _resolve_dotenv_path() -> str:
+        """Find the .env file using standard dotenv resolution."""
+        return find_dotenv()

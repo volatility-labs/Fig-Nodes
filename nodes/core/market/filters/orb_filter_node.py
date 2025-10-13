@@ -3,7 +3,7 @@ import pandas as pd
 from typing import Dict, Any, List
 from datetime import datetime, timedelta
 from nodes.core.market.filters.base.base_indicator_filter_node import BaseIndicatorFilterNode
-from core.types_registry import AssetSymbol, OHLCVBar, IndicatorResult, IndicatorType
+from core.types_registry import AssetSymbol, OHLCVBar, IndicatorResult, IndicatorType, IndicatorValue
 from core.api_key_vault import APIKeyVault
 from services.polygon_service import fetch_bars
 import pytz
@@ -64,7 +64,7 @@ class OrbFilterNode(BaseIndicatorFilterNode):
             return IndicatorResult(
                 indicator_type=IndicatorType.ORB,
                 timestamp=0,
-                values={},
+                values=IndicatorValue(),
                 params=self.params,
                 error="No bars fetched"
             )
@@ -111,7 +111,7 @@ class OrbFilterNode(BaseIndicatorFilterNode):
             return IndicatorResult(
                 indicator_type=IndicatorType.ORB,
                 timestamp=0,
-                values={},
+                values=IndicatorValue(),
                 params=self.params,
                 error="Insufficient days"
             )
@@ -130,10 +130,10 @@ class OrbFilterNode(BaseIndicatorFilterNode):
         if today_direction is None:
             today_direction = 'doji'  # Default if no data for today
 
-        values = {
-            "rel_vol": rel_vol,
-            "direction": today_direction,
-        }
+        values = IndicatorValue(
+            lines={"rel_vol": rel_vol},
+            series=[{"direction": today_direction}]
+        )
 
         return IndicatorResult(
             indicator_type=IndicatorType.ORB,
@@ -143,11 +143,11 @@ class OrbFilterNode(BaseIndicatorFilterNode):
         )
 
     def _should_pass_filter(self, indicator_result: IndicatorResult) -> bool:
-        if "error" in indicator_result or "rel_vol" not in indicator_result["values"] or "direction" not in indicator_result["values"]:
+        if indicator_result.error or not indicator_result.values.lines or not indicator_result.values.series:
             return False
 
-        rel_vol = indicator_result["values"]["rel_vol"]
-        direction = indicator_result["values"]["direction"]
+        rel_vol = indicator_result.values.lines.get("rel_vol", 0)
+        direction = next((s.get("direction") for s in indicator_result.values.series), "doji")
 
         if direction == "doji":
             return False

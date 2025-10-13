@@ -76,7 +76,7 @@ class BaseIndicatorNode(BaseNode):
                         error=str(e)
                     ))
 
-            return {"results": results}
+            return {"results": [r.to_dict() for r in results]}
         except Exception as e:
             logger.error(f"Error in BaseIndicatorNode execute: {e}")
             return {"results": []}

@@ -55,7 +55,7 @@ To run the unit tests:
 pytest tests/unit/
 ``` 
 
-## Changelog
+## Major Changelog
 
 Oct 12, 2025
   - Consolidated API key management via UI interface - API Key Vault that abstracts management of api keys required by graphs via .env file IO

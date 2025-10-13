@@ -35,7 +35,7 @@ class RSIFilterNode(BaseIndicatorFilterNode):
             return IndicatorResult(
                 indicator_type=IndicatorType.RSI,
                 timestamp=0,
-                values={"single": np.nan},
+                values=IndicatorValue(single=np.nan),
                 params=self.params,
                 error="No data"
             )
@@ -45,7 +45,7 @@ class RSIFilterNode(BaseIndicatorFilterNode):
             return IndicatorResult(
                 indicator_type=IndicatorType.RSI,
                 timestamp=int(df['timestamp'].iloc[-1]),
-                values={"single": np.nan},
+                values=IndicatorValue(single=np.nan),
                 params=self.params,
                 error="Insufficient data"
             )
@@ -57,7 +57,7 @@ class RSIFilterNode(BaseIndicatorFilterNode):
         rsi_series = rsi_indicator.rsi()
         latest_rsi = rsi_series.iloc[-1] if not rsi_series.empty else np.nan
 
-        values: IndicatorValue = {"single": latest_rsi} if not pd.isna(latest_rsi) else {"single": np.nan}
+        values = IndicatorValue(single=latest_rsi) if not pd.isna(latest_rsi) else IndicatorValue(single=np.nan)
 
         return IndicatorResult(
             indicator_type=IndicatorType.RSI,
@@ -68,10 +68,10 @@ class RSIFilterNode(BaseIndicatorFilterNode):
 
     def _should_pass_filter(self, indicator_result: IndicatorResult) -> bool:
         """Pass filter if RSI is within the specified range."""
-        if "error" in indicator_result or "single" not in indicator_result["values"]:
+        if indicator_result.error or not hasattr(indicator_result.values, 'single'):
             return False
 
-        latest_rsi = indicator_result["values"]["single"]
+        latest_rsi = indicator_result.values.single
         if pd.isna(latest_rsi):
             return False
 

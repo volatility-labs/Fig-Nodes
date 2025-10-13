@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 from typing import Dict, Any, List
 from nodes.core.market.indicators.base.base_indicator_node import BaseIndicatorNode
-from core.types_registry import get_type, IndicatorResult, IndicatorType
+from core.types_registry import get_type, IndicatorResult, IndicatorType, IndicatorValue
 
 logger = logging.getLogger(__name__)
 
@@ -57,9 +57,9 @@ class AtrXIndicatorNode(BaseIndicatorNode):
             result = IndicatorResult(
                 indicator_type=IndicatorType.ATRX,
                 timestamp=int(df.index[-1].timestamp() * 1000),
-                values={"single": atrx_value},
+                values=IndicatorValue(single=atrx_value),
             )
-            return {"results": [result]}
+            return {"results": [result.to_dict()]}
         except Exception as e:
             logger.warning(f"Error computing ATRX: {e}")
             return {"results": []}

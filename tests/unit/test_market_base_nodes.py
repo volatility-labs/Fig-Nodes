@@ -71,7 +71,7 @@ class TestBaseFilterNode:
 class TestBaseIndicatorNode:
     class ConcreteIndicatorNode(BaseIndicatorNode):
         def _map_to_indicator_value(self, ind_type: IndicatorType, raw: Dict[str, Any]) -> IndicatorValue:
-            return {"single": raw.get(ind_type.name, 0.0)}
+            return IndicatorValue(single=raw.get(ind_type.name, 0.0))
 
     @pytest.fixture
     def indicator_node(self):
@@ -87,7 +87,9 @@ class TestBaseIndicatorNode:
             result = await indicator_node.execute(inputs)
             assert "results" in result
             assert len(result["results"]) == 1
-            assert result["results"][0]["values"]["single"] == 25.0
+            ind_result = result["results"][0]
+            assert ind_result["indicator_type"] == IndicatorType.ADX
+            assert ind_result["values"]["single"] == 25.0
 
     @pytest.mark.asyncio
     async def test_execute_empty_bars(self, indicator_node):
@@ -116,24 +118,24 @@ class TestBaseIndicatorFilterNode:
     class ConcreteIndicatorFilterNode(BaseIndicatorFilterNode):
         def _calculate_indicator(self, ohlcv_data: List[OHLCVBar]) -> IndicatorResult:
             if not ohlcv_data:
-                return {
-                    "indicator_type": IndicatorType.ADX,
-                    "timestamp": 0,
-                    "values": {"single": 0.0},
-                    "error": "No data"
-                }
+                return IndicatorResult(
+                    indicator_type=IndicatorType.ADX,
+                    timestamp=0,
+                    values=IndicatorValue(single=0.0),
+                    error="No data"
+                )
             df = pd.DataFrame(ohlcv_data)
             adx = 30.0 if len(df) > 1 else 0.0
-            return {
-                "indicator_type": IndicatorType.ADX,
-                "timestamp": int(df['timestamp'].iloc[-1]),
-                "values": {"single": adx}
-            }
+            return IndicatorResult(
+                indicator_type=IndicatorType.ADX,
+                timestamp=int(df['timestamp'].iloc[-1]),
+                values=IndicatorValue(single=adx)
+            )
 
         def _should_pass_filter(self, indicator_result: IndicatorResult) -> bool:
-            if "error" in indicator_result:
+            if indicator_result.error:
                 return False
-            return indicator_result["values"]["single"] > 25.0
+            return indicator_result.values.single > 25.0
 
     @pytest.fixture
     def ind_filter_node(self):

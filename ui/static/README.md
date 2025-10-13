@@ -25,6 +25,3 @@ This directory contains the TypeScript frontend for the node-based editor, built
 1. Create `nodes/MyNodeUI.ts` extending BaseCustomNode.ts.
 2. In backend (ui/server.py), set "uiModule": "MyNodeUI" for the node.
 3. Add tests in tests/.
-
-## Contributing
-See CONTRIBUTING.md. Use PRs for changes.

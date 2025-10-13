@@ -65,10 +65,10 @@ class EmaRangeFilterNode(BaseIndicatorFilterNode):
         )
 
     def _should_pass_filter(self, indicator_result: IndicatorResult) -> bool:
-        if indicator_result.get("error") or "lines" not in indicator_result["values"]:
+        if indicator_result.error or not hasattr(indicator_result.values, 'lines'):
             return False
 
-        values = indicator_result["values"]["lines"]
+        values = indicator_result.values.lines
         if "ema_range" not in values or "close" not in values:
             return False
 

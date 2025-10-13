@@ -3,7 +3,7 @@ import pandas as pd
 from typing import Dict, Any, List
 from ta.volatility import AverageTrueRange
 from nodes.core.market.filters.base.base_indicator_filter_node import BaseIndicatorFilterNode
-from core.types_registry import OHLCVBar, IndicatorResult, IndicatorType
+from core.types_registry import OHLCVBar, IndicatorResult, IndicatorType, IndicatorValue
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +57,7 @@ class LodFilterNode(BaseIndicatorFilterNode):
             return IndicatorResult(
                 indicator_type=IndicatorType.LOD,
                 timestamp=0,
-                values={"lod_distance_pct": 0.0},
+                values=IndicatorValue(lines={"lod_distance_pct": 0.0}),
                 params=self.params,
                 error="No data"
             )
@@ -67,7 +67,7 @@ class LodFilterNode(BaseIndicatorFilterNode):
             return IndicatorResult(
                 indicator_type=IndicatorType.LOD,
                 timestamp=int(df['timestamp'].iloc[-1]),
-                values={"lod_distance_pct": 0.0},
+                values=IndicatorValue(lines={"lod_distance_pct": 0.0}),
                 params=self.params,
                 error="Insufficient data for ATR calculation"
             )
@@ -86,7 +86,7 @@ class LodFilterNode(BaseIndicatorFilterNode):
             return IndicatorResult(
                 indicator_type=IndicatorType.LOD,
                 timestamp=int(df['timestamp'].iloc[-1]),
-                values={"lod_distance_pct": 0.0},
+                values=IndicatorValue(lines={"lod_distance_pct": 0.0}),
                 params=self.params,
                 error="Invalid ATR calculation"
             )
@@ -106,25 +106,25 @@ class LodFilterNode(BaseIndicatorFilterNode):
         return IndicatorResult(
             indicator_type=IndicatorType.LOD,
             timestamp=int(latest_bar['timestamp']),
-            values={
+            values=IndicatorValue(lines={
                 "lod_distance_pct": lod_distance_pct,
                 "current_price": current_price,
                 "low_of_day": low_of_day,
                 "atr": latest_atr
-            },
+            }),
             params=self.params
         )
 
     def _should_pass_filter(self, indicator_result: IndicatorResult) -> bool:
         """Pass filter if LoD Distance is above minimum threshold."""
-        if "error" in indicator_result:
+        if indicator_result.error:
             return False
 
-        values = indicator_result.get("values", {})
-        if "lod_distance_pct" not in values:
+        lines = indicator_result.values.lines
+        if "lod_distance_pct" not in lines:
             return False
 
-        lod_distance_pct = values["lod_distance_pct"]
+        lod_distance_pct = lines["lod_distance_pct"]
         if pd.isna(lod_distance_pct):
             return False
 

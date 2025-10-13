@@ -103,17 +103,35 @@ class OHLCVBar(TypedDict, total=False):
     n: int  # Number of transactions (optional)
     otc: bool  # OTC ticker flag (optional)
 
-class IndicatorValue(TypedDict, total=False):
-    single: float  # For simple indicators like EMA
-    lines: Dict[str, float]  # For multi-line like MACD: {"macd": float, "signal": float, "histogram": float}
-    series: List[Dict[str, Any]]  # For time-series: list of {'timestamp': int, 'value': float} or similar
+@dataclass(frozen=True)
+class IndicatorValue:
+    single: float = 0.0
+    lines: Dict[str, float] = field(default_factory=dict)
+    series: List[Dict[str, Any]] = field(default_factory=list)
 
-class IndicatorResult(TypedDict, total=False):
-    indicator_type: IndicatorType  # e.g., IndicatorType.MACD
-    timestamp: Optional[int]  # Unix ms, for alignment with OHLCV
-    values: IndicatorValue  # Flexible payload
-    params: Dict[str, Any]  # e.g., {"period": 14} for RSI
-    error: Optional[str]  # For NaN or computation failures
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "single": self.single,
+            "lines": self.lines,
+            "series": self.series,
+        }
+
+@dataclass(frozen=True)
+class IndicatorResult:
+    indicator_type: IndicatorType
+    timestamp: Optional[int] = None
+    values: IndicatorValue = field(default_factory=IndicatorValue)
+    params: Dict[str, Any] = field(default_factory=dict)
+    error: Optional[str] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "indicator_type": self.indicator_type,
+            "timestamp": self.timestamp,
+            "values": self.values.to_dict(),
+            "params": self.params,
+            "error": self.error,
+        }
 
 # ~~~~~ Dataclasses ~~~~~
 # For immutable, hashable types with methods.
@@ -270,19 +288,22 @@ def register_indicator_type(name: str):
 
 # Developer Notes:
 # To add a new type:
-# 1. Define the type in the appropriate section (e.g., new TypedDict under TypedDicts).
+# 1. Define the type in the appropriate section (e.g., new TypedDict under TypedDicts or dataclass under Dataclasses).
 # 2. If it's an alias or composed type, add it under Type Aliases.
 # 3. Register it in TYPE_REGISTRY with a unique string key.
 # 4. For dynamic extensions (e.g., new Enum values), use the register_ functions.
 # 5. Update __all__ if the type should be importable.
-# 6. Ensure any new types are used consistently in node definitions.
+# 6. Ensure any new types are used consistently in node definitions. Prefer dataclasses for structured types with fixed fields and potential methods; use TypedDict for dynamic dict-like data.
 
 # For nodes/custom extensions:
 # - To add a new type: Define it in your custom module, then call register_type("MyNewType", MyNewType) in your __init__.py.
 # - To extend an Enum: Call register_provider("NEW_PROVIDER") or similar.
 # - Example: In custom_nodes/my_plugin/__init__.py:
 #   from core.types_registry import register_type, register_provider
-#   class MyCustomType(TypedDict):
+#   from dataclasses import dataclass
+#
+#   @dataclass
+#   class MyCustomType:
 #       field: str
 #   register_type("MyCustomType", MyCustomType)
 #   MY_PROVIDER = register_provider("MY_EXCHANGE")

@@ -1,10 +1,11 @@
 import pytest
+from unittest.mock import patch, MagicMock
 from typing import Dict, List
 import pandas as pd
 import numpy as np
 from ta.volatility import AverageTrueRange
 from nodes.core.market.filters.lod_filter_node import LodFilterNode
-from core.types_registry import AssetSymbol, OHLCVBar, IndicatorType, IndicatorResult
+from core.types_registry import AssetSymbol, OHLCVBar, IndicatorType, IndicatorResult, IndicatorValue
 
 
 @pytest.fixture
@@ -280,11 +281,9 @@ def test_calculate_indicator_no_data():
     node = LodFilterNode("test", {"min_lod_distance": 3.16, "atr_window": 14})
     result = node._calculate_indicator([])
 
-    assert result["indicator_type"] == IndicatorType.LOD
-    assert result["timestamp"] == 0
-    assert result["values"]["lod_distance_pct"] == 0.0
-    assert "error" in result
-    assert result["error"] == "No data"
+    assert result.indicator_type == IndicatorType.LOD
+    assert result.error == "No data"
+    assert result.values.lines["lod_distance_pct"] == 0.0
 
 
 def test_calculate_indicator_insufficient_data():
@@ -296,28 +295,28 @@ def test_calculate_indicator_insufficient_data():
     ]
     result = node._calculate_indicator(short_data)
 
-    assert result["indicator_type"] == IndicatorType.LOD
-    assert result["values"]["lod_distance_pct"] == 0.0
-    assert "error" in result
-    assert "Insufficient data" in result["error"]
+    assert result.indicator_type == IndicatorType.LOD
+    assert "Insufficient data" in result.error
+    assert result.values.lines["lod_distance_pct"] == 0.0
 
 
 def test_calculate_indicator_valid_data():
     """Test _calculate_indicator with valid data."""
     node = LodFilterNode("test", {"min_lod_distance": 3.16, "atr_window": 14})
     valid_data = [
-        {"timestamp": i * 86400000, "open": 100, "high": 105, "low": 95, "close": 102, "volume": 1000}
+        {"timestamp": i * 86400000, "open": 100 + i*0.5, "high": 105 + i*0.5, "low": 95 + i*0.5, "close": 102 + i*0.5, "volume": 1000}
         for i in range(20)
     ]
+    # Modify last bar to have distance from low
+    valid_data[-1] = {"timestamp": 19 * 86400000, "open": 110, "high": 115, "low": 108, "close": 112, "volume": 1000}
     result = node._calculate_indicator(valid_data)
 
-    assert result["indicator_type"] == IndicatorType.LOD
-    assert "lod_distance_pct" in result["values"]
-    assert "current_price" in result["values"]
-    assert "low_of_day" in result["values"]
-    assert "atr" in result["values"]
-    assert result["timestamp"] == valid_data[-1]["timestamp"]
-    assert "error" not in result
+    assert result.indicator_type == IndicatorType.LOD
+    assert result.error is None
+    assert result.values.lines["lod_distance_pct"] > 0
+    assert "current_price" in result.values.lines
+    assert "low_of_day" in result.values.lines
+    assert "atr" in result.values.lines
 
 
 def test_should_pass_filter_with_error():
@@ -325,7 +324,7 @@ def test_should_pass_filter_with_error():
     node = LodFilterNode("test", {"min_lod_distance": 3.16, "atr_window": 14})
     error_result = IndicatorResult(
         indicator_type=IndicatorType.LOD,
-        values={"lod_distance_pct": 10.0},
+        values=IndicatorValue(lines={"lod_distance_pct": 10.0}),
         error="Test error"
     )
 
@@ -337,7 +336,7 @@ def test_should_pass_filter_missing_value():
     node = LodFilterNode("test", {"min_lod_distance": 3.16, "atr_window": 14})
     missing_result = IndicatorResult(
         indicator_type=IndicatorType.LOD,
-        values={}
+        values=IndicatorValue(lines={"other": 5.0})
     )
 
     assert not node._should_pass_filter(missing_result)
@@ -348,7 +347,7 @@ def test_should_pass_filter_nan_value():
     node = LodFilterNode("test", {"min_lod_distance": 3.16, "atr_window": 14})
     nan_result = IndicatorResult(
         indicator_type=IndicatorType.LOD,
-        values={"lod_distance_pct": float('nan')}
+        values=IndicatorValue(lines={"lod_distance_pct": float('nan')})
     )
 
     assert not node._should_pass_filter(nan_result)
@@ -359,7 +358,7 @@ def test_should_pass_filter_above_threshold():
     node = LodFilterNode("test", {"min_lod_distance": 5.0, "atr_window": 14})
     pass_result = IndicatorResult(
         indicator_type=IndicatorType.LOD,
-        values={"lod_distance_pct": 10.0}
+        values=IndicatorValue(lines={"lod_distance_pct": 10.0})
     )
 
     assert node._should_pass_filter(pass_result)
@@ -370,7 +369,7 @@ def test_should_pass_filter_below_threshold():
     node = LodFilterNode("test", {"min_lod_distance": 15.0, "atr_window": 14})
     fail_result = IndicatorResult(
         indicator_type=IndicatorType.LOD,
-        values={"lod_distance_pct": 10.0}
+        values=IndicatorValue(lines={"lod_distance_pct": 10.0})
     )
 
     assert not node._should_pass_filter(fail_result)

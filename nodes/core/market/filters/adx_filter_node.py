@@ -32,7 +32,7 @@ class ADXFilterNode(BaseIndicatorFilterNode):
             return IndicatorResult(
                 indicator_type=IndicatorType.ADX,
                 timestamp=0,
-                values={"single": 0.0},
+                values=IndicatorValue(single=0.0),
                 params=self.params,
                 error="No data"
             )
@@ -42,7 +42,7 @@ class ADXFilterNode(BaseIndicatorFilterNode):
             return IndicatorResult(
                 indicator_type=IndicatorType.ADX,
                 timestamp=int(df['timestamp'].iloc[-1]),
-                values={"single": 0.0},
+                values=IndicatorValue(single=0.0),
                 params=self.params,
                 error="Insufficient data"
             )
@@ -56,7 +56,7 @@ class ADXFilterNode(BaseIndicatorFilterNode):
         adx_series = adx_indicator.adx()
         latest_adx = adx_series.iloc[-1] if not adx_series.empty else 0.0
 
-        values: IndicatorValue = {"single": latest_adx} if not pd.isna(latest_adx) else {"single": 0.0}
+        values = IndicatorValue(single=latest_adx) if not pd.isna(latest_adx) else IndicatorValue(single=0.0)
 
         return IndicatorResult(
             indicator_type=IndicatorType.ADX,
@@ -67,10 +67,10 @@ class ADXFilterNode(BaseIndicatorFilterNode):
 
     def _should_pass_filter(self, indicator_result: IndicatorResult) -> bool:
         """Pass filter if ADX is above minimum threshold."""
-        if "error" in indicator_result or "single" not in indicator_result["values"]:
+        if indicator_result.error or not hasattr(indicator_result.values, 'single'):
             return False
 
-        latest_adx = indicator_result["values"]["single"]
+        latest_adx = indicator_result.values.single
         if pd.isna(latest_adx):
             return False
 

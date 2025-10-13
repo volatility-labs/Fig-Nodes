@@ -33,7 +33,7 @@ class SMACrossoverFilterNode(BaseIndicatorFilterNode):
             return IndicatorResult(
                 indicator_type=IndicatorType.SMA,
                 timestamp=0,
-                values={"single": False},
+                values=IndicatorValue(single=False),
                 params=self.params,
                 error="No data"
             )
@@ -43,7 +43,7 @@ class SMACrossoverFilterNode(BaseIndicatorFilterNode):
             return IndicatorResult(
                 indicator_type=IndicatorType.SMA,
                 timestamp=int(df['timestamp'].iloc[-1]),
-                values={"single": False},
+                values=IndicatorValue(single=False),
                 params=self.params,
                 error="Insufficient data"
             )
@@ -56,7 +56,7 @@ class SMACrossoverFilterNode(BaseIndicatorFilterNode):
         crossover_signal = (short_sma > long_sma) & (short_sma.shift(1) <= long_sma.shift(1))
         latest_crossover = crossover_signal.iloc[-1] if not crossover_signal.empty else False
 
-        values: IndicatorValue = {"single": bool(latest_crossover)} if not pd.isna(latest_crossover) else {"single": False}
+        values = IndicatorValue(single=bool(latest_crossover)) if not pd.isna(latest_crossover) else IndicatorValue(single=False)
 
         return IndicatorResult(
             indicator_type=IndicatorType.SMA,
@@ -67,8 +67,8 @@ class SMACrossoverFilterNode(BaseIndicatorFilterNode):
 
     def _should_pass_filter(self, indicator_result: IndicatorResult) -> bool:
         """Pass filter if there's a recent bullish crossover."""
-        if "error" in indicator_result or "single" not in indicator_result["values"]:
+        if indicator_result.error or not hasattr(indicator_result.values, 'single'):
             return False
 
-        latest_crossover = indicator_result["values"]["single"]
+        latest_crossover = indicator_result.values.single
         return bool(latest_crossover)

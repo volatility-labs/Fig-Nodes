@@ -4,7 +4,7 @@ import pandas as pd
 from typing import Dict, Any, List
 from ta.volatility import AverageTrueRange
 from nodes.core.market.filters.base.base_indicator_filter_node import BaseIndicatorFilterNode
-from core.types_registry import OHLCVBar, IndicatorResult, IndicatorType
+from core.types_registry import OHLCVBar, IndicatorResult, IndicatorType, IndicatorValue
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +35,7 @@ class ATRFilterNode(BaseIndicatorFilterNode):
             return IndicatorResult(
                 indicator_type=IndicatorType.ATR,
                 timestamp=0,
-                values={"single": 0.0},
+                values=IndicatorValue(single=0.0),
                 params=self.params,
                 error="No data"
             )
@@ -45,7 +45,7 @@ class ATRFilterNode(BaseIndicatorFilterNode):
             return IndicatorResult(
                 indicator_type=IndicatorType.ATR,
                 timestamp=int(df['timestamp'].iloc[-1]),
-                values={"single": 0.0},
+                values=IndicatorValue(single=0.0),
                 params=self.params,
                 error="Insufficient data"
             )
@@ -59,7 +59,7 @@ class ATRFilterNode(BaseIndicatorFilterNode):
         atr_series = atr_indicator.average_true_range()
         latest_atr = atr_series.iloc[-1] if not atr_series.empty else 0.0
 
-        values = {"single": latest_atr} if not pd.isna(latest_atr) else {"single": 0.0}
+        values = IndicatorValue(single=latest_atr) if not pd.isna(latest_atr) else IndicatorValue(single=0.0)
 
         return IndicatorResult(
             indicator_type=IndicatorType.ATR,
@@ -70,10 +70,10 @@ class ATRFilterNode(BaseIndicatorFilterNode):
 
     def _should_pass_filter(self, indicator_result: IndicatorResult) -> bool:
         """Pass filter if ATR is above minimum threshold."""
-        if "error" in indicator_result or "single" not in indicator_result["values"]:
+        if indicator_result.error or not hasattr(indicator_result.values, 'single'):
             return False
 
-        latest_atr = indicator_result["values"]["single"]
+        latest_atr = indicator_result.values.single
         if pd.isna(latest_atr):
             return False
 

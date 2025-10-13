@@ -15,28 +15,28 @@ class SingleAssetIndicatorNode(BaseIndicatorNode):
         Handles heterogeneous outputs per indicator type.
         """
         if ind_type == IndicatorType.EVWMA:
-            return {"single": raw.get("evwma", np.nan)}
+            return IndicatorValue(single=raw.get("evwma", np.nan))
         elif ind_type == IndicatorType.EIS:
-            return {"single": float(raw.get("eis_bullish", False) or raw.get("eis_bearish", False))}
+            return IndicatorValue(single=float(raw.get("eis_bullish", False) or raw.get("eis_bearish", False)))
         elif ind_type == IndicatorType.ADX:
-            return {"single": raw.get("adx", np.nan)}
+            return IndicatorValue(single=raw.get("adx", np.nan))
         elif ind_type == IndicatorType.HURST:
-            return {"single": raw.get("hurst", np.nan)}
+            return IndicatorValue(single=raw.get("hurst", np.nan))
         elif ind_type == IndicatorType.VOLUME_RATIO:
-            return {"single": raw.get("volume_ratio", 1.0)}
+            return IndicatorValue(single=raw.get("volume_ratio", 1.0))
         elif ind_type == IndicatorType.MACD:
             # MACD has lines: macd, signal, histogram
             # Note: IndicatorsService doesn't compute full MACD; adapt or extend service
-            return {"lines": {
+            return IndicatorValue(lines={
                 "macd": np.nan,  # Placeholder; extend service if needed
                 "signal": np.nan,
                 "histogram": np.nan
-            }}
+            })
         elif ind_type == IndicatorType.RSI:
             # RSI series over time
-            return {"series": []}  # Placeholder; compute via pandas-ta or extend
+            return IndicatorValue(series=[])  # Placeholder; compute via pandas-ta or extend
         else:
             raise ValueError(f"Unsupported indicator type: {ind_type.name}")
 
         # Fallback for unmapped
-        return {"single": np.nan}
+        return IndicatorValue(single=np.nan)

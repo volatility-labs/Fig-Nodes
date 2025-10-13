@@ -3,7 +3,7 @@ import logging
 import pandas as pd
 from typing import Dict, Any, List
 from nodes.core.market.indicators.base.base_indicator_node import BaseIndicatorNode
-from core.types_registry import get_type, IndicatorResult, IndicatorType
+from core.types_registry import get_type, IndicatorResult, IndicatorType, IndicatorValue
 from ta.volatility import AverageTrueRange
 
 logger = logging.getLogger(__name__)
@@ -48,10 +48,10 @@ class ATRIndicatorNode(BaseIndicatorNode):
             result = IndicatorResult(
                 indicator_type=IndicatorType.ATR,
                 timestamp=int(df.index[-1].timestamp() * 1000),
-                values={"single": latest_atr if not pd.isna(latest_atr) else 0.0},
+                values=IndicatorValue(single=latest_atr if not pd.isna(latest_atr) else 0.0),
                 params=self.params
             )
-            return {"results": [result]}
+            return {"results": [result.to_dict()]}
         except Exception as e:
             logger.warning(f"Error computing ATR: {e}")
             return {"results": []}

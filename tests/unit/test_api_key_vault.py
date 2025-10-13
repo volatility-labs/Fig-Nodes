@@ -108,12 +108,13 @@ def test_unset_nonexistent_key(temp_env_file, monkeypatch):
         assert vault.get_all() == original_keys  # No change
         assert "NONEXISTENT_KEY" not in os.environ
 
-def test_unset_no_env_file(monkeypatch):
+def test_unset_no_env_file(tmpdir, monkeypatch):
     """Test unset when no .env file (no error)."""
+    monkeypatch.chdir(tmpdir)
     APIKeyVault._instance = None
     monkeypatch.setattr('core.api_key_vault.find_dotenv', lambda: '')
     vault = APIKeyVault()
-    vault.set("TEMP_KEY", "value")  # Set in environ/cache only
+    vault.set("TEMP_KEY", "value")
     assert vault.get("TEMP_KEY") == "value"
     vault.unset("TEMP_KEY")
     assert vault.get("TEMP_KEY") is None

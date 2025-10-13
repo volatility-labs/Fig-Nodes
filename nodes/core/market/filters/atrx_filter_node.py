@@ -2,7 +2,7 @@ import logging
 import pandas as pd
 from typing import Dict, Any, List
 from nodes.core.market.filters.base.base_indicator_filter_node import BaseIndicatorFilterNode
-from core.types_registry import AssetSymbol, OHLCVBar, IndicatorResult, IndicatorType, get_type
+from core.types_registry import AssetSymbol, OHLCVBar, IndicatorResult, IndicatorType, get_type, IndicatorValue
 
 logger = logging.getLogger(__name__)
 
@@ -57,11 +57,14 @@ class AtrXFilterNode(BaseIndicatorFilterNode):
         return IndicatorResult(
             indicator_type=IndicatorType.ATRX,
             timestamp=ohlcv_data[-1]['timestamp'],
-            values={"single": atrx_value}
+            values=IndicatorValue(single=atrx_value),
+            params=self.params
         )
 
     def _should_pass_filter(self, indicator_result: IndicatorResult) -> bool:
-        value = indicator_result["values"].get("single", 0.0)
+        if indicator_result.error:
+            return False
+        value = indicator_result.values.single
         upper = self.params.get("upper_threshold", 6.0)
         lower = self.params.get("lower_threshold", -4.0)
         condition = self.params.get("filter_condition", "outside")

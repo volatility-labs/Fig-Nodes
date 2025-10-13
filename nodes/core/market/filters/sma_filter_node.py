@@ -86,9 +86,9 @@ class SMAFilterNode(BaseIndicatorFilterNode):
         )
 
     def _should_pass_filter(self, indicator_result: IndicatorResult) -> bool:
-        if "error" in indicator_result and indicator_result["error"]:
+        if indicator_result.error:
             return False
-        lines = indicator_result["values"].get("lines", {})
+        lines = indicator_result.values.lines
         current = lines.get("current", np.nan)
         previous = lines.get("previous", np.nan)
         if np.isnan(current) or np.isnan(previous):
