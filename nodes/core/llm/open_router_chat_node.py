@@ -46,6 +46,8 @@ class OpenRouterChatNode(BaseNode):
     }
 
     CATEGORY = 'data_source'
+    # Keys required for this node to function
+    required_keys = ["OPENROUTER_API_KEY"]
 
     default_params = {
         "model": "openai/gpt-4o-mini",  # Default model
@@ -294,6 +296,16 @@ class OpenRouterChatNode(BaseNode):
             if not messages:
                 error_msg = "No messages or prompt provided to OpenRouterChatNode"
                 return {"message": {"role": "assistant", "content": ""}, "metrics": {"error": error_msg}, "tool_history": [], "thinking_history": []}
+
+            # Early explicit API key check so the graph surfaces a clear failure without silent fallthrough
+            api_key_early = self.vault.get("OPENROUTER_API_KEY")
+            if not api_key_early:
+                return {
+                    "message": {"role": "assistant", "content": "OpenRouter API key missing. Set OPENROUTER_API_KEY."},
+                    "metrics": {"error": "OPENROUTER_API_KEY not found in vault"},
+                    "tool_history": [],
+                    "thinking_history": []
+                }
 
             options = self._prepare_generation_options()
 
