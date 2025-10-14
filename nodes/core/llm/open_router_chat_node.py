@@ -35,7 +35,7 @@ class OpenRouterChatNode(BaseNode):
         "messages": get_type("LLMChatMessageList"),
         "prompt": str,
         "system": Union[str, get_type("LLMChatMessage")],
-        "tools": get_type("LLMToolSpec"),
+        "tools": get_type("LLMToolSpecList"),
     }
 
     outputs = {
@@ -183,6 +183,12 @@ class OpenRouterChatNode(BaseNode):
                     fn = (call or {}).get("function") or {}
                     tool_name = fn.get("name")
                     arguments = fn.get("arguments") or {}
+                    # Normalize arguments to a dictionary; OpenRouter may return a JSON string
+                    if isinstance(arguments, str):
+                        try:
+                            arguments = json.loads(arguments)
+                        except Exception:
+                            arguments = {}
                     if not isinstance(arguments, dict):
                         arguments = {}
 
@@ -205,7 +211,15 @@ class OpenRouterChatNode(BaseNode):
                     except Exception as _e:
                         result_obj = {"error": "exception", "message": str(_e)}
 
-                    return call, result_obj
+                    # Sanitize the call object for output validation: ensure arguments is a dict
+                    sanitized_call = {
+                        "id": call.get("id"),
+                        "function": {
+                            "name": tool_name,
+                            "arguments": arguments,
+                        },
+                    }
+                    return sanitized_call, result_obj
                 except Exception as _e_outer:
                     return call, {"error": "handler_failure", "message": str(_e_outer)}
 

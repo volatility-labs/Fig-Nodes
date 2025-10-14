@@ -1,6 +1,7 @@
 import pytest
 from unittest.mock import AsyncMock, patch
 from nodes.core.llm.open_router_chat_node import OpenRouterChatNode
+from core.types_registry import NodeExecutionError
 
 @pytest.fixture
 def chat_node():
@@ -150,11 +151,10 @@ async def test_error_handling(chat_node):
         mock_client_class.return_value.__aenter__.return_value = mock_client
         mock_client_class.return_value.__aexit__.return_value = None
 
-        result = await chat_node.execute(inputs)
-        assert "error" in result["metrics"]
-        assert result["metrics"]["error"] == "API Error"
-        assert result["message"]["content"] == ""
-        assert result["message"]["role"] == "assistant"
+        with pytest.raises(NodeExecutionError) as excinfo:
+            await chat_node.execute(inputs)
+        assert "Execution failed" in str(excinfo.value)
+        assert str(excinfo.value.original_exc) == "API Error"
 
 @pytest.mark.asyncio
 async def test_message_building(chat_node):

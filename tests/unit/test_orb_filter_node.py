@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import patch, AsyncMock, MagicMock
 from nodes.core.market.filters.orb_filter_node import OrbFilterNode
-from core.types_registry import AssetSymbol, OHLCVBar, IndicatorResult, IndicatorType, AssetClass, IndicatorValue
+from core.types_registry import AssetSymbol, OHLCVBar, IndicatorResult, IndicatorType, AssetClass, IndicatorValue, NodeExecutionError
 from core.api_key_vault import APIKeyVault
 from services.polygon_service import fetch_bars
 import datetime
@@ -186,7 +186,6 @@ async def test_execute_insufficient_days(sample_params, sample_ohlcv):
 
     with patch("core.api_key_vault.APIKeyVault.get", return_value="test_key"):
         result = await node.execute(inputs)
-
     assert result["filtered_ohlcv_bundle"] == {}
 
 @pytest.mark.asyncio
@@ -207,7 +206,6 @@ async def test_execute_doji_direction(sample_params, sample_ohlcv):
 
     with patch("core.api_key_vault.APIKeyVault.get", return_value="test_key"):
         result = await node.execute(inputs)
-
     assert result["filtered_ohlcv_bundle"] == {}
 
 @pytest.mark.asyncio
@@ -228,7 +226,6 @@ async def test_execute_low_rel_vol(sample_params, sample_ohlcv):
 
     with patch("core.api_key_vault.APIKeyVault.get", return_value="test_key"):
         result = await node.execute(inputs)
-
     assert result["filtered_ohlcv_bundle"] == {}
 
 @pytest.mark.asyncio
@@ -241,9 +238,8 @@ async def test_execute_fetch_error(mock_fetch_bars, sample_params, sample_ohlcv)
     mock_fetch_bars.side_effect = Exception("Fetch error")
 
     with patch("core.api_key_vault.APIKeyVault.get", return_value="test_key"):
-        result = await node.execute(inputs)
-
-    assert result["filtered_ohlcv_bundle"] == {}
+        with pytest.raises(NodeExecutionError):
+            await node.execute(inputs)
 
 @pytest.mark.asyncio
 async def test_execute_empty_ohlcv(sample_params):
@@ -265,7 +261,7 @@ async def test_execute_no_api_key(sample_params, sample_ohlcv):
         "ohlcv_bundle": {AssetSymbol("AAPL", AssetClass.STOCKS): sample_ohlcv},
     }
 
-    with pytest.raises(ValueError, match="Polygon API key not found in vault"):
+    with pytest.raises(NodeExecutionError):
         with patch("core.api_key_vault.APIKeyVault.get", return_value=None):
             await node.execute(inputs)
 
