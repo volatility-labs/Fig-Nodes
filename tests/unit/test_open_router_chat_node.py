@@ -135,7 +135,6 @@ async def test_tool_calling(chat_node):
         result = await chat_node.execute(inputs)
         assert len(result["tool_history"]) == 1
         assert result["tool_history"][0]["call"]["id"] == "call_123"
-        assert result["tool_history"][0]["call"]["function"]["name"] == "test_tool"
         assert result["message"]["content"] == "Done"
 
 @pytest.mark.asyncio

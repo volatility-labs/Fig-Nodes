@@ -6,6 +6,10 @@ import asyncio
 from nodes.base.streaming_node import StreamingNode
 from collections import defaultdict
 from core.api_key_vault import APIKeyVault
+from core.types_registry import NodeExecutionError
+import logging
+
+logger = logging.getLogger(__name__)
 
 class GraphExecutor:
     def __init__(self, graph: Dict[str, Any], node_registry: Dict[str, type]):
@@ -73,7 +77,11 @@ class GraphExecutor:
                 continue
             node = self.nodes[node_id]
             if isinstance(node, ForEachNode):
-                await self._execute_foreach_subgraph(node, results)
+                try:
+                    await self._execute_foreach_subgraph(node, results)
+                except NodeExecutionError as e:
+                    logger.error(f"ForEach subgraph for node {node_id} failed: {str(e)}")
+                    results[node_id] = {"error": str(e)}
                 subgraph_nodes = list(nx.dfs_preorder_nodes(self.dag, source=node_id))
                 executed_nodes.update(subgraph_nodes)
             else:
@@ -85,6 +93,10 @@ class GraphExecutor:
                     print(f"STOP_TRACE: Awaiting node.execute for node {node_id}")
                     outputs = await node.execute(merged_inputs)
                     print(f"STOP_TRACE: Completed node.execute for node {node_id}")
+                except NodeExecutionError as e:
+                    logger.error(f"Node {node_id} failed: {str(e)}")
+                    results[node_id] = {"error": str(e)}
+                    continue
                 except asyncio.CancelledError:
                     print("STOP_TRACE: Caught CancelledError in node.execute await in GraphExecutor")
                     self.force_stop()
@@ -109,7 +121,12 @@ class GraphExecutor:
                 # TODO: Handle errors more gracefully
                 continue
                 
-            sub_outputs = await sub_node.execute(merged_inputs)
+            try:
+                sub_outputs = await sub_node.execute(merged_inputs)
+            except NodeExecutionError as e:
+                logger.error(f"Sub node {sub_node_id} failed: {str(e)}")
+                tick_results[sub_node_id] = {"error": str(e)}
+                continue
             tick_results[sub_node_id] = sub_outputs
         return tick_results
 
@@ -122,15 +139,21 @@ class GraphExecutor:
 
         source_inputs = self._get_node_inputs(source_id, initial_results)
         
-        async for source_output in source_node.start(source_inputs):
-            # The context for this tick includes all initial results plus the new output from the stream source
-            tick_context = {**initial_results, source_id: source_output}
-            
-            # Execute the downstream nodes for this tick
-            subgraph_results = await self._execute_subgraph_for_tick(downstream_nodes, tick_context)
-            
-            # Combine all results for this tick and put them in the queue
-            final_tick_results = {source_id: source_output, **subgraph_results}
+        try:
+            async for source_output in source_node.start(source_inputs):
+                # The context for this tick includes all initial results plus the new output from the stream source
+                tick_context = {**initial_results, source_id: source_output}
+                
+                # Execute the downstream nodes for this tick
+                subgraph_results = await self._execute_subgraph_for_tick(downstream_nodes, tick_context)
+                
+                # Combine all results for this tick and put them in the queue
+                final_tick_results = {source_id: source_output, **subgraph_results}
+                await result_queue.put(final_tick_results)
+        except NodeExecutionError as e:
+            logger.error(f"Streaming source {source_id} failed: {str(e)}")
+            error_output = {"error": str(e)}
+            final_tick_results = {source_id: error_output}
             await result_queue.put(final_tick_results)
 
     async def stream(self) -> AsyncGenerator[Dict[str, Any], None]:

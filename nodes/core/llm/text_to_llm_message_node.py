@@ -156,7 +156,7 @@ class TextToLLMMessageNode(BaseNode):
             result += f" (+{len(item) - 3} more)"
         return result
 
-    async def execute(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
+    async def _execute_impl(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
         data = inputs.get("data")
         role = (self.params.get("role") or "user").lower()
         format_type = (self.params.get("format") or "readable").lower()

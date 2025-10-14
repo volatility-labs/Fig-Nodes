@@ -11,14 +11,11 @@ class ForEachNode(BaseNode):
     outputs = {"item": Any}
     default_params = {}
 
-    def __init__(self, node_id: str, params: Dict[str, Any]):
-        super().__init__(node_id, params)
+    def __init__(self, id: int, params: Dict[str, Any] = None):
+        super().__init__(id, params)
 
-    async def execute(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
-        # Validate inputs using BaseNode's validation
-        if not self.validate_inputs(inputs):
-            return {"list": []}
+    async def _execute_impl(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
         item_list = inputs.get("list", [])
-        return {"list": item_list}
+        return {"item": item_list}
 
 

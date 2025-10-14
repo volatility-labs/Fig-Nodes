@@ -1,4 +1,4 @@
-from typing import List, Dict, Any, Type, Optional, AsyncGenerator, TypedDict, Literal, Union
+from typing import List, Dict, Any, Type, Optional, AsyncGenerator, TypedDict, Literal, Union, NotRequired
 import pandas as pd
 from datetime import datetime
 from dataclasses import dataclass, field
@@ -70,10 +70,11 @@ class LLMToolCall(TypedDict, total=False):
 class LLMChatMessage(TypedDict, total=True):
     role: Literal["system", "user", "assistant", "tool"]
     content: Union[str, Dict[str, Any]]
-    thinking: Optional[str]
-    images: Optional[List[str]]
-    tool_calls: Optional[List[LLMToolCall]]
-    tool_name: Optional[str]
+    # Optional fields must be marked NotRequired so validators don't require their presence
+    thinking: NotRequired[str]
+    images: NotRequired[List[str]]
+    tool_calls: NotRequired[List[LLMToolCall]]
+    tool_name: NotRequired[str]
 
 class LLMChatMetrics(TypedDict, total=False):
     total_duration: int
@@ -314,6 +315,28 @@ def register_indicator_type(name: str):
 # MY_PROVIDER = register_provider("ALPHA_VANTAGE")
 # Then in AssetSymbol: AssetSymbol(..., provider=MY_PROVIDER) 
 
+from typing import Optional
+
+class NodeError(Exception):
+    """Base exception for all node-related errors."""
+    pass
+
+class NodeValidationError(NodeError):
+    """Raised when node inputs fail validation."""
+    def __init__(self, node_id: int, message: str):
+        super().__init__(f"Node {node_id}: {message}")
+
+class NodeExecutionError(NodeError):
+    """Raised when node execution fails."""
+    def __init__(self, node_id: int, message: str, original_exc: Optional[Exception] = None):
+        super().__init__(f"Node {node_id}: {message}")
+        self.original_exc = original_exc
+
+# Register them
+register_type("NodeError", NodeError)
+register_type("NodeValidationError", NodeValidationError)
+register_type("NodeExecutionError", NodeExecutionError)
+
 __all__ = [
     'AssetClass', 'InstrumentType', 'Provider', 'IndicatorType',
     'LLMToolFunction', 'LLMToolSpec', 'LLMToolCallFunction', 'LLMToolCall',
@@ -326,4 +349,5 @@ __all__ = [
     'AssetSymbolList', 'IndicatorDict', 'AnyList', 'ConfigDict',
     'OHLCV', 'OHLCVBundle', 'OHLCVStream',
     'LLMChatMessageList', 'LLMToolSpecList', 'LLMToolHistory', 'LLMThinkingHistory',
+    'NodeError', 'NodeValidationError', 'NodeExecutionError',
 ] 

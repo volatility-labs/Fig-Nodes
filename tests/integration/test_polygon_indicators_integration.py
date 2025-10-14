@@ -67,7 +67,7 @@ async def test_polygon_indicators_filtering_pipeline():
     executor = GraphExecutor(graph_data, NODE_REGISTRY)
 
     # Manually inject symbols and mock data directly into the polygon batch node output
-    original_execute = executor.nodes[2].execute
+    original_execute = executor.nodes[2]._execute_impl
     original_validate = executor.nodes[2].validate_inputs
     async def execute_with_mock_data(inputs):
         inputs = inputs.copy()
@@ -80,7 +80,7 @@ async def test_polygon_indicators_filtering_pipeline():
         inputs["symbols"] = symbols
         return original_validate(inputs)
 
-    executor.nodes[2].execute = execute_with_mock_data
+    executor.nodes[2]._execute_impl = execute_with_mock_data
     executor.nodes[2].validate_inputs = validate_with_symbols
 
     # Execute the graph
@@ -166,6 +166,7 @@ async def test_polygon_indicators_filtering_with_strict_filters():
     executor = GraphExecutor(graph_data, NODE_REGISTRY)
 
     # Manually inject symbols into the polygon batch node inputs
+    original_execute = executor.nodes[2]._execute_impl
     original_validate = executor.nodes[2].validate_inputs
     async def execute_with_mock_data(inputs):
         inputs = inputs.copy()
@@ -178,7 +179,7 @@ async def test_polygon_indicators_filtering_with_strict_filters():
         inputs["symbols"] = symbols
         return original_validate(inputs)
 
-    executor.nodes[2].execute = execute_with_mock_data
+    executor.nodes[2]._execute_impl = execute_with_mock_data
     executor.nodes[2].validate_inputs = validate_with_symbols
 
     # Execute the graph
@@ -244,7 +245,7 @@ async def test_polygon_indicators_pipeline_empty_symbols():
         executor = GraphExecutor(graph_data, NODE_REGISTRY)
 
         # Manually inject empty symbols list into the polygon batch node inputs
-        original_execute = executor.nodes[2].execute
+        original_execute = executor.nodes[2]._execute_impl
         original_validate = executor.nodes[2].validate_inputs
         async def execute_with_empty_symbols(inputs):
             inputs = inputs.copy()
@@ -256,7 +257,7 @@ async def test_polygon_indicators_pipeline_empty_symbols():
             inputs["symbols"] = []
             return original_validate(inputs)
 
-        executor.nodes[2].execute = execute_with_empty_symbols
+        executor.nodes[2]._execute_impl = execute_with_empty_symbols
         executor.nodes[2].validate_inputs = validate_with_empty_symbols
 
         # Execute the graph
@@ -354,7 +355,7 @@ async def test_polygon_indicators_filtering_pipeline_with_updated_defaults():
         inputs["symbols"] = symbols
         return original_validate(inputs)
 
-    executor.nodes[2].execute = execute_with_mock_data
+    executor.nodes[2]._execute_impl = execute_with_mock_data
     executor.nodes[2].validate_inputs = validate_with_symbols
 
     # Execute the graph

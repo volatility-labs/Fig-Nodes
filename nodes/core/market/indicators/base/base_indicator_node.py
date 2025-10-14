@@ -5,11 +5,12 @@ import numpy as np
 from nodes.base.base_node import BaseNode
 from core.types_registry import get_type, IndicatorResult, IndicatorType, IndicatorValue
 from services.indicators_service import IndicatorsService
+from abc import ABC, abstractmethod
 
 logger = logging.getLogger(__name__)
 
 
-class BaseIndicatorNode(BaseNode):
+class BaseIndicatorNode(BaseNode, ABC):
     """
     Base class for nodes that compute technical indicators from OHLCV data.
     Subclasses should implement _map_to_indicator_value for specific indicator handling.
@@ -25,61 +26,49 @@ class BaseIndicatorNode(BaseNode):
         {"name": "timeframe", "type": "combo", "default": "1d", "options": ["1m", "5m", "15m", "1h", "4h", "1d", "1w", "1M"]},
     ]
 
-    def __init__(self, node_id: str, params: Dict[str, Any]):
-        super().__init__(node_id, params)
+    def __init__(self, id: int, params: Dict[str, Any] = None):
+        super().__init__(id, params)
         self.indicators_service = IndicatorsService()
 
-    async def execute(self, inputs: Dict[str, Any]) -> Dict[str, List[IndicatorResult]]:
+    async def _execute_impl(self, inputs: Dict[str, Any]) -> Dict[str, List[IndicatorResult]]:
         bars: List[Dict[str, Any]] = inputs.get("ohlcv", [])
         if not bars:
             logger.warning("No OHLCV data provided for indicator computation.")
             return {"results": []}
 
-        try:
-            # Convert bars to DataFrame
-            df_data = [
-                {
-                    'timestamp': pd.to_datetime(bar['timestamp'], unit='ms'),
-                    'Open': bar['open'],
-                    'High': bar['high'],
-                    'Low': bar['low'],
-                    'Close': bar['close'],
-                    'Volume': bar['volume']
-                }
-                for bar in bars
-            ]
-            df = pd.DataFrame(df_data).set_index('timestamp')
+        # Convert bars to DataFrame
+        df_data = [
+            {
+                'timestamp': pd.to_datetime(bar['timestamp'], unit='ms'),
+                'Open': bar['open'],
+                'High': bar['high'],
+                'Low': bar['low'],
+                'Close': bar['close'],
+                'Volume': bar['volume']
+            }
+            for bar in bars
+        ]
+        df = pd.DataFrame(df_data).set_index('timestamp')
 
-            if df.empty or len(df) < 14:
-                logger.warning("Insufficient data for indicators (need at least 14 bars).")
-                return {"results": []}
-
-            # Compute indicators using service
-            raw_indicators = self.indicators_service.compute_indicators(df, self.params.get("timeframe", "1d"))
-
-            results: List[IndicatorResult] = []
-            for ind_type in self.params.get("indicators", []):
-                try:
-                    values = self._map_to_indicator_value(ind_type, raw_indicators)
-                    result = IndicatorResult(
-                        indicator_type=ind_type,
-                        timestamp=int(df.index[-1].timestamp() * 1000),  # Unix ms
-                        values=values,
-                        params=self.params
-                    )
-                    results.append(result)
-                except Exception as e:
-                    logger.warning(f"Failed to compute {ind_type.name}: {e}")
-                    results.append(IndicatorResult(
-                        indicator_type=ind_type,
-                        timestamp=int(df.index[-1].timestamp() * 1000),
-                        error=str(e)
-                    ))
-
-            return {"results": [r.to_dict() for r in results]}
-        except Exception as e:
-            logger.error(f"Error in BaseIndicatorNode execute: {e}")
+        if df.empty or len(df) < 14:
+            logger.warning("Insufficient data for indicators (need at least 14 bars).")
             return {"results": []}
+
+        # Compute indicators using service
+        raw_indicators = self.indicators_service.compute_indicators(df, self.params.get("timeframe", "1d"))
+
+        results: List[IndicatorResult] = []
+        for ind_type in self.params.get("indicators", []):
+            values = self._map_to_indicator_value(ind_type, raw_indicators)
+            result = IndicatorResult(
+                indicator_type=ind_type,
+                timestamp=int(df.index[-1].timestamp() * 1000),  # Unix ms
+                values=values,
+                params=self.params
+            )
+            results.append(result)
+
+        return {"results": [r.to_dict() for r in results]}
 
     @abstractmethod
     def _map_to_indicator_value(self, ind_type: IndicatorType, raw: Dict[str, Any]) -> IndicatorValue:

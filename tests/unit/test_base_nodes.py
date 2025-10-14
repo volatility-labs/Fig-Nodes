@@ -1,20 +1,19 @@
 import pytest
-from typing import Dict, Any, List
-from unittest.mock import AsyncMock, patch
+from typing import Dict, Any, List, Type, AsyncGenerator
+from unittest.mock import patch, AsyncMock
 from nodes.base.base_node import BaseNode
 from nodes.base.streaming_node import StreamingNode
-from nodes.base.universe_node import UniverseNode
-from core.types_registry import AssetSymbol, AssetClass
+from core.types_registry import AssetSymbol, AssetClass, NodeExecutionError
 
 class ConcreteBaseNode(BaseNode):
-    inputs: Dict[str, type] = {"input": str}
-    outputs: Dict[str, type] = {"output": str}
+    inputs: Dict[str, Type] = {"input": str}
+    outputs: Dict[str, Type] = {"output": str}
 
-    async def execute(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
+    async def _execute_impl(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
         return {"output": inputs["input"]}
 
 class ConcreteStreamingNode(StreamingNode):
-    async def start(self, inputs: Dict[str, Any]) -> Any:
+    async def _start_impl(self, inputs: Dict[str, Any]) -> AsyncGenerator[Dict[str, Any], None]:
         yield {"output": "stream"}
 
     def stop(self):
@@ -23,18 +22,14 @@ class ConcreteStreamingNode(StreamingNode):
     def interrupt(self):
         pass
 
-class ConcreteUniverseNode(UniverseNode):
-    async def _fetch_symbols(self) -> List[AssetSymbol]:
-        return [AssetSymbol("TEST", AssetClass.CRYPTO, "USDT")]
-
 @pytest.fixture
 def base_node():
-    return ConcreteBaseNode("test_id", {"param": "value"})
+    return ConcreteBaseNode(id=1, params={"param": "value"})
 
 # Tests for BaseNode
 
 def test_base_node_init(base_node):
-    assert base_node.id == "test_id"
+    assert base_node.id == 1
     assert base_node.params == {"param": "value"}
 
 def test_collect_multi_input_empty(base_node):
@@ -94,7 +89,7 @@ def test_validate_inputs_invalid_list_element(base_node):
 def test_validate_inputs_asset_class(base_node):
     base_node.inputs = {"asset": AssetSymbol}
     base_node.required_asset_class = AssetClass.CRYPTO
-    valid_asset = AssetSymbol("BTC", AssetClass.CRYPTO, "USDT")
+    valid_asset = AssetSymbol("BTC", AssetClass.CRYPTO, quote_currency="USDT")
     invalid_asset = AssetSymbol("AAPL", AssetClass.STOCKS)
     assert base_node.validate_inputs({"asset": valid_asset}) is True
     with pytest.raises(ValueError):
@@ -103,7 +98,7 @@ def test_validate_inputs_asset_class(base_node):
 def test_validate_inputs_multi_asset_class(base_node):
     base_node.inputs = {"assets": List[AssetSymbol]}
     base_node.required_asset_class = AssetClass.CRYPTO
-    valid_assets = [AssetSymbol("BTC", AssetClass.CRYPTO, "USDT")]
+    valid_assets = [AssetSymbol("BTC", AssetClass.CRYPTO, quote_currency="USDT")]
     invalid_assets = [AssetSymbol("AAPL", AssetClass.STOCKS)]
     assert base_node.validate_inputs({"assets_0": valid_assets}) is True
     with pytest.raises(ValueError):
@@ -122,15 +117,15 @@ async def test_base_node_execute(base_node):
 
 @pytest.mark.asyncio
 async def test_abstract_execute():
-    abstract = BaseNode("id")
-    with pytest.raises(NotImplementedError):
+    abstract = BaseNode(id=1)
+    with pytest.raises(NodeExecutionError):
         await abstract.execute({})
 
 # Tests for StreamingNode
 
 @pytest.fixture
 def streaming_node():
-    return ConcreteStreamingNode("stream_id")
+    return ConcreteStreamingNode(id=1)
 
 @pytest.mark.asyncio
 async def test_streaming_node_execute(streaming_node):
@@ -145,38 +140,3 @@ async def test_streaming_node_start(streaming_node):
 
 def test_streaming_node_stop(streaming_node):
     streaming_node.stop()  # Just check it doesn't raise
-
-# Tests for UniverseNode
-
-@pytest.fixture
-def universe_node():
-    return ConcreteUniverseNode("uni_id")
-
-@pytest.mark.asyncio
-@patch.object(ConcreteUniverseNode, "_fetch_symbols", new_callable=AsyncMock)
-async def test_universe_node_execute_no_filter(mock_fetch, universe_node):
-    mock_fetch.return_value = [AssetSymbol("TEST", AssetClass.CRYPTO, "USDT")]
-    result = await universe_node.execute({})
-    assert result == {"symbols": [AssetSymbol("TEST", AssetClass.CRYPTO, "USDT")]}
-
-@pytest.mark.asyncio
-@patch.object(ConcreteUniverseNode, "_fetch_symbols", new_callable=AsyncMock)
-async def test_universe_node_execute_with_filter(mock_fetch, universe_node):
-    mock_fetch.return_value = [AssetSymbol("TEST", AssetClass.CRYPTO, "USDT"), AssetSymbol("OTHER", AssetClass.CRYPTO, "USDT")]
-    inputs = {"filter_symbols_0": [AssetSymbol("TEST", AssetClass.CRYPTO, "USDT")]}
-    result = await universe_node.execute(inputs)
-    assert result == {"symbols": [AssetSymbol("TEST", AssetClass.CRYPTO, "USDT")]}
-
-@pytest.mark.asyncio
-@patch.object(ConcreteUniverseNode, "_fetch_symbols", new_callable=AsyncMock)
-async def test_universe_node_execute_empty_filter(mock_fetch, universe_node):
-    mock_fetch.return_value = []
-    inputs = {"filter_symbols": []}
-    result = await universe_node.execute(inputs)
-    assert result == {"symbols": []}
-
-def test_universe_node_abstract_fetch(universe_node):
-    with pytest.raises(TypeError, match="abstract"):
-        class TestUniverse(UniverseNode):
-            pass
-        TestUniverse("id")

@@ -1,15 +1,27 @@
-from typing import List
+from typing import List, Dict, Any
 import asyncio
 import requests
 import logging
-from nodes.base.universe_node import UniverseNode
-from core.types_registry import AssetSymbol, AssetClass
+from nodes.base.base_node import BaseNode
+from core.types_registry import AssetSymbol, AssetClass, get_type
 
 logger = logging.getLogger(__name__)
 
 
-class BinancePerpsUniverseNode(UniverseNode):
+class BinancePerpsUniverseNode(BaseNode):
+    inputs = {"filter_symbols": get_type("AssetSymbolList")}
+    outputs = {"symbols": get_type("AssetSymbolList")}
+    optional_inputs = ["filter_symbols"]
+
     """Fetches list of USDT-perpetual symbols from Binance futures."""
+
+    async def _execute_impl(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        symbols = await self._fetch_symbols()
+        filter_symbols = self.collect_multi_input("filter_symbols", inputs)
+        if filter_symbols:
+            filter_set = {str(s) for s in filter_symbols}
+            symbols = [s for s in symbols if str(s) in filter_set]
+        return {"symbols": symbols}
 
     async def _fetch_symbols(self) -> List[AssetSymbol]:
         attempts = 0

@@ -4,17 +4,22 @@ import json
 import asyncio
 import random
 import httpx
-from nodes.base.streaming_node import StreamingNode
+from nodes.base.base_node import BaseNode
 import subprocess as sp
 
 
 from core.types_registry import get_type
+from core.types_registry import NodeValidationError, NodeExecutionError
 from services.tools.registry import get_tool_handler, get_all_credential_providers
+import logging
 
+logger = logging.getLogger(__name__)
 
-class OllamaChatNode(StreamingNode):
+class OllamaChatNode(BaseNode):
     """
-    Streaming chat node backed by a local Ollama server.
+    Non-streaming chat node backed by a local Ollama server.
+
+    Note: Streaming mode is not implemented for this node. Use execute() for synchronous calls.
 
     Constraints:
     - Does not pull/download models. Users manage models with the Ollama CLI.
@@ -31,18 +36,13 @@ class OllamaChatNode(StreamingNode):
     - message: Dict[str, Any] (assistant message with role, content, thinking, tool_calls, etc.)
     - metrics: Dict[str, Any] (generation stats like durations and token counts)
 
-    In streaming mode (default), start() yields progressive dicts:
-    - Partial: {"message": dict (with accumulating content), "done": False}
-    - Final: {"message": dict, "metrics": dict, "done": True}
-
-    Note: Streaming mode is currently in beta and may be unstable.
     """
 
     inputs = {
         "messages": get_type("LLMChatMessageList"),
         "prompt": str,
-        "system": Union[str, get_type("LLMChatMessage")],
-        "tools": get_type("LLMToolSpec"),  # Tool schemas (supports multi-input and lists)
+        "system": Any,
+        "tools": get_type("LLMToolSpecList"),  
     }
 
     outputs = {
@@ -400,7 +400,7 @@ class OllamaChatNode(StreamingNode):
                 models_list = [m.get("name") for m in data.get("models", []) if m.get("name")]
             print(f"OllamaChatNode: Found {len(models_list)} models: {models_list}")
         except Exception as e:
-            print(f"OllamaChatNode: Error querying Ollama models: {e}")
+            raise ValueError(f"Ollama model query failed: {e}") from e
 
         # Update params_meta options dynamically for UI consumption via /nodes metadata
         for p in self.params_meta:
@@ -419,7 +419,7 @@ class OllamaChatNode(StreamingNode):
             print(f"OllamaChatNode: ERROR - {error_msg}")
             raise ValueError(error_msg)
         elif selected and selected not in models_list:
-            print(f"OllamaChatNode: WARNING - Selected model '{selected}' not in available models {models_list}")
+            logger.warning(f"OllamaChatNode: WARNING - Selected model '{selected}' not in available models {models_list}")
 
         print(f"OllamaChatNode: Using model '{selected}'")
         return selected
@@ -507,10 +507,8 @@ class OllamaChatNode(StreamingNode):
                     combined_metrics[k] = (resp or {}).get(k)
 
             message = (resp or {}).get("message") or {}
-            # Convert Message object to dict if needed
             if hasattr(message, 'role'):  # It's a Message object
                 message = self._message_to_dict(message)
-            # Handle both dict (from API) and Message object (from Ollama client)
             tool_calls = message.get("tool_calls") if isinstance(message, dict) else None
 
             # Collect thinking if present
@@ -518,7 +516,8 @@ class OllamaChatNode(StreamingNode):
             if thinking and isinstance(thinking, str):
                 thinking_history.append({"thinking": thinking, "iteration": _round})
 
-            # If no tool calls, stop and keep last response
+            messages.append(message)
+
             if not tool_calls or not isinstance(tool_calls, list):
                 break
 
@@ -577,41 +576,43 @@ class OllamaChatNode(StreamingNode):
 
         return {"messages": messages, "last_response": last_resp, "metrics": combined_metrics, "tool_history": tool_history, "thinking_history": thinking_history}
 
-    async def start(self, inputs: Dict[str, Any]) -> AsyncGenerator[Dict[str, Any], None]:
+    async def _execute_impl(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        # Prefer host/model from inputs when provided
+        host = self._get_effective_host(inputs)
+        input_model = (inputs.get("model") if isinstance(inputs, dict) else None)
+        model: str = await self._get_model(host, input_model)
+        self._last_host = host
+        self._last_model = model
+        raw_messages: Optional[List[Dict[str, Any]]] = inputs.get("messages")
+        prompt_text: Optional[str] = inputs.get("prompt")
+        system_input: Optional[Any] = inputs.get("system")
+        messages: List[Dict[str, Any]] = self._build_messages(raw_messages, prompt_text, system_input)
+        tools: List[Dict[str, Any]] = self._collect_tools(inputs)
+
+        print(f"OllamaChatNode: Execute - model='{model}', host='{host}', prompt='{prompt_text}', messages_count={len(raw_messages) if raw_messages else 0}")
+        # Re-affirm host using same precedence (inputs -> params -> env)
+        host: str = self._get_effective_host(inputs)
+        # Track last used model/host for stop/unload
+        self._last_model = model
+        self._last_host = host
+        # Force non-streaming for execute()
+        fmt: Optional[str] = self._get_format_value()
+        keep_alive = self._get_keep_alive_value()
+        think = bool(self.params.get("think", False))
+        options, effective_seed = self._prepare_generation_options()
+
+        # Validate we have something to send (model always set now)
+        if not messages and not prompt_text:
+            error_msg = "No messages or prompt provided to OllamaChatNode"
+            error_message = {"role": "assistant", "content": ""}
+            return {"message": error_message, "metrics": {"error": error_msg}, "tool_history": [], "thinking_history": []}
+
+        # effective_seed produced by helper above
+
+        from ollama import AsyncClient
+
         try:
-            # Prefer host/model from inputs when provided
-            host = self._get_effective_host(inputs)
-            input_model = (inputs.get("model") if isinstance(inputs, dict) else None)
-            model: str = await self._get_model(host, input_model)
-            self._last_host = host
-            self._last_model = model
-            raw_messages: Optional[List[Dict[str, Any]]] = inputs.get("messages")
-            prompt_text: Optional[str] = inputs.get("prompt")
-            system_input: Optional[Any] = inputs.get("system")
-            messages: List[Dict[str, Any]] = self._build_messages(raw_messages, prompt_text, system_input)
-            tools: List[Dict[str, Any]] = self._collect_tools(inputs)
-
-            print(f"OllamaChatNode: Received inputs - model='{model}', host='{host}', prompt='{prompt_text}', messages_count={len(raw_messages) if raw_messages else 0}")
-
-            # Derive format/keep-alive from helpers and build options/seed
-            fmt: Optional[str] = self._get_format_value()
-            keep_alive = self._get_keep_alive_value()
-            think = bool(self.params.get("think", False))
-            options, effective_seed = self._prepare_generation_options()
-
-            print(f"OllamaChatNode: Using host={host}, messages={len(messages)}")
-            # Validate we have something to send (model always set now)
-            if not messages and not prompt_text:
-                error_msg = "No messages or prompt provided to OllamaChatNode"
-                print(f"OllamaChatNode: ERROR - {error_msg}")
-                error_message = {"role": "assistant", "content": ""}
-                yield {"message": error_message, "metrics": {"error": error_msg}}
-                return
-
-            # Lazy import to keep dependency local to node
-            from ollama import AsyncClient
-
-            # Auto-detect and apply model context window (clamp num_ctx)
+            # Auto-detect and apply model context window (clamp num_ctx) for execute()
             # Only perform network lookup when 'messages' are provided; skip for prompt-only inputs
             try:
                 if isinstance(inputs, dict) and inputs.get("messages"):
@@ -619,194 +620,21 @@ class OllamaChatNode(StreamingNode):
             except Exception:
                 pass
 
-            metrics: Dict[str, Any] = {}
-
             # Tool orchestration if needed
             tool_rounds_info = {"messages": messages, "last_response": None, "metrics": {}, "tool_history": [], "thinking_history": []}
             if tools:
                 tool_rounds_info = await self._maybe_execute_tools_and_augment_messages(
                     host, model, messages, tools, fmt, options, keep_alive, think
                 )
-                messages = tool_rounds_info.get("messages", messages)
-                # Update metrics
-                t_metrics = tool_rounds_info.get("metrics") or {}
-                if isinstance(t_metrics, dict):
-                    metrics.update(t_metrics)
-
-            # Final non-streaming call without tools (tool orchestration should have resolved them)
-            print(f"OllamaChatNode: Creating Ollama client for {host}")
-            client = AsyncClient(host=host)
-            self._client = client
-            # Cooperative cancellation for non-streaming call inside start()
-            chat_task = asyncio.create_task(client.chat(
-                model=model,
-                messages=messages,
-                tools=None,  # Don't pass tools to final call
-                stream=False,
-                format=fmt,
-                options=options,
-                keep_alive=keep_alive,
-                think=think,
-            ))
-            cancel_wait = asyncio.create_task(self._cancel_event.wait())
-            done, pending = await asyncio.wait({chat_task, cancel_wait}, return_when=asyncio.FIRST_COMPLETED)
-            if cancel_wait in done and chat_task not in done:
-                try:
-                    chat_task.cancel()
-                except Exception:
-                    pass
-                try:
-                    await asyncio.wait({chat_task}, timeout=0.05)
-                except Exception:
-                    pass
-                try:
-                    await client.close()
-                except Exception:
-                    pass
-                try:
-                    self._unload_model_via_cli()
-                except Exception:
-                    pass
-                partial_message = {"role": "assistant", "content": ""}
-                yield {"message": partial_message, "metrics": {"error": "Cancelled"}, "done": True}
-                return
-            resp = await chat_task
-            final_message = (resp or {}).get("message") or {"role": "assistant", "content": ""}
-            self._parse_content_if_json_mode(final_message, metrics)
-            self._parse_tool_calls_from_message(final_message)
-            # Ensure role is set
-            self._ensure_assistant_role_inplace(final_message)
-            self._update_metrics_from_source(metrics, resp)
-            metrics["seed"] = int(effective_seed) if effective_seed is not None else None
-            if "temperature" in options:
-                metrics["temperature"] = options["temperature"]
-            # Merge tool_rounds_info metrics
-            t_metrics = tool_rounds_info.get("metrics") or {}
-            if isinstance(t_metrics, dict):
-                metrics.update(t_metrics)
-
-            # Collect thinking from final message if present
-            thinking_history = tool_rounds_info.get("thinking_history", [])
-            thinking = final_message.get("thinking")
-            if thinking and isinstance(thinking, str):
-                thinking_history.append({"thinking": thinking, "iteration": 0})
-
-            yield {"message": final_message, "metrics": metrics, "tool_history": tool_rounds_info.get("tool_history", []), "thinking_history": thinking_history, "done": True}
-        except asyncio.CancelledError:
-            # Cooperative cancellation; do not emit error on cancel
-            return
-        except Exception as e:
-            error_message = {"role": "assistant", "content": ""}
-            yield {"message": error_message, "metrics": {"error": str(e)}, "done": True}
-        finally:
-            self._cancel_event.clear()
-
-    def _parse_tool_calls_from_message(self, message: Dict[str, Any]):
-        """
-        Parse tool calls from message content if using custom format.
-        Updates the message in-place.
-        """
-        content = message.get("content", "")
-        if isinstance(content, str):
-            # Look for the custom tool call marker
-            marker = "_TOOL_WEB_SEARCH_: "
-            if marker in content:
-                # Extract everything after the marker as the query
-                query_start = content.find(marker) + len(marker)
-                # Find the end of the tool call (look for next marker or end of content)
-                query_end = content.find("_RESULT_:", query_start)
-                if query_end == -1:
-                    query_end = content.find("_TOOL_END_:", query_start)
-                if query_end == -1:
-                    query_end = len(content)
-
-                query = content[query_start:query_end].strip()
-
-                if query:
-                    # Create the tool call in standard format
-                    tool_call = {
-                        "function": {
-                            "name": "web_search",
-                            "arguments": {"query": query}
-                        }
-                    }
-
-                    # Initialize tool_calls list if not present
-                    if "tool_calls" not in message:
-                        message["tool_calls"] = []
-                    # Add if not already present
-                    if tool_call not in message["tool_calls"]:
-                        message["tool_calls"].append(tool_call)
-
-        # Set tool_name for backward compatibility if there are tool_calls
-        if message.get("tool_calls"):
-            complete_calls = [call for call in message["tool_calls"] if self._is_complete_tool_call(call)]
-            if complete_calls:
-                message["tool_name"] = complete_calls[0]["function"]["name"]
             else:
-                message["tool_name"] = None
-        else:
-            message["tool_name"] = None
+                client = AsyncClient(host=host)
+                self._client = client
 
-    async def execute(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
-        try:
-            # Prefer host/model from inputs when provided
-            host = self._get_effective_host(inputs)
-            input_model = (inputs.get("model") if isinstance(inputs, dict) else None)
-            model: str = await self._get_model(host, input_model)
-            self._last_host = host
-            self._last_model = model
-            raw_messages: Optional[List[Dict[str, Any]]] = inputs.get("messages")
-            prompt_text: Optional[str] = inputs.get("prompt")
-            system_input: Optional[Any] = inputs.get("system")
-            messages: List[Dict[str, Any]] = self._build_messages(raw_messages, prompt_text, system_input)
-            tools: List[Dict[str, Any]] = self._collect_tools(inputs)
-
-            print(f"OllamaChatNode: Execute - model='{model}', host='{host}', prompt='{prompt_text}', messages_count={len(raw_messages) if raw_messages else 0}")
-            # Re-affirm host using same precedence (inputs -> params -> env)
-            host: str = self._get_effective_host(inputs)
-            # Track last used model/host for stop/unload
-            self._last_model = model
-            self._last_host = host
-            # Force non-streaming for execute()
-            fmt: Optional[str] = self._get_format_value()
-            keep_alive = self._get_keep_alive_value()
-            think = bool(self.params.get("think", False))
-            options, effective_seed = self._prepare_generation_options()
-
-            # Validate we have something to send (model always set now)
-            if not messages and not prompt_text:
-                error_msg = "No messages or prompt provided to OllamaChatNode"
-                error_message = {"role": "assistant", "content": ""}
-                return {"message": error_message, "metrics": {"error": error_msg}, "tool_history": [], "thinking_history": []}
-
-            # effective_seed produced by helper above
-
-            from ollama import AsyncClient
-
-            # Tool orchestration if needed
-            tool_rounds_info = {"messages": messages, "last_response": None, "metrics": {}, "tool_history": [], "thinking_history": []}
-            if tools:
-                tool_rounds_info = await self._maybe_execute_tools_and_augment_messages(
-                    host, model, messages, tools, fmt, options, keep_alive, think
-                )
-                messages = tool_rounds_info.get("messages", messages)
-
-            client = AsyncClient(host=host)
-            self._client = client
-            try:
-                # Auto-detect and apply model context window (clamp num_ctx) for execute()
-                # Only perform network lookup when 'messages' are provided; skip for prompt-only inputs
-                try:
-                    if isinstance(inputs, dict) and inputs.get("messages"):
-                        options = await self._apply_context_window(host, model, options)
-                except Exception:
-                    pass
                 # Cooperative cancellation for non-streaming execute()
                 chat_task = asyncio.create_task(client.chat(
                     model=model,
                     messages=messages,
-                    tools=None,  # Tools already orchestrated
+                    tools=None,
                     stream=False,
                     format=fmt,
                     options=options,
@@ -832,61 +660,58 @@ class OllamaChatNode(StreamingNode):
                         self._unload_model_via_cli()
                     except Exception:
                         pass
+                    self._client = None
                     raise asyncio.CancelledError()
                 resp = await chat_task
-                final_message = (resp or {}).get("message") or {"role": "assistant", "content": ""}
-                # Ensure role is set
-                self._ensure_assistant_role_inplace(final_message)
-                metrics: Dict[str, Any] = {}
-                self._parse_content_if_json_mode(final_message, metrics)
-                self._parse_tool_calls_from_message(final_message)
 
-                self._update_metrics_from_source(metrics, resp)
-                metrics["seed"] = int(effective_seed) if effective_seed is not None else None
-                if "temperature" in options:
-                    metrics["temperature"] = options["temperature"]
-                # Merge tool_rounds_info metrics
-                t_metrics = tool_rounds_info.get("metrics") or {}
-                if isinstance(t_metrics, dict):
-                    metrics.update(t_metrics)
+            if tools:
+                resp = tool_rounds_info.get("last_response") or {}
+                metrics = tool_rounds_info.get("metrics") or {}
+                tool_history = tool_rounds_info.get("tool_history") or []
+                thinking_history = tool_rounds_info.get("thinking_history") or []
+            else:
+                metrics = {}
+                tool_history = []
+                thinking_history = []
 
-                # Collect thinking from final message if present
-                thinking_history = tool_rounds_info.get("thinking_history", [])
+            final_message = (resp or {}).get("message") or {"role": "assistant", "content": ""}
+            self._ensure_assistant_role_inplace(final_message)
+            self._parse_content_if_json_mode(final_message, metrics)
+            self._parse_tool_calls_from_message(final_message)
+
+            self._update_metrics_from_source(metrics, resp)
+            metrics["seed"] = int(effective_seed) if effective_seed is not None else None
+            if "temperature" in options:
+                metrics["temperature"] = options["temperature"]
+            t_metrics = tool_rounds_info.get("metrics") or {}
+            if isinstance(t_metrics, dict):
+                metrics.update(t_metrics)
+            if not tools:
                 thinking = final_message.get("thinking")
                 if thinking and isinstance(thinking, str):
                     thinking_history.append({"thinking": thinking, "iteration": 0})
-
-                return {
-                    "message": final_message,
-                    "metrics": metrics,
-                    "tool_history": tool_rounds_info.get("tool_history", []),
-                    "thinking_history": thinking_history
-                }
-            except asyncio.CancelledError:
-                try:
-                    await client.close()
-                except Exception:
-                    pass
-                try:
-                    self._unload_model_via_cli()
-                except Exception:
-                    pass
-                self._client = None
-                raise
-            finally:
-                try:
-                    await client.close()
-                except Exception:
-                    pass
-                self._client = None
-        except asyncio.CancelledError:
-            raise
-        except ValueError:
-            # Propagate model selection errors (e.g., no local models found)
-            raise
+            return {
+                "message": final_message,
+                "metrics": metrics,
+                "tool_history": tool_history,
+                "thinking_history": thinking_history
+            }
         except Exception as e:
             error_message = {"role": "assistant", "content": ""}
             return {"message": error_message, "metrics": {"error": str(e)}, "tool_history": [], "thinking_history": []}
+
+    # Override StreamingNode.execute to support non-streaming execution in tests and callers
+    # Remove the following override
+    # async def execute(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
+    #     if not self.validate_inputs(inputs):
+    #         raise NodeValidationError(self.id, f"Missing or invalid inputs: {self.inputs}")
+    #     try:
+    #         result = await self._execute_impl(inputs)
+    #         self._validate_outputs(result)
+    #         return result
+    #     except Exception as e:
+    #         logger.error(f"Execution failed in node {self.id}: {str(e)}", exc_info=True)
+    #         raise NodeExecutionError(self.id, "Execution failed", original_exc=e) from e
 
     def _parse_content_if_json_mode(self, message: Dict[str, Any], metrics: Dict[str, Any]) -> None:
         if bool(self.params.get("json_mode", False)):
@@ -897,6 +722,54 @@ class OllamaChatNode(StreamingNode):
                     message["content"] = parsed
                 except json.JSONDecodeError as e:
                     metrics["parse_error"] = str(e)
+
+    def _parse_tool_calls_from_message(self, message: Dict[str, Any]) -> None:
+        """Normalize tool_calls in-place to a dict-based schema.
+
+        Converts any client-specific ToolCall objects or malformed entries into
+        {"function": {"name": str, "arguments": Dict[str, Any]}} items so that
+        downstream consumers and tests can rely on a consistent structure.
+        """
+        try:
+            if not isinstance(message, dict):
+                return
+            tool_calls = message.get("tool_calls")
+            if not tool_calls or not isinstance(tool_calls, list):
+                return
+            normalized: List[Dict[str, Any]] = []
+            for call in tool_calls:
+                # If already a dict with proper structure, coerce arguments to dict
+                if isinstance(call, dict):
+                    func = call.get("function")
+                    if isinstance(func, dict):
+                        name = func.get("name") if isinstance(func.get("name"), str) else ""
+                        args = func.get("arguments")
+                        # If args is a JSON string, try to parse; otherwise ensure dict
+                        if isinstance(args, str):
+                            try:
+                                parsed_args = json.loads(args)
+                                args = parsed_args if isinstance(parsed_args, dict) else {}
+                            except Exception:
+                                args = {}
+                        elif not isinstance(args, dict):
+                            args = {}
+                        normalized.append({"function": {"name": name, "arguments": args}})
+                    else:
+                        # Attempt to convert object-like entries
+                        normalized.append(self._tool_call_to_dict(call))
+                else:
+                    # Object from client SDK; convert via helper
+                    normalized.append(self._tool_call_to_dict(call))
+            message["tool_calls"] = normalized
+        except Exception:
+            # Be resilient; never raise from parser
+            pass
+
+    def force_stop(self):
+        was_stopped = self._is_stopped
+        super().force_stop()
+        if not was_stopped:
+            self.stop()
 
     # _make_full_message no longer used for final outputs; kept for potential future use
     # def _make_full_message(self, base: Dict[str, Any]) -> Dict[str, Any]:

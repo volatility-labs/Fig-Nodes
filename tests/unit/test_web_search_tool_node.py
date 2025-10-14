@@ -25,8 +25,6 @@ def web_search_tool_node():
     })
 
 
-
-
 @pytest.mark.asyncio
 async def test_execute_returns_tool_schema(web_search_tool_node):
     """Test that execute returns the tool schema with injected defaults."""
@@ -50,7 +48,7 @@ async def test_execute_returns_tool_schema(web_search_tool_node):
 @pytest.mark.asyncio
 async def test_execute_with_custom_params():
     """Test execute with custom parameter values."""
-    node = WebSearchToolNode(id=2, params={
+    node = WebSearchToolNode(id=1, params={
         "provider": "tavily",
         "default_k": 3,
         "time_range": "week",
@@ -96,7 +94,7 @@ async def test_execute_handles_missing_properties_gracefully(web_search_tool_nod
 @pytest.mark.asyncio
 async def test_execute_with_none_params():
     """Test execute with None parameter values (should use defaults)."""
-    node = WebSearchToolNode(id=3, params={
+    node = WebSearchToolNode(id=1, params={
         "provider": "tavily",
         "default_k": None,
         "time_range": None,
@@ -117,7 +115,7 @@ async def test_execute_with_none_params():
 @pytest.mark.asyncio
 async def test_execute_with_empty_params():
     """Test execute with empty string parameter values."""
-    node = WebSearchToolNode(id=4, params={
+    node = WebSearchToolNode(id=1, params={
         "provider": "tavily",
         "default_k": "",
         "time_range": "",
@@ -138,7 +136,7 @@ async def test_execute_with_empty_params():
 @pytest.mark.asyncio
 async def test_execute_with_invalid_time_range():
     """Test execute with invalid time_range parameter."""
-    node = WebSearchToolNode(id=5, params={
+    node = WebSearchToolNode(id=1, params={
         "provider": "tavily",
         "default_k": 5,
         "time_range": "invalid_range",
@@ -159,7 +157,7 @@ async def test_execute_with_invalid_time_range():
 @pytest.mark.asyncio
 async def test_execute_with_k_out_of_bounds():
     """Test execute with k parameter out of bounds."""
-    node = WebSearchToolNode(id=6, params={
+    node = WebSearchToolNode(id=1, params={
         "provider": "tavily",
         "default_k": 15,  # Out of bounds (max 10)
         "time_range": "month",
@@ -180,7 +178,7 @@ def test_node_inputs_outputs(web_search_tool_node):
     from core.types_registry import get_type
     expected_inputs = {}
     assert web_search_tool_node.inputs == expected_inputs
-    assert web_search_tool_node.outputs == {"tool": web_search_tool_node.outputs["tool"]}
+    assert web_search_tool_node.outputs == {"tool": get_type("LLMToolSpec")}
 
 
 def test_node_category(web_search_tool_node):

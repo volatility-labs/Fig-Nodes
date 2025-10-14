@@ -7,6 +7,7 @@ from core.types_registry import AssetSymbol, OHLCVBar, IndicatorResult, Indicato
 from core.api_key_vault import APIKeyVault
 from services.polygon_service import fetch_bars
 import pytz
+from core.types_registry import get_type
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +19,7 @@ class OrbFilterNode(BaseIndicatorFilterNode):
     ui_module = "market/OrbFilterNodeUI"
 
     inputs = {
-        "ohlcv_bundle": Dict[AssetSymbol, List[OHLCVBar]],
+        "ohlcv_bundle": get_type("OHLCVBundle"), 
     }
 
     default_params = {
@@ -160,7 +161,7 @@ class OrbFilterNode(BaseIndicatorFilterNode):
             return True
         return direction == param_dir
 
-    async def execute(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
+    async def _execute_impl(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
         self.api_key = APIKeyVault().get("POLYGON_API_KEY")
         if not self.api_key:
             raise ValueError("Polygon API key not found in vault")
@@ -182,21 +183,11 @@ class OrbFilterNode(BaseIndicatorFilterNode):
             if not ohlcv_data:
                 continue
 
-            try:
-                indicator_result = await self._calculate_orb_indicator(symbol, self.api_key)
-                if self._should_pass_filter(indicator_result):
-                    filtered_bundle[symbol] = ohlcv_data
-            except Exception as e:
-                logger.warning(f"Failed to process for {symbol}: {e}")
-                # still advance progress on failure
-                processed_symbols += 1
-                try:
-                    progress = (processed_symbols / max(1, total_symbols)) * 100.0
-                    self.report_progress(progress, f"{processed_symbols}/{total_symbols}")
-                except Exception:
-                    pass
-                continue
+            indicator_result = await self._calculate_orb_indicator(symbol, self.api_key)
+            if self._should_pass_filter(indicator_result):
+                filtered_bundle[symbol] = ohlcv_data
 
+            # Advance progress
             processed_symbols += 1
             try:
                 progress = (processed_symbols / max(1, total_symbols)) * 100.0

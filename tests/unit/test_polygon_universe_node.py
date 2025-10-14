@@ -4,11 +4,12 @@ from unittest.mock import AsyncMock, patch, MagicMock
 
 from nodes.custom.polygon.polygon_universe_node import PolygonUniverseNode
 from core.api_key_vault import APIKeyVault
+from core.types_registry import AssetSymbol, AssetClass, register_asset_class, get_type
 
 
 @pytest.fixture
 def polygon_node():
-    return PolygonUniverseNode("poly_id", {"market": "crypto"})
+    return PolygonUniverseNode(id=1, params={"market": "crypto"})
 
 
 @pytest.mark.asyncio
@@ -34,7 +35,7 @@ async def test_polygon_fetch_symbols(mock_client, mock_vault_get, polygon_node):
     assert len(symbols) == 1
     assert symbols[0].ticker == "BTC"
     assert symbols[0].quote_currency == "USD"
-    assert symbols[0].asset_class == "CRYPTO"
+    assert symbols[0].asset_class == AssetClass.CRYPTO
     assert symbols[0].exchange == "Crypto"
 
 
@@ -68,7 +69,7 @@ async def test_polygon_single_request(mock_client, polygon_node):
 @pytest.mark.asyncio
 @patch("httpx.AsyncClient")
 async def test_polygon_filtering_min_change_perc(mock_client):
-    node = PolygonUniverseNode("poly_id", {"market": "crypto", "min_change_perc": 2.0})
+    node = PolygonUniverseNode(id=1, params={"market": "crypto", "min_change_perc": 2.0})
     mock_get = AsyncMock()
     mock_response = MagicMock()
     mock_response.status_code = 200
@@ -89,7 +90,7 @@ async def test_polygon_filtering_min_change_perc(mock_client):
 @pytest.mark.asyncio
 @patch("httpx.AsyncClient")
 async def test_polygon_filtering_max_change_perc(mock_client):
-    node = PolygonUniverseNode("poly_id", {"market": "crypto", "max_change_perc": 2.0})
+    node = PolygonUniverseNode(id=1, params={"market": "crypto", "max_change_perc": 2.0})
     mock_get = AsyncMock()
     mock_response = MagicMock()
     mock_response.status_code = 200
@@ -110,7 +111,7 @@ async def test_polygon_filtering_max_change_perc(mock_client):
 @pytest.mark.asyncio
 @patch("httpx.AsyncClient")
 async def test_polygon_filtering_change_perc_range_positive(mock_client):
-    node = PolygonUniverseNode("poly_id", {"market": "crypto", "min_change_perc": 1.5, "max_change_perc": 2.5})
+    node = PolygonUniverseNode(id=1, params={"market": "crypto", "min_change_perc": 1.5, "max_change_perc": 2.5})
     mock_get = AsyncMock()
     mock_response = MagicMock()
     mock_response.status_code = 200
@@ -132,7 +133,7 @@ async def test_polygon_filtering_change_perc_range_positive(mock_client):
 @pytest.mark.asyncio
 @patch("httpx.AsyncClient")
 async def test_polygon_filtering_change_perc_range_negative(mock_client):
-    node = PolygonUniverseNode("poly_id", {"market": "crypto", "min_change_perc": -5.0, "max_change_perc": -1.0})
+    node = PolygonUniverseNode(id=1, params={"market": "crypto", "min_change_perc": -5.0, "max_change_perc": -1.0})
     mock_get = AsyncMock()
     mock_response = MagicMock()
     mock_response.status_code = 200
@@ -154,7 +155,7 @@ async def test_polygon_filtering_change_perc_range_negative(mock_client):
 @pytest.mark.asyncio
 @patch("httpx.AsyncClient")
 async def test_polygon_invalid_change_range_raises(mock_client):
-    node = PolygonUniverseNode("poly_id", {"market": "crypto", "min_change_perc": 5.0, "max_change_perc": 2.0})
+    node = PolygonUniverseNode(id=1, params={"market": "crypto", "min_change_perc": 5.0, "max_change_perc": 2.0})
     mock_get = AsyncMock()
     mock_response = MagicMock()
     mock_response.status_code = 200
@@ -169,7 +170,7 @@ async def test_polygon_invalid_change_range_raises(mock_client):
 @pytest.mark.asyncio
 @patch("httpx.AsyncClient")
 async def test_polygon_missing_todays_change_defaults_zero(mock_client):
-    node = PolygonUniverseNode("poly_id", {"market": "crypto", "min_change_perc": 0})
+    node = PolygonUniverseNode(id=1, params={"market": "crypto", "min_change_perc": 0})
     mock_get = AsyncMock()
     mock_response = MagicMock()
     mock_response.status_code = 200
@@ -192,13 +193,13 @@ async def test_polygon_missing_todays_change_defaults_zero(mock_client):
 @patch("httpx.AsyncClient")
 async def test_polygon_market_variants_and_otc_flags(mock_client):
     # Stocks
-    node_stocks = PolygonUniverseNode("poly_s", {"market": "stocks"})
+    node_stocks = PolygonUniverseNode(id=1, params={"market": "stocks"})
     # Indices
-    node_indices = PolygonUniverseNode("poly_i", {"market": "indices"})
+    node_indices = PolygonUniverseNode(id=2, params={"market": "indices"})
     # FX
-    node_fx = PolygonUniverseNode("poly_f", {"market": "fx"})
+    node_fx = PolygonUniverseNode(id=3, params={"market": "fx"})
     # OTC flag passed via stocks
-    node_otc = PolygonUniverseNode("poly_o", {"market": "stocks", "include_otc": True})
+    node_otc = PolygonUniverseNode(id=4, params={"market": "stocks", "include_otc": True})
 
     mock_get = AsyncMock()
     mock_response = MagicMock()
@@ -212,12 +213,12 @@ async def test_polygon_market_variants_and_otc_flags(mock_client):
     # Stocks
     node_stocks._execute_inputs = {"api_key": "test_key"}
     symbols = await node_stocks._fetch_symbols()
-    assert len(symbols) == 1 and symbols[0].asset_class == "STOCKS"
+    assert len(symbols) == 1 and symbols[0].asset_class == AssetClass.STOCKS
 
     # Indices
     node_indices._execute_inputs = {"api_key": "test_key"}
     symbols = await node_indices._fetch_symbols()
-    assert len(symbols) == 1 and symbols[0].asset_class == "INDICES"
+    assert len(symbols) == 1 and symbols[0].asset_class == AssetClass.INDICES
 
     # FX
     mock_response.json.return_value = {"tickers": [{"ticker": "C:EURUSD", "todaysChangePerc": 1.0, "day": {"v": 1000, "c": 1.05}}]}

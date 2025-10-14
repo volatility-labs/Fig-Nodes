@@ -16,10 +16,10 @@ class BaseIndicatorFilterNode(BaseFilterNode):
     Output: Filtered OHLCV bundle (Dict[AssetSymbol, List[OHLCVBar]])
     """
     outputs = {
-        "filtered_ohlcv_bundle": Dict[AssetSymbol, List[OHLCVBar]],
+        "filtered_ohlcv_bundle": get_type("OHLCVBundle"),  # Changed to registry type
     }
 
-    def __init__(self, id, params: Dict[str, Any]):
+    def __init__(self, id: int, params: Dict[str, Any] = None):  # Explicit constructor for consistency
         super().__init__(id, params)
         self.indicators_service = IndicatorsService()
         self._validate_indicator_params()
@@ -38,7 +38,7 @@ class BaseIndicatorFilterNode(BaseFilterNode):
         Must be implemented by subclasses."""
         raise NotImplementedError("Subclasses must implement _should_pass_filter with IndicatorResult")
 
-    async def execute(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
+    async def _execute_impl(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
         ohlcv_bundle: Dict[AssetSymbol, List[OHLCVBar]] = inputs.get("ohlcv_bundle", {})
 
         if not ohlcv_bundle:

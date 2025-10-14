@@ -5,7 +5,7 @@ import pandas as pd
 import numpy as np
 from ta.volatility import AverageTrueRange
 from nodes.core.market.filters.lod_filter_node import LodFilterNode
-from core.types_registry import AssetSymbol, OHLCVBar, IndicatorType, IndicatorResult, IndicatorValue
+from core.types_registry import AssetSymbol, OHLCVBar, IndicatorType, IndicatorResult, IndicatorValue, AssetClass
 
 
 @pytest.fixture
@@ -23,8 +23,8 @@ def sample_ohlcv_bundle() -> Dict[AssetSymbol, List[OHLCVBar]]:
         for i in range(20)
     ]
 
-    symbol_high = AssetSymbol("HIGH_VOL", "STOCKS")
-    symbol_low = AssetSymbol("LOW_VOL", "STOCKS")
+    symbol_high = AssetSymbol("HIGH_VOL", AssetClass.STOCKS)
+    symbol_low = AssetSymbol("LOW_VOL", AssetClass.STOCKS)
     return {symbol_high: high_vol_bars, symbol_low: low_vol_bars}
 
 
@@ -38,7 +38,7 @@ def high_lod_bundle() -> Dict[AssetSymbol, List[OHLCVBar]]:
     ]
     # Ensure last bar has high LoD distance
     bars[-1] = {"timestamp": 19 * 86400000, "open": 100, "high": 120, "low": 90, "close": 115, "volume": 1000}
-    symbol = AssetSymbol("HIGH_LOD", "STOCKS")
+    symbol = AssetSymbol("HIGH_LOD", AssetClass.STOCKS)
     return {symbol: bars}
 
 
@@ -50,28 +50,28 @@ def low_lod_bundle() -> Dict[AssetSymbol, List[OHLCVBar]]:
         {"timestamp": i * 86400000, "open": 100, "high": 105, "low": 99, "close": 99.5, "volume": 1000}
         for i in range(20)
     ]
-    symbol = AssetSymbol("LOW_LOD", "STOCKS")
+    symbol = AssetSymbol("LOW_LOD", AssetClass.STOCKS)
     return {symbol: bars}
 
 
 @pytest.mark.asyncio
 async def test_lod_filter_node_happy_path_high_lod(high_lod_bundle):
     """Test that assets with high LoD distance pass the filter."""
-    node = LodFilterNode("test", {"min_lod_distance": 10.0, "atr_window": 14})
+    node = LodFilterNode(id=1, params={"min_lod_distance": 10.0, "atr_window": 14})
     inputs = {"ohlcv_bundle": high_lod_bundle}
     result = await node.execute(inputs)
 
     assert "filtered_ohlcv_bundle" in result
     filtered = result["filtered_ohlcv_bundle"]
     assert len(filtered) == 1
-    symbol = AssetSymbol("HIGH_LOD", "STOCKS")
+    symbol = AssetSymbol("HIGH_LOD", AssetClass.STOCKS)
     assert symbol in filtered
 
 
 @pytest.mark.asyncio
 async def test_lod_filter_node_happy_path_low_lod(low_lod_bundle):
     """Test that assets with low LoD distance fail the filter."""
-    node = LodFilterNode("test", {"min_lod_distance": 10.0, "atr_window": 14})
+    node = LodFilterNode(id=1, params={"min_lod_distance": 10.0, "atr_window": 14})
     inputs = {"ohlcv_bundle": low_lod_bundle}
     result = await node.execute(inputs)
 
@@ -86,7 +86,7 @@ async def test_lod_filter_node_mixed_bundle(high_lod_bundle, low_lod_bundle):
     # Combine bundles
     mixed_bundle = {**high_lod_bundle, **low_lod_bundle}
 
-    node = LodFilterNode("test", {"min_lod_distance": 10.0, "atr_window": 14})
+    node = LodFilterNode(id=1, params={"min_lod_distance": 10.0, "atr_window": 14})
     inputs = {"ohlcv_bundle": mixed_bundle}
     result = await node.execute(inputs)
 
@@ -94,8 +94,8 @@ async def test_lod_filter_node_mixed_bundle(high_lod_bundle, low_lod_bundle):
     filtered = result["filtered_ohlcv_bundle"]
     # Should only contain the high LoD symbol
     assert len(filtered) == 1
-    high_symbol = AssetSymbol("HIGH_LOD", "STOCKS")
-    low_symbol = AssetSymbol("LOW_LOD", "STOCKS")
+    high_symbol = AssetSymbol("HIGH_LOD", AssetClass.STOCKS)
+    low_symbol = AssetSymbol("LOW_LOD", AssetClass.STOCKS)
     assert high_symbol in filtered
     assert low_symbol not in filtered
 
@@ -103,7 +103,7 @@ async def test_lod_filter_node_mixed_bundle(high_lod_bundle, low_lod_bundle):
 @pytest.mark.asyncio
 async def test_lod_filter_node_empty_bundle():
     """Test behavior with empty input bundle."""
-    node = LodFilterNode("test", {"min_lod_distance": 3.16, "atr_window": 14})
+    node = LodFilterNode(id=1, params={"min_lod_distance": 3.16, "atr_window": 14})
     inputs = {"ohlcv_bundle": {}}
     result = await node.execute(inputs)
 
@@ -118,10 +118,10 @@ async def test_lod_filter_node_insufficient_data():
         {"timestamp": i * 86400000, "open": 100, "high": 105, "low": 95, "close": 102, "volume": 1000}
         for i in range(10)  # Less than default atr_window of 14
     ]
-    symbol = AssetSymbol("SHORT_DATA", "STOCKS")
+    symbol = AssetSymbol("SHORT_DATA", AssetClass.STOCKS)
     bundle = {symbol: short_bars}
 
-    node = LodFilterNode("test", {"min_lod_distance": 3.16, "atr_window": 14})
+    node = LodFilterNode(id=1, params={"min_lod_distance": 3.16, "atr_window": 14})
     inputs = {"ohlcv_bundle": bundle}
     result = await node.execute(inputs)
 
@@ -132,10 +132,10 @@ async def test_lod_filter_node_insufficient_data():
 @pytest.mark.asyncio
 async def test_lod_filter_node_no_data_symbol():
     """Test behavior with symbol having no OHLCV data."""
-    symbol = AssetSymbol("EMPTY", "STOCKS")
+    symbol = AssetSymbol("EMPTY", AssetClass.STOCKS)
     bundle = {symbol: []}
 
-    node = LodFilterNode("test", {"min_lod_distance": 3.16, "atr_window": 14})
+    node = LodFilterNode(id=1, params={"min_lod_distance": 3.16, "atr_window": 14})
     inputs = {"ohlcv_bundle": bundle}
     result = await node.execute(inputs)
 
@@ -150,10 +150,10 @@ async def test_lod_filter_node_zero_atr():
         {"timestamp": i * 86400000, "open": 100, "high": 100, "low": 100, "close": 100, "volume": 1000}
         for i in range(20)
     ]
-    symbol = AssetSymbol("FLAT", "STOCKS")
+    symbol = AssetSymbol("FLAT", AssetClass.STOCKS)
     bundle = {symbol: flat_bars}
 
-    node = LodFilterNode("test", {"min_lod_distance": 3.16, "atr_window": 14})
+    node = LodFilterNode(id=1, params={"min_lod_distance": 3.16, "atr_window": 14})
     inputs = {"ohlcv_bundle": bundle}
     result = await node.execute(inputs)
 
@@ -169,10 +169,10 @@ async def test_lod_filter_node_nan_close_values():
         {"timestamp": i * 86400000, "open": 100, "high": 105, "low": 95, "close": float('nan'), "volume": 1000}
         for i in range(20)
     ]
-    symbol = AssetSymbol("NAN_CLOSE", "STOCKS")
+    symbol = AssetSymbol("NAN_CLOSE", AssetClass.STOCKS)
     bundle = {symbol: nan_close_bars}
 
-    node = LodFilterNode("test", {"min_lod_distance": 3.16, "atr_window": 14})
+    node = LodFilterNode(id=1, params={"min_lod_distance": 3.16, "atr_window": 14})
     inputs = {"ohlcv_bundle": bundle}
     result = await node.execute(inputs)
 
@@ -187,11 +187,11 @@ async def test_lod_filter_node_different_atr_windows():
         {"timestamp": i * 86400000, "open": 100 + i*0.5, "high": 105 + i*0.5, "low": 95 + i*0.5, "close": 102 + i*0.5, "volume": 1000}
         for i in range(20)
     ]
-    symbol = AssetSymbol("TEST", "STOCKS")
+    symbol = AssetSymbol("TEST", AssetClass.STOCKS)
     bundle = {symbol: bars}
 
     # Test with smaller window
-    node = LodFilterNode("test", {"min_lod_distance": 1.0, "atr_window": 5})
+    node = LodFilterNode(id=1, params={"min_lod_distance": 1.0, "atr_window": 5})
     inputs = {"ohlcv_bundle": bundle}
     result = await node.execute(inputs)
 
@@ -207,10 +207,10 @@ async def test_lod_filter_node_zero_threshold():
         {"timestamp": i * 86400000, "open": 100, "high": 105, "low": 95, "close": 102, "volume": 1000}
         for i in range(20)
     ]
-    symbol = AssetSymbol("TEST", "STOCKS")
+    symbol = AssetSymbol("TEST", AssetClass.STOCKS)
     bundle = {symbol: bars}
 
-    node = LodFilterNode("test", {"min_lod_distance": 0.0, "atr_window": 14})
+    node = LodFilterNode(id=1, params={"min_lod_distance": 0.0, "atr_window": 14})
     inputs = {"ohlcv_bundle": bundle}
     result = await node.execute(inputs)
 
@@ -225,10 +225,10 @@ async def test_lod_filter_node_negative_lod_distance():
         {"timestamp": i * 86400000, "open": 100, "high": 105, "low": 95, "close": 90, "volume": 1000}
         for i in range(20)
     ]
-    symbol = AssetSymbol("NEGATIVE", "STOCKS")
+    symbol = AssetSymbol("NEGATIVE", AssetClass.STOCKS)
     bundle = {symbol: bars}
 
-    node = LodFilterNode("test", {"min_lod_distance": 0.0, "atr_window": 14})
+    node = LodFilterNode(id=1, params={"min_lod_distance": 0.0, "atr_window": 14})
     inputs = {"ohlcv_bundle": bundle}
     result = await node.execute(inputs)
 
@@ -239,17 +239,17 @@ async def test_lod_filter_node_negative_lod_distance():
 def test_lod_filter_node_parameter_validation():
     """Test parameter validation in constructor."""
     # Valid parameters
-    node = LodFilterNode("test", {"min_lod_distance": 5.0, "atr_window": 14})
+    node = LodFilterNode(id=1, params={"min_lod_distance": 5.0, "atr_window": 14})
     assert node.params["min_lod_distance"] == 5.0
     assert node.params["atr_window"] == 14
 
     # Invalid min_lod_distance
     with pytest.raises(ValueError, match="Minimum LoD distance cannot be negative"):
-        LodFilterNode("test", {"min_lod_distance": -1.0, "atr_window": 14})
+        LodFilterNode(id=1, params={"min_lod_distance": -1.0, "atr_window": 14})
 
     # Invalid atr_window
     with pytest.raises(ValueError, match="ATR window must be positive"):
-        LodFilterNode("test", {"min_lod_distance": 3.16, "atr_window": 0})
+        LodFilterNode(id=1, params={"min_lod_distance": 3.16, "atr_window": 0})
 
 
 @pytest.mark.asyncio
@@ -259,12 +259,12 @@ async def test_lod_filter_node_progress_reporting():
         {"timestamp": i * 86400000, "open": 100 + i, "high": 105 + i, "low": 95 + i, "close": 102 + i, "volume": 1000}
         for i in range(20)
     ]
-    symbol1 = AssetSymbol("SYMBOL1", "STOCKS")
-    symbol2 = AssetSymbol("SYMBOL2", "STOCKS")
+    symbol1 = AssetSymbol("SYMBOL1", AssetClass.STOCKS)
+    symbol2 = AssetSymbol("SYMBOL2", AssetClass.STOCKS)
     bundle = {symbol1: bars, symbol2: bars}
 
     progress_calls = []
-    node = LodFilterNode("test", {"min_lod_distance": 3.16, "atr_window": 14})
+    node = LodFilterNode(id=1, params={"min_lod_distance": 3.16, "atr_window": 14})
     node.set_progress_callback(lambda node_id, progress, text: progress_calls.append((progress, text)))
 
     inputs = {"ohlcv_bundle": bundle}
@@ -278,7 +278,7 @@ async def test_lod_filter_node_progress_reporting():
 
 def test_calculate_indicator_no_data():
     """Test _calculate_indicator with empty data."""
-    node = LodFilterNode("test", {"min_lod_distance": 3.16, "atr_window": 14})
+    node = LodFilterNode(id=1, params={"min_lod_distance": 3.16, "atr_window": 14})
     result = node._calculate_indicator([])
 
     assert result.indicator_type == IndicatorType.LOD
@@ -288,7 +288,7 @@ def test_calculate_indicator_no_data():
 
 def test_calculate_indicator_insufficient_data():
     """Test _calculate_indicator with insufficient data."""
-    node = LodFilterNode("test", {"min_lod_distance": 3.16, "atr_window": 14})
+    node = LodFilterNode(id=1, params={"min_lod_distance": 3.16, "atr_window": 14})
     short_data = [
         {"timestamp": i * 86400000, "open": 100, "high": 105, "low": 95, "close": 102, "volume": 1000}
         for i in range(10)
@@ -302,7 +302,7 @@ def test_calculate_indicator_insufficient_data():
 
 def test_calculate_indicator_valid_data():
     """Test _calculate_indicator with valid data."""
-    node = LodFilterNode("test", {"min_lod_distance": 3.16, "atr_window": 14})
+    node = LodFilterNode(id=1, params={"min_lod_distance": 3.16, "atr_window": 14})
     valid_data = [
         {"timestamp": i * 86400000, "open": 100 + i*0.5, "high": 105 + i*0.5, "low": 95 + i*0.5, "close": 102 + i*0.5, "volume": 1000}
         for i in range(20)
@@ -321,7 +321,7 @@ def test_calculate_indicator_valid_data():
 
 def test_should_pass_filter_with_error():
     """Test _should_pass_filter with error in result."""
-    node = LodFilterNode("test", {"min_lod_distance": 3.16, "atr_window": 14})
+    node = LodFilterNode(id=1, params={"min_lod_distance": 3.16, "atr_window": 14})
     error_result = IndicatorResult(
         indicator_type=IndicatorType.LOD,
         values=IndicatorValue(lines={"lod_distance_pct": 10.0}),
@@ -333,7 +333,7 @@ def test_should_pass_filter_with_error():
 
 def test_should_pass_filter_missing_value():
     """Test _should_pass_filter with missing lod_distance_pct."""
-    node = LodFilterNode("test", {"min_lod_distance": 3.16, "atr_window": 14})
+    node = LodFilterNode(id=1, params={"min_lod_distance": 3.16, "atr_window": 14})
     missing_result = IndicatorResult(
         indicator_type=IndicatorType.LOD,
         values=IndicatorValue(lines={"other": 5.0})
@@ -344,7 +344,7 @@ def test_should_pass_filter_missing_value():
 
 def test_should_pass_filter_nan_value():
     """Test _should_pass_filter with NaN lod_distance_pct."""
-    node = LodFilterNode("test", {"min_lod_distance": 3.16, "atr_window": 14})
+    node = LodFilterNode(id=1, params={"min_lod_distance": 3.16, "atr_window": 14})
     nan_result = IndicatorResult(
         indicator_type=IndicatorType.LOD,
         values=IndicatorValue(lines={"lod_distance_pct": float('nan')})
@@ -355,7 +355,7 @@ def test_should_pass_filter_nan_value():
 
 def test_should_pass_filter_above_threshold():
     """Test _should_pass_filter with value above threshold."""
-    node = LodFilterNode("test", {"min_lod_distance": 5.0, "atr_window": 14})
+    node = LodFilterNode(id=1, params={"min_lod_distance": 5.0, "atr_window": 14})
     pass_result = IndicatorResult(
         indicator_type=IndicatorType.LOD,
         values=IndicatorValue(lines={"lod_distance_pct": 10.0})
@@ -366,7 +366,7 @@ def test_should_pass_filter_above_threshold():
 
 def test_should_pass_filter_below_threshold():
     """Test _should_pass_filter with value below threshold."""
-    node = LodFilterNode("test", {"min_lod_distance": 15.0, "atr_window": 14})
+    node = LodFilterNode(id=1, params={"min_lod_distance": 15.0, "atr_window": 14})
     fail_result = IndicatorResult(
         indicator_type=IndicatorType.LOD,
         values=IndicatorValue(lines={"lod_distance_pct": 10.0})

@@ -17,7 +17,7 @@ class ExtractSymbolsNode(BaseNode):
     default_params = {}
     params_meta = []
 
-    async def execute(self, inputs: Dict[str, Any]) -> Dict[str, List[AssetSymbol]]:
+    async def _execute_impl(self, inputs: Dict[str, Any]) -> Dict[str, List[AssetSymbol]]:
         ohlcv_bundle: Dict[AssetSymbol, List[OHLCVBar]] = inputs.get("ohlcv_bundle", {})
 
         # Extract the asset symbols (keys) from the OHLCV bundle

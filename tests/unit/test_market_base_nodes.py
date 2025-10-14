@@ -6,7 +6,7 @@ from typing import Dict, Any, List
 from nodes.core.market.filters.base.base_filter_node import BaseFilterNode
 from nodes.core.market.indicators.base.base_indicator_node import BaseIndicatorNode
 from nodes.core.market.filters.base.base_indicator_filter_node import BaseIndicatorFilterNode
-from core.types_registry import AssetSymbol, AssetClass, OHLCVBar, IndicatorResult, IndicatorType, IndicatorValue
+from core.types_registry import AssetSymbol, AssetClass, OHLCVBar, IndicatorResult, IndicatorType, IndicatorValue, NodeExecutionError
 from services.indicators_service import IndicatorsService
 
 # Fixtures
@@ -29,15 +29,19 @@ def insufficient_ohlcv_bundle():
     bars = [OHLCVBar(timestamp=1, open=100, high=110, low=90, close=105, volume=1000)]  # Only 1 bar
     return {symbol: bars}
 
+
 # Tests for BaseFilterNode
 class TestBaseFilterNode:
     class ConcreteFilterNode(BaseFilterNode):
+        def __init__(self, id: int, params: Dict[str, Any] = None):
+            super().__init__(id=id, params=params)
+
         def _filter_condition(self, symbol: AssetSymbol, ohlcv_data: List[OHLCVBar]) -> bool:
             return len(ohlcv_data) > 1  # Simple condition: pass if more than 1 bar
 
     @pytest.fixture
     def filter_node(self):
-        return self.ConcreteFilterNode("filter_id", {})
+        return self.ConcreteFilterNode(id=1, params={})
 
     @pytest.mark.asyncio
     async def test_execute_happy_path(self, filter_node, sample_ohlcv_bundle):
@@ -64,18 +68,22 @@ class TestBaseFilterNode:
             raise ValueError("Filter error")
         filter_node._filter_condition = failing_condition
         inputs = {"ohlcv_bundle": sample_ohlcv_bundle}
-        result = await filter_node.execute(inputs)
-        assert result["filtered_ohlcv_bundle"] == {}  # Should skip on error
+        with pytest.raises(NodeExecutionError):
+            await filter_node.execute(inputs)
+
 
 # Tests for BaseIndicatorNode
 class TestBaseIndicatorNode:
     class ConcreteIndicatorNode(BaseIndicatorNode):
+        def __init__(self, id: int, params: Dict[str, Any] = None):
+            super().__init__(id=id, params=params)
+
         def _map_to_indicator_value(self, ind_type: IndicatorType, raw: Dict[str, Any]) -> IndicatorValue:
             return IndicatorValue(single=raw.get(ind_type.name, 0.0))
 
     @pytest.fixture
     def indicator_node(self):
-        return self.ConcreteIndicatorNode("ind_id", {"indicators": [IndicatorType.ADX], "timeframe": "1d"})
+        return self.ConcreteIndicatorNode(id=1, params={"indicators": [IndicatorType.ADX], "timeframe": "1d"})
 
     @pytest.mark.asyncio
     async def test_execute_happy_path(self, indicator_node):
@@ -110,12 +118,16 @@ class TestBaseIndicatorNode:
         bars = [{"timestamp": i, "open": 100, "high": 110, "low": 90, "close": 105, "volume": 1000} for i in range(20)]
         inputs = {"ohlcv": bars}
         with patch.object(IndicatorsService, "compute_indicators", side_effect=ValueError("Computation error")):
-            result = await indicator_node.execute(inputs)
-            assert result["results"] == []
+            with pytest.raises(NodeExecutionError):
+                await indicator_node.execute(inputs)
+
 
 # Tests for BaseIndicatorFilterNode
 class TestBaseIndicatorFilterNode:
     class ConcreteIndicatorFilterNode(BaseIndicatorFilterNode):
+        def __init__(self, id: int, params: Dict[str, Any] = None):
+            super().__init__(id=id, params=params)
+
         def _calculate_indicator(self, ohlcv_data: List[OHLCVBar]) -> IndicatorResult:
             if not ohlcv_data:
                 return IndicatorResult(
@@ -139,7 +151,7 @@ class TestBaseIndicatorFilterNode:
 
     @pytest.fixture
     def ind_filter_node(self):
-        return self.ConcreteIndicatorFilterNode("ind_filter_id", {})
+        return self.ConcreteIndicatorFilterNode(id=1, params={})
 
     @pytest.mark.asyncio
     async def test_execute_happy_path(self, ind_filter_node, sample_ohlcv_bundle):

@@ -3,18 +3,19 @@ import asyncio
 import requests
 from nodes.base.base_node import BaseNode
 from core.types_registry import AssetSymbol, InstrumentType, AssetClass
+from core.types_registry import get_type
 
 
 class InstrumentResolverNode(BaseNode):
-    inputs = {"symbols": List[AssetSymbol]}
-    outputs = {"resolved_symbols": List[AssetSymbol]}
+    inputs = {"symbols": get_type("AssetSymbolList")}
+    outputs = {"resolved_symbols": get_type("AssetSymbolList")}
     default_params = {
         "exchange": "binance",
         "instrument_type": "PERPETUAL",
         "quote_currency": "USDT",
     }
 
-    async def execute(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
+    async def _execute_impl(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
         symbols: List[AssetSymbol] = inputs.get("symbols", [])
         exchange = self.params.get("exchange")
         target_type = getattr(InstrumentType, self.params.get("instrument_type").upper())

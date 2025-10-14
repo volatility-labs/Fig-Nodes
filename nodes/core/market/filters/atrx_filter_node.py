@@ -12,7 +12,7 @@ class AtrXFilterNode(BaseIndicatorFilterNode):
     Filters OHLCV bundle based on ATRX indicator thresholds.
     """
     outputs = {
-        "filtered_ohlcv_bundle": Dict[AssetSymbol, List[OHLCVBar]]
+        "filtered_ohlcv_bundle": get_type("OHLCVBundle")  # Inherit or specify if needed
     }
     default_params = {
         "length": 14,
@@ -73,28 +73,6 @@ class AtrXFilterNode(BaseIndicatorFilterNode):
         else:
             return lower < value < upper
 
-    async def execute(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
-        ohlcv_bundle: Dict[AssetSymbol, List[OHLCVBar]] = inputs.get("ohlcv_bundle", {})
-
-        if not ohlcv_bundle:
-            return {"filtered_ohlcv_bundle": {}}
-
-        filtered_bundle = {}
-
-        for symbol, ohlcv_data in ohlcv_bundle.items():
-            if not ohlcv_data:
-                continue
-
-            try:
-                # Calculate using subclass method
-                indicator_result = self._calculate_indicator(ohlcv_data)
-
-                # Filter
-                if self._should_pass_filter(indicator_result):
-                    filtered_bundle[symbol] = ohlcv_data
-
-            except Exception as e:
-                logger.warning(f"Failed to process indicator for {symbol}: {e}")
-                continue
-
-        return {"filtered_ohlcv_bundle": filtered_bundle}
+    async def _execute_impl(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        # Delegate to BaseIndicatorFilterNode to leverage per-symbol error handling and progress reporting
+        return await super()._execute_impl(inputs)

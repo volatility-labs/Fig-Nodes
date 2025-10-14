@@ -34,7 +34,7 @@ class PolygonCustomBarsNode(BaseNode):
         {"name": "limit", "type": "number", "default": 5000, "min": 1, "max": 50000, "step": 1},
     ]
 
-    async def execute(self, inputs: Dict[str, Any]) -> Dict[str, List[OHLCVBar]]:
+    async def _execute_impl(self, inputs: Dict[str, Any]) -> Dict[str, List[OHLCVBar]]:
         symbol: AssetSymbol = inputs.get("symbol")
         if not symbol:
             raise ValueError("Symbol input is required")

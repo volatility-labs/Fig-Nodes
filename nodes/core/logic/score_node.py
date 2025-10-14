@@ -6,14 +6,14 @@ class ScoreNode(BaseNode):
     """
     Computes a score based on a dictionary of indicators.
     """
-    inputs = {"indicators": Dict[str, Any]}
+    inputs = {"indicators": Dict[Any, Any]}
     outputs = {"score": float}
     default_params = {}
 
-    def __init__(self, node_id: str, params: Dict[str, Any]):
-        super().__init__(node_id, params)
+    def __init__(self, id: int, params: Dict[str, Any] = None):
+        super().__init__(id, params)
 
-    async def execute(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
+    async def _execute_impl(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
         indicators = inputs.get("indicators", {})
         if not indicators:
             return {"score": 0.0}

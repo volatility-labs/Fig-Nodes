@@ -12,7 +12,7 @@ class TextInputNode(BaseNode):
         {"name": "value", "type": "textarea", "default": ""}
     ]
 
-    async def execute(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
+    async def _execute_impl(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
         # Prefer explicit "text" param if provided; fall back to legacy "value"
         value = self.params.get("text")
         if value is None or (isinstance(value, str) and value == ""):

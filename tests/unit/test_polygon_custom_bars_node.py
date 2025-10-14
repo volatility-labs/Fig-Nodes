@@ -8,7 +8,7 @@ from nodes.custom.polygon.polygon_custom_bars_node import PolygonCustomBarsNode
 
 @pytest.fixture
 def polygon_custom_bars_node():
-    return PolygonCustomBarsNode("polygon_bars_id", {
+    return PolygonCustomBarsNode(id=1, params={
         "multiplier": 1,
         "timespan": "day",
         "lookback_period": "3 months",

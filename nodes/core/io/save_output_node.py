@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import Dict, Any, List, Union
 from nodes.base.base_node import BaseNode
 from core.types_registry import AssetSymbol, OHLCVBar, LLMChatMessage, LLMToolSpec, LLMChatMetrics, LLMToolHistoryItem, LLMThinkingHistoryItem
+import io
 
 
 class SaveOutputNode(BaseNode):
@@ -149,7 +150,7 @@ class SaveOutputNode(BaseNode):
         
         return base_name
 
-    async def execute(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
+    async def _execute_impl(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
         data = inputs.get("data")
         if data is None:
             raise ValueError("No data provided to save")
@@ -179,37 +180,40 @@ class SaveOutputNode(BaseNode):
                 counter += 1
         
         # Serialize data
-        if format_type == "jsonl" and isinstance(data, list):
-            # JSON Lines format for lists
-            serialized_data = {
-                "__metadata__": {
-                    "type": "jsonl",
-                    "item_type": self._infer_list_item_type(data),
-                    "count": len(data),
-                    "timestamp": datetime.now().isoformat()
+        try:
+            if format_type == "jsonl" and isinstance(data, list):
+                # JSON Lines format for lists
+                serialized_data = {
+                    "__metadata__": {
+                        "type": "jsonl",
+                        "item_type": self._infer_list_item_type(data),
+                        "count": len(data),
+                        "timestamp": datetime.now().isoformat()
+                    }
                 }
-            }
-            
-            with open(filepath, 'w', encoding='utf-8') as f:
-                # Write metadata as first line
-                f.write(json.dumps(serialized_data, ensure_ascii=False) + '\n')
-                # Write each item as separate JSON line
-                for item in data:
-                    serialized_item = self._serialize_value(item)
-                    f.write(json.dumps(serialized_item, ensure_ascii=False) + '\n')
-        else:
-            # Regular JSON format
-            serialized_data = {
-                "__metadata__": {
-                    "type": "json",
-                    "data_type": self._infer_data_type(data),
-                    "timestamp": datetime.now().isoformat()
-                },
-                "data": self._serialize_value(data)
-            }
-            
-            with open(filepath, 'w', encoding='utf-8') as f:
-                json.dump(serialized_data, f, ensure_ascii=False, indent=2)
+                
+                with open(filepath, 'w', encoding='utf-8') as f:
+                    # Write metadata as first line
+                    f.write(json.dumps(serialized_data, ensure_ascii=False) + '\n')
+                    # Write each item as separate JSON line
+                    for item in data:
+                        serialized_item = self._serialize_value(item)
+                        f.write(json.dumps(serialized_item, ensure_ascii=False) + '\n')
+            else:
+                # Regular JSON format
+                serialized_data = {
+                    "__metadata__": {
+                        "type": "json",
+                        "data_type": self._infer_data_type(data),
+                        "timestamp": datetime.now().isoformat()
+                    },
+                    "data": self._serialize_value(data)
+                }
+                
+                with open(filepath, 'w', encoding='utf-8') as f:
+                    json.dump(serialized_data, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            raise IOError(f"Failed to save to {filepath}: {str(e)}") from e
         
         return {"filepath": filepath}
 

@@ -15,19 +15,19 @@ from core.types_registry import AssetSymbol, AssetClass, Provider, InstrumentTyp
 
 @pytest.fixture
 def foreach_node():
-    return ForEachNode("foreach_id", {})
+    return ForEachNode(id=1, params={})
 
 @pytest.mark.asyncio
 async def test_foreach_node_execute(foreach_node):
     inputs = {"list": [1, 2, 3]}
     result = await foreach_node.execute(inputs)
-    assert result == {"list": [1, 2, 3]}
+    assert result == {"item": [1, 2, 3]}
 
 @pytest.mark.asyncio
 async def test_foreach_node_execute_empty(foreach_node):
-    inputs = {}
+    inputs = {"list": []}
     result = await foreach_node.execute(inputs)
-    assert result == {"list": []}
+    assert result == {"item": []}
 
 def test_foreach_node_validate(foreach_node):
     assert foreach_node.validate_inputs({"list": []}) is True
@@ -38,7 +38,7 @@ def test_foreach_node_validate(foreach_node):
 
 @pytest.fixture
 def text_node():
-    return TextInputNode("text_id", {"value": "hello"})
+    return TextInputNode(id=1, params={"value": "hello"})
 
 @pytest.mark.asyncio
 async def test_text_node_execute(text_node):
@@ -47,7 +47,7 @@ async def test_text_node_execute(text_node):
 
 @pytest.mark.asyncio
 async def test_text_node_default():
-    text_node = TextInputNode("text_id", {})
+    text_node = TextInputNode(id=1, params={})
     result = await text_node.execute({})
     assert result == {"text": ""}
 
@@ -55,7 +55,7 @@ async def test_text_node_default():
 
 @pytest.mark.asyncio
 async def test_text_to_llm_message_default_role():
-    node = TextToLLMMessageNode("adapter_id", {})
+    node = TextToLLMMessageNode(id=1, params={})
     result = await node.execute({"data": "hello"})
     assert result["message"]["role"] == "user"
     assert result["message"]["content"] == "hello"
@@ -64,14 +64,14 @@ async def test_text_to_llm_message_default_role():
 @pytest.mark.asyncio
 async def test_text_to_llm_message_roles():
     for role in ["user", "assistant", "system", "tool"]:
-        node = TextToLLMMessageNode("adapter_id", {"role": role})
+        node = TextToLLMMessageNode(id=1, params={"role": role})
         result = await node.execute({"data": "x"})
         assert result["message"]["role"] == role
         assert result["messages"][0]["role"] == role
 
 @pytest.mark.asyncio
 async def test_text_to_llm_message_non_string():
-    node = TextToLLMMessageNode("adapter_id", {"role": "assistant"})
+    node = TextToLLMMessageNode(id=1, params={"role": "assistant"})
     result = await node.execute({"data": 123})
     assert result["message"]["content"] == "123"
 
@@ -79,7 +79,7 @@ async def test_text_to_llm_message_non_string():
 
 @pytest.fixture
 def asset_node():
-    return AssetSymbolInputNode("asset_id", {
+    return AssetSymbolInputNode(id=1, params={
         "ticker": "btc",
         "asset_class": AssetClass.CRYPTO,
         "quote_currency": "usdt",
@@ -104,7 +104,7 @@ def test_asset_node_params_meta():
 
 @pytest.fixture
 def logging_node():
-    return LoggingNode("log_id", {})
+    return LoggingNode(id=1, params={})
 
 @pytest.mark.asyncio
 @patch("builtins.print")
@@ -112,7 +112,7 @@ async def test_logging_node_execute_str(mock_print, logging_node):
     inputs = {"input": "test"}
     result = await logging_node.execute(inputs)
     assert result == {"output": "test"}
-    mock_print.assert_called_with("LoggingNode log_id: test")
+    mock_print.assert_called_with("LoggingNode 1: test")
 
 @pytest.mark.asyncio
 @patch("builtins.print")
@@ -137,11 +137,11 @@ async def test_logging_node_execute_long_list(mock_print, logging_node):
 
 @pytest.fixture
 def score_node():
-    return ScoreNode("score_id", {})
+    return ScoreNode(id=1, params={})
 
 @pytest.mark.asyncio
 async def test_score_node_execute_empty(score_node):
-    result = await score_node.execute({})
+    result = await score_node.execute({"indicators": {}})
     assert result == {"score": 0.0}
 
 @pytest.mark.asyncio
@@ -154,7 +154,7 @@ async def test_score_node_execute_with_indicators(score_node):
 
 @pytest.fixture
 def resolver_node():
-    return InstrumentResolverNode("res_id", {"exchange": "binance", "instrument_type": "PERPETUAL", "quote_currency": "USDT"})
+    return InstrumentResolverNode(id=1, params={"exchange": "binance", "instrument_type": "PERPETUAL", "quote_currency": "USDT"})
 
 @pytest.mark.asyncio
 @patch("requests.get")

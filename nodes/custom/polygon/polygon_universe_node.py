@@ -1,14 +1,18 @@
 from typing import List, Dict, Any, Optional
 import httpx
 import logging
-from nodes.base.universe_node import UniverseNode
+from nodes.base.base_node import BaseNode
 from core.types_registry import AssetSymbol, AssetClass, register_asset_class, get_type
 from core.api_key_vault import APIKeyVault
 
 logger = logging.getLogger(__name__)
 
 
-class PolygonUniverseNode(UniverseNode):
+class PolygonUniverseNode(BaseNode):
+    inputs = {"filter_symbols": get_type("AssetSymbolList")}
+    outputs = {"symbols": get_type("AssetSymbolList")}
+    optional_inputs = ["filter_symbols"]
+
     required_keys = ["POLYGON_API_KEY"]
     uiModule = "PolygonUniverseNodeUI"
     params_meta = [
@@ -21,8 +25,13 @@ class PolygonUniverseNode(UniverseNode):
         {"name": "include_otc", "type": "boolean", "default": False, "optional": True, "label": "Include OTC", "description": "Include over-the-counter symbols (stocks only)"},
     ]
 
-    async def execute(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
-        return await super().execute(inputs)
+    async def _execute_impl(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        symbols = await self._fetch_symbols()
+        filter_symbols = self.collect_multi_input("filter_symbols", inputs)
+        if filter_symbols:
+            filter_set = {str(s) for s in filter_symbols}
+            symbols = [s for s in symbols if str(s) in filter_set]
+        return {"symbols": symbols}
 
     async def _fetch_symbols(self) -> List[AssetSymbol]:
         api_key = APIKeyVault().get("POLYGON_API_KEY")

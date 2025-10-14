@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 from typing import List
 from nodes.core.market.filters.sma_filter_node import SMAFilterNode
-from core.types_registry import OHLCVBar, AssetSymbol, IndicatorResult, IndicatorType, IndicatorValue
+from core.types_registry import OHLCVBar, AssetSymbol, IndicatorResult, IndicatorType, AssetClass
 from unittest.mock import MagicMock
 
 @pytest.fixture
@@ -32,21 +32,22 @@ def sample_ohlcv_bars() -> List[OHLCVBar]:
 
 @pytest.mark.asyncio
 async def test_sma_filter_happy_path(sma_filter_node, sample_ohlcv_bars):
-    """Test filter passes when current SMA &gt; previous SMA."""
+    """Test filter passes when current SMA > previous SMA."""
     # Mock SMA calculations
     sma_filter_node.indicators_service.calculate_sma.side_effect = lambda df, p, price='Close': df[price].tail(p).mean()
 
     inputs = {
-        "ohlcv_bundle": {AssetSymbol("TEST", "STOCKS"): sample_ohlcv_bars}
+        "ohlcv_bundle": {AssetSymbol("TEST", AssetClass.STOCKS): sample_ohlcv_bars}
     }
     result = await sma_filter_node.execute(inputs)
 
     assert "filtered_ohlcv_bundle" in result
-    assert AssetSymbol("TEST", "STOCKS") in result["filtered_ohlcv_bundle"]  # Should pass since closes are increasing
+    assert AssetSymbol("TEST", AssetClass.STOCKS) in result["filtered_ohlcv_bundle"]  # Should pass since closes are increasing
+
 
 @pytest.mark.asyncio
 async def test_sma_filter_does_not_pass(sma_filter_node, sample_ohlcv_bars):
-    """Test filter does not pass when current SMA &lt;= previous SMA."""
+    """Test filter does not pass when current SMA <= previous SMA."""
     # Reverse the closes to decreasing
     for i, bar in enumerate(sample_ohlcv_bars):
         bar['close'] = 100 - i * 2
@@ -55,23 +56,25 @@ async def test_sma_filter_does_not_pass(sma_filter_node, sample_ohlcv_bars):
     sma_filter_node.indicators_service.calculate_sma.side_effect = lambda df, p, price='Close': df[price].tail(p).mean()
 
     inputs = {
-        "ohlcv_bundle": {AssetSymbol("TEST", "STOCKS"): sample_ohlcv_bars}
+        "ohlcv_bundle": {AssetSymbol("TEST", AssetClass.STOCKS): sample_ohlcv_bars}
     }
     result = await sma_filter_node.execute(inputs)
 
     assert "filtered_ohlcv_bundle" in result
-    assert AssetSymbol("TEST", "STOCKS") not in result["filtered_ohlcv_bundle"]  # Should not pass
+    assert AssetSymbol("TEST", AssetClass.STOCKS) not in result["filtered_ohlcv_bundle"]  # Should not pass
+
 
 @pytest.mark.asyncio
 async def test_sma_filter_insufficient_data(sma_filter_node):
     """Test handling of insufficient data."""
     bars = []  # Empty data
     inputs = {
-        "ohlcv_bundle": {AssetSymbol("TEST", "STOCKS"): bars}
+        "ohlcv_bundle": {AssetSymbol("TEST", AssetClass.STOCKS): bars}
     }
     result = await sma_filter_node.execute(inputs)
 
     assert result["filtered_ohlcv_bundle"] == {}
+
 
 @pytest.mark.asyncio
 async def test_sma_filter_nan_values(sma_filter_node, sample_ohlcv_bars):
@@ -79,22 +82,23 @@ async def test_sma_filter_nan_values(sma_filter_node, sample_ohlcv_bars):
     sma_filter_node.indicators_service.calculate_sma.return_value = np.nan
 
     inputs = {
-        "ohlcv_bundle": {AssetSymbol("TEST", "STOCKS"): sample_ohlcv_bars}
+        "ohlcv_bundle": {AssetSymbol("TEST", AssetClass.STOCKS): sample_ohlcv_bars}
     }
     result = await sma_filter_node.execute(inputs)
 
-    assert AssetSymbol("TEST", "STOCKS") not in result["filtered_ohlcv_bundle"]  # Should not pass due to NaN
+    assert AssetSymbol("TEST", AssetClass.STOCKS) not in result["filtered_ohlcv_bundle"]  # Should not pass due to NaN
+
 
 @pytest.mark.asyncio
 async def test_sma_filter_multiple_symbols(sma_filter_node, sample_ohlcv_bars):
     """Test filtering with multiple symbols."""
     decreasing_bars = [bar.copy() for bar in sample_ohlcv_bars]
     for bar in decreasing_bars:
-        bar['close'] = bar['close'] - 20  # Make decreasing
+        bar['close'] = 100 - (sample_ohlcv_bars.index(bar) * 2)  # Make decreasing
 
     # Mock different SMA for each
     def mock_sma(df, p):
-        if len(df) > 5 and df['Close'].iloc[-1] > 100:  # Passing condition
+        if df['Close'].iloc[-1] > 100:  # Passing condition
             return df['Close'].tail(p).mean()
         else:
             return np.nan  # Force fail
@@ -103,14 +107,15 @@ async def test_sma_filter_multiple_symbols(sma_filter_node, sample_ohlcv_bars):
 
     inputs = {
         "ohlcv_bundle": {
-            AssetSymbol("PASS", "STOCKS"): sample_ohlcv_bars,
-            AssetSymbol("FAIL", "STOCKS"): decreasing_bars
+            AssetSymbol("PASS", AssetClass.STOCKS): sample_ohlcv_bars,
+            AssetSymbol("FAIL", AssetClass.STOCKS): decreasing_bars
         }
     }
     result = await sma_filter_node.execute(inputs)
 
-    assert AssetSymbol("PASS", "STOCKS") in result["filtered_ohlcv_bundle"]
-    assert AssetSymbol("FAIL", "STOCKS") not in result["filtered_ohlcv_bundle"]
+    assert AssetSymbol("PASS", AssetClass.STOCKS) in result["filtered_ohlcv_bundle"]
+    assert AssetSymbol("FAIL", AssetClass.STOCKS) not in result["filtered_ohlcv_bundle"]
+
 
 @pytest.mark.asyncio
 async def test_sma_filter_equal_smas(sma_filter_node, sample_ohlcv_bars):
@@ -123,11 +128,12 @@ async def test_sma_filter_equal_smas(sma_filter_node, sample_ohlcv_bars):
     sma_filter_node.indicators_service.calculate_sma.return_value = 100.0
 
     inputs = {
-        "ohlcv_bundle": {AssetSymbol("TEST", "STOCKS"): sample_ohlcv_bars}
+        "ohlcv_bundle": {AssetSymbol("TEST", AssetClass.STOCKS): sample_ohlcv_bars}
     }
     result = await sma_filter_node.execute(inputs)
 
-    assert AssetSymbol("TEST", "STOCKS") not in result["filtered_ohlcv_bundle"]
+    assert AssetSymbol("TEST", AssetClass.STOCKS) not in result["filtered_ohlcv_bundle"]
+
 
 @pytest.mark.asyncio
 async def test_sma_filter_zero_prior_days(sma_filter_node, sample_ohlcv_bars):
@@ -137,11 +143,12 @@ async def test_sma_filter_zero_prior_days(sma_filter_node, sample_ohlcv_bars):
     sma_filter_node.indicators_service.calculate_sma.side_effect = lambda df, p, price='Close': df[price].tail(p).mean()
 
     inputs = {
-        "ohlcv_bundle": {AssetSymbol("TEST", "STOCKS"): sample_ohlcv_bars}
+        "ohlcv_bundle": {AssetSymbol("TEST", AssetClass.STOCKS): sample_ohlcv_bars}
     }
     result = await sma_filter_node.execute(inputs)
 
-    assert AssetSymbol("TEST", "STOCKS") in result["filtered_ohlcv_bundle"]  # Likely passes for increasing data
+    assert AssetSymbol("TEST", AssetClass.STOCKS) in result["filtered_ohlcv_bundle"]  # Likely passes for increasing data
+
 
 @pytest.mark.asyncio
 async def test_sma_filter_large_prior_days(sma_filter_node, sample_ohlcv_bars):
@@ -153,11 +160,12 @@ async def test_sma_filter_large_prior_days(sma_filter_node, sample_ohlcv_bars):
     sma_filter_node.indicators_service.calculate_sma.side_effect = mock_sma
 
     inputs = {
-        "ohlcv_bundle": {AssetSymbol("TEST", "STOCKS"): sample_ohlcv_bars}
+        "ohlcv_bundle": {AssetSymbol("TEST", AssetClass.STOCKS): sample_ohlcv_bars}
     }
     result = await sma_filter_node.execute(inputs)
 
-    assert AssetSymbol("TEST", "STOCKS") not in result["filtered_ohlcv_bundle"]
+    assert AssetSymbol("TEST", AssetClass.STOCKS) not in result["filtered_ohlcv_bundle"]
+
 
 @pytest.mark.asyncio
 async def test_sma_filter_data_with_gaps(sma_filter_node):
@@ -178,11 +186,12 @@ async def test_sma_filter_data_with_gaps(sma_filter_node):
     sma_filter_node.indicators_service.calculate_sma.side_effect = lambda df, p, price='Close': df[price].tail(p).mean() if len(df) >= p else np.nan
 
     inputs = {
-        "ohlcv_bundle": {AssetSymbol("TEST", "STOCKS"): bars}
+        "ohlcv_bundle": {AssetSymbol("TEST", AssetClass.STOCKS): bars}
     }
     result = await sma_filter_node.execute(inputs)
 
-    assert AssetSymbol("TEST", "STOCKS") in result["filtered_ohlcv_bundle"]  # Should pass as overall increasing
+    assert AssetSymbol("TEST", AssetClass.STOCKS) in result["filtered_ohlcv_bundle"]  # Should pass as overall increasing
+
 
 @pytest.mark.asyncio
 async def test_sma_filter_unsorted_data(sma_filter_node, sample_ohlcv_bars):
@@ -193,12 +202,13 @@ async def test_sma_filter_unsorted_data(sma_filter_node, sample_ohlcv_bars):
     sma_filter_node.indicators_service.calculate_sma.side_effect = lambda df, p: df['Close'].tail(p).mean()
 
     inputs = {
-        "ohlcv_bundle": {AssetSymbol("TEST", "STOCKS"): unsorted_bars}
+        "ohlcv_bundle": {AssetSymbol("TEST", AssetClass.STOCKS): unsorted_bars}
     }
     result = await sma_filter_node.execute(inputs)
 
     # Since code sorts by index, it should still work (now decreasing due to reverse)
-    assert AssetSymbol("TEST", "STOCKS") not in result["filtered_ohlcv_bundle"]  # Decreasing, shouldn't pass
+    assert AssetSymbol("TEST", AssetClass.STOCKS) not in result["filtered_ohlcv_bundle"]  # Decreasing, shouldn't pass
+
 
 @pytest.mark.asyncio
 async def test_sma_filter_single_bar(sma_filter_node):
@@ -206,11 +216,12 @@ async def test_sma_filter_single_bar(sma_filter_node):
     single_bar = [{'timestamp': 1672531200000, 'open': 100, 'high': 101, 'low': 99, 'close': 100, 'volume': 1000}]
 
     inputs = {
-        "ohlcv_bundle": {AssetSymbol("TEST", "STOCKS"): single_bar}
+        "ohlcv_bundle": {AssetSymbol("TEST", AssetClass.STOCKS): single_bar}
     }
     result = await sma_filter_node.execute(inputs)
 
-    assert AssetSymbol("TEST", "STOCKS") not in result["filtered_ohlcv_bundle"]
+    assert AssetSymbol("TEST", AssetClass.STOCKS) not in result["filtered_ohlcv_bundle"]
+
 
 @pytest.mark.asyncio
 async def test_sma_filter_nan_in_data(sma_filter_node, sample_ohlcv_bars):
@@ -226,11 +237,12 @@ async def test_sma_filter_nan_in_data(sma_filter_node, sample_ohlcv_bars):
     sma_filter_node.indicators_service.calculate_sma.side_effect = mock_sma
 
     inputs = {
-        "ohlcv_bundle": {AssetSymbol("TEST", "STOCKS"): sample_ohlcv_bars}
+        "ohlcv_bundle": {AssetSymbol("TEST", AssetClass.STOCKS): sample_ohlcv_bars}
     }
     result = await sma_filter_node.execute(inputs)
 
-    assert AssetSymbol("TEST", "STOCKS") not in result["filtered_ohlcv_bundle"]
+    assert AssetSymbol("TEST", AssetClass.STOCKS) not in result["filtered_ohlcv_bundle"]
+
 
 @pytest.mark.asyncio
 async def test_sma_filter_empty_bundle(sma_filter_node):
@@ -240,6 +252,7 @@ async def test_sma_filter_empty_bundle(sma_filter_node):
 
     assert result["filtered_ohlcv_bundle"] == {}
 
+
 @pytest.mark.asyncio
 async def test_sma_filter_negative_params(sma_filter_node, sample_ohlcv_bars):
     """Test negative period/prior_days - should handle gracefully."""
@@ -247,13 +260,14 @@ async def test_sma_filter_negative_params(sma_filter_node, sample_ohlcv_bars):
     sma_filter_node.prior_days = -1
 
     inputs = {
-        "ohlcv_bundle": {AssetSymbol("TEST", "STOCKS"): sample_ohlcv_bars}
+        "ohlcv_bundle": {AssetSymbol("TEST", AssetClass.STOCKS): sample_ohlcv_bars}
     }
     result = await sma_filter_node.execute(inputs)
 
     # Should not crash, but likely produce error results
     assert "filtered_ohlcv_bundle" in result
-    assert AssetSymbol("TEST", "STOCKS") not in result["filtered_ohlcv_bundle"]
+    assert AssetSymbol("TEST", AssetClass.STOCKS) not in result["filtered_ohlcv_bundle"]
+
 
 @pytest.mark.asyncio
 async def test_sma_filter_period_equals_data_length(sma_filter_node, sample_ohlcv_bars):
@@ -265,9 +279,9 @@ async def test_sma_filter_period_equals_data_length(sma_filter_node, sample_ohlc
     sma_filter_node.indicators_service.calculate_sma.side_effect = lambda df, p, price='Close': df[price].mean() if len(df) >= p else np.nan
 
     inputs = {
-        "ohlcv_bundle": {AssetSymbol("TEST", "STOCKS"): sample_ohlcv_bars}
+        "ohlcv_bundle": {AssetSymbol("TEST", AssetClass.STOCKS): sample_ohlcv_bars}
     }
     result = await sma_filter_node.execute(inputs)
 
     # Previous would have len-1 < period, so NaN, shouldn't pass
-    assert AssetSymbol("TEST", "STOCKS") not in result["filtered_ohlcv_bundle"]
+    assert AssetSymbol("TEST", AssetClass.STOCKS) not in result["filtered_ohlcv_bundle"]

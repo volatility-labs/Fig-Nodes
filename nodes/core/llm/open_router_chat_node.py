@@ -285,118 +285,114 @@ class OpenRouterChatNode(BaseNode):
     def _is_complete_tool_call(self, call: Dict[str, Any]) -> bool:
         return isinstance(call, dict) and call.get("function", {}).get("name") and call.get("function", {}).get("arguments")
 
-    async def execute(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
-        try:
-            raw_messages: Optional[List[Dict[str, Any]]] = inputs.get("messages")
-            prompt_text: Optional[str] = inputs.get("prompt")
-            system_input: Optional[Any] = inputs.get("system")
-            messages: List[Dict[str, Any]] = self._build_messages(raw_messages, prompt_text, system_input)
-            tools: List[Dict[str, Any]] = self._collect_tools(inputs)
+    async def _execute_impl(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        raw_messages: Optional[List[Dict[str, Any]]] = inputs.get("messages")
+        prompt_text: Optional[str] = inputs.get("prompt")
+        system_input: Optional[Any] = inputs.get("system")
+        messages: List[Dict[str, Any]] = self._build_messages(raw_messages, prompt_text, system_input)
+        tools: List[Dict[str, Any]] = self._collect_tools(inputs)
 
-            if not messages:
-                error_msg = "No messages or prompt provided to OpenRouterChatNode"
-                return {"message": {"role": "assistant", "content": ""}, "metrics": {"error": error_msg}, "tool_history": [], "thinking_history": []}
+        if not messages:
+            error_msg = "No messages or prompt provided to OpenRouterChatNode"
+            return {"message": {"role": "assistant", "content": ""}, "metrics": {"error": error_msg}, "tool_history": [], "thinking_history": []}
 
-            # Early explicit API key check so the graph surfaces a clear failure without silent fallthrough
-            api_key_early = self.vault.get("OPENROUTER_API_KEY")
-            if not api_key_early:
-                return {
-                    "message": {"role": "assistant", "content": "OpenRouter API key missing. Set OPENROUTER_API_KEY."},
-                    "metrics": {"error": "OPENROUTER_API_KEY not found in vault"},
-                    "tool_history": [],
-                    "thinking_history": []
-                }
-
-            options = self._prepare_generation_options()
-
-            tool_choice = str(self.params.get("tool_choice", "auto")).strip().lower()
-
-            tool_rounds_info = {"tool_history": [], "thinking_history": []}
-
-            if tool_choice in ["auto", "required"] and tools:
-                tool_rounds_info = await self._maybe_execute_tools_and_augment_messages(messages, tools, options)
-                messages = tool_rounds_info.get("messages", messages)
-                final_tools = None
-                final_tool_choice = None
-            else:
-                messages = messages
-                final_tools = tools
-                final_tool_choice = tool_choice
-
-            api_key = self.vault.get("OPENROUTER_API_KEY")
-            if not api_key:
-                raise ValueError("OPENROUTER_API_KEY not found in vault")
-
-            request_body = {
-                "model": self.params.get("model", "openai/gpt-4o-mini"),
-                "messages": messages,
-                "tools": final_tools,
-                "tool_choice": final_tool_choice if final_tools else None,
-                "stream": False,
-                **options
-            }
-
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                response = await client.post(
-                    "https://openrouter.ai/api/v1/chat/completions",
-                    headers={
-                        "Authorization": f"Bearer {api_key}",
-                        "Content-Type": "application/json",
-                    },
-                    json=request_body
-                )
-                response.raise_for_status()
-                resp_data = response.json()
-
-            final_message = (resp_data or {}).get("choices", [{}])[0].get("message", {"role": "assistant", "content": ""})
-            self._ensure_assistant_role_inplace(final_message)
-            self._parse_tool_calls_from_message(final_message)
-
-            # Parse JSON response if json_mode is enabled
-            if bool(self.params.get("json_mode", False)) and isinstance(final_message.get("content"), str):
-                try:
-                    final_message["content"] = json.loads(final_message["content"])
-                except json.JSONDecodeError:
-                    pass  # Keep as string if parsing fails
-
-            usage = (resp_data or {}).get("usage", {})
-            metrics: Dict[str, Any] = {
-                "prompt_tokens": usage.get("prompt_tokens", 0),
-                "completion_tokens": usage.get("completion_tokens", 0),
-                "total_tokens": usage.get("total_tokens", 0),
-                "temperature": options.get("temperature"),
-                "seed": options.get("seed"),
-            }
-
-            # Query detailed generation stats if available
-            generation_id = (resp_data or {}).get("id")
-            if generation_id and api_key:
-                try:
-                    async with httpx.AsyncClient(timeout=10.0) as client:
-                        gen_response = await client.get(
-                            f"https://openrouter.ai/api/v1/generation?id={generation_id}",
-                            headers={
-                                "Authorization": f"Bearer {api_key}",
-                            }
-                        )
-                        gen_response.raise_for_status()
-                        gen_data = gen_response.json()
-                        if gen_data.get("data"):
-                            gen_metrics = gen_data["data"]
-                            # Merge additional metrics like cost, native tokens, etc.
-                            for key in ["total_cost", "native_tokens_prompt", "native_tokens_completion", "latency", "generation_time"]:
-                                if key in gen_metrics:
-                                    metrics[key] = gen_metrics[key]
-                except Exception as e:
-                    # Silently ignore generation API failures
-                    pass
-
+        # Early explicit API key check so the graph surfaces a clear failure without silent fallthrough
+        api_key_early = self.vault.get("OPENROUTER_API_KEY")
+        if not api_key_early:
             return {
-                "message": final_message,
-                "metrics": metrics,
-                "tool_history": tool_rounds_info.get("tool_history", []),
-                "thinking_history": tool_rounds_info.get("thinking_history", [])
+                "message": {"role": "assistant", "content": "OpenRouter API key missing. Set OPENROUTER_API_KEY."},
+                "metrics": {"error": "OPENROUTER_API_KEY not found in vault"},
+                "tool_history": [],
+                "thinking_history": []
             }
-        except Exception as e:
-            error_message = {"role": "assistant", "content": ""}
-            return {"message": error_message, "metrics": {"error": str(e)}, "tool_history": [], "thinking_history": []}
+
+        options = self._prepare_generation_options()
+
+        tool_choice = str(self.params.get("tool_choice", "auto")).strip().lower()
+
+        tool_rounds_info = {"tool_history": [], "thinking_history": []}
+
+        if tool_choice in ["auto", "required"] and tools:
+            tool_rounds_info = await self._maybe_execute_tools_and_augment_messages(messages, tools, options)
+            messages = tool_rounds_info.get("messages", messages)
+            final_tools = None
+            final_tool_choice = None
+        else:
+            messages = messages
+            final_tools = tools
+            final_tool_choice = tool_choice
+
+        api_key = self.vault.get("OPENROUTER_API_KEY")
+        if not api_key:
+            raise ValueError("OPENROUTER_API_KEY not found in vault")
+
+        request_body = {
+            "model": self.params.get("model", "openai/gpt-4o-mini"),
+            "messages": messages,
+            "tools": final_tools,
+            "tool_choice": final_tool_choice if final_tools else None,
+            "stream": False,
+            **options
+        }
+
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+                json=request_body
+            )
+            response.raise_for_status()
+            resp_data = response.json()
+
+        final_message = (resp_data or {}).get("choices", [{}])[0].get("message", {"role": "assistant", "content": ""})
+        self._ensure_assistant_role_inplace(final_message)
+        self._parse_tool_calls_from_message(final_message)
+
+        # Parse JSON response if json_mode is enabled
+        if bool(self.params.get("json_mode", False)) and isinstance(final_message.get("content"), str):
+            try:
+                final_message["content"] = json.loads(final_message["content"])
+            except json.JSONDecodeError:
+                pass  # Keep as string if parsing fails
+
+        usage = (resp_data or {}).get("usage", {})
+        metrics: Dict[str, Any] = {
+            "prompt_tokens": usage.get("prompt_tokens", 0),
+            "completion_tokens": usage.get("completion_tokens", 0),
+            "total_tokens": usage.get("total_tokens", 0),
+            "temperature": options.get("temperature"),
+            "seed": options.get("seed"),
+        }
+
+        # Query detailed generation stats if available
+        generation_id = (resp_data or {}).get("id")
+        if generation_id and api_key:
+            try:
+                async with httpx.AsyncClient(timeout=10.0) as client:
+                    gen_response = await client.get(
+                        f"https://openrouter.ai/api/v1/generation?id={generation_id}",
+                        headers={
+                            "Authorization": f"Bearer {api_key}",
+                        }
+                    )
+                    gen_response.raise_for_status()
+                    gen_data = gen_response.json()
+                    if gen_data.get("data"):
+                        gen_metrics = gen_data["data"]
+                        # Merge additional metrics like cost, native tokens, etc.
+                        for key in ["total_cost", "native_tokens_prompt", "native_tokens_completion", "latency", "generation_time"]:
+                            if key in gen_metrics:
+                                metrics[key] = gen_metrics[key]
+            except Exception as e:
+                # Silently ignore generation API failures
+                pass
+
+        return {
+            "message": final_message,
+            "metrics": metrics,
+            "tool_history": tool_rounds_info.get("tool_history", []),
+            "thinking_history": tool_rounds_info.get("thinking_history", [])
+        }

@@ -28,38 +28,41 @@ class AtrXIndicatorNode(BaseIndicatorNode):
         {"name": "ma_length", "type": "integer", "default": 50},
     ]
 
-    async def execute(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
+    def _map_to_indicator_value(self, ind_type: IndicatorType, raw: Dict[str, Any]) -> IndicatorValue:
+        """
+        Satisfy BaseIndicatorNode's abstract contract. ATRX node uses its own
+        _execute_impl path and does not rely on base mapping.
+        """
+        return IndicatorValue(single=float("nan"))
+
+    async def _execute_impl(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
         ohlcv: List[Dict[str, float]] = inputs.get("ohlcv", [])
         if not ohlcv:
             return {"results": []}
-        try:
-            df_data = [
-                {
-                    "timestamp": pd.to_datetime(bar["timestamp"], unit="ms"),
-                    "Open": bar["open"],
-                    "High": bar["high"],
-                    "Low": bar["low"],
-                    "Close": bar["close"],
-                    "Volume": bar["volume"],
-                }
-                for bar in ohlcv
-            ]
-            df = pd.DataFrame(df_data).set_index("timestamp")
-            if df.empty:
-                return {"results": []}
-            atrx_value = self.indicators_service.calculate_atrx(
-                df,
-                length=self.params.get("length", 14),
-                ma_length=self.params.get("ma_length", 50),
-                smoothing=self.params.get("smoothing", "RMA"),
-                price=self.params.get("price", "Close"),
-            )
-            result = IndicatorResult(
-                indicator_type=IndicatorType.ATRX,
-                timestamp=int(df.index[-1].timestamp() * 1000),
-                values=IndicatorValue(single=atrx_value),
-            )
-            return {"results": [result.to_dict()]}
-        except Exception as e:
-            logger.warning(f"Error computing ATRX: {e}")
-            return {"results": []}
+        df_data = [
+            {
+                "timestamp": pd.to_datetime(bar["timestamp"], unit="ms"),
+                "Open": bar["open"],
+                "High": bar["high"],
+                "Low": bar["low"],
+                "Close": bar["close"],
+                "Volume": bar["volume"],
+            }
+            for bar in ohlcv
+        ]
+        df = pd.DataFrame(df_data).set_index("timestamp")
+        if df.empty:
+            raise ValueError("Empty DataFrame for ATRX computation")
+        atrx_value = self.indicators_service.calculate_atrx(
+            df,
+            length=self.params.get("length", 14),
+            ma_length=self.params.get("ma_length", 50),
+            smoothing=self.params.get("smoothing", "RMA"),
+            price=self.params.get("price", "Close"),
+        )
+        result = IndicatorResult(
+            indicator_type=IndicatorType.ATRX,
+            timestamp=int(df.index[-1].timestamp() * 1000),
+            values=IndicatorValue(single=atrx_value),
+        )
+        return {"results": [result.to_dict()]}

@@ -1,5 +1,5 @@
 import os
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional, Set
 from dotenv import load_dotenv, find_dotenv, set_key, unset_key
 
 
@@ -21,7 +21,7 @@ class APIKeyVault:
                     cls._keys[key] = value
         return cls._instance
 
-    def get(self, key: str) -> str | None:
+    def get(self, key: str) -> Optional[str]:
         """Get an API key by name."""
         return self._keys.get(key) or os.getenv(key)
 
@@ -52,7 +52,7 @@ class APIKeyVault:
         This resolves node classes dynamically from the global NODE_REGISTRY
         to avoid hardcoding specific node types.
         """
-        required_keys: set[str] = set()
+        required_keys: Set[str] = set()
         try:
             # Local import to avoid import cycles at module import time
             from core.node_registry import NODE_REGISTRY  # type: ignore

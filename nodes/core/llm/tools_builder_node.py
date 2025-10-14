@@ -16,7 +16,7 @@ class ToolsBuilderNode(BaseNode):
     """
 
     inputs = {
-        "tools_list": List[get_type("LLMToolSpec")],
+        "tools_list": get_type("LLMToolSpecList"),  # Changed from List[get_type("LLMToolSpec")]
     }
 
     optional_inputs = ["tools_list"]
@@ -27,7 +27,7 @@ class ToolsBuilderNode(BaseNode):
 
     CATEGORY = "llm"
 
-    async def execute(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
+    async def _execute_impl(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
         tools_list = inputs.get("tools_list", [])
 
         if not isinstance(tools_list, list):

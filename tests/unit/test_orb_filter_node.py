@@ -36,7 +36,7 @@ def mock_ohlcv_bundle(mock_symbol):
 @pytest.fixture
 def orb_node():
     params = {"or_minutes": 5, "rel_vol_threshold": 100.0, "direction": "both", "avg_period": 14}
-    return OrbFilterNode("test_node", params)
+    return OrbFilterNode(id=1, params=params)
 
 class TestOrbFilterNode:
     @pytest.mark.asyncio
@@ -145,7 +145,7 @@ class TestOrbFilterNode:
 
 @pytest.mark.asyncio
 async def test_execute_happy_path(sample_params, sample_ohlcv):
-    node = OrbFilterNode("test_id", sample_params)
+    node = OrbFilterNode(id=1, params=sample_params)
     inputs = {
         "ohlcv_bundle": {AssetSymbol("AAPL", AssetClass.STOCKS): sample_ohlcv}
     }
@@ -169,7 +169,7 @@ async def test_execute_happy_path(sample_params, sample_ohlcv):
 
 @pytest.mark.asyncio
 async def test_execute_insufficient_days(sample_params, sample_ohlcv):
-    node = OrbFilterNode("test_id", sample_params)
+    node = OrbFilterNode(id=1, params=sample_params)
     inputs = {
         "ohlcv_bundle": {AssetSymbol("AAPL", AssetClass.STOCKS): sample_ohlcv},
     }
@@ -191,7 +191,7 @@ async def test_execute_insufficient_days(sample_params, sample_ohlcv):
 
 @pytest.mark.asyncio
 async def test_execute_doji_direction(sample_params, sample_ohlcv):
-    node = OrbFilterNode("test_id", sample_params)
+    node = OrbFilterNode(id=1, params=sample_params)
     inputs = {
         "ohlcv_bundle": {AssetSymbol("AAPL", AssetClass.STOCKS): sample_ohlcv},
     }
@@ -212,7 +212,7 @@ async def test_execute_doji_direction(sample_params, sample_ohlcv):
 
 @pytest.mark.asyncio
 async def test_execute_low_rel_vol(sample_params, sample_ohlcv):
-    node = OrbFilterNode("test_id", sample_params)
+    node = OrbFilterNode(id=1, params=sample_params)
     inputs = {
         "ohlcv_bundle": {AssetSymbol("AAPL", AssetClass.STOCKS): sample_ohlcv},
     }
@@ -234,7 +234,7 @@ async def test_execute_low_rel_vol(sample_params, sample_ohlcv):
 @pytest.mark.asyncio
 @patch('nodes.core.market.filters.orb_filter_node.fetch_bars')
 async def test_execute_fetch_error(mock_fetch_bars, sample_params, sample_ohlcv):
-    node = OrbFilterNode("test_id", sample_params)
+    node = OrbFilterNode(id=1, params=sample_params)
     inputs = {
         "ohlcv_bundle": {AssetSymbol("AAPL", AssetClass.STOCKS): sample_ohlcv},
     }
@@ -247,7 +247,7 @@ async def test_execute_fetch_error(mock_fetch_bars, sample_params, sample_ohlcv)
 
 @pytest.mark.asyncio
 async def test_execute_empty_ohlcv(sample_params):
-    node = OrbFilterNode("test_id", sample_params)
+    node = OrbFilterNode(id=1, params=sample_params)
     inputs = {
         "ohlcv_bundle": {AssetSymbol("AAPL", AssetClass.STOCKS): []},
     }
@@ -260,7 +260,7 @@ async def test_execute_empty_ohlcv(sample_params):
 
 @pytest.mark.asyncio
 async def test_execute_no_api_key(sample_params, sample_ohlcv):
-    node = OrbFilterNode("test_id", sample_params)
+    node = OrbFilterNode(id=1, params=sample_params)
     inputs = {
         "ohlcv_bundle": {AssetSymbol("AAPL", AssetClass.STOCKS): sample_ohlcv},
     }
@@ -273,7 +273,7 @@ async def test_execute_no_api_key(sample_params, sample_ohlcv):
 async def test_execute_direction_specific(sample_params, sample_ohlcv):
     params = sample_params.copy()
     params["direction"] = "bullish"
-    node = OrbFilterNode("test_id", params)
+    node = OrbFilterNode(id=1, params=params)
     inputs = {
         "ohlcv_bundle": {AssetSymbol("AAPL", AssetClass.STOCKS): sample_ohlcv},
     }
@@ -302,7 +302,7 @@ async def test_execute_direction_specific(sample_params, sample_ohlcv):
 
     # Test bearish
     params["direction"] = "bearish"
-    node = OrbFilterNode("test_id", params)  # Re-instantiate with bearish
+    node = OrbFilterNode(id=1, params=params)  # Re-instantiate with bearish
     node._calculate_orb_indicator = mock_calc_bearish
     with patch("core.api_key_vault.APIKeyVault.get", return_value="test_key"):
         result = await node.execute(inputs)
@@ -310,7 +310,7 @@ async def test_execute_direction_specific(sample_params, sample_ohlcv):
 
     # Test both
     params["direction"] = "both"
-    node = OrbFilterNode("test_id", params)
+    node = OrbFilterNode(id=1, params=params)
     node._calculate_orb_indicator = mock_calc_bullish  # Using bullish for variety, but either works
     with patch("core.api_key_vault.APIKeyVault.get", return_value="test_key"):
         result = await node.execute(inputs)

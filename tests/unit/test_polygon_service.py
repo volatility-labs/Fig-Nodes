@@ -38,7 +38,8 @@ async def test_fetch_bars_success(mock_client, sample_symbol):
                 "l": 98.0,
                 "c": 105.0,
                 "v": 1100000,
-                "otc": True
+                "vw": 104.0,
+                "n": 1100
             }
         ]
     }
@@ -57,9 +58,9 @@ async def test_fetch_bars_success(mock_client, sample_symbol):
     assert bars[0]["volume"] == 1000000
     assert bars[0]["vw"] == 101.5
     assert bars[0]["n"] == 1000
-    assert "otc" not in bars[0]
 
-    assert bars[1]["otc"] is True
+    assert bars[1]["vw"] == 104.0
+    assert bars[1]["n"] == 1100
 
 
 @pytest.mark.asyncio

@@ -24,14 +24,17 @@ class AssetSymbolInputNode(BaseNode):
         {"name": "instrument_type", "type": "combo", "default": InstrumentType.PERPETUAL.name, "options": [e.name for e in InstrumentType]},
     ]
 
-    async def execute(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
-        symbol = AssetSymbol(
-            ticker=self.params["ticker"].upper(),
-            asset_class=self.params["asset_class"],
-            quote_currency=self.params.get("quote_currency").upper(),
-            provider=Provider[self.params["provider"]],
-            instrument_type=InstrumentType[self.params["instrument_type"]],
-        )
+    async def _execute_impl(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        try:
+            symbol = AssetSymbol(
+                ticker=self.params["ticker"].upper(),
+                asset_class=self.params["asset_class"],
+                quote_currency=self.params.get("quote_currency").upper(),
+                provider=Provider[self.params["provider"]],
+                instrument_type=InstrumentType[self.params["instrument_type"]],
+            )
+        except KeyError as e:
+            raise ValueError(f"Invalid parameter for provider/instrument_type: {self.params}") from e
         return {"symbol": symbol}
 
 

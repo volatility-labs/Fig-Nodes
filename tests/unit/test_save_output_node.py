@@ -64,7 +64,7 @@ async def test_save_asset_symbol(save_node, temp_output_dir):
         asset_class=AssetClass.CRYPTO,
         quote_currency="USDT",
         provider=Provider.BINANCE,
-        instrument_type=InstrumentType.SPOT
+        instrument_type=InstrumentType.PERPETUAL
     )
 
     with unittest.mock.patch('os.path.dirname') as mock_dirname, \

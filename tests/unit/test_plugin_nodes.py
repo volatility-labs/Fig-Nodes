@@ -21,7 +21,7 @@ def mock_connect():
 
 @pytest.fixture
 def binance_klines_node():
-    return BinanceKlinesStreamingNode("bk_id", {"interval": "1m"})
+    return BinanceKlinesStreamingNode(id=1, params={"interval": "1m"})
 
 class MockWS:
     def __init__(self, messages):
@@ -67,12 +67,12 @@ async def test_binance_klines_start(mock_connect):
     ]
     mock_connect.return_value = MockWS(messages)
 
-    node = BinanceKlinesStreamingNode("bk_id", {"interval": "1m"})
-    inputs = {"symbols_0": [AssetSymbol("BTC", AssetClass.CRYPTO, "USDT")]}
+    node = BinanceKlinesStreamingNode(id=1, params={"interval": "1m"})
+    inputs = {"symbols_0": [AssetSymbol("BTC", AssetClass.CRYPTO, quote_currency="USDT")]}
     gen = node.start(inputs)
     output = await anext(gen)
     assert "ohlcv" in output
-    bars = output["ohlcv"][AssetSymbol("BTC", AssetClass.CRYPTO, "USDT", exchange="binance", instrument_type=InstrumentType.PERPETUAL)]
+    bars = output["ohlcv"][AssetSymbol("BTC", AssetClass.CRYPTO, exchange="binance", instrument_type=InstrumentType.PERPETUAL, quote_currency="USDT")]
     assert isinstance(bars, list)
     assert len(bars) == 1
     assert bars[0]["close"] == 4.0
@@ -94,7 +94,7 @@ async def test_binance_klines_no_symbols(binance_klines_node):
 
 @pytest.fixture
 def binance_universe_node():
-    return BinancePerpsUniverseNode("bu_id", {})
+    return BinancePerpsUniverseNode(id=1, params={})
 
 @pytest.mark.asyncio
 @patch("requests.get")
@@ -132,7 +132,7 @@ async def test_binance_universe_max_attempts(mock_get, binance_universe_node):
 
 @pytest.fixture
 def sample_node():
-    return SampleCustomNode("sample_id", {})
+    return SampleCustomNode(id=1, params={})
 
 @pytest.mark.asyncio
 async def test_sample_node_execute(sample_node):
@@ -149,7 +149,7 @@ async def test_sample_node_missing_input(sample_node):
 
 @pytest.fixture
 def ws_node():
-    return WebSocketNode("ws_id", {})
+    return WebSocketNode(id=1, params={})
 
 @pytest.mark.asyncio
 @patch("websockets.connect")

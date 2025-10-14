@@ -31,7 +31,7 @@ class BaseFilterNode(BaseNode):
         """
         raise NotImplementedError("Subclasses must implement _filter_condition")
 
-    async def execute(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
+    async def _execute_impl(self, inputs: Dict[str, Any]) -> Dict[str, Any]:  # Renamed from execute to _execute_impl
         ohlcv_bundle: Dict[AssetSymbol, List[OHLCVBar]] = inputs.get("ohlcv_bundle", {})
 
         if not ohlcv_bundle:
@@ -43,11 +43,7 @@ class BaseFilterNode(BaseNode):
             if not ohlcv_data:
                 continue
 
-            try:
-                if self._filter_condition(symbol, ohlcv_data):
-                    filtered_bundle[symbol] = ohlcv_data
-            except Exception as e:
-                logger.warning(f"Failed to process filter for {symbol}: {e}")
-                continue
+            if self._filter_condition(symbol, ohlcv_data):
+                filtered_bundle[symbol] = ohlcv_data
 
         return {"filtered_ohlcv_bundle": filtered_bundle}

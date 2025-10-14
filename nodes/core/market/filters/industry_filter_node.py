@@ -28,8 +28,8 @@ class IndustryFilterNode(BaseFilterNode):
         {"name": "date", "type": "string", "default": None}
     ]
 
-    def __init__(self, node_id: str, params: Dict[str, Any]):
-        super().__init__(node_id, params)
+    def __init__(self, id: int, params: Dict[str, Any] = None):  # Changed from node_id: str
+        super().__init__(id, params)
         self.allowed_industries = [ind.lower() for ind in self.params.get("allowed_industries", [])]
 
     async def _fetch_industry(self, symbol: AssetSymbol, api_key: str) -> str:
@@ -57,7 +57,7 @@ class IndustryFilterNode(BaseFilterNode):
         industry = await self._fetch_industry(symbol, api_key)
         return industry in self.allowed_industries
 
-    async def execute(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
+    async def _execute_impl(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
         ohlcv_bundle: Dict[AssetSymbol, List[OHLCVBar]] = inputs.get("ohlcv_bundle", {})
 
         if not ohlcv_bundle:

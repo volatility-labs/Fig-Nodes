@@ -7,33 +7,36 @@ from core.graph_executor import GraphExecutor
 from nodes.base.base_node import BaseNode
 from nodes.base.streaming_node import StreamingNode
 
-
 class PassNode(BaseNode):
+    def __init__(self, id: int, params: Dict[str, Any] = None):
+        super().__init__(id=id, params=params)
     inputs = {"input": str}
     outputs = {"output": str}
 
-    async def execute(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
+    async def _execute_impl(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
         return {"output": f"{inputs.get('input', '')}"}
 
 
 class RaiseNode(BaseNode):
+    def __init__(self, id: int, params: Dict[str, Any] = None):
+        super().__init__(id=id, params=params)
     inputs = {}
     outputs = {"x": int}
 
-    async def execute(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
+    async def _execute_impl(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
         raise RuntimeError("compute error")
 
 
 class StreamSrc(StreamingNode):
+    def __init__(self, id: int, params: Dict[str, Any] = None):
+        super().__init__(id=id, params=params)
+        # Initialize a gate used to control emission of the second tick
+        self._gate = asyncio.Event()
     inputs = {}
     outputs = {"tick": str}
     is_streaming = True
 
-    def __init__(self, id: int, params: Optional[Dict[str, Any]] = None):
-        super().__init__(id, params)
-        self._gate = asyncio.Event()
-
-    async def start(self, inputs: Dict[str, Any]) -> AsyncGenerator[Dict[str, Any], None]:
+    async def _start_impl(self, inputs: Dict[str, Any]) -> AsyncGenerator[Dict[str, Any], None]:
         # emit two ticks gated
         yield {"tick": "t1"}
         await self._gate.wait()
@@ -44,10 +47,12 @@ class StreamSrc(StreamingNode):
 
 
 class LLMLikeNode(BaseNode):
+    def __init__(self, id: int, params: Dict[str, Any] = None):
+        super().__init__(id=id, params=params)
     inputs = {"messages": list}
     outputs = {"assistant_message": dict}
 
-    async def execute(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
+    async def _execute_impl(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
         msgs = inputs.get("messages") or []
         # Simulate dropping invalid messages and returning empty when none
         valid = [m for m in msgs if isinstance(m, dict) and m.get("role") in {"user", "assistant", "system", "tool"}]
@@ -59,11 +64,13 @@ class LLMLikeNode(BaseNode):
 @pytest.mark.asyncio
 async def test_streaming_exception_propagates_from_task():
     class BadStream(StreamingNode):
+        def __init__(self, id: int, params: Dict[str, Any] = None):
+            super().__init__(id=id, params=params)
         inputs = {}
         outputs = {"x": int}
         is_streaming = True
 
-        async def start(self, inputs: Dict[str, Any]):
+        async def _start_impl(self, inputs: Dict[str, Any]) -> AsyncGenerator[Dict[str, Any], None]:
             raise RuntimeError("bad stream")
             yield  # Unreachable, but ensures async generator type
 
@@ -78,13 +85,13 @@ async def test_streaming_exception_propagates_from_task():
         "links": [[0, 1, 0, 2, 0]],
     }
     registry = {"BadStream": BadStream, "PassNode": PassNode}
-
     executor = GraphExecutor(data, registry)
     assert executor.is_streaming
     stream = executor.stream()
     await anext(stream)  # initial static
-    with pytest.raises(RuntimeError, match="bad stream"):
-        await anext(stream)
+    # The executor wraps streaming exceptions in NodeExecutionError and yields an error result
+    tick = await anext(stream)
+    assert tick[1]["error"] == "Node 1: Streaming failed"
 
 
 @pytest.mark.asyncio
@@ -112,18 +119,22 @@ async def test_stop_cancels_stream_tasks_cleanly():
 async def test_input_output_slot_mapping_via_metadata():
     # Producer with custom output names
     class Producer(BaseNode):
+        def __init__(self, id: int, params: Dict[str, Any] = None):
+            super().__init__(id=id, params=params)
         inputs = {}
         outputs = {"first": str, "second": str}
 
-        async def execute(self, inputs: Dict[str, Any]):
+        async def _execute_impl(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
             return {"first": "A", "second": "B"}
 
     # Consumer with custom input names
     class Consumer(BaseNode):
+        def __init__(self, id: int, params: Dict[str, Any] = None):
+            super().__init__(id=id, params=params)
         inputs = {"x": str, "y": str}
         outputs = {"out": str}
 
-        async def execute(self, inputs: Dict[str, Any]):
+        async def _execute_impl(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
             return {"out": inputs.get("y", "") + inputs.get("x", "")}
 
     data = {
@@ -151,10 +162,12 @@ async def test_llm_like_edge_cases_empty_and_invalid_messages():
     }
 
     class LLMMockBuilder(BaseNode):
+        def __init__(self, id: int, params: Dict[str, Any] = None):
+            super().__init__(id=id, params=params)
         inputs = {}
         outputs = {"messages": list}
 
-        async def execute(self, inputs: Dict[str, Any]):
+        async def _execute_impl(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
             # Mixed valid/invalid, including empty content
             msgs = [
                 {"role": "system", "content": ""},
@@ -183,12 +196,15 @@ async def test_graph_with_cycles():
     with pytest.raises(ValueError, match="Graph contains cycles"):
         GraphExecutor(data, {"PassNode": PassNode})
 
+
 @pytest.mark.asyncio
 async def test_validate_inputs_skip():
     class InvalidInputNode(BaseNode):
+        def __init__(self, id: int, params: Dict[str, Any] = None):
+            super().__init__(id=id, params=params)
         inputs = {"required": str}
         outputs = {}
-        async def execute(self, inputs):
+        async def _execute_impl(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
             return {}
 
     data = {
@@ -198,6 +214,7 @@ async def test_validate_inputs_skip():
     ex = GraphExecutor(data, {"InvalidInputNode": InvalidInputNode})
     results = await ex.execute()
     assert 1 not in results  # Skipped due to invalid inputs
+
 
 @pytest.mark.asyncio
 async def test_streaming_stop_mid_stream():

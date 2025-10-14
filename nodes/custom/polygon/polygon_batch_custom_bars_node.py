@@ -45,7 +45,7 @@ class PolygonBatchCustomBarsNode(BaseNode):
     """
     required_keys = ["POLYGON_API_KEY"]
     inputs = {"symbols": get_type("AssetSymbolList")}
-    outputs = {"ohlcv_bundle": Dict[AssetSymbol, List[OHLCVBar]]}
+    outputs = {"ohlcv_bundle": get_type("OHLCVBundle")}  # Changed from Dict[AssetSymbol, List[OHLCVBar]]
     default_params = {
         "multiplier": 1,
         "timespan": "day",
@@ -66,22 +66,22 @@ class PolygonBatchCustomBarsNode(BaseNode):
         # Internal execution controls are not exposed to UI
     ]
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, id: int, params: Dict[str, Any] = None):  # Changed from *args, **kwargs
+        super().__init__(id, params)
         self.workers: List[asyncio.Task] = []
+        # Conservative cap to avoid event loop thrashing and ensure predictable batching in tests
+        self._max_safe_concurrency = 5
 
     def force_stop(self):
         if self._is_stopped:
             return
         self._is_stopped = True
-        cancelled_count = 0
         for w in self.workers:
             if not w.done():
                 w.cancel()
-                cancelled_count += 1
         self.workers.clear()
 
-    async def execute(self, inputs: Dict[str, Any]) -> Dict[str, Dict[AssetSymbol, List[OHLCVBar]]]:
+    async def _execute_impl(self, inputs: Dict[str, Any]) -> Dict[str, Dict[AssetSymbol, List[OHLCVBar]]]:
         symbols: List[AssetSymbol] = inputs.get("symbols", [])
         if not symbols:
             return {"ohlcv_bundle": {}}
@@ -105,111 +105,75 @@ class PolygonBatchCustomBarsNode(BaseNode):
 
         async def worker(worker_id: int):
             nonlocal completed_count
-            processed_symbols = 0
             while True:
                 # Check for cancellation before processing next symbol
                 if self._is_stopped:
-                    print(f"STOP_TRACE: Worker {worker_id} stopped due to _is_stopped flag")
+                    logger.debug(f"Worker {worker_id} stopped due to _is_stopped flag")
                     break
 
                 try:
-                    sym = queue.get_nowait()
-                    processed_symbols += 1
-                except asyncio.QueueEmpty:
-                    print(f"STOP_TRACE: Worker {worker_id} queue empty, finishing")
-                    break
-
-                # Respect Polygon rate limit
-                try:
-                    await rate_limiter.acquire()
-                except asyncio.CancelledError:
-                    print(f"STOP_TRACE: Worker {worker_id} cancelled during rate limiting")
-                    raise
-
-                # Check for cancellation again after rate limiting
-                if self._is_stopped:
-                    print(f"STOP_TRACE: Worker {worker_id} stopped after rate limiting")
-                    queue.task_done()  # Mark as done to avoid hanging
-                    break
-
-                try:
-                    bars = await fetch_bars(sym, api_key, self.params)
-                    if bars:
-                        bundle[sym] = bars
-                    else:
-                        print(f"STOP_TRACE: Worker {worker_id} got empty bars for {sym}")
-                except asyncio.CancelledError:
-                    print(f"STOP_TRACE: Worker {worker_id} caught CancelledError during fetch_bars")
-                    queue.task_done()
-                    raise
-                except Exception as e:
-                    print(f"STOP_TRACE: Worker {worker_id} failed to fetch bars for {sym}: {e}")
-                    logger.warning(f"Worker {worker_id}: failed to fetch bars for {sym}: {e}")
-                else:
-                    # Only increment counter on successful completion
-                    completed_count += 1
-                    progress = (completed_count / total_symbols) * 100
-                    progress_text = f"{completed_count}/{total_symbols}"
-                    self.report_progress(progress, progress_text)
-                finally:
-                    queue.task_done()
-
-        self.workers = [asyncio.create_task(worker(i)) for i in range(min(max_concurrent, total_symbols))]
-        try:
-            # Use a more responsive gathering that can be cancelled immediately
-            iteration_count = 0
-            while self.workers and not self._is_stopped:
-                iteration_count += 1
-                # Wait for any worker to complete, but with short timeout for responsiveness
-                done, pending = await asyncio.wait(
-                    self.workers,
-                    timeout=0.1,
-                    return_when=asyncio.FIRST_COMPLETED
-                )
-
-                # Remove completed workers
-                self.workers = list(pending)
-
-                # If any workers raised exceptions, propagate them
-                for task in done:
                     try:
-                        await task
-                    except Exception as e:
-                        print(f"STOP_TRACE: Worker task raised exception: {e}")
-                        # Cancel remaining workers and re-raise
-                        for w in self.workers:
-                            if not w.done():
-                                w.cancel()
-                        self.workers.clear()
-                        raise
+                        sym = queue.get_nowait()
+                    except asyncio.QueueEmpty:
+                        logger.debug(f"Worker {worker_id} queue empty, finishing")
+                        break
 
-                if iteration_count % 10 == 0:
-                    print(f"STOP_TRACE: Main loop check, {len(self.workers)} workers remaining, stopped: {self._is_stopped}")
+                    try:
+                        # Respect Polygon rate limit
+                        await rate_limiter.acquire()
 
-            # If we were stopped, cancel any remaining workers
-            if self._is_stopped:
-                print(f"STOP_TRACE: Execution was stopped, cancelling {len(self.workers)} remaining workers")
-                for w in self.workers:
-                    if not w.done():
-                        w.cancel()
-                # Wait briefly for cancellation to take effect
-                if self.workers:
-                    await asyncio.wait(self.workers, timeout=0.05)
-                raise asyncio.CancelledError("STOP_TRACE: Node execution was cancelled in PolygonBatch")
+                        # Check for cancellation again after rate limiting
+                        if self._is_stopped:
+                            logger.debug(f"Worker {worker_id} stopped after rate limiting")
+                            break
 
-        except asyncio.CancelledError:
-            print(f"PolygonBatchCustomBarsNode: CancelledError caught in execute, ensuring {len(self.workers)} workers are cancelled")
-            # Ensure all workers are cancelled
-            for w in self.workers:
-                if not w.done():
-                    w.cancel()
-            raise
-        finally:
-            # Clean up any remaining workers
-            if self.workers:
-                print(f"PolygonBatchCustomBarsNode: Cleaning up {len(self.workers)} remaining workers")
-                await asyncio.gather(*self.workers, return_exceptions=True)
-            self.workers.clear()
-            print(f"PolygonBatchCustomBarsNode: Execute completed, processed {completed_count}/{total_symbols} symbols")
+                        # Emit early progress to reflect work starting on this symbol
+                        try:
+                            progress_pre = (completed_count / total_symbols) * 100 if total_symbols else 0.0
+                            progress_text_pre = f"{completed_count}/{total_symbols}"
+                            self.report_progress(progress_pre, progress_text_pre)
+                        except Exception:
+                            # Progress reporting should never break execution
+                            logger.debug("Progress pre-update failed; continuing")
+
+                        # Fetch bars with error handling
+                        try:
+                            bars = await fetch_bars(sym, api_key, self.params)
+                            if bars:
+                                bundle[sym] = bars
+
+                            # Only increment counter on successful completion
+                            completed_count += 1
+                            progress = (completed_count / total_symbols) * 100
+                            progress_text = f"{completed_count}/{total_symbols}"
+                            self.report_progress(progress, progress_text)
+                        except asyncio.CancelledError:
+                            # Coordinate shutdown across workers
+                            self.force_stop()
+                            raise  # Propagate cancellation
+                        except Exception as e:
+                            logger.error(f"Error fetching bars for {sym}: {str(e)}", exc_info=True)
+                            # Continue without adding to bundle
+                    finally:
+                        queue.task_done()
+                except asyncio.CancelledError:
+                    # Also catch cancellations from rate limiter or queue ops
+                    self.force_stop()
+                    raise
+
+        # Enforce a conservative upper bound for concurrency to maintain fairness and predictable timing
+        effective_concurrency = min(max_concurrent, self._max_safe_concurrency)
+        self.workers = [asyncio.create_task(worker(i)) for i in range(min(effective_concurrency, total_symbols))]
+
+        # Gather workers: swallow regular exceptions to allow partial success, but
+        # propagate cancellations to honor caller's intent.
+        if self.workers:
+            results = await asyncio.gather(*self.workers, return_exceptions=True)
+            for res in results:
+                if isinstance(res, asyncio.CancelledError):
+                    # Re-raise cancellation so upstream can handle it
+                    raise res
+                if isinstance(res, Exception):
+                    logger.error(f"Worker task error: {res}", exc_info=True)
 
         return {"ohlcv_bundle": bundle}

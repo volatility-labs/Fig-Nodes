@@ -11,18 +11,22 @@ from core.node_registry import NODE_REGISTRY  # Assuming it's empty or mock
 
 # Mock Node Classes
 class MockBaseNode(BaseNode):
+    def __init__(self, id: int, params: Dict[str, Any] = None):
+        super().__init__(id=id, params=params)
     inputs = {"input": str}
     outputs = {"output": str}
 
-    async def execute(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
+    async def _execute_impl(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
         return {"output": f"processed_{inputs.get('input', '')}"}
 
 class MockStreamingNode(StreamingNode):
+    def __init__(self, id: int, params: Dict[str, Any] = None):
+        super().__init__(id=id, params=params)
     inputs = {}
     outputs = {"stream": str}
     is_streaming = True
 
-    async def start(self, inputs: Dict[str, Any]) -> AsyncGenerator[Dict[str, Any], None]:
+    async def _start_impl(self, inputs: Dict[str, Any]) -> AsyncGenerator[Dict[str, Any], None]:
         yield {"stream": "tick1"}
         yield {"stream": "tick2"}
 

@@ -5,17 +5,18 @@ from core.types_registry import AssetSymbol, OHLCVBar, IndicatorType
 import pandas as pd
 from core.types_registry import IndicatorResult, IndicatorType, IndicatorValue
 from unittest.mock import patch
+from core.types_registry import AssetClass
 
 @pytest.fixture
 def sample_bundle() -> Dict[AssetSymbol, List[OHLCVBar]]:
-    symbol = AssetSymbol("TEST", "STOCKS")
+    symbol = AssetSymbol("TEST", AssetClass.CRYPTO)
     bars = [{"timestamp": 0, "open": 100, "high": 105, "low": 95, "close": 102, "volume": 10000}] * 60
     return {symbol: bars}
 
 @pytest.mark.asyncio
 async def test_atrx_filter_node_outside(sample_bundle):
     params = {"filter_condition": "outside", "upper_threshold": 5.0, "lower_threshold": -3.0}
-    node = AtrXFilterNode("test_id", params)
+    node = AtrXFilterNode(id=1, params=params)
     result = await node.execute({"ohlcv_bundle": sample_bundle})
     assert "filtered_ohlcv_bundle" in result
 
@@ -25,7 +26,7 @@ async def test_atrx_filter_node_outside(sample_bundle):
 @pytest.mark.parametrize("smoothing", ["RMA", "EMA", "SMA"])
 async def test_atrx_filter_node_smoothing(sample_bundle, smoothing):
     params = {"smoothing": smoothing, "filter_condition": "outside", "upper_threshold": 5.0, "lower_threshold": -3.0}
-    node = AtrXFilterNode("test_id", params)
+    node = AtrXFilterNode(id=1, params=params)
     result = await node.execute({"ohlcv_bundle": sample_bundle})
     assert "filtered_ohlcv_bundle" in result
 
@@ -33,15 +34,15 @@ async def test_atrx_filter_node_smoothing(sample_bundle, smoothing):
 def multi_symbol_bundle() -> Dict[AssetSymbol, List[OHLCVBar]]:
     bars = [{"timestamp": i, "open": 100, "high": 105, "low": 95, "close": 102, "volume": 10000} for i in range(60)]
     return {
-        AssetSymbol("AAPL", "STOCKS"): bars,
-        AssetSymbol("GOOG", "STOCKS"): bars,
-        AssetSymbol("TSLA", "STOCKS"): bars,
+        AssetSymbol("AAPL", AssetClass.CRYPTO): bars,
+        AssetSymbol("GOOG", AssetClass.CRYPTO): bars,
+        AssetSymbol("TSLA", AssetClass.CRYPTO): bars,
     }
 
 @pytest.mark.asyncio
 async def test_atrx_filter_node_outside_multi_symbols(multi_symbol_bundle):
     params = {"filter_condition": "outside", "upper_threshold": 5.0, "lower_threshold": -3.0}
-    node = AtrXFilterNode("test_id", params)
+    node = AtrXFilterNode(id=1, params=params)
     with patch.object(node, '_calculate_indicator') as mock_calc:
         mock_calc.side_effect = [
             IndicatorResult(
@@ -66,14 +67,14 @@ async def test_atrx_filter_node_outside_multi_symbols(multi_symbol_bundle):
         result = await node.execute({"ohlcv_bundle": multi_symbol_bundle})
     assert "filtered_ohlcv_bundle" in result
     filtered = result["filtered_ohlcv_bundle"]
-    assert set(filtered.keys()) == {AssetSymbol("AAPL", "STOCKS"), AssetSymbol("TSLA", "STOCKS")}
-    assert len(filtered[AssetSymbol("AAPL", "STOCKS")]) == 60
+    assert set(filtered.keys()) == {AssetSymbol("AAPL", AssetClass.CRYPTO), AssetSymbol("TSLA", AssetClass.CRYPTO)}
+    assert len(filtered[AssetSymbol("AAPL", AssetClass.CRYPTO)]) == 60
     assert mock_calc.call_count == 3
 
 @pytest.mark.asyncio
 async def test_atrx_filter_node_inside_multi_symbols(multi_symbol_bundle):
     params = {"filter_condition": "inside", "upper_threshold": 5.0, "lower_threshold": -3.0}
-    node = AtrXFilterNode("test_id", params)
+    node = AtrXFilterNode(id=1, params=params)
     with patch.object(node, '_calculate_indicator') as mock_calc:
         mock_calc.side_effect = [
             IndicatorResult(
@@ -98,14 +99,14 @@ async def test_atrx_filter_node_inside_multi_symbols(multi_symbol_bundle):
         result = await node.execute({"ohlcv_bundle": multi_symbol_bundle})
     assert "filtered_ohlcv_bundle" in result
     filtered = result["filtered_ohlcv_bundle"]
-    assert set(filtered.keys()) == {AssetSymbol("GOOG", "STOCKS")}
-    assert len(filtered[AssetSymbol("GOOG", "STOCKS")]) == 60
+    assert set(filtered.keys()) == {AssetSymbol("GOOG", AssetClass.CRYPTO)}
+    assert len(filtered[AssetSymbol("GOOG", AssetClass.CRYPTO)]) == 60
     assert mock_calc.call_count == 3
 
 @pytest.mark.asyncio
 async def test_atrx_filter_node_edge_cases_outside(multi_symbol_bundle):
     params = {"filter_condition": "outside", "upper_threshold": 5.0, "lower_threshold": -3.0}
-    node = AtrXFilterNode("test_id", params)
+    node = AtrXFilterNode(id=1, params=params)
     with patch.object(node, '_calculate_indicator') as mock_calc:
         mock_calc.side_effect = [
             IndicatorResult(
@@ -129,12 +130,12 @@ async def test_atrx_filter_node_edge_cases_outside(multi_symbol_bundle):
         ]
         result = await node.execute({"ohlcv_bundle": multi_symbol_bundle})
     filtered = result["filtered_ohlcv_bundle"]
-    assert set(filtered.keys()) == {AssetSymbol("TSLA", "STOCKS")}
+    assert set(filtered.keys()) == {AssetSymbol("TSLA", AssetClass.CRYPTO)}
 
 @pytest.mark.asyncio
 async def test_atrx_filter_node_edge_cases_inside(multi_symbol_bundle):
     params = {"filter_condition": "inside", "upper_threshold": 5.0, "lower_threshold": -3.0}
-    node = AtrXFilterNode("test_id", params)
+    node = AtrXFilterNode(id=1, params=params)
     with patch.object(node, '_calculate_indicator') as mock_calc:
         mock_calc.side_effect = [
             IndicatorResult(
@@ -158,12 +159,12 @@ async def test_atrx_filter_node_edge_cases_inside(multi_symbol_bundle):
         ]
         result = await node.execute({"ohlcv_bundle": multi_symbol_bundle})
     filtered = result["filtered_ohlcv_bundle"]
-    assert set(filtered.keys()) == {AssetSymbol("TSLA", "STOCKS")}
+    assert set(filtered.keys()) == {AssetSymbol("TSLA", AssetClass.CRYPTO)}
 
 @pytest.mark.asyncio
 async def test_atrx_filter_node_empty_bundle():
     params = {"filter_condition": "outside", "upper_threshold": 5.0, "lower_threshold": -3.0}
-    node = AtrXFilterNode("test_id", params)
+    node = AtrXFilterNode(id=1, params=params)
     result = await node.execute({"ohlcv_bundle": {}})
     assert "filtered_ohlcv_bundle" in result
     assert result["filtered_ohlcv_bundle"] == {}
@@ -171,9 +172,9 @@ async def test_atrx_filter_node_empty_bundle():
 @pytest.mark.asyncio
 async def test_atrx_filter_node_symbol_with_empty_ohlcv(sample_bundle):
     bundle = sample_bundle.copy()
-    bundle[AssetSymbol("EMPTY", "STOCKS")] = []
+    bundle[AssetSymbol("EMPTY", AssetClass.CRYPTO)] = []
     params = {"filter_condition": "outside", "upper_threshold": 5.0, "lower_threshold": -3.0}
-    node = AtrXFilterNode("test_id", params)
+    node = AtrXFilterNode(id=1, params=params)
     with patch.object(node, '_calculate_indicator') as mock_calc:
         mock_calc.side_effect = [
             IndicatorResult(
@@ -186,13 +187,13 @@ async def test_atrx_filter_node_symbol_with_empty_ohlcv(sample_bundle):
         ]
         result = await node.execute({"ohlcv_bundle": bundle})
     filtered = result["filtered_ohlcv_bundle"]
-    assert set(filtered.keys()) == {AssetSymbol("TEST", "STOCKS")}
+    assert set(filtered.keys()) == {AssetSymbol("TEST", AssetClass.CRYPTO)}
     assert mock_calc.call_count == 1  # Skips empty
 
 @pytest.mark.asyncio
 async def test_atrx_filter_node_calculation_error(multi_symbol_bundle):
     params = {"filter_condition": "outside", "upper_threshold": 5.0, "lower_threshold": -3.0}
-    node = AtrXFilterNode("test_id", params)
+    node = AtrXFilterNode(id=1, params=params)
     with patch.object(node, '_calculate_indicator') as mock_calc:
         mock_calc.side_effect = [
             IndicatorResult(
@@ -211,7 +212,7 @@ async def test_atrx_filter_node_calculation_error(multi_symbol_bundle):
         ]
         result = await node.execute({"ohlcv_bundle": multi_symbol_bundle})
     filtered = result["filtered_ohlcv_bundle"]
-    assert set(filtered.keys()) == {AssetSymbol("AAPL", "STOCKS"), AssetSymbol("TSLA", "STOCKS")}
+    assert set(filtered.keys()) == {AssetSymbol("AAPL", AssetClass.CRYPTO), AssetSymbol("TSLA", AssetClass.CRYPTO)}
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("condition, upper, lower, expected_kept", [
@@ -224,7 +225,7 @@ async def test_atrx_filter_node_calculation_error(multi_symbol_bundle):
 ])
 async def test_atrx_filter_node_varying_params(multi_symbol_bundle, condition, upper, lower, expected_kept):
     params = {"filter_condition": condition, "upper_threshold": upper, "lower_threshold": lower}
-    node = AtrXFilterNode("test_id", params)
+    node = AtrXFilterNode(id=1, params=params)
     with patch.object(node, '_calculate_indicator') as mock_calc:
         mock_calc.side_effect = [
             IndicatorResult(

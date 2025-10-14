@@ -2,6 +2,7 @@ from typing import Dict, Any, List
 import json
 from nodes.base.base_node import BaseNode
 from core.types_registry import AssetSymbol
+from typing import Any
 
 
 class LoggingNode(BaseNode):
@@ -20,7 +21,7 @@ class LoggingNode(BaseNode):
         {"name": "format", "type": "combo", "default": "auto", "options": ["auto", "plain", "json", "markdown"]},
     ]
 
-    async def execute(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
+    async def _execute_impl(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
         value = inputs.get("input")
         selected_format = (self.params.get("format") or "auto").strip()
         

@@ -109,7 +109,7 @@ class TestSMACrossoverFilterNode:
 
     @pytest.fixture
     def sma_filter_node(self):
-        return SMACrossoverFilterNode("sma_filter_id", {})
+        return SMACrossoverFilterNode(id=1, params={})
 
     @pytest.mark.asyncio
     async def test_execute_empty_inputs(self, sma_filter_node):
@@ -132,7 +132,6 @@ class TestSMACrossoverFilterNode:
         # Should filter assets based on recent SMA crossover
         filtered_bundle = result["filtered_ohlcv_bundle"]
 
-        # AAPL and TSLA should pass (uptrending), BTC and ETH may not
         assert isinstance(filtered_bundle, dict)
         assert all(isinstance(symbol, AssetSymbol) for symbol in filtered_bundle.keys())
         assert all(isinstance(data, list) for data in filtered_bundle.values())
@@ -140,7 +139,7 @@ class TestSMACrossoverFilterNode:
     @pytest.mark.asyncio
     async def test_execute_custom_periods(self, sample_ohlcv_bundle, sample_symbols):
         """Test SMA crossover with custom periods."""
-        node = SMACrossoverFilterNode("sma_filter_id", {"short_period": 10, "long_period": 30})
+        node = SMACrossoverFilterNode(id=1, params={"short_period": 10, "long_period": 30})
         inputs = {"ohlcv_bundle": sample_ohlcv_bundle}
         result = await node.execute(inputs)
 
@@ -167,7 +166,7 @@ class TestSMACrossoverFilterNode:
     def test_invalid_params(self):
         """Test validation of invalid parameters."""
         with pytest.raises(ValueError, match="Short period must be less than long period"):
-            SMACrossoverFilterNode("test_id", {"short_period": 50, "long_period": 20})
+            SMACrossoverFilterNode(id=1, params={"short_period": 50, "long_period": 20})
 
 
 class TestADXFilterNode:
@@ -175,7 +174,7 @@ class TestADXFilterNode:
 
     @pytest.fixture
     def adx_filter_node(self):
-        return ADXFilterNode("adx_filter_id", {})
+        return ADXFilterNode(id=1, params={})
 
     @pytest.mark.asyncio
     async def test_execute_default_params(self, adx_filter_node, sample_ohlcv_bundle, sample_symbols):
@@ -189,7 +188,7 @@ class TestADXFilterNode:
     @pytest.mark.asyncio
     async def test_execute_high_adx_threshold(self, sample_ohlcv_bundle):
         """Test ADX filtering with high threshold."""
-        node = ADXFilterNode("adx_filter_id", {"min_adx": 40.0})
+        node = ADXFilterNode(id=1, params={"min_adx": 40.0})
         inputs = {"ohlcv_bundle": sample_ohlcv_bundle}
         result = await node.execute(inputs)
 
@@ -227,7 +226,7 @@ class TestRSIFilterNode:
 
     @pytest.fixture
     def rsi_filter_node(self):
-        return RSIFilterNode("rsi_filter_id", {})
+        return RSIFilterNode(id=1, params={})
 
     @pytest.mark.asyncio
     async def test_execute_default_params(self, rsi_filter_node, sample_ohlcv_bundle, sample_symbols):
@@ -243,7 +242,7 @@ class TestRSIFilterNode:
     @pytest.mark.asyncio
     async def test_execute_strict_oversold(self, sample_ohlcv_bundle):
         """Test RSI filtering for oversold conditions."""
-        node = RSIFilterNode("rsi_filter_id", {"min_rsi": 0.0, "max_rsi": 30.0})
+        node = RSIFilterNode(id=1, params={"min_rsi": 0.0, "max_rsi": 30.0})
         inputs = {"ohlcv_bundle": sample_ohlcv_bundle}
         result = await node.execute(inputs)
 
@@ -253,7 +252,7 @@ class TestRSIFilterNode:
     @pytest.mark.asyncio
     async def test_execute_strict_overbought(self, sample_ohlcv_bundle):
         """Test RSI filtering for overbought conditions."""
-        node = RSIFilterNode("rsi_filter_id", {"min_rsi": 70.0, "max_rsi": 100.0})
+        node = RSIFilterNode(id=1, params={"min_rsi": 70.0, "max_rsi": 100.0})
         inputs = {"ohlcv_bundle": sample_ohlcv_bundle}
         result = await node.execute(inputs)
 
@@ -265,7 +264,7 @@ class TestRSIFilterNode:
         """Test RSI filtering with impossible range."""
         # Should raise error during node creation due to invalid range
         with pytest.raises(ValueError, match="Minimum RSI must be less than maximum RSI"):
-            RSIFilterNode("rsi_filter_id", {"min_rsi": 80.0, "max_rsi": 70.0})
+            RSIFilterNode(id=1, params={"min_rsi": 80.0, "max_rsi": 70.0})
 
     @pytest.mark.asyncio
     async def test_execute_insufficient_data(self, rsi_filter_node, sample_symbols):
@@ -293,11 +292,11 @@ class TestIndicatorFilterIntegration:
     async def test_combined_filtering_workflow(self, sample_ohlcv_bundle, sample_symbols):
         """Test a typical workflow combining multiple filters."""
         # First apply ADX filter
-        adx_node = ADXFilterNode("adx_filter", {"min_adx": 20.0})
+        adx_node = ADXFilterNode(id=1, params={"min_adx": 20.0})
         adx_result = await adx_node.execute({"ohlcv_bundle": sample_ohlcv_bundle})
 
         # Then apply RSI filter to ADX-filtered results
-        rsi_node = RSIFilterNode("rsi_filter", {"min_rsi": 20.0, "max_rsi": 80.0})
+        rsi_node = RSIFilterNode(id=1, params={"min_rsi": 20.0, "max_rsi": 80.0})
         final_result = await rsi_node.execute({"ohlcv_bundle": adx_result["filtered_ohlcv_bundle"]})
 
         filtered_bundle = final_result["filtered_ohlcv_bundle"]
@@ -317,7 +316,7 @@ class TestIndicatorFilterIntegration:
         }
 
         # Apply very strict ADX filter
-        adx_node = ADXFilterNode("adx_filter", {"min_adx": 50.0})
+        adx_node = ADXFilterNode(id=1, params={"min_adx": 50.0})
         result = await adx_node.execute({"ohlcv_bundle": weak_trend_bundle})
 
         # Should result in empty filtered bundle
@@ -329,7 +328,7 @@ class TestNodeProperties:
 
     def test_sma_node_properties(self):
         """Test SMA filter node properties."""
-        node = SMACrossoverFilterNode("test_id", {})
+        node = SMACrossoverFilterNode(id=1, params={})
 
         expected_inputs = {"ohlcv_bundle": Dict[AssetSymbol, List[OHLCVBar]]}
         expected_outputs = {"filtered_ohlcv_bundle": Dict[AssetSymbol, List[OHLCVBar]]}
@@ -346,7 +345,7 @@ class TestNodeProperties:
 
     def test_adx_node_properties(self):
         """Test ADX filter node properties."""
-        node = ADXFilterNode("test_id", {})
+        node = ADXFilterNode(id=1, params={})
 
         expected_defaults = {"min_adx": 25.0, "timeperiod": 14}
         assert node.default_params == expected_defaults
@@ -357,7 +356,7 @@ class TestNodeProperties:
 
     def test_rsi_node_properties(self):
         """Test RSI filter node properties."""
-        node = RSIFilterNode("test_id", {})
+        node = RSIFilterNode(id=1, params={})
 
         expected_defaults = {"min_rsi": 30.0, "max_rsi": 70.0, "timeperiod": 14}
         assert node.default_params == expected_defaults
@@ -370,7 +369,7 @@ class TestNodeProperties:
 @pytest.mark.asyncio
 @pytest.mark.parametrize("timeperiod, expected_pass", [(10, True), (101, False)])  # Test different timeperiods including insufficient data case
 async def test_custom_timeperiod(sample_ohlcv_bundle, timeperiod, expected_pass):
-    node = ADXFilterNode("adx_filter_id", {"min_adx": 25.0, "timeperiod": timeperiod})
+    node = ADXFilterNode(id=1, params={"min_adx": 25.0, "timeperiod": timeperiod})
     result = await node.execute({"ohlcv_bundle": sample_ohlcv_bundle})
     filtered_count = len(result["filtered_ohlcv_bundle"])
     if expected_pass:
@@ -380,21 +379,21 @@ async def test_custom_timeperiod(sample_ohlcv_bundle, timeperiod, expected_pass)
 
 @pytest.mark.asyncio
 async def test_large_dataset():
-    node = ADXFilterNode("adx_filter_id", {})
+    node = ADXFilterNode(id=1, params={})
     large_bundle = {AssetSymbol(f"SYM_{i}", AssetClass.STOCKS): [OHLCVBar(timestamp=j, open=100+j, high=110+j, low=90+j, close=105+j, volume=1000) for j in range(1000)] for i in range(10)}
     result = await node.execute({"ohlcv_bundle": large_bundle})
     assert isinstance(result["filtered_ohlcv_bundle"], dict)
 
 @pytest.mark.asyncio
 async def test_all_nan_data(sample_symbols):
-    node = ADXFilterNode("adx_filter_id", {})
+    node = ADXFilterNode(id=1, params={})
     nan_bundle = {sample_symbols[0]: [OHLCVBar(timestamp=1, open=float('nan'), high=float('nan'), low=float('nan'), close=float('nan'), volume=float('nan')) for _ in range(20)]}
     result = await node.execute({"ohlcv_bundle": nan_bundle})
     assert result["filtered_ohlcv_bundle"] == {}
 
 @pytest.mark.asyncio
 async def test_mixed_nan_valid_data(sample_symbols, sample_ohlcv_bars):
-    node = ADXFilterNode("adx_filter_id", {})
+    node = ADXFilterNode(id=1, params={})
     mixed_bars = sample_ohlcv_bars[:10] + [OHLCVBar(timestamp=11, open=float('nan'), high=110, low=90, close=105, volume=1000)] + sample_ohlcv_bars[11:]
     mixed_bundle = {sample_symbols[0]: mixed_bars}
     result = await node.execute({"ohlcv_bundle": mixed_bundle})
@@ -402,6 +401,6 @@ async def test_mixed_nan_valid_data(sample_symbols, sample_ohlcv_bars):
 
 def test_invalid_parameters():
     with pytest.raises(ValueError, match="Minimum ADX cannot be negative"):
-        ADXFilterNode("test_id", {"min_adx": -5.0})
+        ADXFilterNode(id=1, params={"min_adx": -5.0})
     with pytest.raises(ValueError, match="Time period must be positive"):
-        ADXFilterNode("test_id", {"timeperiod": 0})
+        ADXFilterNode(id=1, params={"timeperiod": 0})

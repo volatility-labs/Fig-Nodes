@@ -46,7 +46,7 @@ class WebSearchToolNode(BaseNode):
 
     CATEGORY = "llm"
 
-    async def execute(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
+    async def _execute_impl(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
         vault = APIKeyVault()
         api_key = vault.get("TAVILY_API_KEY")
         if not api_key:

@@ -33,7 +33,7 @@ class ToolsSelectorNode(BaseNode):
 
     CATEGORY = "llm"
 
-    async def execute(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
+    async def _execute_impl(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
         names = list_tool_names()
         # update UI options dynamically
         for p in self.params_meta:
