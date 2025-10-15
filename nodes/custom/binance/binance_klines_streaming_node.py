@@ -12,6 +12,8 @@ class BinanceKlinesStreamingNode(StreamingNode):
     Yields closed klines as OHLCVBundle (dict of AssetSymbol to list of OHLCVBar).
     """
     inputs = {"symbols": get_type("AssetSymbolList")}
+    # Allow starting without symbols to gracefully end the stream immediately
+    optional_inputs = ["symbols"]
     outputs = {"ohlcv": get_type("OHLCVBundle")}
     default_params = {"interval": "1m"}
     params_meta = [

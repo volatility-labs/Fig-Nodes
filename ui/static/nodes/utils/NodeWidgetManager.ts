@@ -134,125 +134,25 @@ export class NodeWidgetManager {
 
 
     private showCustomPrompt(title: string, defaultValue: string, isPassword: boolean, callback: (value: string | null) => void) {
-        if (!isPassword) {
-            this.showQuickValuePrompt(title || 'Value', defaultValue, false, (val) => callback(val));
-            return;
+        const dialogManager = (window as any).dialogManager;
+        if (dialogManager) {
+            dialogManager.showCustomPrompt(title, defaultValue, isPassword, callback);
+        } else {
+            // Fallback to simple prompt
+            const value = prompt(title, defaultValue);
+            callback(value);
         }
-
-        const dialog = document.createElement('div');
-        dialog.className = 'custom-input-dialog';
-
-        const label = document.createElement('label');
-        label.className = 'dialog-label';
-        label.textContent = title;
-
-        const input = document.createElement('input');
-        input.className = 'dialog-input';
-        input.type = 'password';
-        input.value = defaultValue;
-
-        const okButton = document.createElement('button');
-        okButton.className = 'dialog-button';
-        okButton.textContent = 'OK';
-        okButton.onclick = () => {
-            callback(input.value);
-            document.body.removeChild(dialog);
-        };
-
-        dialog.appendChild(label);
-        dialog.appendChild(input);
-        dialog.appendChild(okButton);
-
-        document.body.appendChild(dialog);
-        input.focus();
-        input.select();
     }
 
     private showQuickValuePrompt(labelText: string, defaultValue: string | number, numericOnly: boolean, callback: (value: string | null) => void, position?: { x: number; y: number }) {
-        const overlay = document.createElement('div');
-        overlay.className = 'quick-input-overlay';
-
-        const dialog = document.createElement('div');
-        dialog.className = 'quick-input-dialog';
-
-        const label = document.createElement('div');
-        label.className = 'quick-input-label';
-        label.textContent = labelText || 'Value';
-
-        const input = document.createElement('input');
-        input.className = 'quick-input-field';
-        input.type = numericOnly ? 'number' : 'text';
-        input.value = String(defaultValue ?? '');
-        input.spellcheck = false;
-
-        const okButton = document.createElement('button');
-        okButton.className = 'quick-input-ok';
-        okButton.textContent = 'OK';
-
-        const submit = () => {
-            if (numericOnly) {
-                const n = Number(input.value);
-                if (!Number.isFinite(n)) {
-                    return;
-                }
-                callback(String(Math.floor(n)));
-            } else {
-                callback(input.value);
-            }
-            document.body.removeChild(overlay);
-        };
-
-        const cancel = () => {
-            callback(null);
-            if (overlay.parentNode) document.body.removeChild(overlay);
-        };
-
-        okButton.addEventListener('click', submit);
-        input.addEventListener('keydown', (ev) => {
-            ev.stopPropagation();
-            if (ev.key === 'Enter') submit();
-            if (ev.key === 'Escape') cancel();
-        });
-        overlay.addEventListener('click', (ev) => {
-            if (ev.target === overlay) cancel();
-        });
-
-        dialog.appendChild(label);
-        dialog.appendChild(input);
-        dialog.appendChild(okButton);
-        overlay.appendChild(dialog);
-        document.body.appendChild(overlay);
-
-        try {
-            const graph: any = (this.node as any).graph;
-            const canvas = graph?.list_of_graphcanvas?.[0];
-            const prompt = (canvas && (canvas as any).prompt) || (window as any).LiteGraph?.prompt;
-            if (typeof prompt === 'function') {
-                document.body.removeChild(overlay);
-                prompt(labelText, defaultValue, (val: any) => {
-                    if (numericOnly && val != null) {
-                        const n = Number(val);
-                        if (!Number.isFinite(n)) { callback(null); return; }
-                        callback(String(Math.floor(n)));
-                    } else {
-                        callback(val == null ? null : String(val));
-                    }
-                }, { type: numericOnly ? 'number' : 'text', step: 1, min: 0 });
-                return;
-            }
-        } catch { /* fall back to inline */ }
-
-        if (position && Number.isFinite(position.x) && Number.isFinite(position.y)) {
-            dialog.style.position = 'absolute';
-            dialog.style.left = `${position.x}px`;
-            dialog.style.top = `${position.y}px`;
-            overlay.style.background = 'transparent';
-            (overlay.style as any).pointerEvents = 'none';
-            (dialog.style as any).pointerEvents = 'auto';
+        const dialogManager = (window as any).dialogManager;
+        if (dialogManager) {
+            dialogManager.showQuickValuePrompt(labelText, defaultValue, numericOnly, callback, position);
+        } else {
+            // Fallback to simple prompt
+            const value = prompt(labelText, String(defaultValue));
+            callback(value);
         }
-
-        input.focus();
-        input.select();
     }
 
     formatComboValue(value: any): string {
@@ -263,179 +163,15 @@ export class NodeWidgetManager {
     }
 
     private showCustomDropdown(paramName: string, options: any[], callback: (value: any) => void) {
-        const overlay = document.createElement('div');
-        overlay.className = 'custom-dropdown-overlay';
-
-        const menu = document.createElement('div');
-        menu.className = 'custom-dropdown-menu';
-
-        // Add search bar if there are many options
-        const hasSearch = options.length > 10;
-        let searchInput: HTMLInputElement | null = null;
-        let filteredOptions = options.slice();
-
-        if (hasSearch) {
-            searchInput = document.createElement('input');
-            searchInput.type = 'text';
-            searchInput.className = 'custom-dropdown-search';
-            searchInput.placeholder = 'Search...';
-            searchInput.spellcheck = false;
-            menu.appendChild(searchInput);
-        }
-
-        const itemsContainer = document.createElement('div');
-        itemsContainer.className = 'custom-dropdown-items';
-        menu.appendChild(itemsContainer);
-
-        const graph = (this.node as any).graph;
-        const canvas = graph?.list_of_graphcanvas?.[0];
-        if (canvas && canvas.canvas) {
-            const canvasRect = canvas.canvas.getBoundingClientRect();
-            const lastMouseEvent = (canvas as any).getLastMouseEvent?.();
-
-            if (lastMouseEvent) {
-                let menuX = lastMouseEvent.clientX;
-                let menuY = lastMouseEvent.clientY + 5;
-
-                const menuWidth = 280;
-                const searchHeight = hasSearch ? 36 : 0;
-                const menuHeight = Math.min(300, options.length * 26 + searchHeight + 8);
-
-                if (menuX + menuWidth > window.innerWidth) {
-                    menuX = window.innerWidth - menuWidth - 10;
-                }
-                if (menuY + menuHeight > window.innerHeight) {
-                    menuY = lastMouseEvent.clientY - menuHeight - 5;
-                }
-
-                menu.style.left = `${menuX}px`;
-                menu.style.top = `${menuY}px`;
-                menu.style.width = `${menuWidth}px`;
-                menu.style.maxHeight = `${menuHeight}px`;
-            } else {
-                const scale = canvas.ds?.scale || 1;
-                const offset = canvas.ds?.offset || [0, 0];
-                const screenX = canvasRect.left + (this.node.pos[0] + offset[0]) * scale;
-                const screenY = canvasRect.top + (this.node.pos[1] + offset[1] + (this.node as any).size[1]) * scale;
-                menu.style.left = `${screenX}px`;
-                menu.style.top = `${screenY + 5}px`;
-                menu.style.width = '280px';
-                menu.style.maxHeight = '300px';
-            }
-        }
-
-        const renderItems = (itemsToRender: any[]) => {
-            itemsContainer.innerHTML = '';
-            itemsToRender.forEach((option) => {
-                const item = document.createElement('div');
-                item.className = 'custom-dropdown-item';
-                item.textContent = this.formatComboValue(option);
-                item.setAttribute('data-value', String(option));
-
-                if (option === this.node.properties[paramName]) {
-                    item.classList.add('selected');
-                }
-
-                item.addEventListener('click', () => {
-                    callback(option);
-                    document.body.removeChild(overlay);
-                });
-
-                itemsContainer.appendChild(item);
-            });
-        };
-
-        renderItems(filteredOptions);
-
-        if (searchInput) {
-            searchInput.addEventListener('input', () => {
-                const query = searchInput.value.toLowerCase().trim();
-                if (!query) {
-                    filteredOptions = options.slice();
-                } else {
-                    filteredOptions = options.filter((opt: any) =>
-                        String(opt).toLowerCase().includes(query)
-                    );
-                }
-                renderItems(filteredOptions);
-                selectedIndex = 0;
-                updateSelection();
-            });
-
-            searchInput.addEventListener('keydown', (e) => {
-                if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Enter') {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    if (e.key === 'ArrowDown') {
-                        selectedIndex = Math.min(selectedIndex + 1, filteredOptions.length - 1);
-                        updateSelection();
-                    } else if (e.key === 'ArrowUp') {
-                        selectedIndex = Math.max(selectedIndex - 1, 0);
-                        updateSelection();
-                    } else if (e.key === 'Enter' && filteredOptions[selectedIndex] !== undefined) {
-                        callback(filteredOptions[selectedIndex]);
-                        document.body.removeChild(overlay);
-                    }
-                } else if (e.key === 'Escape') {
-                    document.body.removeChild(overlay);
-                }
-            });
-        }
-
-        overlay.appendChild(menu);
-        overlay.tabIndex = -1;
-        document.body.appendChild(overlay);
-
-        overlay.addEventListener('click', (e) => {
-            if (e.target === overlay) {
-                document.body.removeChild(overlay);
-            }
-        });
-
-        let selectedIndex = filteredOptions.findIndex(opt => opt === this.node.properties[paramName]);
-        if (selectedIndex === -1) selectedIndex = 0;
-
-        const updateSelection = () => {
-            const items = itemsContainer.querySelectorAll('.custom-dropdown-item');
-            items.forEach((item, i) => {
-                if (i === selectedIndex) {
-                    item.classList.add('selected');
-                    if (typeof item.scrollIntoView === 'function') {
-                        item.scrollIntoView({ block: 'nearest' });
-                    }
-                } else {
-                    item.classList.remove('selected');
-                }
-            });
-        };
-
-        updateSelection();
-
-        overlay.addEventListener('keydown', (e) => {
-            if (searchInput && document.activeElement === searchInput) {
-                return;
-            }
-            e.preventDefault();
-            e.stopPropagation();
-
-            if (e.key === 'ArrowDown') {
-                selectedIndex = (selectedIndex + 1) % filteredOptions.length;
-                updateSelection();
-            } else if (e.key === 'ArrowUp') {
-                selectedIndex = (selectedIndex - 1 + filteredOptions.length) % filteredOptions.length;
-                updateSelection();
-            } else if (e.key === 'Enter' && filteredOptions[selectedIndex] !== undefined) {
-                callback(filteredOptions[selectedIndex]);
-                document.body.removeChild(overlay);
-            } else if (e.key === 'Escape') {
-                document.body.removeChild(overlay);
-            }
-        });
-
-        if (searchInput) {
-            setTimeout(() => searchInput?.focus(), 0);
+        const dialogManager = (window as any).dialogManager;
+        if (dialogManager) {
+            dialogManager.showCustomDropdown(paramName, options, callback);
         } else {
-            overlay.focus();
+            // Fallback to simple select
+            const value = prompt(`Select ${paramName}:`, options.join(', '));
+            if (value && options.includes(value)) {
+                callback(value);
+            }
         }
     }
 }

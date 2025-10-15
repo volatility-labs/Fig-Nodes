@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, patch, MagicMock
 
 from nodes.custom.polygon.polygon_universe_node import PolygonUniverseNode
 from core.api_key_vault import APIKeyVault
-from core.types_registry import AssetSymbol, AssetClass, register_asset_class, get_type
+from core.types_registry import AssetSymbol, AssetClass, register_asset_class, get_type, NodeExecutionError
 
 
 @pytest.fixture
@@ -43,8 +43,11 @@ async def test_polygon_fetch_symbols(mock_client, mock_vault_get, polygon_node):
 @patch("core.api_key_vault.APIKeyVault.get")
 async def test_polygon_no_api_key(mock_vault_get, polygon_node):
     mock_vault_get.return_value = None
-    with pytest.raises(ValueError, match="POLYGON_API_KEY is required but not set in vault"):
+    with pytest.raises(NodeExecutionError) as exc_info:
         await polygon_node.execute({})
+    # BaseNode wraps execution errors; verify original exception and message
+    assert isinstance(exc_info.value.original_exc, ValueError)
+    assert "POLYGON_API_KEY is required but not set in vault" in str(exc_info.value.original_exc)
 
 
 @pytest.mark.asyncio

@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
 import pandas as pd
 from nodes.core.io.asset_symbol_input_node import AssetSymbol
-from core.types_registry import AssetClass, Provider, InstrumentType
+from core.types_registry import AssetClass, Provider, InstrumentType, NodeExecutionError, NodeValidationError
 from nodes.custom.polygon.polygon_custom_bars_node import PolygonCustomBarsNode
 
 
@@ -111,19 +111,21 @@ async def test_execute_success(polygon_custom_bars_node, sample_symbol):
 async def test_execute_missing_api_key(polygon_custom_bars_node, sample_symbol):
     """Test error when API key is not found in vault."""
     with patch("core.api_key_vault.APIKeyVault.get", return_value=None):
-        with pytest.raises(ValueError, match="Polygon API key not found in vault"):
+        with pytest.raises(NodeExecutionError) as exc_info:
             await polygon_custom_bars_node.execute({
                 "symbol": sample_symbol
             })
+        assert isinstance(exc_info.value.original_exc, ValueError)
+        assert str(exc_info.value.original_exc) == "Polygon API key not found in vault"
 
 
 @pytest.mark.asyncio
 async def test_execute_missing_symbol(polygon_custom_bars_node):
     """Test error when symbol input is missing."""
     with patch("core.api_key_vault.APIKeyVault.get", return_value="test_api_key"):
-        with pytest.raises(ValueError, match="Symbol input is required"):
+        with pytest.raises(NodeValidationError, match="Missing or invalid inputs"):
             await polygon_custom_bars_node.execute({
-                "symbol": None
+                # No symbol provided should trigger BaseNode validation error
             })
 
 
@@ -141,10 +143,12 @@ async def test_execute_api_error(polygon_custom_bars_node, sample_symbol):
         mock_client_class.return_value.__aexit__.return_value = None
 
         with patch("core.api_key_vault.APIKeyVault.get", return_value="invalid_key"):
-            with pytest.raises(ValueError, match="Failed to fetch bars: HTTP 403"):
+            with pytest.raises(NodeExecutionError) as exc_info:
                 await polygon_custom_bars_node.execute({
                     "symbol": sample_symbol
                 })
+            assert isinstance(exc_info.value.original_exc, ValueError)
+            assert str(exc_info.value.original_exc) == "Failed to fetch bars: HTTP 403"
 
 
 @pytest.mark.asyncio
@@ -166,10 +170,12 @@ async def test_execute_api_status_error(polygon_custom_bars_node, sample_symbol)
         mock_client_class.return_value.__aexit__.return_value = None
 
         with patch("core.api_key_vault.APIKeyVault.get", return_value="test_api_key"):
-            with pytest.raises(ValueError, match="Polygon API error: Invalid ticker"):
+            with pytest.raises(NodeExecutionError) as exc_info:
                 await polygon_custom_bars_node.execute({
                     "symbol": sample_symbol
                 })
+            assert isinstance(exc_info.value.original_exc, ValueError)
+            assert str(exc_info.value.original_exc) == "Polygon API error: Invalid ticker"
 
 
 @pytest.mark.asyncio

@@ -5,7 +5,7 @@ import tempfile
 import unittest.mock
 from datetime import datetime
 from nodes.core.io.save_output_node import SaveOutputNode
-from core.types_registry import AssetSymbol, AssetClass, Provider, InstrumentType
+from core.types_registry import AssetSymbol, AssetClass, Provider, InstrumentType, NodeValidationError
 
 
 @pytest.fixture
@@ -152,7 +152,7 @@ async def test_custom_filename(save_node, temp_output_dir):
 @pytest.mark.asyncio
 async def test_no_data_error(save_node):
     """Test error when no data is provided."""
-    with pytest.raises(ValueError, match="No data provided to save"):
+    with pytest.raises(NodeValidationError, match="Missing or invalid inputs"):
         await save_node.execute({})
 
 

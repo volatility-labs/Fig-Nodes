@@ -206,7 +206,7 @@ def run_prod(host: str, backend_port: int, force_build: bool) -> int:
         str(backend_port),
     ]
 
-    print(f"Starting backend on http://{host}:{backend_port} serving built UI from /static ...")
+    print(f"Starting backend on http://{host}:{backend_port} serving built UI at root '/' ...")
     backend_proc = _start_process(backend_cmd, cwd=REPO_ROOT)
     exit_code = 0
     try:
@@ -226,9 +226,12 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--dev", action="store_true", help="Run Vite dev server and backend with reload")
     mode.add_argument("--prod", action="store_true", help="Serve built frontend from backend")
-    parser.add_argument("--host", default="0.0.0.0", help="Backend host (default: 0.0.0.0)")
-    parser.add_argument("--port", type=int, default=8000, help="Backend port (default: 8000)")
-    parser.add_argument("--vite-port", type=int, default=5173, help="Vite dev port (default: 5173)")
+    default_host = os.environ.get("HOST", "0.0.0.0")
+    default_port = int(os.environ.get("PORT", "8000"))
+    default_vite_port = int(os.environ.get("VITE_PORT", "5173"))
+    parser.add_argument("--host", default=default_host, help=f"Backend host (default: {default_host})")
+    parser.add_argument("--port", type=int, default=default_port, help=f"Backend port (default: {default_port})")
+    parser.add_argument("--vite-port", type=int, default=default_vite_port, help=f"Vite dev port (default: {default_vite_port})")
     parser.add_argument("--build", action="store_true", help="Force build frontend in prod mode")
     return parser.parse_args(argv)
 

@@ -32,22 +32,24 @@ body {
     cursor: crosshair;
 }
 
-/* Footer Controls */
+/* Footer Controls - Bloomberg Terminal Style */
 #footer {
-    background: linear-gradient(180deg, #2d2d2d 0%, #262626 100%);
-    padding: 12px 20px;
+    background: #1a1a1a;
+    padding: 0 16px;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    border-top: 1px solid #404040;
-    height: 64px;
-    box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.3);
+    border-top: 1px solid #2a2a2a;
+    height: 36px;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 11px;
+    box-shadow: 0 -1px 3px rgba(0, 0, 0, 0.2);
 }
 
 .footer-section {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 8px;
 }
 
 .footer-left {
@@ -66,8 +68,8 @@ body {
 }
 
 .status-indicator {
-    width: 10px;
-    height: 10px;
+    width: 6px;
+    height: 6px;
     border-radius: 50%;
     flex-shrink: 0;
     transition: all 0.3s ease;
@@ -112,91 +114,103 @@ body {
 .graph-info {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: 0;
 }
 
 .graph-name {
-    color: #e0e0e0;
-    font-size: 13px;
+    color: #aaa;
+    font-size: 11px;
     font-weight: 500;
     letter-spacing: 0.2px;
 }
 
 .control-group {
     display: flex;
-    gap: 8px;
-    padding: 4px 12px;
-    border-radius: 6px;
-    background: rgba(0, 0, 0, 0.2);
+    gap: 4px;
+    align-items: center;
 }
 
 .file-controls {
-    border-left: 2px solid rgba(158, 158, 158, 0.3);
+    padding-left: 8px;
+    border-left: 1px solid #333;
 }
 
 .execution-controls {
-    border-left: 2px solid rgba(33, 150, 243, 0.4);
+    padding-left: 8px;
+    border-left: 1px solid #333;
 }
 
 #footer button {
-    color: white;
-    border: none;
-    padding: 8px 20px;
-    border-radius: 5px;
+    color: #ccc;
+    border: 1px solid #333;
+    padding: 4px 10px;
+    border-radius: 2px;
     cursor: pointer;
-    font-size: 13px;
+    font-size: 11px;
     font-weight: 500;
-    transition: all 0.2s ease;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    transition: all 0.15s ease;
+    background: #252525;
     letter-spacing: 0.3px;
+    text-transform: uppercase;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+}
+
+#footer button:hover {
+    background: #2a2a2a;
+    border-color: #444;
+    color: #fff;
 }
 
 .btn-primary {
-    background: linear-gradient(135deg, #2196f3 0%, #1976d2 100%);
+    background: #1a4d7a;
+    border-color: #2a5d8a;
+    color: #fff;
 }
 
 .btn-primary:hover {
-    background: linear-gradient(135deg, #1976d2 0%, #1565c0 100%);
-    box-shadow: 0 3px 8px rgba(33, 150, 243, 0.4);
-    transform: translateY(-1px);
+    background: #215d8f;
+    border-color: #3a7daf;
 }
 
 .btn-secondary {
-    background: linear-gradient(135deg, #616161 0%, #424242 100%);
+    background: #252525;
+    border-color: #333;
 }
 
 .btn-secondary:hover {
-    background: linear-gradient(135deg, #757575 0%, #616161 100%);
-    box-shadow: 0 3px 8px rgba(255, 255, 255, 0.1);
-    transform: translateY(-1px);
+    background: #2a2a2a;
+    border-color: #444;
 }
 
 .btn-stop {
-    background: linear-gradient(135deg, #f44336 0%, #d32f2f 100%);
+    background: #6a1a1a;
+    border-color: #7a2a2a;
+    color: #fff;
 }
 
 .btn-stop:hover {
-    background: linear-gradient(135deg, #e53935 0%, #c62828 100%);
-    box-shadow: 0 3px 8px rgba(244, 67, 54, 0.4);
-    transform: translateY(-1px);
+    background: #7a2525;
+    border-color: #8a3535;
 }
 
 #footer button:disabled {
-    background: #3a3a3a;
+    background: #1a1a1a;
+    border-color: #222;
     cursor: not-allowed;
-    opacity: 0.5;
-    transform: none;
-    box-shadow: none;
+    opacity: 0.4;
+    color: #555;
 }
 
-/* API Keys button styling in footer */
-#footer #api-keys-btn {
+/* Link Mode and API Keys button styling */
+#link-mode-btn {
+    min-width: 75px;
+    text-align: center;
+}
+
+#api-keys-btn {
+    min-width: 24px;
+    padding: 4px 8px !important;
     font-size: 12px;
-    padding: 7px 14px;
-    white-space: nowrap;
-    display: flex;
-    align-items: center;
-    gap: 4px;
 }
 
 #footer button:active:not(:disabled) {

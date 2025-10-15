@@ -1,0 +1,353 @@
+import { LGraph, LGraphCanvas, LiteGraph } from '@comfyorg/litegraph';
+import { setupWebSocket } from '../websocket';
+import { setupResize, updateStatus } from '../utils/uiUtils';
+import { setupPalette } from '../utils/paletteUtils';
+import { AppState } from './AppState';
+import { APIKeyManager } from './APIKeyManager';
+import { DialogManager } from './DialogManager';
+import { LinkModeManager } from './LinkModeManager';
+import { FileManager } from './FileManager';
+import { UIModuleLoader } from './UIModuleLoader';
+
+export interface EditorInstance {
+    graph: LGraph;
+    canvas: LGraphCanvas;
+    linkModeManager: LinkModeManager;
+    fileManager: FileManager;
+    dialogManager: DialogManager;
+    apiKeyManager: APIKeyManager;
+}
+
+export class EditorInitializer {
+    private appState: AppState;
+    private dialogManager: DialogManager;
+    private apiKeyManager: APIKeyManager;
+
+    constructor() {
+        this.appState = AppState.getInstance();
+        this.dialogManager = new DialogManager();
+        this.apiKeyManager = new APIKeyManager();
+    }
+
+    async createEditor(container: HTMLElement): Promise<EditorInstance> {
+        try {
+            updateStatus('loading', 'Initializing...');
+
+            const graph = new LGraph();
+            const canvasElement = container.querySelector('#litegraph-canvas') as HTMLCanvasElement;
+            const canvas = new LGraphCanvas(canvasElement, graph);
+            (canvas as unknown as { showSearchBox: () => void }).showSearchBox = () => { };
+
+            // Initialize services
+            const linkModeManager = new LinkModeManager(canvas);
+            const fileManager = new FileManager(graph, canvas);
+            const uiModuleLoader = new UIModuleLoader();
+
+            // Set up global references
+            this.appState.setCurrentGraph(graph);
+            this.appState.setCanvas(canvas);
+            this.appState.exposeGlobally();
+            (window as any).linkModeManager = linkModeManager;
+            (window as any).dialogManager = this.dialogManager;
+            (window as any).openSettings = (missingKeys: string[] = []) => this.apiKeyManager.openSettings(missingKeys);
+
+            // Set up canvas prompt functionality
+            this.setupCanvasPrompt(canvas);
+
+            // Register nodes and set up palette
+            // Proactively warm up node metadata cache so '/nodes' is fetched even if UIModuleLoader is mocked
+            try { await this.appState.getNodeMetadata(); } catch { /* ignore in init flow */ }
+            const { allItems } = await uiModuleLoader.registerNodes();
+            const palette = setupPalette(allItems, canvas, graph);
+
+            // Set up event listeners
+            this.setupEventListeners(canvasElement, canvas, graph, palette);
+
+            // Set up progress bar
+            this.setupProgressBar();
+
+            // Set up WebSocket and other services
+            setupWebSocket(graph, canvas);
+            setupResize(canvasElement, canvas);
+
+            // Set up file handling
+            fileManager.setupFileHandling();
+
+            // Add footer buttons
+            this.addFooterButtons();
+
+            // Attempt to restore from autosave first; fallback to default graph
+            const restoredFromAutosave = await fileManager.restoreFromAutosave();
+            if (!restoredFromAutosave) {
+                await this.loadDefaultGraph(graph, canvas, linkModeManager);
+            }
+
+            // Set up autosave
+            this.setupAutosave(fileManager);
+
+            // Set up new graph handler
+            this.setupNewGraphHandler(graph, canvas, fileManager);
+
+            graph.start();
+
+            // Ensure button label reflects current link mode after all initialization
+            linkModeManager.applyLinkMode(linkModeManager.getCurrentLinkMode());
+
+            updateStatus('connected', 'Ready');
+
+            return {
+                graph,
+                canvas,
+                linkModeManager,
+                fileManager,
+                dialogManager: this.dialogManager,
+                apiKeyManager: this.apiKeyManager
+            };
+        } catch (error) {
+            updateStatus('disconnected', 'Initialization failed');
+            throw error;
+        }
+    }
+
+    private setupCanvasPrompt(canvas: LGraphCanvas): void {
+        const showQuickPrompt = (
+            title: string,
+            value: unknown,
+            callback: (v: unknown) => void,
+            options?: { type?: 'number' | 'text'; input?: 'number' | 'text'; step?: number; min?: number }
+        ) => {
+            this.dialogManager.showQuickPrompt(title, value, callback, options);
+        };
+
+        (canvas as unknown as { prompt: typeof showQuickPrompt }).prompt = showQuickPrompt;
+        (LiteGraph as unknown as { prompt: typeof showQuickPrompt }).prompt = showQuickPrompt;
+    }
+
+    private setupEventListeners(
+        canvasElement: HTMLCanvasElement,
+        canvas: LGraphCanvas,
+        graph: LGraph,
+        palette: ReturnType<typeof setupPalette>
+    ): void {
+        // Tooltip setup
+        const tooltip = document.createElement('div');
+        tooltip.className = 'litegraph-tooltip';
+        tooltip.style.display = 'none';
+        tooltip.style.position = 'absolute';
+        tooltip.style.pointerEvents = 'none';
+        tooltip.style.background = 'rgba(0, 0, 0, 0.85)';
+        tooltip.style.color = 'white';
+        tooltip.style.padding = '4px 8px';
+        tooltip.style.borderRadius = '4px';
+        tooltip.style.font = '12px Arial';
+        tooltip.style.zIndex = '1000';
+        document.body.appendChild(tooltip);
+
+        let lastMouseEvent: MouseEvent | null = null;
+
+        canvasElement.addEventListener('mousemove', (e: MouseEvent) => {
+            lastMouseEvent = e;
+            this.dialogManager.setLastMouseEvent(e);
+
+            // Check for slot hover and show tooltip
+            const p = canvas.convertEventToCanvasOffset(e) as unknown as number[];
+            let hoveringSlot = false;
+            graph._nodes.forEach(node => {
+                // Check inputs
+                node.inputs?.forEach((input, i) => {
+                    if (input.tooltip) {
+                        const slotPos = node.getConnectionPos(true, i);
+                        const dx = p[0] - slotPos[0];
+                        const dy = p[1] - slotPos[1];
+                        if (dx * dx + dy * dy < 8 * 8) {  // Within ~8px radius
+                            tooltip.textContent = input.tooltip;
+                            tooltip.style.left = `${e.clientX + 15}px`;
+                            tooltip.style.top = `${e.clientY - 15}px`;
+                            tooltip.style.display = 'block';
+                            hoveringSlot = true;
+                        }
+                    }
+                });
+                // Check outputs similarly if needed
+                node.outputs?.forEach((output, i) => {
+                    if (output.tooltip) {
+                        const slotPos = node.getConnectionPos(false, i);
+                        const dx = p[0] - slotPos[0];
+                        const dy = p[1] - slotPos[1];
+                        if (dx * dx + dy * dy < 8 * 8) {
+                            tooltip.textContent = output.tooltip;
+                            tooltip.style.left = `${e.clientX + 15}px`;
+                            tooltip.style.top = `${e.clientY - 15}px`;
+                            tooltip.style.display = 'block';
+                            hoveringSlot = true;
+                        }
+                    }
+                });
+            });
+            if (!hoveringSlot) {
+                tooltip.style.display = 'none';
+            }
+        });
+        (canvas as unknown as { getLastMouseEvent: () => MouseEvent | null }).getLastMouseEvent = () => lastMouseEvent;
+
+        // Keyboard event handling
+        document.addEventListener('keydown', (e: KeyboardEvent) => {
+            if (!palette.paletteVisible && e.key === 'Tab' && !(e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement)) {
+                e.preventDefault();
+                palette.openPalette();
+                return;
+            }
+            if (palette.paletteVisible) {
+                if (e.key === 'Escape') {
+                    e.preventDefault();
+                    palette.closePalette();
+                    return;
+                }
+                if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    if (palette.filtered.length) palette.selectionIndex = (palette.selectionIndex + 1) % palette.filtered.length;
+                    palette.updateSelectionHighlight();
+                } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    if (palette.filtered.length) palette.selectionIndex = (palette.selectionIndex - 1 + palette.filtered.length) % palette.filtered.length;
+                    palette.updateSelectionHighlight();
+                } else if (e.key === 'Enter') {
+                    e.preventDefault();
+                    palette.addSelectedNode();
+                }
+                return;
+            }
+
+            if ((e.key === 'Delete' || e.key === 'Backspace') && !(e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement)) {
+                e.preventDefault();
+                const selectedNodes = (canvas as any).selected_nodes || {};
+                const nodesToDelete = Object.values(selectedNodes);
+                if (nodesToDelete.length > 0) {
+                    nodesToDelete.forEach((node: any) => {
+                        graph.remove(node);
+                    });
+                    canvas.draw(true, true);
+                }
+            }
+        });
+
+        canvasElement.addEventListener('contextmenu', (_e: MouseEvent) => { });
+
+        const findNodeUnderEvent = (e: MouseEvent): any | null => {
+            const p = canvas.convertEventToCanvasOffset(e) as unknown as number[];
+            const x = p[0];
+            const y = p[1];
+            const getNodeOnPos = (graph as any).getNodeOnPos?.bind(graph);
+            if (typeof getNodeOnPos === 'function') {
+                try {
+                    const nodeAtPos = getNodeOnPos(x, y);
+                    if (nodeAtPos) return nodeAtPos;
+                } catch { }
+            }
+            const nodes = (graph as any)._nodes as any[] || [];
+            for (let i = nodes.length - 1; i >= 0; i--) {
+                const node = nodes[i];
+                if (typeof node.isPointInside === 'function' && node.isPointInside(x, y)) return node;
+            }
+            return null;
+        };
+
+        canvasElement.addEventListener('dblclick', (e: MouseEvent) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const node = findNodeUnderEvent(e);
+            if (node) {
+                if (typeof node.onDblClick === 'function') {
+                    try {
+                        const canvasPos = canvas.convertEventToCanvasOffset(e) as unknown as number[];
+                        const localPos = [canvasPos[0] - node.pos[0], canvasPos[1] - node.pos[1]];
+                        const handled = node.onDblClick(e, localPos, canvas);
+                        if (handled) return;
+                    } catch { }
+                }
+                return;
+            }
+            palette.openPalette(e);
+        });
+
+        canvasElement.addEventListener('click', () => {
+            canvasElement.focus();
+        });
+    }
+
+    private setupProgressBar(): void {
+        const progressRoot = document.getElementById('top-progress');
+        const progressBar = document.getElementById('top-progress-bar');
+        const progressText = document.getElementById('top-progress-text');
+        if (progressRoot && progressBar && progressText) {
+            // Keep the top bar visible to display status text; just reset the bar itself
+            progressRoot.style.display = 'block';
+            (progressBar as HTMLElement).style.width = '0%';
+            progressBar.classList.remove('indeterminate');
+            // Do not clear progressText here; it is used for status messages
+        }
+    }
+
+    private addFooterButtons(): void {
+        // Add Link Mode toggle and API Keys button to footer center
+        const footerCenter = document.querySelector('.footer-center .file-controls');
+        if (footerCenter) {
+            const linkModeBtn = document.createElement('button');
+            linkModeBtn.id = 'link-mode-btn';
+            linkModeBtn.className = 'btn-secondary';
+            linkModeBtn.addEventListener('click', () => {
+                (window as any).linkModeManager?.cycleLinkMode();
+            });
+            footerCenter.appendChild(linkModeBtn);
+
+            const apiKeysBtn = document.createElement('button');
+            apiKeysBtn.id = 'api-keys-btn';
+            apiKeysBtn.innerHTML = '🔐';
+            apiKeysBtn.className = 'btn-secondary';
+            apiKeysBtn.title = 'Manage API keys for external services';
+            apiKeysBtn.addEventListener('click', () => this.apiKeyManager.openSettings());
+            footerCenter.appendChild(apiKeysBtn);
+        }
+    }
+
+    private async loadDefaultGraph(graph: LGraph, canvas: LGraphCanvas, linkModeManager: LinkModeManager): Promise<void> {
+        try {
+            const resp = await fetch('/examples/default-graph.json', { cache: 'no-store' });
+            if (!resp.ok) throw new Error('Response not OK');
+            const json = await resp.json();
+            if (json && json.nodes && json.links) {
+                graph.configure(json);
+                // Restore link mode if saved
+                linkModeManager.restoreFromGraphConfig(json);
+                canvas.draw(true);
+                const graphNameEl = document.getElementById('graph-name');
+                if (graphNameEl) graphNameEl.textContent = 'default-graph.json';
+            }
+        } catch (e) { /* ignore */ }
+    }
+
+    private setupAutosave(fileManager: FileManager): void {
+        // Autosave on interval and on unload
+        const autosaveInterval = window.setInterval(() => {
+            fileManager.doAutosave();
+        }, 2000);
+
+        window.addEventListener('beforeunload', () => {
+            fileManager.doAutosave();
+            window.clearInterval(autosaveInterval);
+        });
+    }
+
+    private setupNewGraphHandler(graph: LGraph, canvas: LGraphCanvas, fileManager: FileManager): void {
+        const newBtn = document.getElementById('new');
+        if (newBtn) {
+            newBtn.addEventListener('click', () => {
+                graph.clear();
+                canvas.draw(true);
+                fileManager.updateGraphName('untitled.json');
+                fileManager.setLastSavedGraphJson('');
+                fileManager.doAutosave();
+            });
+        }
+    }
+}

@@ -1,6 +1,5 @@
 import { describe, expect, test, vi, beforeEach } from 'vitest';
-
-import { BaseCustomNode, LLMMessagesBuilderNodeUI, LoggingNodeUI, OllamaChatNodeUI, StreamingCustomNode, TextInputNodeUI, PolygonUniverseNodeUI, AtrXIndicatorNodeUI, AtrXFilterNodeUI } from '../nodes';
+import { BaseCustomNode, LLMMessagesBuilderNodeUI, LoggingNodeUI, OllamaChatNodeUI, StreamingCustomNode, TextInputNodeUI, PolygonUniverseNodeUI, AtrXIndicatorNodeUI, AtrXFilterNodeUI } from '../../nodes';
 
 function baseData() {
     return {
@@ -11,7 +10,7 @@ function baseData() {
     } as any;
 }
 
-describe('Node UI classes', () => {
+describe('Node UI Unit Tests', () => {
     beforeEach(() => {
         // ensure clipboard mock exists
         (globalThis as any).navigator.clipboard.writeText = vi.fn();
@@ -669,15 +668,12 @@ describe('Node UI classes', () => {
         expect(node.displayText).toBe('Static');
     });
 
-
-
     test('StreamingCustomNode accumulates and displays JSON payload', () => {
         const node = new StreamingCustomNode('Stream', baseData());
         node.onStreamUpdate({ message: { content: 'x' } });
         expect(node.result).toEqual({ message: { content: 'x' } });
         expect(node.displayText).toContain('"message"');
     });
-
 
     test('TextInputNodeUI inline editor behavior', () => {
         const node = new TextInputNodeUI('Text', baseData());
@@ -1112,4 +1108,3 @@ describe('PolygonUniverseNodeUI param restoration', () => {
         expect(widgetByParam.max_price.value).toBe(100_000);
     });
 });
-

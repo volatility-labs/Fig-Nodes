@@ -26,10 +26,44 @@ if (!(globalThis as any).URL.revokeObjectURL) {
     (globalThis as any).URL.revokeObjectURL = vi.fn();
 }
 
+// Polyfill Blob.text() in jsdom if missing
+try {
+    const hasBlob = typeof (globalThis as any).Blob !== 'undefined';
+    const proto = hasBlob ? (globalThis as any).Blob.prototype : undefined;
+    if (hasBlob && proto && typeof proto.text !== 'function') {
+        proto.text = function thisTextPolyfill(): Promise<string> {
+            return new Promise((resolve, reject) => {
+                try {
+                    const reader = new (globalThis as any).FileReader();
+                    reader.onload = () => resolve(String(reader.result || ''));
+                    reader.onerror = (e: any) => reject(e);
+                    reader.readAsText(this as any);
+                } catch (err) {
+                    try { resolve(''); } catch { reject(err); }
+                }
+            });
+        };
+    }
+} catch { /* ignore */ }
+
 // Map global localStorage to window.localStorage in jsdom environment if missing
 try {
     if (!(globalThis as any).localStorage && (globalThis as any).window?.localStorage) {
         (globalThis as any).localStorage = (globalThis as any).window.localStorage;
+    }
+} catch { /* ignore */ }
+
+// Mock HTMLElement.style for jsdom compatibility
+try {
+    const originalCreateElement = (globalThis as any).document?.createElement;
+    if (originalCreateElement) {
+        (globalThis as any).document.createElement = function (tagName: string) {
+            const element = originalCreateElement.call(this, tagName);
+            if (!element.style) {
+                element.style = {};
+            }
+            return element;
+        };
     }
 } catch { /* ignore */ }
 
@@ -78,6 +112,10 @@ vi.mock('@comfyorg/litegraph', () => {
         NODE_TITLE_HEIGHT: 20,
         NODE_WIDGET_HEIGHT: 24,
         INPUT: 1,
+        // Link render mode constants used by app.ts logic and tests
+        STRAIGHT_LINK: 0,
+        LINEAR_LINK: 1,
+        SPLINE_LINK: 2,
         registerNodeType(name: string, klass: any) { registry.set(name, klass); },
         createNode(name: string) {
             const K = registry.get(name);
@@ -89,10 +127,22 @@ vi.mock('@comfyorg/litegraph', () => {
 
     class LGraph {
         _nodes: any[] = [];
+        config: any = {};
         add(node: any) { this._nodes.push(node); }
-        serialize() { return {}; }
-        configure(_data: any) { }
-        clear() { this._nodes = []; }
+        serialize() {
+            return {
+                nodes: this._nodes,
+                links: [],
+                groups: [],
+                config: this.config,
+                version: 1
+            };
+        }
+        configure(data: any) {
+            if (data.nodes) this._nodes = data.nodes;
+            if (data.config) this.config = data.config;
+        }
+        clear() { this._nodes = []; this.config = {}; }
         start() { }
     }
 
@@ -107,6 +157,7 @@ vi.mock('@comfyorg/litegraph', () => {
         }
         convertEventToCanvasOffset(e: any) { return [e?.clientX || 0, e?.clientY || 0]; }
         draw() { }
+        setDirty(_a?: boolean, _b?: boolean) { /* no-op for tests */ }
     }
 
     return { LGraphNode, LGraphCanvas, LGraph, LiteGraph };
@@ -120,8 +171,27 @@ vi.mock('@/utils/uiUtils', () => ({
     showError: vi.fn(),
 }));
 
+// Mock UIModuleLoader only for integration tests to avoid dynamic imports
+// Unit tests will use the real implementation
+
 // Silence websocket wiring in tests
 vi.mock('../websocket', () => ({
     setupWebSocket: vi.fn(),
+}));
+
+// Mock other services to avoid delays (do not mock APIKeyManager so unit tests use real impl)
+
+// Do not mock DialogManager for unit tests; use real implementation
+
+vi.mock('../utils/paletteUtils', () => ({
+    setupPalette: vi.fn(() => ({
+        paletteVisible: false,
+        filtered: [],
+        selectionIndex: 0,
+        openPalette: vi.fn(),
+        closePalette: vi.fn(),
+        updateSelectionHighlight: vi.fn(),
+        addSelectedNode: vi.fn()
+    }))
 }));
 

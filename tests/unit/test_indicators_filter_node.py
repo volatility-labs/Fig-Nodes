@@ -4,7 +4,7 @@ from typing import Dict, Any, List
 from nodes.core.market.filters.sma_crossover_filter_node import SMACrossoverFilterNode
 from nodes.core.market.filters.adx_filter_node import ADXFilterNode
 from nodes.core.market.filters.rsi_filter_node import RSIFilterNode
-from core.types_registry import AssetSymbol, AssetClass, OHLCVBar
+from core.types_registry import AssetSymbol, AssetClass, OHLCVBar, NodeValidationError
 from core.types_registry import IndicatorType
 
 
@@ -114,8 +114,8 @@ class TestSMACrossoverFilterNode:
     @pytest.mark.asyncio
     async def test_execute_empty_inputs(self, sma_filter_node):
         """Test execution with empty inputs."""
-        result = await sma_filter_node.execute({})
-        assert result == {"filtered_ohlcv_bundle": {}}
+        with pytest.raises(NodeValidationError):
+            await sma_filter_node.execute({})
 
     @pytest.mark.asyncio
     async def test_execute_empty_bundle(self, sma_filter_node):

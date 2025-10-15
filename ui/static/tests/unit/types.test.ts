@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { constructTypeString, getTypeColor, registerTypeColorOverride, getTypeColorOverrides } from '../types';
+import { constructTypeString, getTypeColor, registerTypeColorOverride, getTypeColorOverrides } from '../../types';
 
 describe('types.ts', () => {
     test('getTypeColor returns deterministic color for AssetSymbol (override present)', () => {

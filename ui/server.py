@@ -234,6 +234,17 @@ async def execute_endpoint(websocket: WebSocket):
     finally:
         pass
 
+# Mount the built frontend at root as well, so the app is served from '/'
+if 'PYTEST_CURRENT_TEST' not in os.environ:
+    app.mount("/", StaticFiles(directory=os.path.join(os.path.dirname(__file__), "static", "dist"), html=True), name="root_static")
+
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    # Allow configuring host/port via environment variables
+    host = os.environ.get("HOST", "0.0.0.0")
+    port_str = os.environ.get("PORT", "8000")
+    try:
+        port = int(port_str)
+    except ValueError:
+        port = 8000
+    uvicorn.run(app, host=host, port=port)

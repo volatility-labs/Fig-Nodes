@@ -5,6 +5,7 @@ import pytest
 import core.graph_executor as graph_executor_module
 
 from fastapi.testclient import TestClient
+import main as main_module
 import ui.server as server_module
 import time
 
@@ -180,6 +181,44 @@ def test_fifo_two_batch_jobs(monkeypatch):
         _recv_until_type(ws2, "status")
 
     assert order == ["start1", "end1", "start2", "end2"]
+
+
+def test_root_serves_index_html():
+    client = TestClient(server_module.app)
+    resp = client.get("/")
+    assert resp.status_code == 200
+    # Basic sanity check that HTML is served
+    assert "<html" in resp.text.lower() or "<!doctype" in resp.text.lower()
+    assert "text/html" in resp.headers.get("content-type", "").lower()
+
+
+def test_style_css_endpoint_served_with_css_mime():
+    client = TestClient(server_module.app)
+    resp = client.get("/style.css")
+    assert resp.status_code == 200
+    assert "text/css" in resp.headers.get("content-type", "").lower()
+    # Ensure some CSS content is present
+    assert len(resp.text) > 0
+
+
+def test_examples_static_mount_accessible():
+    client = TestClient(server_module.app)
+    # Verify an examples file is served
+    resp = client.get("/examples/workflow1.json")
+    assert resp.status_code == 200
+    assert "application/json" in resp.headers.get("content-type", "").lower()
+    assert resp.json() is not None
+
+
+def test_main_parse_args_env_defaults(monkeypatch):
+    # Ensure environment variables are used as defaults when flags are not provided
+    monkeypatch.setenv("HOST", "127.0.0.1")
+    monkeypatch.setenv("PORT", "9001")
+    monkeypatch.setenv("VITE_PORT", "6000")
+    args = main_module.parse_args([])
+    assert args.host == "127.0.0.1"
+    assert args.port == 9001
+    assert args.vite_port == 6000
 
 def test_queued_client_disconnect_before_start_removes_job(monkeypatch):
     # In direct execution mode, this test just verifies that connections work independently
