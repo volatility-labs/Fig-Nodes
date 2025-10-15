@@ -55,7 +55,6 @@ To run the unit tests:
 pytest tests/unit/
 ``` 
 
-
 ## Hardware Requirements
 
 Minimum 16gb of VRAM on either a dedicated GPU or shared memory (Apple M series)
