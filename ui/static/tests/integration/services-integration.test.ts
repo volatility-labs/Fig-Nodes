@@ -34,7 +34,7 @@ describe('Services Integration Tests', () => {
         (globalThis as any).fetch = mockFetch;
 
         // Mock DOM
-        document.createElement = vi.fn().mockImplementation((tagName) => ({
+        document.createElement = vi.fn().mockImplementation((_tagName) => ({
             id: '',
             className: '',
             textContent: '',
@@ -120,7 +120,7 @@ describe('Services Integration Tests', () => {
     });
 
     test('FileManager and LinkModeManager integration', () => {
-        const fileManager = new FileManager(mockGraph, mockCanvas);
+        const _fileManager = new FileManager(mockGraph, mockCanvas);
         const linkModeManager = new LinkModeManager(mockCanvas);
 
         // Set up link mode
@@ -139,7 +139,7 @@ describe('Services Integration Tests', () => {
 
     test('DialogManager and APIKeyManager integration', () => {
         const dialogManager = new DialogManager();
-        const apiKeyManager = new APIKeyManager();
+        const _apiKeyManager = new APIKeyManager();
 
         // Mock mouse event
         const mockEvent = { clientX: 100, clientY: 200 } as MouseEvent;

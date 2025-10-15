@@ -11,7 +11,7 @@ describe('APIKeyManager', () => {
         (globalThis as any).fetch = mockFetch;
 
         // Mock DOM methods
-        document.createElement = vi.fn().mockImplementation((tagName) => {
+        document.createElement = vi.fn().mockImplementation((_tagName) => {
             const element = {
                 id: '',
                 className: '',

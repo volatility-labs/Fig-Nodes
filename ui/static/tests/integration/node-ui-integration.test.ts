@@ -14,7 +14,7 @@ describe('Node UI Integration Tests', () => {
         };
 
         // Mock DOM
-        document.createElement = vi.fn().mockImplementation((tagName) => {
+        document.createElement = vi.fn().mockImplementation((_tagName) => {
             const element = {
                 id: '',
                 className: '',

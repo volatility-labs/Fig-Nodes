@@ -99,7 +99,7 @@ export class UIModuleLoader {
                         // Continue to next path
                     }
                 }
-                throw new Error(`Module not found in any expected location`);
+                throw new Error('Module not found in any expected location');
             }
 
             const module = await import(importPath);

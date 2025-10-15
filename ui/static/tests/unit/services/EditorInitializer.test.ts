@@ -24,7 +24,7 @@ describe('EditorInitializer', () => {
             })
         } as any;
 
-        document.createElement = vi.fn().mockImplementation((tagName) => {
+        document.createElement = vi.fn().mockImplementation((_tagName) => {
             const element = {
                 id: '',
                 className: '',
