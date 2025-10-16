@@ -82,4 +82,4 @@ cursor_project_rules
 testing_artifacts/
 __pycache__
 output/*.json
-docs/*.md
+internal-docs/
