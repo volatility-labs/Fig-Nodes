@@ -5,7 +5,7 @@ import tempfile
 import unittest.mock
 from datetime import datetime
 from nodes.core.io.save_output_node import SaveOutputNode
-from core.types_registry import AssetSymbol, AssetClass, Provider, InstrumentType, NodeValidationError
+from core.types_registry import AssetSymbol, AssetClass, InstrumentType, NodeValidationError
 
 
 @pytest.fixture
@@ -63,7 +63,6 @@ async def test_save_asset_symbol(save_node, temp_output_dir):
         ticker="BTC",
         asset_class=AssetClass.CRYPTO,
         quote_currency="USDT",
-        provider=Provider.BINANCE,
         instrument_type=InstrumentType.PERPETUAL
     )
 
@@ -197,7 +196,6 @@ async def test_serialize_asset_symbol(save_node):
         ticker="BTC",
         asset_class=AssetClass.CRYPTO,
         quote_currency="USDT",
-        provider=Provider.BINANCE,
         instrument_type=InstrumentType.SPOT
     )
 
@@ -207,9 +205,8 @@ async def test_serialize_asset_symbol(save_node):
     assert "data" in serialized
     data = serialized["data"]
     assert data["ticker"] == "BTC"
-    assert data["asset_class"] == AssetClass.CRYPTO
+    assert data["asset_class"] == "CRYPTO"
     assert data["quote_currency"] == "USDT"
-    assert data["provider"] == "BINANCE"
     assert data["instrument_type"] == "SPOT"
 
 

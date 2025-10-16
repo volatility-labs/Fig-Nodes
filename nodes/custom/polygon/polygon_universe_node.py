@@ -120,7 +120,6 @@ class PolygonUniverseNode(BaseNode):
                         ticker=base_ticker,
                         asset_class=asset_class,
                         quote_currency=quote_currency,
-                        exchange=res.get("primary_exchange"),  # May not be present
                         metadata=metadata,
                     )
                 )

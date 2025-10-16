@@ -37,9 +37,8 @@ class InstrumentResolverNode(BaseNode):
                                 ticker=sym.ticker,
                                 asset_class=sym.asset_class,
                                 quote_currency=quote_currency,
-                                exchange=exchange,
                                 instrument_type=target_type,
-                                metadata={"contract_type": ex_sym["contractType"], "status": ex_sym["status"]},
+                                metadata={"contract_type": ex_sym["contractType"], "status": ex_sym["status"], "exchange": exchange},
                             )
                             resolved.append(resolved_sym)
                             break

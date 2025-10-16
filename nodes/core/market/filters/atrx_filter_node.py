@@ -1,5 +1,6 @@
 import logging
 import pandas as pd
+import numpy as np
 from typing import Dict, Any, List
 from nodes.core.market.filters.base.base_indicator_filter_node import BaseIndicatorFilterNode
 from core.types_registry import AssetSymbol, OHLCVBar, IndicatorResult, IndicatorType, get_type, IndicatorValue
@@ -35,7 +36,13 @@ class AtrXFilterNode(BaseIndicatorFilterNode):
 
     def _calculate_indicator(self, ohlcv_data: List[OHLCVBar]) -> IndicatorResult:
         if not ohlcv_data:
-            raise ValueError("Empty OHLCV data")
+            return IndicatorResult(
+                indicator_type=IndicatorType.ATRX,
+                timestamp=0,
+                values=IndicatorValue(single=0.0),
+                params=self.params,
+                error="No data"
+            )
         df_data = [
             {
                 'timestamp': pd.to_datetime(bar['timestamp'], unit='ms'),
@@ -47,6 +54,18 @@ class AtrXFilterNode(BaseIndicatorFilterNode):
             } for bar in ohlcv_data
         ]
         df = pd.DataFrame(df_data).set_index('timestamp')
+        
+        # Check for minimum data requirements
+        min_required = max(self.params.get("length", 14), self.params.get("ma_length", 50))
+        if len(df) < min_required:
+            return IndicatorResult(
+                indicator_type=IndicatorType.ATRX,
+                timestamp=ohlcv_data[-1]['timestamp'],
+                values=IndicatorValue(single=0.0),
+                params=self.params,
+                error="Insufficient data"
+            )
+        
         atrx_value = self.indicators_service.calculate_atrx(
             df,
             length=self.params.get("length", 14),
@@ -54,6 +73,17 @@ class AtrXFilterNode(BaseIndicatorFilterNode):
             smoothing=self.params.get("smoothing", "RMA"),
             price=self.params.get("price", "Close"),
         )
+        
+        # Handle NaN results (e.g., zero volatility cases)
+        if pd.isna(atrx_value):
+            return IndicatorResult(
+                indicator_type=IndicatorType.ATRX,
+                timestamp=ohlcv_data[-1]['timestamp'],
+                values=IndicatorValue(single=0.0),
+                params=self.params,
+                error="ATRX calculation resulted in NaN"
+            )
+        
         return IndicatorResult(
             indicator_type=IndicatorType.ATRX,
             timestamp=ohlcv_data[-1]['timestamp'],
@@ -69,9 +99,9 @@ class AtrXFilterNode(BaseIndicatorFilterNode):
         lower = self.params.get("lower_threshold", -4.0)
         condition = self.params.get("filter_condition", "outside")
         if condition == "outside":
-            return value > upper or value < lower
-        else:
-            return lower < value < upper
+            return value >= upper or value <= lower
+        else:  # "inside"
+            return lower <= value <= upper
 
     async def _execute_impl(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
         # Delegate to BaseIndicatorFilterNode to leverage per-symbol error handling and progress reporting

@@ -55,7 +55,6 @@ class BinanceKlinesStreamingNode(StreamingNode):
                                 ticker=base.upper(),
                                 asset_class=AssetClass.CRYPTO,
                                 quote_currency=quote.upper(),
-                                exchange="binance",
                                 instrument_type=InstrumentType.PERPETUAL,
                             )
                             bar = {

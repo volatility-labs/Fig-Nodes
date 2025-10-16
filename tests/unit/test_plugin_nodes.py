@@ -70,7 +70,7 @@ async def test_binance_klines_start(mock_connect):
     gen = node.start(inputs)
     output = await anext(gen)
     assert "ohlcv" in output
-    bars = output["ohlcv"][AssetSymbol("BTC", AssetClass.CRYPTO, exchange="binance", instrument_type=InstrumentType.PERPETUAL, quote_currency="USDT")]
+    bars = output["ohlcv"][AssetSymbol("BTC", AssetClass.CRYPTO, instrument_type=InstrumentType.PERPETUAL, quote_currency="USDT")]
     assert isinstance(bars, list)
     assert len(bars) == 1
     assert bars[0]["close"] == 4.0

@@ -9,7 +9,7 @@ from nodes.core.io.logging_node import LoggingNode
 from nodes.core.logic.score_node import ScoreNode
 from nodes.core.market.utils.instrument_resolver_node import InstrumentResolverNode
 from nodes.core.llm.text_to_llm_message_node import TextToLLMMessageNode
-from core.types_registry import AssetSymbol, AssetClass, Provider, InstrumentType
+from core.types_registry import AssetSymbol, AssetClass, InstrumentType
 
 # Tests for ForEachNode
 
@@ -81,9 +81,8 @@ async def test_text_to_llm_message_non_string():
 def asset_node():
     return AssetSymbolInputNode(id=1, params={
         "ticker": "btc",
-        "asset_class": AssetClass.CRYPTO,
+        "asset_class": AssetClass.CRYPTO.name,
         "quote_currency": "usdt",
-        "provider": Provider.BINANCE.name,
         "instrument_type": InstrumentType.PERPETUAL.name
     })
 
@@ -94,11 +93,10 @@ async def test_asset_node_execute(asset_node):
     assert sym.ticker == "BTC"
     assert sym.asset_class == AssetClass.CRYPTO
     assert sym.quote_currency == "USDT"
-    assert sym.provider == Provider.BINANCE
     assert sym.instrument_type == InstrumentType.PERPETUAL
 
 def test_asset_node_params_meta():
-    assert len(AssetSymbolInputNode.params_meta) == 5  # Check existence
+    assert len(AssetSymbolInputNode.params_meta) == 4  # Check existence
 
 # Tests for LoggingNode
 

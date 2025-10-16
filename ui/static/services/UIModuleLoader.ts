@@ -58,6 +58,9 @@ export class UIModuleLoader {
         import('../nodes/market/PolygonUniverseNodeUI').then(module => {
             this.uiModules['PolygonUniverseNodeUI'] = module.default;
         });
+        import('../nodes/market/OHLCVPlotNodeUI').then(module => {
+            this.uiModules['market/OHLCVPlotNodeUI'] = module.default;
+        });
         import('../nodes/market/RSIFilterNodeUI').then(module => {
             this.uiModules['market/RSIFilterNodeUI'] = module.default;
         });

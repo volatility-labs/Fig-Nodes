@@ -7,16 +7,15 @@ import logging
 
 @pytest.fixture
 def sample_asset_symbol():
-    return AssetSymbol(ticker="BTC", asset_class=AssetClass.CRYPTO, quote_currency="USDT", provider=Provider.BINANCE, exchange="binance", instrument_type=InstrumentType.PERPETUAL, metadata={"key": "value"})
+    return AssetSymbol(ticker="BTC", asset_class=AssetClass.CRYPTO, quote_currency="USDT", instrument_type=InstrumentType.PERPETUAL, metadata={"key": "value"})
 
 def test_asset_symbol_str(sample_asset_symbol):
     assert str(sample_asset_symbol) == "BTCUSDT"
 
 def test_asset_symbol_from_string_crypto():
-    sym = AssetSymbol.from_string("BTCUSDT", AssetClass.CRYPTO, Provider.BINANCE, {"extra": "data"})
+    sym = AssetSymbol.from_string("BTCUSDT", AssetClass.CRYPTO, {"extra": "data"})
     assert sym.ticker == "BTC"
     assert sym.quote_currency == "USDT"
-    assert sym.provider == Provider.BINANCE
     assert sym.metadata == {"extra": "data"}
 
 def test_asset_symbol_from_string_non_crypto():
@@ -28,16 +27,15 @@ def test_asset_symbol_from_string_non_crypto():
 def test_asset_symbol_to_dict(sample_asset_symbol):
     expected = {
         "ticker": "BTC",
-        "asset_class": AssetClass.CRYPTO,
+        "asset_class": "CRYPTO",
         "quote_currency": "USDT",
-        "provider": "BINANCE",
         "instrument_type": "PERPETUAL",
         "metadata": {"key": "value"}
     }
     assert sample_asset_symbol.to_dict() == expected
 
 def test_asset_symbol_hash(sample_asset_symbol):
-    sym2 = AssetSymbol(ticker="BTC", asset_class=AssetClass.CRYPTO, quote_currency="USDT", provider=Provider.BINANCE, exchange="binance", instrument_type=InstrumentType.PERPETUAL, metadata={"key": "value"})
+    sym2 = AssetSymbol(ticker="BTC", asset_class=AssetClass.CRYPTO, quote_currency="USDT", instrument_type=InstrumentType.PERPETUAL, metadata={"key": "value"})
     assert hash(sample_asset_symbol) == hash(sym2)
     sym3 = AssetSymbol(ticker="ETH", asset_class=AssetClass.CRYPTO)
     assert hash(sample_asset_symbol) != hash(sym3)
@@ -63,7 +61,7 @@ def test_register_type_duplicate():
 def test_register_asset_class_new():
     new_class = register_asset_class("FOREX")
     assert hasattr(AssetClass, "FOREX")
-    assert getattr(AssetClass, "FOREX") == "FOREX"
+    assert new_class.name == "FOREX"
 
 def test_register_asset_class_existing():
     existing = register_asset_class("crypto")
@@ -117,7 +115,7 @@ def test_asset_symbol_str_non_crypto(sample_asset_symbol):
     assert str(sym) == "AAPL"
 
 def test_asset_symbol_from_string_with_metadata():
-    sym = AssetSymbol.from_string("ETHUSDT", AssetClass.CRYPTO, Provider.BINANCE, {"exchange": "binance"})
+    sym = AssetSymbol.from_string("ETHUSDT", AssetClass.CRYPTO, {"exchange": "binance"})
     assert sym.ticker == "ETH"
     assert sym.quote_currency == "USDT"
     assert sym.metadata == {"exchange": "binance"}

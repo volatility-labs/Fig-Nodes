@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
 import pandas as pd
 from nodes.core.io.asset_symbol_input_node import AssetSymbol
-from core.types_registry import AssetClass, Provider, InstrumentType, NodeExecutionError, NodeValidationError
+from core.types_registry import AssetClass, InstrumentType, NodeExecutionError, NodeValidationError
 from nodes.custom.polygon.polygon_custom_bars_node import PolygonCustomBarsNode
 
 
@@ -24,7 +24,6 @@ def sample_symbol():
         ticker="AAPL",
         asset_class=AssetClass.STOCKS,
         quote_currency=None,
-        provider=Provider.POLYGON,
         instrument_type=InstrumentType.SPOT
     )
 
@@ -261,7 +260,6 @@ async def test_execute_crypto_symbol(polygon_custom_bars_node):
         ticker="BTC",
         asset_class=AssetClass.CRYPTO,
         quote_currency="USDT",
-        provider=Provider.BINANCE,
         instrument_type=InstrumentType.PERPETUAL
     )
 

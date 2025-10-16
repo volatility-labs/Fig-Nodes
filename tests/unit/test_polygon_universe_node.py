@@ -36,7 +36,7 @@ async def test_polygon_fetch_symbols(mock_client, mock_vault_get, polygon_node):
     assert symbols[0].ticker == "BTC"
     assert symbols[0].quote_currency == "USD"
     assert symbols[0].asset_class == AssetClass.CRYPTO
-    assert symbols[0].exchange == "Crypto"
+    assert symbols[0].metadata.get("original_ticker") == "X:BTCUSD"
 
 
 @pytest.mark.asyncio
@@ -51,8 +51,10 @@ async def test_polygon_no_api_key(mock_vault_get, polygon_node):
 
 
 @pytest.mark.asyncio
+@patch("core.api_key_vault.APIKeyVault.get")
 @patch("httpx.AsyncClient")
-async def test_polygon_single_request(mock_client, polygon_node):
+async def test_polygon_single_request(mock_client, mock_vault_get, polygon_node):
+    mock_vault_get.return_value = "test_key"
     mock_get = AsyncMock()
     mock_response = MagicMock()
     mock_response.status_code = 200
@@ -70,8 +72,10 @@ async def test_polygon_single_request(mock_client, polygon_node):
 
 
 @pytest.mark.asyncio
+@patch("core.api_key_vault.APIKeyVault.get")
 @patch("httpx.AsyncClient")
-async def test_polygon_filtering_min_change_perc(mock_client):
+async def test_polygon_filtering_min_change_perc(mock_client, mock_vault_get):
+    mock_vault_get.return_value = "test_key"
     node = PolygonUniverseNode(id=1, params={"market": "crypto", "min_change_perc": 2.0})
     mock_get = AsyncMock()
     mock_response = MagicMock()
@@ -91,8 +95,10 @@ async def test_polygon_filtering_min_change_perc(mock_client):
 
 
 @pytest.mark.asyncio
+@patch("core.api_key_vault.APIKeyVault.get")
 @patch("httpx.AsyncClient")
-async def test_polygon_filtering_max_change_perc(mock_client):
+async def test_polygon_filtering_max_change_perc(mock_client, mock_vault_get):
+    mock_vault_get.return_value = "test_key"
     node = PolygonUniverseNode(id=1, params={"market": "crypto", "max_change_perc": 2.0})
     mock_get = AsyncMock()
     mock_response = MagicMock()
@@ -112,8 +118,10 @@ async def test_polygon_filtering_max_change_perc(mock_client):
 
 
 @pytest.mark.asyncio
+@patch("core.api_key_vault.APIKeyVault.get")
 @patch("httpx.AsyncClient")
-async def test_polygon_filtering_change_perc_range_positive(mock_client):
+async def test_polygon_filtering_change_perc_range_positive(mock_client, mock_vault_get):
+    mock_vault_get.return_value = "test_key"
     node = PolygonUniverseNode(id=1, params={"market": "crypto", "min_change_perc": 1.5, "max_change_perc": 2.5})
     mock_get = AsyncMock()
     mock_response = MagicMock()
@@ -134,8 +142,10 @@ async def test_polygon_filtering_change_perc_range_positive(mock_client):
 
 
 @pytest.mark.asyncio
+@patch("core.api_key_vault.APIKeyVault.get")
 @patch("httpx.AsyncClient")
-async def test_polygon_filtering_change_perc_range_negative(mock_client):
+async def test_polygon_filtering_change_perc_range_negative(mock_client, mock_vault_get):
+    mock_vault_get.return_value = "test_key"
     node = PolygonUniverseNode(id=1, params={"market": "crypto", "min_change_perc": -5.0, "max_change_perc": -1.0})
     mock_get = AsyncMock()
     mock_response = MagicMock()
@@ -156,8 +166,10 @@ async def test_polygon_filtering_change_perc_range_negative(mock_client):
 
 
 @pytest.mark.asyncio
+@patch("core.api_key_vault.APIKeyVault.get")
 @patch("httpx.AsyncClient")
-async def test_polygon_invalid_change_range_raises(mock_client):
+async def test_polygon_invalid_change_range_raises(mock_client, mock_vault_get):
+    mock_vault_get.return_value = "test_key"
     node = PolygonUniverseNode(id=1, params={"market": "crypto", "min_change_perc": 5.0, "max_change_perc": 2.0})
     mock_get = AsyncMock()
     mock_response = MagicMock()
@@ -171,8 +183,10 @@ async def test_polygon_invalid_change_range_raises(mock_client):
 
 
 @pytest.mark.asyncio
+@patch("core.api_key_vault.APIKeyVault.get")
 @patch("httpx.AsyncClient")
-async def test_polygon_missing_todays_change_defaults_zero(mock_client):
+async def test_polygon_missing_todays_change_defaults_zero(mock_client, mock_vault_get):
+    mock_vault_get.return_value = "test_key"
     node = PolygonUniverseNode(id=1, params={"market": "crypto", "min_change_perc": 0})
     mock_get = AsyncMock()
     mock_response = MagicMock()
@@ -193,8 +207,10 @@ async def test_polygon_missing_todays_change_defaults_zero(mock_client):
 
 
 @pytest.mark.asyncio
+@patch("core.api_key_vault.APIKeyVault.get")
 @patch("httpx.AsyncClient")
-async def test_polygon_market_variants_and_otc_flags(mock_client):
+async def test_polygon_market_variants_and_otc_flags(mock_client, mock_vault_get):
+    mock_vault_get.return_value = "test_key"
     # Stocks
     node_stocks = PolygonUniverseNode(id=1, params={"market": "stocks"})
     # Indices
@@ -221,13 +237,13 @@ async def test_polygon_market_variants_and_otc_flags(mock_client):
     # Indices
     node_indices._execute_inputs = {"api_key": "test_key"}
     symbols = await node_indices._fetch_symbols()
-    assert len(symbols) == 1 and symbols[0].asset_class == AssetClass.INDICES
+    assert len(symbols) == 1 and symbols[0].asset_class.name == "INDICES"
 
     # FX
     mock_response.json.return_value = {"tickers": [{"ticker": "C:EURUSD", "todaysChangePerc": 1.0, "day": {"v": 1000, "c": 1.05}}]}
     node_fx._execute_inputs = {"api_key": "test_key"}
     symbols = await node_fx._fetch_symbols()
-    assert len(symbols) == 1 and symbols[0].ticker == "EUR" and symbols[0].quote_currency == "USD"
+    assert len(symbols) == 1 and symbols[0].ticker == "EUR" and symbols[0].quote_currency == "USD" and symbols[0].asset_class.name == "FX"
 
     # Include OTC flag
     mock_response.json.return_value = {"tickers": [{"ticker": "AAPL", "todaysChangePerc": 1.0, "day": {"v": 1000, "c": 150}}]}
@@ -238,8 +254,10 @@ async def test_polygon_market_variants_and_otc_flags(mock_client):
 
 
 @pytest.mark.asyncio
+@patch("core.api_key_vault.APIKeyVault.get")
 @patch("httpx.AsyncClient")
-async def test_polygon_api_error_propagates(mock_client, polygon_node):
+async def test_polygon_api_error_propagates(mock_client, mock_vault_get, polygon_node):
+    mock_vault_get.return_value = "test_key"
     mock_get = AsyncMock()
     mock_response = MagicMock()
     mock_response.status_code = 429

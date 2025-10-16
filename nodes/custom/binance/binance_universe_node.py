@@ -36,7 +36,6 @@ class BinancePerpsUniverseNode(BaseNode):
                         ticker=sym["baseAsset"].upper(),
                         asset_class=AssetClass.CRYPTO,
                         quote_currency=sym.get("quoteAsset"),
-                        exchange="binance",
                         metadata={"contract_type": sym.get("contractType"), "status": sym.get("status")},
                     )
                     for sym in info["symbols"]

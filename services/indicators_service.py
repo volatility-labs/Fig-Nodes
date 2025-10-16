@@ -373,28 +373,47 @@ class IndicatorsService:
         return volume_profile
 
     def calculate_atrx(self, df: pd.DataFrame, length: int = 14, ma_length: int = 50, smoothing: str = 'RMA', price: str = 'Close') -> float:
+        """
+        Calculate ATRX indicator following TradingView methodology:
+        ATRX = (Close - EMA(daily_avg)) / SMA(true_range)
+        where daily_avg = (High + Low) / 2 and true_range = High - Low
+        """
         if df.empty or len(df) < max(length, ma_length):
             return np.nan
-        tr = pd.DataFrame({
-            'hl': df['High'] - df['Low'],
-            'h_pc': (df['High'] - df['Close'].shift()).abs(),
-            'l_pc': (df['Low'] - df['Close'].shift()).abs()
-        }).max(axis=1)
-        if smoothing == 'RMA':
-            alpha = 1 / length
-            atr = tr.ewm(alpha=alpha, adjust=False).mean()
-        elif smoothing == 'EMA':
-            atr = tr.ewm(span=length, adjust=False).mean()
-        elif smoothing == 'SMA':
-            atr = tr.rolling(window=length, min_periods=1).mean()
-        else:
-            raise ValueError(f"Unsupported smoothing {smoothing}")
-        ma = df[price].rolling(ma_length).mean().iloc[-1]
-        current_price = df[price].iloc[-1]
-        atr_last = atr.iloc[-1]
-        if atr_last == 0 or np.isnan(ma) or np.isnan(atr_last):
+        
+        # Validate smoothing parameter
+        valid_smoothing_methods = ['RMA', 'EMA', 'SMA']
+        if smoothing not in valid_smoothing_methods:
+            raise ValueError(f"Invalid smoothing method '{smoothing}'. Must be one of: {valid_smoothing_methods}")
+        
+        # Validate price parameter
+        if price not in df.columns:
             return np.nan
-        return (current_price - ma) / atr_last 
+        
+        # Calculate daily average price (High + Low) / 2
+        daily_avg = (df['High'] + df['Low']) / 2
+        
+        # Calculate EMA of daily average for trend (TradingView uses EMA, not SMA)
+        trend_ema = daily_avg.ewm(span=ma_length, adjust=False).mean()
+        
+        # Calculate true range as High - Low (TradingView methodology)
+        true_range = df['High'] - df['Low']
+        
+        # Calculate SMA of true range for ATR (TradingView uses SMA for ATR)
+        atr_sma = true_range.rolling(window=length, min_periods=1).mean()
+        
+        # Get current values
+        current_price = df[price].iloc[-1]
+        current_trend_ema = trend_ema.iloc[-1]
+        current_atr = atr_sma.iloc[-1]
+        
+        # Check for invalid values
+        if current_atr == 0 or np.isnan(current_trend_ema) or np.isnan(current_atr):
+            return np.nan
+            
+        # Calculate ATRX: (Price - EMA(daily_avg)) / SMA(true_range)
+        atrx = (current_price - current_trend_ema) / current_atr
+        return atrx 
 
     def calculate_sma(self, df: pd.DataFrame, period: int, price: str = 'Close') -> float:
         if df.empty or len(df) < period:

@@ -8,6 +8,40 @@ Fig Nodes makes it easy to build agentic finance and trading workflows.
 
 Created by Volatility Labs Inc. 
 
+## Run Fig Node
+
+Requires Python 3.11 or later.
+
+After Ollama has been installed and models are downloaded, set up a virtual environment using uv.
+
+```bash
+# (macOS) Install uv if not already installed
+brew install uv
+
+# Create a virtual environment (creates .venv)
+uv venv
+# optional: choose a specific Python version
+# uv venv --python 3.12
+
+# Activate the venv (optional; uv can also run without activation)
+source .venv/bin/activate
+
+# Install project dependencies
+uv sync
+# include dev dependencies (tests, etc.)
+uv sync --group dev
+```
+
+## Quick Start
+
+Then start the development local server:
+
+```bash
+uv run python main.py --dev
+```
+
+The default graph should load. Press `Execute` at the bottom right of the canvas. 
+
 ## Setup Ollama
 
 For local LLM inference nodes, Fig Nodes *require* a local Ollama installation. Please see [Ollama installation instructions here](https://github.com/ollama/ollama).
@@ -16,43 +50,19 @@ After installing Ollama on your local computer, download models by
 
 ```bash
 ollama pull qwen3:8b
-ollama pull mistral
-ollama pull phi3
 ```
 
 You can find a library of all the models supported by Ollama [here](https://ollama.com/library).
 
 For optimal results, consider the model size vs your local machine's available VRAM and GPU. 
 
-## Run Fig Node
-
-Requires Python 3.11 or later.
-
-After Ollama has been installed and models are downloaded, create a virtual environment to avoid dependency conflicts with your system Python installation.
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install --upgrade pip
-pip install -r requirements.txt
-```
-
-## Quick Start
-
-Then start the development local server:
-
-```bash
-python main.py --dev
-```
-
-The default graph should load. Press `Execute` at the bottom right of the canvas. 
 
 ## Testing
 
 To run the unit tests:
 
 ```bash
-pytest tests/unit/
+uv run pytest tests/unit/
 ``` 
 
 ## Hardware Requirements
