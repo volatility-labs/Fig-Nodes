@@ -30,9 +30,6 @@ export default class BaseCustomNode extends LGraphNode {
     error: string = '';
     highlightStartTs: number | null = null;
     readonly highlightDurationMs: number = 900;
-    // Local progress state in percent (0-100). We override LiteGraph's built-in
-    // drawProgressBar so this field will not conflict with the library's
-    // internal 0..1 progress property.
     progress: number = -1; // -1 = no progress, 0-100 = progress percentage
     progressText: string = '';
 

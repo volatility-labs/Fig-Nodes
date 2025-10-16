@@ -375,8 +375,12 @@ class IndicatorsService:
     def calculate_atrx(self, df: pd.DataFrame, length: int = 14, ma_length: int = 50, smoothing: str = 'RMA', price: str = 'Close') -> float:
         """
         Calculate ATRX indicator following TradingView methodology:
-        ATRX = (Close - EMA(daily_avg)) / SMA(true_range)
-        where daily_avg = (High + Low) / 2 and true_range = High - Low
+        A = ATR% = ATR / Last Done Price
+        B = % Gain From 50-MA = (Price - SMA50) / SMA50 * 100
+        ATRX = B / A = (% Gain From 50-MA) / ATR%
+
+        Reference:
+        https://www.tradingview.com/script/oimVgV7e-ATR-multiple-from-50-MA/
         """
         if df.empty or len(df) < max(length, ma_length):
             return np.nan
@@ -390,29 +394,46 @@ class IndicatorsService:
         if price not in df.columns:
             return np.nan
         
-        # Calculate daily average price (High + Low) / 2
-        daily_avg = (df['High'] + df['Low']) / 2
+        # Calculate proper True Range (max of High-Low, |High-PrevClose|, |Low-PrevClose|)
+        high_low = df['High'] - df['Low']
+        high_close = abs(df['High'] - df['Close'].shift(1))
+        low_close = abs(df['Low'] - df['Close'].shift(1))
+        true_range = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
         
-        # Calculate EMA of daily average for trend (TradingView uses EMA, not SMA)
-        trend_ema = daily_avg.ewm(span=ma_length, adjust=False).mean()
+        # Calculate ATR using RMA (Wilder's smoothing)
+        if smoothing == 'RMA':
+            alpha = 1.0 / length
+            atr = true_range.copy()
+            for i in range(1, len(atr)):
+                atr.iloc[i] = alpha * true_range.iloc[i] + (1 - alpha) * atr.iloc[i-1]
+        elif smoothing == 'SMA':
+            atr = true_range.rolling(window=length, min_periods=1).mean()
+        else:  # EMA
+            atr = true_range.ewm(span=length, adjust=False).mean()
         
-        # Calculate true range as High - Low (TradingView methodology)
-        true_range = df['High'] - df['Low']
-        
-        # Calculate SMA of true range for ATR (TradingView uses SMA for ATR)
-        atr_sma = true_range.rolling(window=length, min_periods=1).mean()
+        # Calculate 50-day SMA of price (not EMA of daily average)
+        sma_50 = df[price].rolling(window=ma_length, min_periods=1).mean()
         
         # Get current values
         current_price = df[price].iloc[-1]
-        current_trend_ema = trend_ema.iloc[-1]
-        current_atr = atr_sma.iloc[-1]
+        current_sma_50 = sma_50.iloc[-1]
+        current_atr = atr.iloc[-1]
         
         # Check for invalid values
-        if current_atr == 0 or np.isnan(current_trend_ema) or np.isnan(current_atr):
+        if current_atr == 0 or current_sma_50 == 0 or np.isnan(current_sma_50) or np.isnan(current_atr):
+            return np.nan
+        
+        # Calculate ATR% = ATR / Last Done Price
+        atr_percent = current_atr / current_price
+        
+        # Calculate % Gain From 50-MA = (Price - SMA50) / SMA50
+        percent_gain_from_50ma = (current_price - current_sma_50) / current_sma_50
+        
+        # Calculate ATRX = (% Gain From 50-MA) / ATR%
+        if atr_percent == 0:
             return np.nan
             
-        # Calculate ATRX: (Price - EMA(daily_avg)) / SMA(true_range)
-        atrx = (current_price - current_trend_ema) / current_atr
+        atrx = percent_gain_from_50ma / atr_percent
         return atrx 
 
     def calculate_sma(self, df: pd.DataFrame, period: int, price: str = 'Close') -> float:

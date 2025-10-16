@@ -11,20 +11,21 @@ class AtrXIndicator(BaseIndicator):
     ui_module = "market/AtrXIndicatorNodeUI"
     """
     Computes the ATRX indicator for a single asset's OHLCV data.
-    ATRX = (Close - EMA(daily_avg)) / SMA(true_range)
-    where daily_avg = (High + Low) / 2 and true_range = High - Low
+    A = ATR% = ATR / Last Done Price
+    B = % Gain From 50-MA = (Price - SMA50) / SMA50
+    ATRX = B / A = (% Gain From 50-MA) / ATR%
     
     Following TradingView methodology for consistent results.
     """
     inputs = {"ohlcv": get_type("OHLCV")}
     outputs = {"results": List[IndicatorResult]}
     default_params = {
-        "length": 14,  # ATR period (SMA of true range)
-        "ma_length": 50,  # Trend EMA period
+        "length": 14,  # ATR period
+        "ma_length": 50,  # SMA period for trend calculation
     }
     params_meta = [
-        {"name": "length", "type": "integer", "default": 14, "description": "ATR period (SMA of true range)"},
-        {"name": "ma_length", "type": "integer", "default": 50, "description": "Trend EMA period for daily average"},
+        {"name": "length", "type": "integer", "default": 14, "description": "ATR period"},
+        {"name": "ma_length", "type": "integer", "default": 50, "description": "SMA period for trend calculation"},
     ]
 
 
@@ -69,7 +70,7 @@ class AtrXIndicator(BaseIndicator):
                 df,
                 length=self.params.get("length", 14),
                 ma_length=self.params.get("ma_length", 50),
-                smoothing="SMA",  # Fixed to SMA as per TradingView methodology
+                smoothing="RMA",  # Use RMA (Wilder's smoothing) for ATR as per TradingView methodology
                 price="Close",    # Fixed to Close as per TradingView methodology
             )
             

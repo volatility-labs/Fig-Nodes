@@ -46,10 +46,12 @@ async def test_atrx_indicator_node_happy_path(sample_ohlcv):
     assert result["results"][0].indicator_type == IndicatorType.ATRX
     assert hasattr(result["results"][0].values, 'single')
     assert isinstance(result["results"][0].values.single, float)
-    # With constant data: close=102, high=105, low=95, daily_avg=100
-    # EMA trend ≈ 100, ATR = 10, ATRX = (102-100)/10 = 0.2
+    # With constant data: close=102, high=105, low=95
+    # SMA50 ≈ 102, ATR = 10, ATR% = 10/102 ≈ 0.098
+    # % Gain From 50-MA = (102-102)/102 = 0
+    # ATRX = 0 / 0.098 = 0
     atrx_value = result["results"][0].values.single
-    assert abs(atrx_value - 0.2) < 0.1  # Should be close to 0.2
+    assert abs(atrx_value - 0.0) < 0.1  # Should be close to 0
 
 @pytest.mark.asyncio
 async def test_atrx_indicator_node_insufficient_data():
@@ -175,5 +177,113 @@ async def test_atrx_indicator_node_default_params(sample_ohlcv):
         # Check that default parameters are used
         assert call_args[1]['length'] == 14
         assert call_args[1]['ma_length'] == 50
-        assert call_args[1]['smoothing'] == 'SMA'
+        assert call_args[1]['smoothing'] == 'RMA'
         assert call_args[1]['price'] == 'Close'
+
+@pytest.mark.asyncio
+async def test_atrx_indicator_node_corrected_calculation():
+    """Test the corrected ATRX calculation with known values"""
+    # Create data where we can predict the ATRX value
+    # Price starts at 100, increases to 110 over 60 periods
+    # This should give us a positive ATRX value
+    test_data = []
+    for i in range(60):
+        price = 100 + (i * 10 / 59)  # Linear increase from 100 to 110
+        test_data.append({
+            "timestamp": i * 1000,
+            "open": price,
+            "high": price + 2,
+            "low": price - 2,
+            "close": price,
+            "volume": 10000
+        })
+    
+    node = AtrXIndicator("test_id", {})
+    result = await node.execute({"ohlcv": test_data})
+    
+    assert "results" in result
+    assert len(result["results"]) == 1
+    atrx_value = result["results"][0].values.single
+    
+    # With trending up data, ATRX should be positive
+    assert isinstance(atrx_value, float)
+    assert atrx_value > 0  # Should be positive for uptrend
+    assert not np.isnan(atrx_value)
+
+@pytest.mark.asyncio
+async def test_atrx_indicator_node_zero_volatility():
+    """Test ATRX with zero volatility data (high = low)"""
+    # Create data with zero volatility
+    test_data = []
+    for i in range(60):
+        test_data.append({
+            "timestamp": i * 1000,
+            "open": 100,
+            "high": 100,  # Same as low
+            "low": 100,
+            "close": 100,
+            "volume": 10000
+        })
+    
+    node = AtrXIndicator("test_id", {})
+    result = await node.execute({"ohlcv": test_data})
+    
+    # Should return empty results due to zero ATR
+    assert "results" in result
+    assert len(result["results"]) == 0
+
+@pytest.mark.asyncio
+async def test_atrx_indicator_node_extreme_trend():
+    """Test ATRX with extreme trending data"""
+    # Create data with strong uptrend
+    test_data = []
+    for i in range(60):
+        price = 100 + i  # Strong uptrend
+        test_data.append({
+            "timestamp": i * 1000,
+            "open": price,
+            "high": price + 1,
+            "low": price - 1,
+            "close": price,
+            "volume": 10000
+        })
+    
+    node = AtrXIndicator("test_id", {})
+    result = await node.execute({"ohlcv": test_data})
+    
+    assert "results" in result
+    assert len(result["results"]) == 1
+    atrx_value = result["results"][0].values.single
+    
+    # With strong uptrend, ATRX should be very positive
+    assert isinstance(atrx_value, float)
+    assert atrx_value > 10  # Should be a large positive value
+    assert not np.isnan(atrx_value)
+
+@pytest.mark.asyncio
+async def test_atrx_indicator_node_downtrend():
+    """Test ATRX with downtrending data"""
+    # Create data with downtrend
+    test_data = []
+    for i in range(60):
+        price = 100 - (i * 10 / 59)  # Linear decrease from 100 to 90
+        test_data.append({
+            "timestamp": i * 1000,
+            "open": price,
+            "high": price + 2,
+            "low": price - 2,
+            "close": price,
+            "volume": 10000
+        })
+    
+    node = AtrXIndicator("test_id", {})
+    result = await node.execute({"ohlcv": test_data})
+    
+    assert "results" in result
+    assert len(result["results"]) == 1
+    atrx_value = result["results"][0].values.single
+    
+    # With downtrend, ATRX should be negative
+    assert isinstance(atrx_value, float)
+    assert atrx_value < 0  # Should be negative for downtrend
+    assert not np.isnan(atrx_value)
