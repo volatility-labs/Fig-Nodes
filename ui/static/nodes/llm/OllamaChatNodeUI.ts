@@ -1,8 +1,8 @@
 import BaseCustomNode from '../base/BaseCustomNode';
 
 export default class OllamaChatNodeUI extends BaseCustomNode {
-    constructor(title: string, data: any) {
-        super(title, data);
+    constructor(title: string, data: any, serviceRegistry: any) {
+        super(title, data, serviceRegistry);
         this.size = [320, 300];  // Extra space for host and model selector
         this.color = '#1f2a44';
         this.bgcolor = '#0b1220';
@@ -15,12 +15,12 @@ export default class OllamaChatNodeUI extends BaseCustomNode {
         // Add tooltip to system input slot
         const systemSlotIndex = this.inputs?.findIndex(inp => inp.name === 'system');
         if (systemSlotIndex !== undefined && systemSlotIndex !== -1) {
-            this.inputs[systemSlotIndex].tooltip = 'Accepts string or LLMChatMessage with role="system"';
+            this.inputs[systemSlotIndex]!.tooltip = 'Accepts string or LLMChatMessage with role="system"';
         }
     }
 
-    onAdded() {
-        super.onAdded?.();
+    onAdded(graph: any) {
+        super.onAdded?.(graph);
         this.fetchAndPopulateModels().catch(() => { });
     }
 

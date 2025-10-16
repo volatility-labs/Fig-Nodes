@@ -1,8 +1,8 @@
 import BaseCustomNode from '../base/BaseCustomNode';
 
 export default class SMACrossoverFilterNodeUI extends BaseCustomNode {
-    constructor(title: string, data: any) {
-        super(title, data);
+    constructor(title: string, data: any, serviceRegistry: any) {
+        super(title, data, serviceRegistry);
         this.size = [360, 160];
         this.color = '#2c5530';  // Green theme for market data
         this.bgcolor = '#1a3320';
@@ -24,7 +24,7 @@ export default class SMACrossoverFilterNodeUI extends BaseCustomNode {
     }
 
     copySummary() {
-        const filteredBundle = this.result?.filtered_ohlcv_bundle;
+        const filteredBundle = (this.result as { filtered_ohlcv_bundle?: Record<string, unknown> })?.filtered_ohlcv_bundle;
         if (!filteredBundle || Object.keys(filteredBundle).length === 0) {
             navigator.clipboard.writeText('No assets passed SMA crossover filter');
             return;
@@ -46,7 +46,7 @@ export default class SMACrossoverFilterNodeUI extends BaseCustomNode {
         // Add data preview for first symbol
         if (symbols.length > 0) {
             const firstSymbol = symbols[0];
-            const ohlcvData = filteredBundle[firstSymbol];
+            const ohlcvData = filteredBundle[firstSymbol!];
             if (Array.isArray(ohlcvData) && ohlcvData.length > 0) {
                 summary += `\n\nSample data for ${firstSymbol}:`;
                 const sampleBar = ohlcvData[ohlcvData.length - 1]; // Most recent bar

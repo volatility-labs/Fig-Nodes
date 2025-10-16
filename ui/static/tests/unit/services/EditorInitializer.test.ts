@@ -1,5 +1,6 @@
 import { describe, expect, test, beforeEach, vi } from 'vitest';
 import { EditorInitializer } from '../../../services/EditorInitializer';
+import type { ExtendedLGraphCanvas, ExtendedLGraph } from '../../../types/litegraph-extensions';
 
 describe('EditorInitializer', () => {
     let editorInitializer: EditorInitializer;
@@ -22,7 +23,7 @@ describe('EditorInitializer', () => {
                 focus: vi.fn(),
                 getBoundingClientRect: vi.fn().mockReturnValue({ left: 0, top: 0 })
             })
-        } as any;
+        } as HTMLElement;
 
         document.createElement = vi.fn().mockImplementation((_tagName) => {
             const element = {
@@ -84,7 +85,8 @@ describe('EditorInitializer', () => {
         });
 
         // Mock LiteGraph classes
-        (globalThis as any).LGraph = class MockLGraph {
+        (globalThis as any).LGraph = class MockLGraph implements Partial<ExtendedLGraph> {
+            _nodes: any[] = [];
             constructor() {
                 this._nodes = [];
             }
@@ -96,7 +98,11 @@ describe('EditorInitializer', () => {
             remove() { }
         };
 
-        (globalThis as any).LGraphCanvas = class MockLGraphCanvas {
+        (globalThis as any).LGraphCanvas = class MockLGraphCanvas implements Partial<ExtendedLGraphCanvas> {
+            canvas: any;
+            graph: any;
+            links_render_mode: number = 0;
+            render_curved_connections: boolean = false;
             constructor(canvas: any, graph: any) {
                 this.canvas = canvas;
                 this.graph = graph;
@@ -106,10 +112,14 @@ describe('EditorInitializer', () => {
             draw() { }
             convertEventToCanvasOffset() { return [0, 0]; }
             setDirty() { }
+            showSearchBox = vi.fn();
+            getLastMouseEvent = vi.fn();
+            selected_nodes = {};
+            prompt = vi.fn();
         };
 
         (globalThis as any).LiteGraph = {
-            prompt: null,
+            prompt: vi.fn(),
             SPLINE_LINK: 2,
             LINEAR_LINK: 1,
             STRAIGHT_LINK: 0
@@ -227,9 +237,9 @@ describe('EditorInitializer', () => {
 
         await editorInitializer.createEditor(mockContainer);
 
-        expect(typeof (window as any).linkModeManager).toBe('object');
-        expect(typeof (window as any).dialogManager).toBe('object');
-        expect(typeof (window as any).openSettings).toBe('function');
+        expect(typeof window.linkModeManager).toBe('object');
+        expect(typeof window.dialogManager).toBe('object');
+        expect(typeof window.openSettings).toBe('function');
     });
 
     test('createEditor sets up canvas prompt functionality', async () => {

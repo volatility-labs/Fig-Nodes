@@ -22,8 +22,8 @@ export default class LoggingNodeUI extends BaseCustomNode {
     private displayTextarea: HTMLTextAreaElement | null = null;
     private lastCanvasRef: any = null;
 
-    constructor(title: string, data: any) {
-        super(title, data);
+    constructor(title: string, data: any, serviceRegistry: any) {
+        super(title, data, serviceRegistry);
 
         // Use custom renderer for logging-specific drawing
         this.renderer = new LoggingNodeRenderer(this);
@@ -87,7 +87,7 @@ export default class LoggingNodeUI extends BaseCustomNode {
         // Normalize candidate into a string or object first
         let candidate: any = value;
         if (candidate && typeof candidate === 'object' && 'output' in candidate) {
-            candidate = (candidate as any).output;
+            candidate = (candidate as { output: any }).output;
         }
 
         // Helper to stringify objects consistently
@@ -152,9 +152,9 @@ export default class LoggingNodeUI extends BaseCustomNode {
         console.log('LoggingNodeUI.updateDisplay called with:', result);
         // If streaming-style payload, avoid replacing accumulated text
         if (result && (
-            typeof (result as any).assistant_text === 'string' ||
-            ((result as any).assistant_message && typeof (result as any).assistant_message.content === 'string') ||
-            ((result as any).message && typeof (result as any).message.content === 'string')
+            typeof (result as { assistant_text?: string }).assistant_text === 'string' ||
+            ((result as { assistant_message?: { content?: string } }).assistant_message && typeof (result as { assistant_message: { content: string } }).assistant_message.content === 'string') ||
+            ((result as { message?: { content?: string } }).message && typeof (result as { message: { content: string } }).message.content === 'string')
         )) {
             return;
         }
@@ -245,7 +245,7 @@ export default class LoggingNodeUI extends BaseCustomNode {
     }
 
     private ensureDisplayTextarea() {
-        const graph: any = (this as any).graph;
+        const graph = this.graph;
         if (!graph) return;
         const canvas = graph.list_of_graphcanvas && graph.list_of_graphcanvas[0];
         if (!canvas || !canvas.canvas) return;
@@ -302,7 +302,7 @@ export default class LoggingNodeUI extends BaseCustomNode {
 
     private positionDisplayTextarea(localX: number, localY: number, localW: number, localH: number) {
         if (!this.displayTextarea) return;
-        const graph: any = (this as any).graph;
+        const graph = this.graph;
         const canvas = graph && graph.list_of_graphcanvas && graph.list_of_graphcanvas[0];
         if (!canvas || !canvas.canvas) return;
 

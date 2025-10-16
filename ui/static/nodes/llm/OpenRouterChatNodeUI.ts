@@ -1,8 +1,9 @@
 import BaseCustomNode from '../base/BaseCustomNode';
+import type { ExtendedWidget } from '../../types/litegraph-extensions';
 
 export default class OpenRouterChatNodeUI extends BaseCustomNode {
-    constructor(title: string, data: any) {
-        super(title, data);
+    constructor(title: string, data: any, serviceRegistry: any) {
+        super(title, data, serviceRegistry);
         this.size = [320, 280];
         this.color = '#2a4a2a';  // Greenish for OpenRouter
         this.bgcolor = '#0f1f0f';
@@ -10,7 +11,7 @@ export default class OpenRouterChatNodeUI extends BaseCustomNode {
         // Add tooltip to system input slot
         const systemSlotIndex = this.inputs?.findIndex(inp => inp.name === 'system');
         if (systemSlotIndex !== undefined && systemSlotIndex !== -1) {
-            this.inputs[systemSlotIndex].tooltip = 'Accepts string or LLMChatMessage with role="system"';
+            this.inputs[systemSlotIndex]!.tooltip = 'Accepts string or LLMChatMessage with role="system"';
         }
 
         // Fetch available models and populate combo widget created by BaseCustomNode/NodeWidgetManager
@@ -19,11 +20,11 @@ export default class OpenRouterChatNodeUI extends BaseCustomNode {
             .then(data => {
                 const models = Array.isArray(data?.data) ? data.data.map((m: any) => m.id).filter((x: any) => typeof x === 'string') : [];
                 models.sort((a: string, b: string) => a.localeCompare(b));
-                const widgets: any[] = (this as any).widgets || [];
-                const modelWidget = widgets.find(w => (w as any).paramName === 'model');
+                const widgets: ExtendedWidget[] = this.widgets || [];
+                const modelWidget = widgets.find(w => w.paramName === 'model');
                 if (modelWidget) {
-                    (modelWidget as any).options = { values: models };
-                    const current = this.properties.model || 'openai/gpt-4o-mini';
+                    modelWidget.options = { values: models };
+                    const current = this.properties.model || 'z-ai/glm-4.6';
                     if (!models.includes(current) && models.length > 0) {
                         this.properties.model = models[0];
                     }
@@ -60,6 +61,15 @@ export default class OpenRouterChatNodeUI extends BaseCustomNode {
         } else {
             text = JSON.stringify(result, null, 2);
         }
+
+        // Add web search indicator if enabled
+        const webSearchEnabled = this.properties?.web_search_enabled;
+        if (webSearchEnabled) {
+            const webSearchEngine = this.properties?.web_search_engine || 'exa';
+            const maxResults = this.properties?.web_search_max_results || 5;
+            text = `🔍 Web Search (${webSearchEngine}, ${maxResults} results)\n\n${text}`;
+        }
+
         this.displayText = text || '';
         this.color = '#2a4a2a';
         this.bgcolor = '#0f1f0f';

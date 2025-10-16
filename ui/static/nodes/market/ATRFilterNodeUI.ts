@@ -2,8 +2,8 @@
 import BaseCustomNode from '../base/BaseCustomNode';
 
 export default class ATRFilterNodeUI extends BaseCustomNode {
-    constructor(title: string, data: any) {
-        super(title, data);
+    constructor(title: string, data: any, serviceRegistry: any) {
+        super(title, data, serviceRegistry);
         this.size = [360, 160];
         this.color = '#2c5530';  // Green theme for market data
         this.bgcolor = '#1a3320';
@@ -25,7 +25,7 @@ export default class ATRFilterNodeUI extends BaseCustomNode {
     }
 
     copySummary() {
-        const filteredBundle = this.result?.filtered_ohlcv_bundle;
+        const filteredBundle = (this.result as { filtered_ohlcv_bundle?: Record<string, unknown> })?.filtered_ohlcv_bundle;
         if (!filteredBundle || Object.keys(filteredBundle).length === 0) {
             navigator.clipboard.writeText('No assets passed ATR filter');
             return;

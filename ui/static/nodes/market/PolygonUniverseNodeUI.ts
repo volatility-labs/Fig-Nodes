@@ -1,8 +1,8 @@
 import BaseCustomNode from '../base/BaseCustomNode';
 
 export default class PolygonUniverseNodeUI extends BaseCustomNode {
-    constructor(title: string, data: any) {
-        super(title, data);
+    constructor(title: string, data: any, serviceRegistry: any) {
+        super(title, data, serviceRegistry);
 
         // After BaseCustomNode constructor adds widgets, customize their labels and properties
         if (this.widgets && data.params) {
@@ -29,7 +29,7 @@ export default class PolygonUniverseNodeUI extends BaseCustomNode {
                     }
 
                     // Store description for potential future tooltip
-                    (widget as any).description = param.description || '';
+                    widget.description = param.description || '';
                 }
             });
         }

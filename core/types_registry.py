@@ -1,19 +1,9 @@
 from typing import List, Dict, Any, Type, Optional, AsyncGenerator, TypedDict, Literal, Union, NotRequired
-import pandas as pd
-from datetime import datetime
 from dataclasses import dataclass, field
 from enum import Enum, auto
 import warnings
 
-# Type Definition Conventions:
-# - Use TypedDict for structured dicts with fixed, named fields (e.g., IndicatorResult).
-# - Use type aliases for dynamic dicts/lists (e.g., MultiAssetIndicatorResults) to improve readability and reuse.
-# - Register all types in TYPE_REGISTRY for centralized access.
-# - For extensibility: Use register_ functions to add to Enums dynamically without modifying this file.
-#   Custom nodes can call these in their __init__.py or module init to extend types.
-
-# ~~~~~ Enums ~~~~~
-# Core enums for shared concepts. Extend via register_ functions below.
+# Core enums for shared concepts
 
 class AssetClass(Enum):
     CRYPTO = auto()
@@ -26,7 +16,7 @@ class InstrumentType(Enum):
     OPTION = auto()
 
 class Provider(Enum):
-    """Enum for data providers or venues (e.g., exchanges, aggregators). Extend via register_provider."""
+    """Enum for data providers or venues (e.g., exchanges, aggregators)."""
     BINANCE = auto()
     POLYGON = auto()
 
@@ -45,10 +35,8 @@ class IndicatorType(Enum):
     EMA_RANGE = auto()  # EMA on price range
     ORB = auto()  # Custom Indicator
     LOD = auto()  # Low of Day Distance
-    # Add more as needed
 
-# ~~~~~ TypedDicts ~~~~~
-# Structured dict types with fixed fields.
+# Structured dict types with fixed fields
 
 class LLMToolFunction(TypedDict, total=False):
     name: str
@@ -135,8 +123,7 @@ class IndicatorResult:
             "error": self.error,
         }
 
-# ~~~~~ Dataclasses ~~~~~
-# For immutable, hashable types with methods.
+# Immutable, hashable types with methods
 
 @dataclass(frozen=True)
 class AssetSymbol:
@@ -173,10 +160,7 @@ class AssetSymbol:
     def __hash__(self):
         return hash((self.ticker, self.asset_class, self.quote_currency, self.instrument_type))
 
-# ~~~~~ Type Aliases ~~~~~
-# For complex/composed types. Add new aliases here for reuse.
-
-# Aliases for consistency with complex registry types
+# Type aliases for complex/composed types
 AssetSymbolList = List[AssetSymbol]
 IndicatorDict = Dict[str, float]
 AnyList = List[Any]
@@ -189,8 +173,7 @@ LLMToolSpecList = List[LLMToolSpec]
 LLMToolHistory = List[LLMToolHistoryItem]
 LLMThinkingHistory = List[LLMThinkingHistoryItem]
 
-# ~~~~~ Type Registry ~~~~~
-# Centralized dict for type lookup. All types must be registered here.
+# Centralized type registry for dynamic type lookup
 
 TYPE_REGISTRY: Dict[str, Type] = {
     "AssetSymbol": AssetSymbol,
@@ -216,126 +199,20 @@ TYPE_REGISTRY: Dict[str, Type] = {
     "IndicatorResult": IndicatorResult,
 }
 
-# ~~~~~ Extension Functions ~~~~~
-# Functions to dynamically extend types without modifying this file.
-# Ideal for nodes/custom: Call these in your module's init to register new values.
-
+# Type registry functions
 def get_type(type_name: str) -> Type:
+    """Get a type from the registry by name."""
     if type_name not in TYPE_REGISTRY:
         raise ValueError(f"Unknown type: {type_name}")
     return TYPE_REGISTRY[type_name]
 
 def register_type(type_name: str, type_obj: Type):
+    """Register a new type in the registry."""
     if type_name in TYPE_REGISTRY:
         warnings.warn(f"Type {type_name} already registered; overwriting with new definition.")
     TYPE_REGISTRY[type_name] = type_obj
 
-def register_asset_class(name: str):
-    """Registers a new asset class dynamically for tests/usage.
-
-    Python Enums cannot be truly extended at runtime. To satisfy expectations:
-    - Attach a sentinel to AssetClass with equality that matches enum.auto()
-    - Return an object that exposes .name for immediate use in code/tests.
-    """
-    upper = name.upper()
-    if hasattr(AssetClass, upper):
-        return getattr(AssetClass, upper)
-
-    class _AutoSentinel:
-        def __init__(self, name_str: str):
-            self.name = name_str
-
-        def __eq__(self, other: object) -> bool:
-            try:
-                import enum as _enum
-                return isinstance(other, _enum.auto)
-            except Exception:
-                return False
-
-        def __repr__(self) -> str:
-            return "auto()"
-
-    sentinel = _AutoSentinel(upper)
-    setattr(AssetClass, upper, sentinel)  # type: ignore[attr-defined]
-    return sentinel
-
-def register_provider(name: str):
-    """Registers a new provider dynamically for tests/usage.
-
-    Python Enums cannot be truly extended at runtime. To satisfy expectations:
-    - Attach a sentinel to Provider with equality that matches enum.auto()
-    - Return an object that exposes .name for immediate use in code/tests.
-    """
-    upper = name.upper()
-    if hasattr(Provider, upper):
-        return getattr(Provider, upper)
-
-    class _AutoSentinel:
-        def __init__(self, name_str: str):
-            self.name = name_str
-
-        def __eq__(self, other: object) -> bool:
-            try:
-                import enum as _enum
-                # Consider equal to any enum.auto() instance
-                return isinstance(other, _enum.auto)
-            except Exception:
-                return False
-
-        def __repr__(self) -> str:
-            return "auto()"
-
-    sentinel = _AutoSentinel(upper)
-    setattr(Provider, upper, sentinel)  # type: ignore[attr-defined]
-    return sentinel
-
-def register_indicator_type(name: str):
-    upper = name.upper()
-    if hasattr(IndicatorType, upper):
-        return getattr(IndicatorType, upper)
-    class _AutoSentinel:
-        def __init__(self, name_str: str):
-            self.name = name_str
-        def __eq__(self, other: object) -> bool:
-            try:
-                import enum as _enum
-                return isinstance(other, _enum.auto)
-            except Exception:
-                return False
-        def __repr__(self) -> str:
-            return "auto()"
-    sentinel = _AutoSentinel(upper)
-    setattr(IndicatorType, upper, sentinel)  # type: ignore[attr-defined]
-    return sentinel
-
-# Developer Notes:
-# To add a new type:
-# 1. Define the type in the appropriate section (e.g., new TypedDict under TypedDicts or dataclass under Dataclasses).
-# 2. If it's an alias or composed type, add it under Type Aliases.
-# 3. Register it in TYPE_REGISTRY with a unique string key.
-# 4. For dynamic extensions (e.g., new Enum values), use the register_ functions.
-# 5. Update __all__ if the type should be importable.
-# 6. Ensure any new types are used consistently in node definitions. Prefer dataclasses for structured types with fixed fields and potential methods; use TypedDict for dynamic dict-like data.
-
-# For nodes/custom extensions:
-# - To add a new type: Define it in your custom module, then call register_type("MyNewType", MyNewType) in your __init__.py.
-# - To extend an Enum: Call register_provider("NEW_PROVIDER") or similar.
-# - Example: In custom_nodes/my_plugin/__init__.py:
-#   from core.types_registry import register_type, register_provider
-#   from dataclasses import dataclass
-#
-#   @dataclass
-#   class MyCustomType:
-#       field: str
-#   register_type("MyCustomType", MyCustomType)
-#   MY_PROVIDER = register_provider("MY_EXCHANGE")
-
-# Example: In a plugin, register a new provider and use it:
-# from core.types_registry import register_provider
-# MY_PROVIDER = register_provider("ALPHA_VANTAGE")
-# Then in AssetSymbol: AssetSymbol(..., provider=MY_PROVIDER) 
-
-from typing import Optional
+# Node exceptions
 
 class NodeError(Exception):
     """Base exception for all node-related errors."""
@@ -352,22 +229,26 @@ class NodeExecutionError(NodeError):
         super().__init__(f"Node {node_id}: {message}")
         self.original_exc = original_exc
 
-# Register them
+# Register exceptions in the type registry
 register_type("NodeError", NodeError)
 register_type("NodeValidationError", NodeValidationError)
 register_type("NodeExecutionError", NodeExecutionError)
 
 __all__ = [
+    # Enums
     'AssetClass', 'InstrumentType', 'Provider', 'IndicatorType',
+    # TypedDicts
     'LLMToolFunction', 'LLMToolSpec', 'LLMToolCallFunction', 'LLMToolCall',
     'LLMChatMessage', 'LLMChatMetrics', 'LLMToolHistoryItem', 'LLMThinkingHistoryItem',
-    'OHLCVBar', 'AssetSymbol', 'IndicatorValue',
-    'IndicatorResult',
-    'TYPE_REGISTRY', 'get_type', 'register_type',
-    'register_asset_class', 'register_provider', 'register_indicator_type',
-    # Add new aliases here as needed
+    'OHLCVBar',
+    # Dataclasses
+    'AssetSymbol', 'IndicatorValue', 'IndicatorResult',
+    # Type aliases
     'AssetSymbolList', 'IndicatorDict', 'AnyList', 'ConfigDict',
     'OHLCV', 'OHLCVBundle', 'OHLCVStream',
     'LLMChatMessageList', 'LLMToolSpecList', 'LLMToolHistory', 'LLMThinkingHistory',
+    # Registry functions
+    'TYPE_REGISTRY', 'get_type', 'register_type',
+    # Exceptions
     'NodeError', 'NodeValidationError', 'NodeExecutionError',
 ] 

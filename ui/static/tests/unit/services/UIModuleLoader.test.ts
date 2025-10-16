@@ -31,7 +31,7 @@ describe('UIModuleLoader', () => {
     let mockFetch: ReturnType<typeof vi.fn>;
 
     beforeEach(() => {
-        uiModuleLoader = new UIModuleLoader();
+        uiModuleLoader = new UIModuleLoader(null as any);
 
         mockFetch = vi.fn();
         (globalThis as any).fetch = mockFetch;
@@ -267,7 +267,7 @@ describe('UIModuleLoader', () => {
 
     test('initializeStaticModules loads static UI modules', async () => {
         // Create new instance to trigger initializeStaticModules
-        const loader = new UIModuleLoader();
+        const loader = new UIModuleLoader(null as any);
 
         // Wait for static modules to load
         await new Promise(resolve => setTimeout(resolve, 10));

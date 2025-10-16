@@ -1,8 +1,18 @@
 import BaseCustomNode from '../base/BaseCustomNode';
 
+interface BarData {
+    open: string | number;
+    high: string | number;
+    low: string | number;
+    close: string | number;
+    volume?: string | number;
+    timestamp?: string | number;
+    index?: string | number;
+}
+
 export default class PolygonBatchCustomBarsNodeUI extends BaseCustomNode {
-    constructor(title: string, data: any) {
-        super(title, data);
+    constructor(title: string, data: any, serviceRegistry: any) {
+        super(title, data, serviceRegistry);
         this.size = [380, 200];
         this.color = '#2c5530';  // Green theme for market data
         this.bgcolor = '#1a3320';
@@ -29,7 +39,7 @@ export default class PolygonBatchCustomBarsNodeUI extends BaseCustomNode {
     }
 
     private copySummary() {
-        const ohlcvBundle = this.result?.ohlcv_bundle;
+        const ohlcvBundle = (this.result as { ohlcv_bundle?: Record<string, unknown> })?.ohlcv_bundle;
         if (!ohlcvBundle || typeof ohlcvBundle !== 'object') {
             navigator.clipboard.writeText('No data available');
             return;
@@ -43,16 +53,16 @@ export default class PolygonBatchCustomBarsNodeUI extends BaseCustomNode {
 
         // Get lookback period from params for display
         const lookbackPeriod = this.properties?.lookback_period || '3 months';
-        const totalBars = symbols.reduce((sum, sym) => sum + (ohlcvBundle[sym]?.length || 0), 0);
+        const totalBars = symbols.reduce((sum, sym) => sum + ((ohlcvBundle[sym] as unknown[])?.length || 0), 0);
 
         const summary = `Batch OHLCV Data (${lookbackPeriod})\nSymbols: ${symbols.length}\nTotal Bars: ${totalBars.toLocaleString()}`;
 
         // Show summary for each symbol
         const symbolSummaries = symbols.slice(0, 10).map((sym, i) => {
-            const bars = ohlcvBundle[sym] || [];
+            const bars = (ohlcvBundle[sym] as BarData[]) || [];
             const barCount = bars.length;
             const lastBar = bars[bars.length - 1];
-            const lastClose = lastBar ? parseFloat(lastBar.close)?.toFixed(2) : 'N/A';
+            const lastClose = lastBar ? parseFloat(String(lastBar.close))?.toFixed(2) : 'N/A';
             return `${i + 1}. ${sym}: ${barCount} bars${lastClose !== 'N/A' ? ` (Last: $${lastClose})` : ''}`;
         }).join('\n');
 
@@ -62,7 +72,7 @@ export default class PolygonBatchCustomBarsNodeUI extends BaseCustomNode {
     }
 
     private displayBundlePreview() {
-        const ohlcvBundle = this.result?.ohlcv_bundle;
+        const ohlcvBundle = (this.result as { ohlcv_bundle?: Record<string, unknown> })?.ohlcv_bundle;
         if (!ohlcvBundle || typeof ohlcvBundle !== 'object') {
             alert('No bundle data to preview');
             return;
@@ -108,14 +118,14 @@ export default class PolygonBatchCustomBarsNodeUI extends BaseCustomNode {
         displayData += `Total Symbols: ${symbols.length}\n\n`;
 
         symbols.forEach((sym, idx) => {
-            const bars = ohlcvBundle[sym] || [];
+            const bars = (ohlcvBundle[sym] as BarData[]) || [];
             displayData += `${idx + 1}. ${sym}: ${bars.length} bars\n`;
             if (bars.length > 0) {
                 const lastBar = bars[bars.length - 1];
                 if (lastBar) {
                     const timestamp = lastBar.timestamp || lastBar.index || 'Latest';
-                    const ohlc = `O:${parseFloat(lastBar.open)?.toFixed(2) ?? 'N/A'} H:${parseFloat(lastBar.high)?.toFixed(2) ?? 'N/A'} L:${parseFloat(lastBar.low)?.toFixed(2) ?? 'N/A'} C:${parseFloat(lastBar.close)?.toFixed(2) ?? 'N/A'}`;
-                    const volume = lastBar.volume ? ` V:${parseFloat(lastBar.volume).toLocaleString()}` : '';
+                    const ohlc = `O:${parseFloat(String(lastBar.open))?.toFixed(2) ?? 'N/A'} H:${parseFloat(String(lastBar.high))?.toFixed(2) ?? 'N/A'} L:${parseFloat(String(lastBar.low))?.toFixed(2) ?? 'N/A'} C:${parseFloat(String(lastBar.close))?.toFixed(2) ?? 'N/A'}`;
+                    const volume = lastBar.volume ? ` V:${parseFloat(String(lastBar.volume)).toLocaleString()}` : '';
                     displayData += `   Latest: ${timestamp} - ${ohlc}${volume}\n`;
                 }
             }

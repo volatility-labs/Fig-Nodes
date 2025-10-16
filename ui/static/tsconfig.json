@@ -18,6 +18,11 @@
         "noUnusedLocals": true,
         "noUnusedParameters": true,
         "noFallthroughCasesInSwitch": true,
+        "noImplicitAny": true,
+        "noImplicitReturns": true,
+        "noImplicitThis": true,
+        "noUncheckedIndexedAccess": true,
+        "exactOptionalPropertyTypes": true,
         "baseUrl": ".",
         "paths": {
             "@components/*": [

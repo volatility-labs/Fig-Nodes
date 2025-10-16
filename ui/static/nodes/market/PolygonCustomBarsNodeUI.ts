@@ -2,8 +2,8 @@ import BaseCustomNode from '../base/BaseCustomNode';
 // import { LiteGraph } from '@comfyorg/litegraph';
 
 export default class PolygonCustomBarsNodeUI extends BaseCustomNode {
-    constructor(title: string, data: any) {
-        super(title, data);
+    constructor(title: string, data: any, serviceRegistry: any) {
+        super(title, data, serviceRegistry);
         this.size = [360, 180];
         this.color = '#2c5530';  // Green theme for market data
         this.bgcolor = '#1a3320';
@@ -25,7 +25,7 @@ export default class PolygonCustomBarsNodeUI extends BaseCustomNode {
     }
 
     private copySummary() {
-        const ohlcv = this.result?.ohlcv;
+        const ohlcv = (this.result as { ohlcv?: unknown })?.ohlcv;
         if (!ohlcv || !(ohlcv instanceof Array) && Object.keys(ohlcv).length === 0) {
             navigator.clipboard.writeText('No data available');
             return;
@@ -60,7 +60,7 @@ export default class PolygonCustomBarsNodeUI extends BaseCustomNode {
     }
 
     private displayDataPreview() {
-        const ohlcv = this.result?.ohlcv;
+        const ohlcv = (this.result as { ohlcv?: unknown })?.ohlcv;
         if (!ohlcv) {
             alert('No data to preview');
             return;

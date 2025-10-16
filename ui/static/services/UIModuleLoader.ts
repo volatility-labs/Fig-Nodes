@@ -9,8 +9,10 @@ export interface NodeRegistry {
 export class UIModuleLoader {
     private uiModules: { [key: string]: any } = {};
     private nodeMetadata: any = null;
+    private serviceRegistry: any = null;
 
-    constructor() {
+    constructor(serviceRegistry: any) {
+        this.serviceRegistry = serviceRegistry;
         this.initializeStaticModules();
     }
 
@@ -139,13 +141,14 @@ export class UIModuleLoader {
                 }
             }
 
+            const serviceRegistry = this.serviceRegistry;
             const CustomClass = class extends NodeClass {
                 constructor() {
-                    super(name, data);
+                    super(name, data, serviceRegistry);
                 }
             };
             const LG = ((globalThis as any).LiteGraph || LiteGraph);
-            LG.registerNodeType(name, CustomClass as any);
+            LG.registerNodeType(name, CustomClass);
 
             const category = data.category || 'Utilities';
             if (!categorizedNodes[category]) categorizedNodes[category] = [];

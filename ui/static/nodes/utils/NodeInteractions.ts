@@ -1,13 +1,13 @@
 import { LGraphNode, LiteGraph } from '@comfyorg/litegraph';
 
 export class NodeInteractions {
-    private node: LGraphNode & { title: string; pos: any; size: any };
+    private node: LGraphNode & { title: string; pos: [number, number]; size: [number, number] };
 
-    constructor(node: LGraphNode & { title: string; pos: any; size: any }) {
+    constructor(node: LGraphNode & { title: string; pos: [number, number]; size: [number, number] }) {
         this.node = node;
     }
 
-    onDblClick(_event: MouseEvent, pos: [number, number], _canvas: any): boolean {
+    onDblClick(_event: MouseEvent, pos: [number, number], _canvas: unknown): boolean {
         const bounds = this.getTitleTextBounds();
         if (!bounds) return false;
         const [x, y] = pos;
@@ -22,12 +22,12 @@ export class NodeInteractions {
     private getTitleTextBounds(): { x: number; y: number; width: number; height: number } | null {
         const fontSize = this.getTitleFontSize();
         const padLeft = LiteGraph.NODE_TITLE_HEIGHT;
-        const baselineY = -LiteGraph.NODE_TITLE_HEIGHT + (LiteGraph as any).NODE_TITLE_TEXT_Y;
+        const baselineY = -LiteGraph.NODE_TITLE_HEIGHT + LiteGraph.NODE_TITLE_TEXT_Y;
 
         const canvasEl = document.createElement('canvas');
         const ctx = canvasEl.getContext('2d');
         if (!ctx) return null;
-        const fontStyle: any = (this.node as any).titleFontStyle || `${fontSize}px Arial`;
+        const fontStyle: string = (this.node as { titleFontStyle?: string }).titleFontStyle || `${fontSize}px Arial`;
         ctx.font = String(fontStyle);
         const text = this.node.title ?? '';
         const textWidth = Math.ceil(ctx.measureText(text).width);
@@ -40,12 +40,12 @@ export class NodeInteractions {
 
     private getTitleFontSize(): number {
         try {
-            const style: any = (this.node as any).titleFontStyle || '';
+            const style: string = (this.node as { titleFontStyle?: string }).titleFontStyle || '';
             const m = String(style).match(/(\d+(?:\.\d+)?)px/);
             if (m) return Math.round(Number(m[1]));
         } catch { /* ignore */ }
         try {
-            const sizeConst: any = (LiteGraph as any).NODE_TEXT_SIZE;
+            const sizeConst: unknown = (LiteGraph as { NODE_TEXT_SIZE?: unknown }).NODE_TEXT_SIZE;
             if (typeof sizeConst === 'number' && Number.isFinite(sizeConst)) return sizeConst;
         } catch { /* ignore */ }
         return 16;
@@ -58,8 +58,8 @@ export class NodeInteractions {
         titleElement.style.position = 'absolute';
 
         try {
-            const graph: any = (this.node as any).graph;
-            const canvas = graph?.list_of_graphcanvas?.[0];
+            const graph: unknown = (this.node as { graph?: unknown }).graph;
+            const canvas = (graph as { list_of_graphcanvas?: Array<{ canvas?: HTMLCanvasElement; ds?: { scale?: number; offset?: [number, number] } }> })?.list_of_graphcanvas?.[0];
             const rect: DOMRect | undefined = canvas?.canvas?.getBoundingClientRect();
             const scale: number = canvas?.ds?.scale ?? 1;
             const offset: [number, number] = canvas?.ds?.offset ?? [0, 0];
@@ -68,7 +68,7 @@ export class NodeInteractions {
                 const nodeScreenX = rect.left + (this.node.pos[0] + offset[0]) * scale;
                 const nodeScreenY = rect.top + (this.node.pos[1] + offset[1]) * scale;
 
-                const titleBarHeight = (LiteGraph as any).NODE_TITLE_HEIGHT || 30;
+                const titleBarHeight = (LiteGraph as { NODE_TITLE_HEIGHT?: number }).NODE_TITLE_HEIGHT || 30;
                 const titleBarTop = nodeScreenY - (titleBarHeight * scale);
                 const titleBarWidth = this.node.size[0] * scale;
 

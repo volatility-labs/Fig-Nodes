@@ -33,9 +33,9 @@ async def test_ollama_integration(mock_ollama_client):
         stream_gen = executor.stream()
         
         initial_results = await anext(stream_gen)
-        chat_results = await anext(stream_gen)
         
-        results = {**initial_results, **chat_results}
+        # For non-streaming nodes, there's only one yield
+        results = initial_results
         
         assert 1 in results
         assert results[1]["message"]["content"] == "Hello from Ollama"
@@ -87,16 +87,14 @@ async def test_ollama_streaming_integration(mock_httpx_client, mock_ollama_clien
     stream_gen = executor.stream()
 
     initial_results = await anext(stream_gen)
-    chat_results = await anext(stream_gen)
-    results = {**initial_results, **chat_results}
+    
+    # For non-streaming nodes, there's only one yield
+    results = initial_results
 
     assert 1 in results
     assert results[1]["message"]["content"] == {}
     assert "total_duration" in results[1].get("metrics", {})
     assert "eval_count" in results[1].get("metrics", {})
-
-    with pytest.raises(StopAsyncIteration):
-        await anext(stream_gen)
 
 
 @pytest.mark.asyncio

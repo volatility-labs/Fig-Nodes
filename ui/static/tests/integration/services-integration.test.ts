@@ -17,6 +17,19 @@ describe('Services Integration Tests', () => {
         // Reset singleton
         (AppState as any).instance = undefined;
 
+        // Mock DOM methods that might be missing in jsdom
+        if (typeof document.createElement === 'function') {
+            const originalCreateElement = document.createElement;
+            document.createElement = vi.fn().mockImplementation((tagName: string) => {
+                const element = originalCreateElement.call(document, tagName);
+                // Ensure querySelectorAll exists
+                if (!element.querySelectorAll) {
+                    element.querySelectorAll = vi.fn(() => []);
+                }
+                return element;
+            });
+        }
+
         mockGraph = {
             serialize: vi.fn(() => ({ nodes: [], links: [] })),
             configure: vi.fn(),
@@ -120,14 +133,14 @@ describe('Services Integration Tests', () => {
     });
 
     test('FileManager and LinkModeManager integration', () => {
-        const _fileManager = new FileManager(mockGraph, mockCanvas);
+        new FileManager(mockGraph, mockCanvas);
         const linkModeManager = new LinkModeManager(mockCanvas);
 
         // Set up link mode
         linkModeManager.applyLinkMode(1); // LINEAR_LINK
 
         // Create graph data with link mode
-        const graphData = { nodes: [], links: [] };
+        const graphData: any = { nodes: [], links: [] };
         linkModeManager.saveToGraphConfig(graphData);
 
         expect(graphData.config.linkRenderMode).toBe(1);
@@ -138,8 +151,8 @@ describe('Services Integration Tests', () => {
     });
 
     test('DialogManager and APIKeyManager integration', () => {
-        const dialogManager = new DialogManager();
-        const _apiKeyManager = new APIKeyManager();
+        const dialogManager = new DialogManager(null as any);
+        new APIKeyManager();
 
         // Mock mouse event
         const mockEvent = { clientX: 100, clientY: 200 } as MouseEvent;

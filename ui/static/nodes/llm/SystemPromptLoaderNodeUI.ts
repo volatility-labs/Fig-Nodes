@@ -1,8 +1,8 @@
 import BaseCustomNode from '../base/BaseCustomNode';
 
 export default class SystemPromptLoaderNodeUI extends BaseCustomNode {
-    constructor(title: string, data: any) {
-        super(title, data);
+    constructor(title: string, data: any, serviceRegistry: any) {
+        super(title, data, serviceRegistry);
         this.size = [360, 220];
         this.color = '#1f2937';
         this.bgcolor = '#111827';

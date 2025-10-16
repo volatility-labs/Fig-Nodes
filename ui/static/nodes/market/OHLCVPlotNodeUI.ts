@@ -15,13 +15,13 @@ class OHLCVPlotRenderer extends NodeRenderer {
 export default class OHLCVPlotNodeUI extends BaseCustomNode {
     private images: { [label: string]: string } = {};
 
-    constructor(title: string, data: any) {
-        super(title, data);
+    constructor(title: string, data: any, serviceRegistry: any) {
+        super(title, data, serviceRegistry);
         this.size = [500, 360];
         this.color = '#3949ab';
         this.bgcolor = '#1c2147';
         this.displayResults = false; // custom canvas rendering
-        this.renderer = new OHLCVPlotRenderer(this as any);
+        this.renderer = new OHLCVPlotRenderer(this);
     }
 
     updateDisplay(result: any) {
@@ -34,16 +34,16 @@ export default class OHLCVPlotNodeUI extends BaseCustomNode {
     drawPlots(ctx: CanvasRenderingContext2D) {
         // In jsdom test environments, canvas.getContext('2d') may return null.
         // Guard to no-op when a real 2D context is not available.
-        if (!ctx || typeof (ctx as any).fillRect !== 'function') {
+        if (!ctx || typeof ctx.fillRect !== 'function') {
             return;
         }
         const labels = Object.keys(this.images || {});
         const padding = 8;
-        const widgetHeight = (this as any).widgets ? (this as any).widgets.length * LiteGraph.NODE_WIDGET_HEIGHT : 0;
+        const widgetHeight = this.widgets ? this.widgets.length * LiteGraph.NODE_WIDGET_HEIGHT : 0;
         const x0 = padding;
         const y0 = LiteGraph.NODE_TITLE_HEIGHT + widgetHeight + padding;
-        const w = Math.max(0, (this as any).size[0] - padding * 2);
-        const h = Math.max(0, (this as any).size[1] - LiteGraph.NODE_TITLE_HEIGHT - widgetHeight - padding * 2);
+        const w = Math.max(0, this.size[0] - padding * 2);
+        const h = Math.max(0, this.size[1] - LiteGraph.NODE_TITLE_HEIGHT - widgetHeight - padding * 2);
 
         // Background
         ctx.fillStyle = '#111827';
@@ -70,7 +70,7 @@ export default class OHLCVPlotNodeUI extends BaseCustomNode {
             for (let c = 0; c < cols; c++) {
                 if (idx >= labels.length) break;
                 const label = labels[idx++];
-                const dataUrl = this.images[label];
+                const dataUrl = this.images[label!];
 
                 const cx = x0 + c * (cellW + 6);
                 const cy = y0 + r * (cellH + 6);
@@ -90,7 +90,7 @@ export default class OHLCVPlotNodeUI extends BaseCustomNode {
                     const iw = cellW;
                     ctx.drawImage(img, cx, cy + 18, iw, ih);
                 };
-                img.src = dataUrl;
+                img.src = dataUrl || '';
 
                 // Cell border
                 ctx.strokeStyle = '#4b5563';

@@ -85,12 +85,13 @@ export class AppState {
         return requiredKeys.filter(key => !currentKeys[key] || currentKeys[key] === '');
     }
 
-    // Expose methods globally for backward compatibility
+    // Expose methods globally for debugging and external access
     exposeGlobally(): void {
-        (window as any).getCurrentGraphData = () => this.getCurrentGraphData();
-        (window as any).getRequiredKeysForGraph = (graphData: any) => this.getRequiredKeysForGraph(graphData);
-        (window as any).checkMissingKeys = (requiredKeys: string[]) => this.checkMissingKeys(requiredKeys);
-        (window as any).setLastMissingKeys = (keys: string[]) => this.setMissingKeys(keys);
-        (window as any).getLastMissingKeys = () => this.getMissingKeys();
+        window.getCurrentGraphData = () => this.getCurrentGraphData();
+        window.getRequiredKeysForGraph = (graphData: GraphData) => this.getRequiredKeysForGraph(graphData);
+        window.checkMissingKeys = (requiredKeys: string[]) => this.checkMissingKeys(requiredKeys);
+        window.setLastMissingKeys = (keys: string[]) => this.setMissingKeys(keys);
+        window.getLastMissingKeys = () => this.getMissingKeys();
     }
+
 }

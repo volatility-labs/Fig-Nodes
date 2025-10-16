@@ -118,7 +118,7 @@ describe('LinkModeManager', () => {
     });
 
     test('saveToGraphConfig adds linkRenderMode to config', () => {
-        const graphData = { nodes: [], links: [] };
+        const graphData: any = { nodes: [], links: [] };
 
         linkModeManager.applyLinkMode(1);
         linkModeManager.saveToGraphConfig(graphData);
@@ -128,7 +128,7 @@ describe('LinkModeManager', () => {
     });
 
     test('saveToGraphConfig preserves existing config', () => {
-        const graphData = {
+        const graphData: any = {
             nodes: [],
             links: [],
             config: { existing: 'value' }

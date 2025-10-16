@@ -8,6 +8,9 @@ Object.assign(globalThis, {
             writeText: vi.fn(async (_t: string) => undefined),
         },
     },
+    alert: vi.fn(),
+    prompt: vi.fn(),
+    confirm: vi.fn(() => true),
 });
 
 // Default fetch mock (tests may override case-by-case)
@@ -24,6 +27,52 @@ if (!(globalThis as any).URL.createObjectURL) {
 }
 if (!(globalThis as any).URL.revokeObjectURL) {
     (globalThis as any).URL.revokeObjectURL = vi.fn();
+}
+
+// Mock canvas context for tests
+if (typeof HTMLCanvasElement !== 'undefined') {
+    const originalGetContext = HTMLCanvasElement.prototype.getContext;
+    HTMLCanvasElement.prototype.getContext = function (type: string) {
+        if (type === '2d') {
+            return {
+                fillRect: vi.fn(),
+                strokeRect: vi.fn(),
+                fillText: vi.fn(),
+                drawImage: vi.fn(),
+                measureText: vi.fn(() => ({ width: 0 })),
+                save: vi.fn(),
+                restore: vi.fn(),
+                beginPath: vi.fn(),
+                moveTo: vi.fn(),
+                lineTo: vi.fn(),
+                stroke: vi.fn(),
+                fill: vi.fn(),
+                arc: vi.fn(),
+                clearRect: vi.fn(),
+                scale: vi.fn(),
+                translate: vi.fn(),
+                rotate: vi.fn(),
+                setTransform: vi.fn(),
+                getImageData: vi.fn(),
+                putImageData: vi.fn(),
+                createImageData: vi.fn(),
+                canvas: this,
+                globalAlpha: 1,
+                globalCompositeOperation: 'source-over',
+                fillStyle: '#000000',
+                strokeStyle: '#000000',
+                lineWidth: 1,
+                font: '10px sans-serif',
+                textAlign: 'start',
+                textBaseline: 'alphabetic',
+                shadowColor: 'rgba(0,0,0,0)',
+                shadowBlur: 0,
+                shadowOffsetX: 0,
+                shadowOffsetY: 0
+            } as any;
+        }
+        return originalGetContext.call(this, type);
+    };
 }
 
 // Polyfill Blob.text() in jsdom if missing

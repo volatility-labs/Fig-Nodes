@@ -1,5 +1,6 @@
 import { describe, expect, test, vi, beforeEach } from 'vitest';
 import { BaseCustomNode, LLMMessagesBuilderNodeUI, LoggingNodeUI, OllamaChatNodeUI, StreamingCustomNode, TextInputNodeUI, PolygonUniverseNodeUI, AtrXIndicatorNodeUI, AtrXFilterNodeUI } from '../../nodes';
+import { ServiceRegistry } from '../../services/ServiceRegistry';
 
 function baseData() {
     return {
@@ -10,14 +11,17 @@ function baseData() {
     } as any;
 }
 
+let mockServiceRegistry: ServiceRegistry;
+
 describe('Node UI Unit Tests', () => {
     beforeEach(() => {
         // ensure clipboard mock exists
         (globalThis as any).navigator.clipboard.writeText = vi.fn();
+        mockServiceRegistry = new ServiceRegistry();
     });
 
     test('BaseCustomNode adds IO and widgets and updates display', () => {
-        const node = new BaseCustomNode('Base', baseData());
+        const node = new BaseCustomNode('Base', baseData(), mockServiceRegistry);
         expect(node.inputs.length).toBe(1);
         expect(node.outputs.length).toBe(1);
         expect(node.widgets!.length).toBeGreaterThan(0);
@@ -27,7 +31,7 @@ describe('Node UI Unit Tests', () => {
     });
 
     test('LLMMessagesBuilderNodeUI summarizes messages', () => {
-        const node = new LLMMessagesBuilderNodeUI('Msgs', baseData());
+        const node = new LLMMessagesBuilderNodeUI('Msgs', baseData(), mockServiceRegistry);
         node.updateDisplay({
             messages: [
                 { role: 'system', content: 'Set the rules' },
@@ -39,7 +43,7 @@ describe('Node UI Unit Tests', () => {
     });
 
     test('LoggingNodeUI appends streaming chunks and ignores replacement when streaming', () => {
-        const node = new LoggingNodeUI('Log', baseData());
+        const node = new LoggingNodeUI('Log', baseData(), mockServiceRegistry);
         node.onStreamUpdate({ message: { content: 'Hello ' } });
         node.onStreamUpdate({ message: { content: 'Hello World' } });
         expect(node.displayText).toBe('Hello World');
@@ -48,7 +52,7 @@ describe('Node UI Unit Tests', () => {
     });
 
     test('LoggingNodeUI copy button copies display text to clipboard', async () => {
-        const node = new LoggingNodeUI('Log', baseData());
+        const node = new LoggingNodeUI('Log', baseData(), mockServiceRegistry);
         const mockWriteText = vi.fn().mockResolvedValue(undefined);
         (globalThis as any).navigator.clipboard.writeText = mockWriteText;
 
@@ -73,7 +77,7 @@ describe('Node UI Unit Tests', () => {
     });
 
     test('LoggingNodeUI copy button handles empty content', () => {
-        const node = new LoggingNodeUI('Log', baseData());
+        const node = new LoggingNodeUI('Log', baseData(), mockServiceRegistry);
         const mockWriteText = vi.fn().mockResolvedValue(undefined);
         (globalThis as any).navigator.clipboard.writeText = mockWriteText;
 
@@ -93,7 +97,7 @@ describe('Node UI Unit Tests', () => {
     });
 
     test('LoggingNodeUI copy button handles whitespace-only content', () => {
-        const node = new LoggingNodeUI('Log', baseData());
+        const node = new LoggingNodeUI('Log', baseData(), mockServiceRegistry);
         const mockWriteText = vi.fn().mockResolvedValue(undefined);
         (globalThis as any).navigator.clipboard.writeText = mockWriteText;
 
@@ -113,19 +117,19 @@ describe('Node UI Unit Tests', () => {
     });
 
     test('LoggingNodeUI uses custom renderer', () => {
-        const node = new LoggingNodeUI('Log', baseData());
-        expect(node.renderer).toBeDefined();
-        expect(node.renderer.constructor.name).toBe('LoggingNodeRenderer');
+        const node = new LoggingNodeUI('Log', baseData(), mockServiceRegistry);
+        expect((node as any).renderer).toBeDefined();
+        expect((node as any).renderer.constructor.name).toBe('LoggingNodeRenderer');
     });
 
     test('LoggingNodeUI has disabled displayResults', () => {
-        const node = new LoggingNodeUI('Log', baseData());
+        const node = new LoggingNodeUI('Log', baseData(), mockServiceRegistry);
         expect(node.displayResults).toBe(false);
     });
 
     test('LoggingNodeUI custom renderer calls drawLoggingContent', () => {
-        const node = new LoggingNodeUI('Log', baseData());
-        const renderer = node.renderer as any;
+        const node = new LoggingNodeUI('Log', baseData(), mockServiceRegistry);
+        const renderer = (node as any).renderer as any;
 
         // Mock the node's drawLoggingContent method
         const mockDrawLogging = vi.fn();
@@ -150,7 +154,7 @@ describe('Node UI Unit Tests', () => {
     });
 
     test('LoggingNodeUI drawLoggingContent handles collapsed state', () => {
-        const node = new LoggingNodeUI('Log', baseData());
+        const node = new LoggingNodeUI('Log', baseData(), mockServiceRegistry);
 
         // Mock flags.collapsed
         (node as any).flags = { collapsed: true };
@@ -170,7 +174,7 @@ describe('Node UI Unit Tests', () => {
     });
 
     test('LoggingNodeUI drawLoggingContent creates textarea when not collapsed', () => {
-        const node = new LoggingNodeUI('Log', baseData());
+        const node = new LoggingNodeUI('Log', baseData(), mockServiceRegistry);
 
         // Ensure not collapsed
         (node as any).flags = {};
@@ -212,7 +216,7 @@ describe('Node UI Unit Tests', () => {
     });
 
     test('LoggingNodeUI ensureDisplayTextarea creates textarea element', () => {
-        const node = new LoggingNodeUI('Log', baseData());
+        const node = new LoggingNodeUI('Log', baseData(), mockServiceRegistry);
 
         // Mock graph and canvas
         const mockCanvas = {
@@ -241,7 +245,7 @@ describe('Node UI Unit Tests', () => {
     });
 
     test('LoggingNodeUI syncDisplayTextarea updates textarea content', () => {
-        const node = new LoggingNodeUI('Log', baseData());
+        const node = new LoggingNodeUI('Log', baseData(), mockServiceRegistry);
 
         // Create a mock textarea
         const mockTextarea = {
@@ -266,7 +270,7 @@ describe('Node UI Unit Tests', () => {
     });
 
     test('LoggingNodeUI positionDisplayTextarea calculates correct screen position', () => {
-        const node = new LoggingNodeUI('Log', baseData());
+        const node = new LoggingNodeUI('Log', baseData(), mockServiceRegistry);
 
         // Create mock textarea
         const mockTextarea = {
@@ -323,7 +327,7 @@ describe('Node UI Unit Tests', () => {
     });
 
     test('LoggingNodeUI hideDisplayTextarea hides textarea', () => {
-        const node = new LoggingNodeUI('Log', baseData());
+        const node = new LoggingNodeUI('Log', baseData(), mockServiceRegistry);
 
         const mockTextarea = {
             style: { display: '' },
@@ -338,7 +342,7 @@ describe('Node UI Unit Tests', () => {
     });
 
     test('LoggingNodeUI detachDisplayTextarea removes textarea from DOM', () => {
-        const node = new LoggingNodeUI('Log', baseData());
+        const node = new LoggingNodeUI('Log', baseData(), mockServiceRegistry);
 
         // Create and append a real textarea
         const textarea = document.createElement('textarea');
@@ -359,7 +363,7 @@ describe('Node UI Unit Tests', () => {
     });
 
     test('LoggingNodeUI onRemoved cleans up resources', () => {
-        const node = new LoggingNodeUI('Log', baseData());
+        const node = new LoggingNodeUI('Log', baseData(), mockServiceRegistry);
 
         // Mock timeout and detach method
         const mockDetach = vi.fn();
@@ -380,7 +384,7 @@ describe('Node UI Unit Tests', () => {
     });
 
     test('LoggingNodeUI reset clears display text and syncs textarea', () => {
-        const node = new LoggingNodeUI('Log', baseData());
+        const node = new LoggingNodeUI('Log', baseData(), mockServiceRegistry);
 
         // Set display text
         node.displayText = 'Some content';
@@ -398,7 +402,7 @@ describe('Node UI Unit Tests', () => {
     });
 
     test('LoggingNodeUI lifecycle methods work correctly', () => {
-        const node = new LoggingNodeUI('Log', baseData());
+        const node = new LoggingNodeUI('Log', baseData(), mockServiceRegistry);
 
         // Mock the methods
         const mockEnsure = vi.fn();
@@ -420,7 +424,7 @@ describe('Node UI Unit Tests', () => {
     });
 
     test('LoggingNodeUI tryFormat handles different input types', () => {
-        const node = new LoggingNodeUI('Log', baseData());
+        const node = new LoggingNodeUI('Log', baseData(), mockServiceRegistry);
 
         // Test string input
         expect((node as any).tryFormat('hello')).toBe('hello');
@@ -465,7 +469,7 @@ describe('Node UI Unit Tests', () => {
     });
 
     test('LoggingNodeUI getSelectedFormat returns correct format', () => {
-        const node = new LoggingNodeUI('Log', baseData());
+        const node = new LoggingNodeUI('Log', baseData(), mockServiceRegistry);
 
         // Test default (auto)
         expect((node as any).getSelectedFormat()).toBe('auto');
@@ -486,7 +490,7 @@ describe('Node UI Unit Tests', () => {
     });
 
     test('LoggingNodeUI onStreamUpdate handles different streaming formats', () => {
-        const node = new LoggingNodeUI('Log', baseData());
+        const node = new LoggingNodeUI('Log', baseData(), mockServiceRegistry);
 
         // Test final message (done: true)
         (node as any).onStreamUpdate({ done: true, message: { content: 'Final content' } });
@@ -522,7 +526,7 @@ describe('Node UI Unit Tests', () => {
     });
 
     test('LoggingNodeUI updateDisplay ignores streaming payloads', () => {
-        const node = new LoggingNodeUI('Log', baseData());
+        const node = new LoggingNodeUI('Log', baseData(), mockServiceRegistry);
 
         // Set initial content
         node.displayText = 'Initial';
@@ -545,7 +549,7 @@ describe('Node UI Unit Tests', () => {
     });
 
     test('LoggingNodeUI copy button feedback shows success and resets', async () => {
-        const node = new LoggingNodeUI('Log', baseData());
+        const node = new LoggingNodeUI('Log', baseData(), mockServiceRegistry);
         const mockWriteText = vi.fn().mockResolvedValue(undefined);
         (globalThis as any).navigator.clipboard.writeText = mockWriteText;
 
@@ -562,13 +566,14 @@ describe('Node UI Unit Tests', () => {
     });
 
     test('LoggingNodeUI showCopyFeedback updates button text and resets', () => {
-        const node = new LoggingNodeUI('Log', baseData());
+        const node = new LoggingNodeUI('Log', baseData(), mockServiceRegistry);
 
         // Mock setTimeout and clearTimeout
         const mockSetTimeout = vi.fn((cb) => {
             cb(); // Immediately call callback for testing
             return 123;
-        });
+        }) as any;
+        mockSetTimeout.__promisify__ = vi.fn();
         const mockClearTimeout = vi.fn();
         global.setTimeout = mockSetTimeout;
         global.clearTimeout = mockClearTimeout;
@@ -581,12 +586,12 @@ describe('Node UI Unit Tests', () => {
         (node as any).showCopyFeedback('Success!', true);
 
         // Verify button text was updated and reset
-        expect(node.copyButton!.name).toBe('📋 Copy Log'); // Should be reset
+        expect((node as any).copyButton!.name).toBe('📋 Copy Log'); // Should be reset
         expect(mockSetDirty).toHaveBeenCalled();
     });
 
     test('LoggingNodeUI positionDisplayTextarea hides when too small or out of viewport', () => {
-        const node = new LoggingNodeUI('Log', baseData());
+        const node = new LoggingNodeUI('Log', baseData(), mockServiceRegistry);
 
         const mockTextarea = {
             style: {
@@ -620,7 +625,7 @@ describe('Node UI Unit Tests', () => {
     });
 
     test('LoggingNodeUI ensureDisplayTextarea reuses existing textarea for same canvas', () => {
-        const node = new LoggingNodeUI('Log', baseData());
+        const node = new LoggingNodeUI('Log', baseData(), mockServiceRegistry);
 
         const mockCanvas = { canvas: document.createElement('canvas') };
         const mockGraph = { list_of_graphcanvas: [mockCanvas] };
@@ -640,7 +645,7 @@ describe('Node UI Unit Tests', () => {
     });
 
     test('LoggingNodeUI ensureDisplayTextarea handles missing graph or canvas', () => {
-        const node = new LoggingNodeUI('Log', baseData());
+        const node = new LoggingNodeUI('Log', baseData(), mockServiceRegistry);
 
         // No graph
         (node as any).graph = null;
@@ -659,7 +664,7 @@ describe('Node UI Unit Tests', () => {
     });
 
     test('OllamaChatNodeUI streaming and final message handling', () => {
-        const node = new OllamaChatNodeUI('Chat', baseData());
+        const node = new OllamaChatNodeUI('Chat', baseData(), mockServiceRegistry);
         node.onStreamUpdate({ message: { content: 'Hi' } });
         expect(node.displayText).toBe('Hi');
         node.onStreamUpdate({ message: { content: 'Final' } });
@@ -669,14 +674,14 @@ describe('Node UI Unit Tests', () => {
     });
 
     test('StreamingCustomNode accumulates and displays JSON payload', () => {
-        const node = new StreamingCustomNode('Stream', baseData());
+        const node = new StreamingCustomNode('Stream', baseData(), mockServiceRegistry);
         node.onStreamUpdate({ message: { content: 'x' } });
         expect(node.result).toEqual({ message: { content: 'x' } });
         expect(node.displayText).toContain('"message"');
     });
 
     test('TextInputNodeUI inline editor behavior', () => {
-        const node = new TextInputNodeUI('Text', baseData());
+        const node = new TextInputNodeUI('Text', baseData(), mockServiceRegistry);
         node.properties.value = 'a very long line that should wrap across the width of the text area to test wrapping logic';
         // Inline editor: no preview API; validate key characteristics instead
         expect(node.displayResults).toBe(false);
@@ -688,7 +693,7 @@ describe('Node UI Unit Tests', () => {
     test('AtrXIndicatorNodeUI handles results output', () => {
         const data = baseData();
         data.outputs = { results: { base: 'IndicatorResult' } };
-        const node = new AtrXIndicatorNodeUI('AtrxIndicator', data);
+        const node = new AtrXIndicatorNodeUI('AtrxIndicator', data, mockServiceRegistry);
         // Note: removeOutput may not work in test environment
         expect(node.findOutputSlotIndex('results')).toBeGreaterThanOrEqual(0);
         expect(node.outputs.length).toBeGreaterThanOrEqual(1);
@@ -699,7 +704,7 @@ describe('Node UI Unit Tests', () => {
         data.outputs = {
             filtered_ohlcv_bundle: { base: 'Dict<AssetSymbol, List<OHLCVBar>>' }
         };
-        const node = new AtrXFilterNodeUI('AtrxFilter', data);
+        const node = new AtrXFilterNodeUI('AtrxFilter', data, mockServiceRegistry);
         // indicator_results output has been removed from the Python node, so it shouldn't exist in UI
         expect(node.findOutputSlotIndex('indicator_results')).toBe(-1);
         expect(node.outputs.length).toBe(1);
@@ -710,15 +715,15 @@ describe('BaseCustomNode comprehensive tests', () => {
     test('creates text widget and updates value via prompt', () => {
         const data = baseData();
         data.params = [{ name: 'textParam', type: 'text', default: 'initial' }];
-        const node = new BaseCustomNode('Test', data);
+        const node = new BaseCustomNode('Test', data, mockServiceRegistry);
         expect(node.widgets).toBeDefined();
         const widget = node.widgets![0];
-        expect(widget.name).toBe('textParam: initial');
+        expect(widget?.name).toBe('textParam: initial');
         expect(node.properties.textParam).toBe('initial');
 
         // Simulate prompt callback
-        expect(widget.callback).toBeDefined();
-        widget.callback!(null);
+        expect(widget?.callback).toBeDefined();
+        widget?.callback!(null);
         // Note: Can't fully test prompt UI, but assume callback updates
         // Manually invoke the inner callback
         // The callback is the prompt invoker; to test update logic, we need to mimic it
@@ -732,61 +737,61 @@ describe('BaseCustomNode comprehensive tests', () => {
     test('creates number widget with options and updates value', () => {
         const data = baseData();
         data.params = [{ name: 'numParam', type: 'number', default: 5, min: 0, max: 10, step: 1 }];
-        const node = new BaseCustomNode('Test', data);
+        const node = new BaseCustomNode('Test', data, mockServiceRegistry);
         expect(node.widgets).toBeDefined();
         const widget = node.widgets![0];
-        expect(widget.type).toBe('number');
-        expect(widget.value).toBe(5);
-        expect(widget.options.min).toBe(0);
-        expect(widget.options.max).toBe(10);
-        expect(widget.options.step).toBe(1);
+        expect(widget?.type).toBe('number');
+        expect(widget?.value).toBe(5);
+        expect(widget?.options?.min).toBe(0);
+        expect(widget?.options?.max).toBe(10);
+        expect(widget?.options?.step).toBe(1);
 
-        expect(widget.callback).toBeDefined();
-        widget.callback!(7);
+        expect(widget?.callback).toBeDefined();
+        widget?.callback!(7);
         expect(node.properties.numParam).toBe(7);
-        expect(widget.value).toBe(7); // Since we set widget.value in constructor
+        expect(widget?.value).toBe(7); // Since we set widget.value in constructor
     });
 
     test('creates custom dropdown widget for combo parameters', () => {
         const data = baseData();
         data.params = [{ name: 'comboParam', type: 'combo', options: ['opt1', 'opt2', 'opt3'], default: 'opt1' }];
-        const node = new BaseCustomNode('Test', data);
+        const node = new BaseCustomNode('Test', data, mockServiceRegistry);
         expect(node.widgets).toBeDefined();
         const widget = node.widgets![0];
-        expect(widget.type).toBe('button');
-        expect(widget.name).toBe('comboParam: opt1');
+        expect(widget?.type).toBe('button');
+        expect(widget?.name).toBe('comboParam: opt1');
         expect(node.properties.comboParam).toBe('opt1');
-        expect((widget as any).options.values).toEqual(['opt1', 'opt2', 'opt3']);
+        expect((widget as any)?.options?.values).toEqual(['opt1', 'opt2', 'opt3']);
 
         // Test that the widget updates the display when property changes
         node.properties.comboParam = 'opt2';
         node.syncWidgetValues();
-        expect(widget.name).toBe('comboParam: opt2');
+        expect(widget?.name).toBe('comboParam: opt2');
     });
 
     test('handles boolean combo widget correctly', () => {
         const data = baseData();
         data.params = [{ name: 'boolParam', type: 'combo', options: [true, false], default: true }];
-        const node = new BaseCustomNode('Test', data);
+        const node = new BaseCustomNode('Test', data, mockServiceRegistry);
         expect(node.widgets).toBeDefined();
         const widget = node.widgets![0];
-        expect(widget.type).toBe('button');
-        expect(widget.name).toBe('boolParam: true');
+        expect(widget?.type).toBe('button');
+        expect(widget?.name).toBe('boolParam: true');
         expect(node.properties.boolParam).toBe(true);
-        expect((widget as any).options.values).toEqual([true, false]);
+        expect((widget as any)?.options?.values).toEqual([true, false]);
 
         // Test that the widget updates the display when property changes
         node.properties.boolParam = false;
         node.syncWidgetValues();
-        expect(widget.name).toBe('boolParam: false');
+        expect(widget?.name).toBe('boolParam: false');
 
         node.properties.boolParam = true;
         node.syncWidgetValues();
-        expect(widget.name).toBe('boolParam: true');
+        expect(widget?.name).toBe('boolParam: true');
     });
 
     test('wraps text correctly in display', () => {
-        const node = new BaseCustomNode('Test', baseData());
+        const node = new BaseCustomNode('Test', baseData(), mockServiceRegistry);
         node.displayText = 'This is a long text that should wrap across multiple lines in the node display area';
         const mockCtx = { measureText: (text: string) => ({ width: text.length * 8 }) }; // Simple mock: 8px per char
         const lines = node.wrapText(node.displayText, 100, mockCtx as any);
@@ -795,7 +800,7 @@ describe('BaseCustomNode comprehensive tests', () => {
     });
 
     test('sets error and updates color', () => {
-        const node = new BaseCustomNode('Test', baseData());
+        const node = new BaseCustomNode('Test', baseData(), mockServiceRegistry);
         node.setError('Test error');
         expect(node.error).toBe('Test error');
         expect(node.color).toBe('#FF0000');
@@ -804,28 +809,28 @@ describe('BaseCustomNode comprehensive tests', () => {
     test('syncs number widget values on configure using paramName mapping', () => {
         const data = baseData();
         data.params = [{ name: 'syncParam', type: 'number', default: 10 }];
-        const node = new BaseCustomNode('Test', data);
+        const node = new BaseCustomNode('Test', data, mockServiceRegistry);
         // Simulate graph.configure having set properties
         node.properties.syncParam = 20;
-        node.configure({}); // triggers syncWidgetValues under the hood
+        node.configure({ id: 'test', type: 'Test', pos: [0, 0], size: [200, 100], flags: {}, order: 0, mode: 0 }); // triggers syncWidgetValues under the hood
         expect(node.widgets).toBeDefined();
         const widget = node.widgets![0];
-        expect(widget.value).toBe(20);
+        expect(widget?.value).toBe(20);
     });
 
     test('syncs custom dropdown widget values on configure', () => {
         const data = baseData();
         data.params = [{ name: 'dropdownParam', type: 'combo', options: ['A', 'B', 'C'], default: 'A' }];
-        const node = new BaseCustomNode('Test', data);
+        const node = new BaseCustomNode('Test', data, mockServiceRegistry);
         node.properties.dropdownParam = 'B';
-        node.configure({}); // Triggers sync
+        node.configure({ id: 'test', type: 'Test', pos: [0, 0], size: [200, 100], flags: {}, order: 0, mode: 0 }); // Triggers sync
         expect(node.widgets).toBeDefined();
         const widget = node.widgets![0];
-        expect(widget.name).toBe('dropdownParam: B');
+        expect(widget?.name).toBe('dropdownParam: B');
     });
 
     test('pulses highlight', () => {
-        const node = new BaseCustomNode('Test', baseData());
+        const node = new BaseCustomNode('Test', baseData(), mockServiceRegistry);
         node.pulseHighlight();
         expect((node as any).highlightStartTs).not.toBeNull();
         // Can't test timing, but verify it sets the timestamp
@@ -834,21 +839,21 @@ describe('BaseCustomNode comprehensive tests', () => {
     test('custom dropdown widget updates value and display', () => {
         const data = baseData();
         data.params = [{ name: 'dropdownParam', type: 'combo', options: ['A', 'B', 'C'], default: 'A' }];
-        const node = new BaseCustomNode('Test', data);
+        const node = new BaseCustomNode('Test', data, mockServiceRegistry);
         const widget = node.widgets![0];
 
         // Test that the widget updates the display when property changes
         node.properties.dropdownParam = 'B';
         node.syncWidgetValues();
-        expect(widget.name).toBe('dropdownParam: B');
+        expect(widget?.name).toBe('dropdownParam: B');
 
         node.properties.dropdownParam = 'C';
         node.syncWidgetValues();
-        expect(widget.name).toBe('dropdownParam: C');
+        expect(widget?.name).toBe('dropdownParam: C');
     });
 
     test('formatComboValue handles different value types', () => {
-        const node = new BaseCustomNode('Test', baseData());
+        const node = new BaseCustomNode('Test', baseData(), mockServiceRegistry);
 
         expect((node as any).formatComboValue('string')).toBe('string');
         expect((node as any).formatComboValue(42)).toBe('42');
@@ -861,7 +866,7 @@ describe('BaseCustomNode comprehensive tests', () => {
 
 describe('Progress bar rendering', () => {
     test('BaseCustomNode calls renderer.drawProgressBar when progress >= 0', () => {
-        const node = new BaseCustomNode('Test', baseData());
+        const node = new BaseCustomNode('Test', baseData(), mockServiceRegistry);
         // Spy on renderer method through instance
         const renderer: any = (node as any).renderer;
         const spy = vi.spyOn(renderer, 'drawProgressBar');
@@ -897,19 +902,19 @@ describe('Strict connection typing', () => {
                 { base: 'LLMChatMessage' }
             ]
         };
-        const node = new BaseCustomNode('Test', baseData());
+        const node = new BaseCustomNode('Test', baseData(), mockServiceRegistry);
         expect(node.parseType(unionType)).toBe('str | LLMChatMessage');
     });
 
     test('parseType handles simple types correctly', () => {
-        const node = new BaseCustomNode('Test', baseData());
+        const node = new BaseCustomNode('Test', baseData(), mockServiceRegistry);
         expect(node.parseType({ base: 'str' })).toBe('str');
         expect(node.parseType({ base: 'int' })).toBe('int');
         expect(node.parseType({ base: 'Any' })).toBe(0); // Wildcard
     });
 
     test('parseType handles complex types like lists and dicts', () => {
-        const node = new BaseCustomNode('Test', baseData());
+        const node = new BaseCustomNode('Test', baseData(), mockServiceRegistry);
         expect(node.parseType({ base: 'list', subtype: { base: 'str' } })).toBe('list<str>');
         expect(node.parseType({ base: 'dict', key_type: { base: 'str' }, value_type: { base: 'int' } })).toBe('dict<str, int>');
     });
@@ -920,7 +925,7 @@ describe('Strict connection typing', () => {
             inputs: { system: { base: 'union', subtypes: [{ base: 'str' }, { base: 'LLMChatMessage' }] } },
             outputs: {},
             params: []
-        });
+        }, mockServiceRegistry);
         const inputIndex = targetNode.findInputSlot('system');
 
         // Mock source nodes with different output types
@@ -943,7 +948,7 @@ describe('Strict connection typing', () => {
             inputs: { system: { base: 'union', subtypes: [{ base: 'str' }, { base: 'LLMChatMessage' }] } },
             outputs: {},
             params: []
-        });
+        }, mockServiceRegistry);
         const inputIndex = targetNode.findInputSlot('system');
 
         const anySource = { outputs: [{ type: 0 }] } as any; // 0 = Any
@@ -957,7 +962,7 @@ describe('Strict connection typing', () => {
             inputs: { input: { base: 'str' } },
             outputs: {},
             params: []
-        });
+        }, mockServiceRegistry);
         const inputIndex = targetNode.findInputSlot('input');
 
         const strSource = { outputs: [{ type: 'str' }] } as any;
@@ -975,7 +980,7 @@ describe('Strict connection typing', () => {
             inputs: { input: { base: 'Any' } },
             outputs: {},
             params: []
-        });
+        }, mockServiceRegistry);
         const inputIndex = targetNode.findInputSlot('input');
 
         const strSource = { outputs: [{ type: 'str' }] } as any;
@@ -992,7 +997,7 @@ describe('Strict connection typing', () => {
             inputs: { system: { base: 'union', subtypes: [{ base: 'str' }, { base: 'LLMChatMessage' }] } },
             outputs: {},
             params: []
-        });
+        }, mockServiceRegistry);
         const systemIndex = chatNode.findInputSlot('system');
 
         // Create source node with str output
@@ -1000,26 +1005,26 @@ describe('Strict connection typing', () => {
             inputs: {},
             outputs: { out: { base: 'str' } },
             params: []
-        });
+        }, mockServiceRegistry);
 
         // Create source node with LLMChatMessage output
         const msgSourceNode = new BaseCustomNode('MsgSource', {
             inputs: {},
             outputs: { out: { base: 'LLMChatMessage' } },
             params: []
-        });
+        }, mockServiceRegistry);
 
         // Create invalid source with int output
         const intSourceNode = new BaseCustomNode('IntSource', {
             inputs: {},
             outputs: { out: { base: 'int' } },
             params: []
-        });
+        }, mockServiceRegistry);
 
         // Test connections
-        expect(chatNode.onConnectInput(systemIndex, strSourceNode.outputs[0].type, strSourceNode.outputs[0], strSourceNode, 0)).toBe(true);
-        expect(chatNode.onConnectInput(systemIndex, msgSourceNode.outputs[0].type, msgSourceNode.outputs[0], msgSourceNode, 0)).toBe(true);
-        expect(chatNode.onConnectInput(systemIndex, intSourceNode.outputs[0].type, intSourceNode.outputs[0], intSourceNode, 0)).toBe(false);
+        expect(chatNode.onConnectInput(systemIndex, strSourceNode.outputs[0]?.type || 'str', strSourceNode.outputs[0], strSourceNode, 0)).toBe(true);
+        expect(chatNode.onConnectInput(systemIndex, msgSourceNode.outputs[0]?.type || 'LLMChatMessage', msgSourceNode.outputs[0], msgSourceNode, 0)).toBe(true);
+        expect(chatNode.onConnectInput(systemIndex, intSourceNode.outputs[0]?.type || 'int', intSourceNode.outputs[0], intSourceNode, 0)).toBe(false);
     });
 
     test('connection typing prevents invalid inputs across different node types', () => {
@@ -1028,7 +1033,7 @@ describe('Strict connection typing', () => {
             inputs: { value: { base: 'int' } },
             outputs: {},
             params: []
-        });
+        }, mockServiceRegistry);
         const valueIndex = numberNode.findInputSlot('value');
 
         const strSource = { outputs: [{ type: 'str' }] } as any;
@@ -1046,7 +1051,7 @@ describe('Strict connection typing', () => {
             inputs: { items: { base: 'list', subtype: { base: 'str' } } },
             outputs: {},
             params: []
-        });
+        }, mockServiceRegistry);
         const itemsIndex = listNode.findInputSlot('items');
 
         const strListSource = { outputs: [{ type: 'list<str>' }] } as any;
@@ -1076,7 +1081,7 @@ describe('PolygonUniverseNodeUI param restoration', () => {
             ],
         } as any;
 
-        const node = new PolygonUniverseNodeUI('PolygonUniverseNode', polygonMeta);
+        const node = new PolygonUniverseNodeUI('PolygonUniverseNode', polygonMeta, mockServiceRegistry);
         // Simulate a loaded graph with saved properties
         node.properties.market = 'stocks';
         node.properties.min_change_perc = 5;
@@ -1085,7 +1090,7 @@ describe('PolygonUniverseNodeUI param restoration', () => {
         node.properties.max_price = 100_000;
         node.properties.include_otc = false;
 
-        node.configure({}); // triggers sync
+        node.configure({ id: 'test', type: 'Test', pos: [0, 0], size: [200, 100], flags: {}, order: 0, mode: 0 }); // triggers sync
 
         // Expect labels preserved with units
         const labels = node.widgets!.map(w => String(w.name));
@@ -1101,10 +1106,10 @@ describe('PolygonUniverseNodeUI param restoration', () => {
             if ((w as any).paramName) widgetByParam[(w as any).paramName] = w;
         }
 
-        expect(widgetByParam.market.name).toMatch(/Market Type: stocks/);
-        expect(widgetByParam.min_change_perc.value).toBe(5);
-        expect(widgetByParam.min_volume.value).toBe(1_000_000);
-        expect(widgetByParam.min_price.value).toBe(1);
-        expect(widgetByParam.max_price.value).toBe(100_000);
+        expect(widgetByParam.market?.name).toMatch(/Market Type: stocks/);
+        expect(widgetByParam.min_change_perc?.value).toBe(5);
+        expect(widgetByParam.min_volume?.value).toBe(1_000_000);
+        expect(widgetByParam.min_price?.value).toBe(1);
+        expect(widgetByParam.max_price?.value).toBe(100_000);
     });
 });

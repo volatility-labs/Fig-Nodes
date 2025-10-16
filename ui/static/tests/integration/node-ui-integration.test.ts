@@ -64,26 +64,26 @@ describe('Node UI Integration Tests', () => {
             { name: 'comboParam', type: 'combo', options: ['A', 'B', 'C'], default: 'A' }
         ];
 
-        const node = new BaseCustomNode('TestNode', data);
+        const node = new BaseCustomNode('TestNode', data, null as any);
 
         // Verify widgets were created
         expect(node.widgets).toHaveLength(3);
-        expect(node.widgets![0].name).toBe('textParam: initial');
-        expect(node.widgets![1].type).toBe('number');
-        expect(node.widgets![2].type).toBe('button');
+        expect(node.widgets?.[0]?.name).toBe('textParam: initial');
+        expect(node.widgets?.[1]?.type).toBe('number');
+        expect(node.widgets?.[2]?.type).toBe('button');
 
         // Test widget callbacks
-        node.widgets![1].callback!(7);
+        node.widgets?.[1]?.callback?.(7);
         expect(node.properties.numParam).toBe(7);
 
         // Test sync
         node.properties.comboParam = 'B';
         node.syncWidgetValues();
-        expect(node.widgets![2].name).toBe('comboParam: B');
+        expect(node.widgets?.[2]?.name).toBe('comboParam: B');
     });
 
     test('LoggingNodeUI streaming and display integration', () => {
-        const node = new LoggingNodeUI('LogNode', baseData());
+        const node = new LoggingNodeUI('LogNode', baseData(), null as any);
 
         // Test streaming updates
         node.onStreamUpdate({ message: { content: 'Hello ' } });
@@ -97,17 +97,17 @@ describe('Node UI Integration Tests', () => {
         expect(node.displayText).toBe('Hello World');
 
         // Test copy functionality
-        const copyWidget = node.widgets!.find(w => w.name === '📋 Copy Log');
+        const copyWidget = node.widgets?.find(w => w.name === '📋 Copy Log');
         expect(copyWidget).toBeTruthy();
 
         if (copyWidget) {
-            copyWidget.callback!(null);
+            copyWidget.callback?.(null);
             expect((globalThis as any).navigator.clipboard.writeText).toHaveBeenCalledWith('Hello World');
         }
     });
 
     test('LoggingNodeUI textarea integration', () => {
-        const node = new LoggingNodeUI('LogNode', baseData());
+        const node = new LoggingNodeUI('LogNode', baseData(), null as any);
 
         // Mock graph and canvas
         const mockCanvasElement = document.createElement('canvas');
@@ -143,7 +143,7 @@ describe('Node UI Integration Tests', () => {
     });
 
     test('OllamaChatNodeUI streaming integration', () => {
-        const node = new OllamaChatNodeUI('ChatNode', baseData());
+        const node = new OllamaChatNodeUI('ChatNode', baseData(), null as any);
 
         // Test streaming
         node.onStreamUpdate({ message: { content: 'Hi' } });
@@ -158,7 +158,7 @@ describe('Node UI Integration Tests', () => {
     });
 
     test('TextInputNodeUI inline editor integration', () => {
-        const node = new TextInputNodeUI('TextNode', baseData());
+        const node = new TextInputNodeUI('TextNode', baseData(), null as any);
 
         // Test inline editor properties
         expect(node.displayResults).toBe(false);
@@ -176,19 +176,19 @@ describe('Node UI Integration Tests', () => {
             inputs: {},
             outputs: { out: { base: 'str' } },
             params: []
-        });
+        }, null as any);
 
         const targetNode = new BaseCustomNode('Target', {
             inputs: { input: { base: 'str' } },
             outputs: {},
             params: []
-        });
+        }, null as any);
 
         const unionTargetNode = new BaseCustomNode('UnionTarget', {
             inputs: { input: { base: 'union', subtypes: [{ base: 'str' }, { base: 'int' }] } },
             outputs: {},
             params: []
-        });
+        }, null as any);
 
         // Test valid connection
         const inputIndex = targetNode.findInputSlot('input');
@@ -200,7 +200,7 @@ describe('Node UI Integration Tests', () => {
             inputs: {},
             outputs: { out: { base: 'int' } },
             params: []
-        });
+        }, null as any);
         expect(targetNode.onConnectInput(inputIndex, 'int', intSourceNode.outputs[0], intSourceNode, 0)).toBe(false);
 
         // Test union connection
@@ -210,7 +210,7 @@ describe('Node UI Integration Tests', () => {
     });
 
     test('Node display and formatting integration', () => {
-        const node = new LoggingNodeUI('LogNode', baseData());
+        const node = new LoggingNodeUI('LogNode', baseData(), null as any);
 
         // Test different formatting modes
         (node as any).properties = { format: 'json' };
@@ -227,7 +227,7 @@ describe('Node UI Integration Tests', () => {
     });
 
     test('Node error handling integration', () => {
-        const node = new BaseCustomNode('TestNode', baseData());
+        const node = new BaseCustomNode('TestNode', baseData(), {} as any);
 
         // Test error setting
         node.setError('Test error');
@@ -240,7 +240,7 @@ describe('Node UI Integration Tests', () => {
     });
 
     test('Node progress integration', () => {
-        const node = new BaseCustomNode('TestNode', baseData());
+        const node = new BaseCustomNode('TestNode', baseData(), {} as any);
 
         // Test progress setting
         node.setProgress(50, 'Half done');
@@ -266,7 +266,7 @@ describe('Node UI Integration Tests', () => {
     });
 
     test('Node lifecycle integration', () => {
-        const node = new LoggingNodeUI('LogNode', baseData());
+        const node = new LoggingNodeUI('LogNode', baseData(), null as any);
 
         // Mock lifecycle methods
         const mockEnsure = vi.fn();
@@ -306,7 +306,7 @@ describe('Node UI Integration Tests', () => {
             { name: 'dropdownParam', type: 'combo', options: ['A', 'B', 'C'], default: 'A' }
         ];
 
-        const node = new BaseCustomNode('TestNode', data);
+        const node = new BaseCustomNode('TestNode', data, null as any);
 
         // Test initial values
         expect(node.properties.syncParam).toBe(10);
@@ -318,7 +318,7 @@ describe('Node UI Integration Tests', () => {
 
         // Test sync
         node.syncWidgetValues();
-        expect(node.widgets![0].value).toBe(20);
-        expect(node.widgets![1].name).toBe('dropdownParam: B');
+        expect(node.widgets?.[0]?.value).toBe(20);
+        expect(node.widgets?.[1]?.name).toBe('dropdownParam: B');
     });
 });

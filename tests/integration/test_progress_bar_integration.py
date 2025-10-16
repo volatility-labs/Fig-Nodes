@@ -345,14 +345,18 @@ async def test_real_polygon_batch_progress_reporting():
             assert "ohlcv_bundle" in result
             assert len(result["ohlcv_bundle"]) == 5
 
-            # Verify progress updates - should have 5 updates (one per symbol)
-            assert len(progress_updates) == 5, f"Expected 5 progress updates, got {len(progress_updates)}"
+            # Verify progress updates - should have 10 updates (2 per symbol: pre and post)
+            assert len(progress_updates) == 10, f"Expected 10 progress updates, got {len(progress_updates)}"
 
             # Verify progress values are correct
+            # First 5 updates are pre-updates (all 0.0, "0/5"), then 5 post-updates (20.0, 40.0, 60.0, 80.0, 100.0)
+            expected_progresses = [0.0, 0.0, 0.0, 0.0, 0.0, 20.0, 40.0, 60.0, 80.0, 100.0]
+            expected_texts = ["0/5", "0/5", "0/5", "0/5", "0/5", "1/5", "2/5", "3/5", "4/5", "5/5"]
+            
             for i, update in enumerate(progress_updates):
-                expected_progress = ((i + 1) / 5) * 100
+                expected_progress = expected_progresses[i]
                 assert abs(update["progress"] - expected_progress) < 0.1, f"Progress should be ~{expected_progress}, got {update['progress']}"
-                expected_text = f"{i + 1}/5"
+                expected_text = expected_texts[i]
                 assert update["text"] == expected_text, f"Progress text should be '{expected_text}', got '{update['text']}'"
 
             # Verify final progress is 100%

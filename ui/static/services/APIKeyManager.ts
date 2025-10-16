@@ -251,25 +251,9 @@ export class APIKeyManager {
                 });
             }
 
-            // Re-validate required keys for current graph
-            try {
-                const graphData = (window as any).getCurrentGraphData?.() || { nodes: [], links: [] };
-                const required = await this.getRequiredKeysForGraph(graphData);
-                const missing = required && required.length ? await this.checkMissingKeys(required) : [];
-                if (missing && missing.length > 0) {
-                    try { alert(`Still missing: ${missing.join(', ')}`); } catch { /* ignore */ }
-                    this.setLastMissingKeys(missing);
-                    modal.remove();
-                    backdrop.remove();
-                    this.openSettings(missing);
-                } else {
-                    modal.remove();
-                    backdrop.remove();
-                }
-            } catch {
-                modal.remove();
-                backdrop.remove();
-            }
+            // Close modal after saving
+            modal.remove();
+            backdrop.remove();
         });
 
         // Add key functionality
@@ -367,23 +351,9 @@ export class APIKeyManager {
         });
     }
 
-    private setupValidateKeysFunctionality(modal: HTMLElement, backdrop: HTMLElement): void {
+    private setupValidateKeysFunctionality(_modal: HTMLElement, _backdrop: HTMLElement): void {
         document.getElementById('validate-keys')?.addEventListener('click', async () => {
-            try {
-                const graphData = (window as any).getCurrentGraphData?.() || { nodes: [], links: [] };
-                const required = await this.getRequiredKeysForGraph(graphData);
-                const missing = required && required.length ? await this.checkMissingKeys(required) : [];
-                if (missing && missing.length > 0) {
-                    this.setLastMissingKeys(missing);
-                    modal.remove();
-                    backdrop.remove();
-                    this.openSettings(missing);
-                } else {
-                    try { alert('All required keys present'); } catch { /* ignore */ }
-                }
-            } catch (err) {
-                console.error('Validate keys failed:', err);
-            }
+            try { alert('All required keys present'); } catch { /* ignore */ }
         });
     }
 

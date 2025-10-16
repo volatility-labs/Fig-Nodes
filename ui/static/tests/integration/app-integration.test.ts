@@ -26,7 +26,7 @@ vi.mock('../../services/UIModuleLoader', () => ({
 }));
 
 describe('App Integration Tests', () => {
-    let dom: JSDOM;
+    let dom: any;
 
     beforeEach(() => {
         vi.restoreAllMocks();
@@ -117,7 +117,7 @@ describe('App Integration Tests', () => {
             send(_data: string) { /* capture if needed */ }
             close() { this.onclose && this.onclose({ code: 1000, reason: 'close' }); }
         }
-        (globalThis as any).WebSocket = MockWS as any;
+        globalThis.WebSocket = MockWS as typeof WebSocket;
 
         // Import and initialize app
         const mod = await import('../../app.ts');
@@ -141,18 +141,18 @@ describe('App Integration Tests', () => {
 
     test('file operations integration', async () => {
         // Mock fetch
-        (globalThis as any).fetch = vi.fn().mockResolvedValue({
+        globalThis.fetch = vi.fn().mockResolvedValue({
             ok: true,
             json: async () => ({ nodes: {} })
         });
 
         // Mock URL and Blob
-        (globalThis as any).URL = {
+        globalThis.URL = {
             createObjectURL: vi.fn(() => 'blob:test'),
             revokeObjectURL: vi.fn()
         };
 
-        (globalThis as any).Blob = vi.fn().mockImplementation((parts) => ({
+        globalThis.Blob = vi.fn().mockImplementation((parts) => ({
             text: vi.fn().mockResolvedValue(parts[0])
         }));
 
@@ -168,14 +168,14 @@ describe('App Integration Tests', () => {
             if (tagName === 'a') return mockAnchor;
             const element = originalCreateElement.call(document, tagName);
             if (!element.style) {
-                element.style = {};
+                element.style = {} as CSSStyleDeclaration;
             }
             return element;
         });
 
         // Initialize app
         await import('../../app.ts');
-        document.dispatchEvent(new (window as any).Event('DOMContentLoaded'));
+        document.dispatchEvent(new window.Event('DOMContentLoaded'));
         await new Promise((r) => setTimeout(r, 50));
 
         // Test save functionality
@@ -188,7 +188,7 @@ describe('App Integration Tests', () => {
 
     test('autosave integration', async () => {
         // Mock fetch
-        (globalThis as any).fetch = vi.fn().mockResolvedValue({
+        globalThis.fetch = vi.fn().mockResolvedValue({
             ok: true,
             json: async () => ({ nodes: {} })
         });
@@ -198,11 +198,11 @@ describe('App Integration Tests', () => {
             getItem: vi.fn(),
             setItem: vi.fn()
         };
-        (globalThis as any).localStorage = mockLocalStorage;
+        globalThis.localStorage = mockLocalStorage;
 
         // Initialize app
         await import('../../app.ts');
-        document.dispatchEvent(new (window as any).Event('DOMContentLoaded'));
+        document.dispatchEvent(new window.Event('DOMContentLoaded'));
         await new Promise((r) => setTimeout(r, 50));
 
         // Trigger autosave via beforeunload
@@ -214,14 +214,14 @@ describe('App Integration Tests', () => {
 
     test('link mode integration', async () => {
         // Mock fetch
-        (globalThis as any).fetch = vi.fn().mockResolvedValue({
+        globalThis.fetch = vi.fn().mockResolvedValue({
             ok: true,
             json: async () => ({ nodes: {} })
         });
 
         // Initialize app
         await import('../../app.ts');
-        document.dispatchEvent(new (window as any).Event('DOMContentLoaded'));
+        document.dispatchEvent(new window.Event('DOMContentLoaded'));
         await new Promise((r) => setTimeout(r, 50));
 
         // Check if link mode button was created
@@ -241,18 +241,18 @@ describe('App Integration Tests', () => {
 
     test('API key management integration', async () => {
         // Mock fetch
-        (globalThis as any).fetch = vi.fn().mockResolvedValue({
+        globalThis.fetch = vi.fn().mockResolvedValue({
             ok: true,
             json: async () => ({ nodes: {} })
         });
 
         // Mock alert
         const mockAlert = vi.fn();
-        (globalThis as any).alert = mockAlert;
+        globalThis.alert = mockAlert;
 
         // Initialize app
         await import('../../app.ts');
-        document.dispatchEvent(new (window as any).Event('DOMContentLoaded'));
+        document.dispatchEvent(new window.Event('DOMContentLoaded'));
         await new Promise((r) => setTimeout(r, 50));
 
         // Check if API keys button was created
@@ -279,7 +279,7 @@ describe('App Integration Tests', () => {
 
         // Initialize app
         await import('../../app.ts');
-        document.dispatchEvent(new (window as any).Event('DOMContentLoaded'));
+        document.dispatchEvent(new window.Event('DOMContentLoaded'));
         await new Promise((r) => setTimeout(r, 50));
 
         // Test palette elements exist
@@ -290,14 +290,14 @@ describe('App Integration Tests', () => {
 
     test('progress bar integration', async () => {
         // Mock fetch
-        (globalThis as any).fetch = vi.fn().mockResolvedValue({
+        globalThis.fetch = vi.fn().mockResolvedValue({
             ok: true,
             json: async () => ({ nodes: {} })
         });
 
         // Initialize app
         await import('../../app.ts');
-        document.dispatchEvent(new (window as any).Event('DOMContentLoaded'));
+        document.dispatchEvent(new window.Event('DOMContentLoaded'));
         await new Promise((r) => setTimeout(r, 50));
 
         // Test progress bar elements
@@ -317,14 +317,14 @@ describe('App Integration Tests', () => {
 
     test('graph name management integration', async () => {
         // Mock fetch
-        (globalThis as any).fetch = vi.fn().mockResolvedValue({
+        globalThis.fetch = vi.fn().mockResolvedValue({
             ok: true,
             json: async () => ({ nodes: {} })
         });
 
         // Initialize app
         await import('../../app.ts');
-        document.dispatchEvent(new (window as any).Event('DOMContentLoaded'));
+        document.dispatchEvent(new window.Event('DOMContentLoaded'));
         await new Promise((r) => setTimeout(r, 50));
 
         // Test graph name element
@@ -335,14 +335,14 @@ describe('App Integration Tests', () => {
 
     test('new graph functionality integration', async () => {
         // Mock fetch
-        (globalThis as any).fetch = vi.fn().mockResolvedValue({
+        globalThis.fetch = vi.fn().mockResolvedValue({
             ok: true,
             json: async () => ({ nodes: {} })
         });
 
         // Initialize app
         await import('../../app.ts');
-        document.dispatchEvent(new (window as any).Event('DOMContentLoaded'));
+        document.dispatchEvent(new window.Event('DOMContentLoaded'));
         await new Promise((r) => setTimeout(r, 50));
 
         // Test new button
@@ -366,12 +366,12 @@ describe('App Integration Tests', () => {
 
         // Mock alert
         const mockAlert = vi.fn();
-        (globalThis as any).alert = mockAlert;
+        globalThis.alert = mockAlert;
 
         // Initialize app with error handling
         try {
             await import('../../app.ts');
-            document.dispatchEvent(new (window as any).Event('DOMContentLoaded'));
+            document.dispatchEvent(new window.Event('DOMContentLoaded'));
             await new Promise((r) => setTimeout(r, 50));
         } catch (error) {
             // Expected to fail due to fetch error, but we should handle it gracefully

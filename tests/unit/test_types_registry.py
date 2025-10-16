@@ -1,6 +1,6 @@
 import pytest
 from typing import Dict, Any, Type
-from core.types_registry import AssetClass, InstrumentType, Provider, AssetSymbol, TYPE_REGISTRY, get_type, register_type, register_asset_class, register_provider, register_indicator_type, IndicatorType, LLMChatMessage
+from core.types_registry import AssetClass, InstrumentType, Provider, AssetSymbol, TYPE_REGISTRY, get_type, register_type, IndicatorType, LLMChatMessage
 import enum
 from enum import auto
 import logging
@@ -58,29 +58,8 @@ def test_register_type_duplicate():
     with pytest.warns(UserWarning, match="Type DuplicateType already registered"):
         register_type("DuplicateType", str)
 
-def test_register_asset_class_new():
-    new_class = register_asset_class("FOREX")
-    assert hasattr(AssetClass, "FOREX")
-    assert new_class.name == "FOREX"
-
-def test_register_asset_class_existing():
-    existing = register_asset_class("crypto")
-    assert existing == AssetClass.CRYPTO
-
-def test_register_provider_new():
-    new_provider = register_provider("COINBASE")
-    assert hasattr(Provider, "COINBASE")
-    assert new_provider.name == "COINBASE"
-    assert new_provider == enum.auto()  # Test sentinel equality
-
-def test_register_provider_existing():
-    existing = register_provider("binance")
-    assert existing == Provider.BINANCE
-
-def test_register_indicator_type_new():
-    new_type = register_indicator_type("STOCH")
-    assert hasattr(IndicatorType, "STOCH")
-    assert new_type.name == "STOCH"
+# Tests for enum registration functions removed - these functions were removed
+# to simplify the codebase and reduce complexity
 
 def test_union_type_registration():
     from typing import Union
@@ -126,11 +105,11 @@ def test_asset_symbol_hash_equality():
     assert hash(sym1) == hash(sym2)
     assert sym1 == sym2  # Assuming __eq__ is implemented via frozen dataclass
 
-# Test sentinel for Provider
-def test_provider_sentinel_equality():
-    p1 = register_provider("TEST1")
-    p2 = enum.auto()
-    assert p1 == p2
+# Test Provider enum values
+def test_provider_enum_values():
+    assert Provider.BINANCE.name == "BINANCE"
+    assert Provider.POLYGON.name == "POLYGON"
+    assert len(list(Provider)) == 2
 
 # Test AssetSymbol hashability with nested metadata
 def test_asset_symbol_hash_with_nested_metadata():

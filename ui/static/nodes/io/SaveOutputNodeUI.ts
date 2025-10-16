@@ -5,8 +5,8 @@ export default class SaveOutputNodeUI extends BaseCustomNode {
     private savedFilePath: string = '';
     private statusMessage: string = '';
 
-    constructor(title: string, data: any) {
-        super(title, data);
+    constructor(title: string, data: any, serviceRegistry: any) {
+        super(title, data, serviceRegistry);
 
         // Set appropriate size for displaying status
         this.size = [300, 120];
@@ -73,9 +73,9 @@ export default class SaveOutputNodeUI extends BaseCustomNode {
 
             // Truncate if too long
             const truncatedPath = this.wrapText(pathText, maxWidth, ctx)[0];
-            if (truncatedPath.length < pathText.length) {
+            if (truncatedPath && truncatedPath.length < pathText.length) {
                 ctx.fillText(truncatedPath.substring(0, truncatedPath.length - 3) + '...', padding, pathY);
-            } else {
+            } else if (truncatedPath) {
                 ctx.fillText(truncatedPath, padding, pathY);
             }
         }

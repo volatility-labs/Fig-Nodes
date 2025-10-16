@@ -1,27 +1,28 @@
 
 export class NodeTypeSystem {
-    static parseType(typeInfo: any): string | number {
+    static parseType(typeInfo: unknown): string | number {
         if (!typeInfo) {
             return 0; // LiteGraph wildcard for "accept any"
         }
-        const baseName = typeof typeInfo.base === 'string' ? typeInfo.base : String(typeInfo.base);
+        const typeInfoObj = typeInfo as Record<string, unknown>;
+        const baseName = typeof typeInfoObj.base === 'string' ? typeInfoObj.base : String(typeInfoObj.base);
         if (baseName === 'Any' || baseName === 'typing.Any' || baseName.toLowerCase() === 'any') {
             return 0; // LiteGraph wildcard
         }
-        if (baseName === 'union' && typeInfo.subtypes) {
-            const subs = typeInfo.subtypes.map((st: any) => this.parseType(st)).join(' | ');
+        if (baseName === 'union' && typeInfoObj.subtypes) {
+            const subs = (typeInfoObj.subtypes as unknown[]).map((st) => this.parseType(st)).join(' | ');
             return subs;
         }
         const type = baseName;
-        if (typeInfo.subtype) {
-            const sub = this.parseType(typeInfo.subtype);
+        if (typeInfoObj.subtype) {
+            const sub = this.parseType(typeInfoObj.subtype);
             return `${type}<${sub}>`;
-        } else if (typeInfo.subtypes && typeInfo.subtypes.length > 0) {
-            const subs = typeInfo.subtypes.map((st: any) => this.parseType(st)).join(', ');
+        } else if (typeInfoObj.subtypes && Array.isArray(typeInfoObj.subtypes) && typeInfoObj.subtypes.length > 0) {
+            const subs = (typeInfoObj.subtypes as unknown[]).map((st) => this.parseType(st)).join(', ');
             return `${type}<${subs}>`;
-        } else if (typeInfo.key_type && typeInfo.value_type) {
-            const key = this.parseType(typeInfo.key_type);
-            const val = this.parseType(typeInfo.value_type);
+        } else if (typeInfoObj.key_type && typeInfoObj.value_type) {
+            const key = this.parseType(typeInfoObj.key_type);
+            const val = this.parseType(typeInfoObj.value_type);
             return `dict<${key}, ${val}>`;
         }
         return type;
@@ -40,7 +41,7 @@ export class NodeTypeSystem {
         return inputType === 0 || outputType === 0 || inputType === outputType;
     }
 
-    static getDefaultValue(param: string): any {
+    static getDefaultValue(param: string): unknown {
         const lowerParam = param.toLowerCase();
         if (lowerParam.includes('days') || lowerParam.includes('period')) return 14;
         if (lowerParam.includes('bool')) return true;

@@ -434,14 +434,17 @@ async def test_orb_filter_integration():
 
     node = OrbFilterNode("orb_id", {})
 
-    bundle = {"AAPL": mock_ohlcv_data}
+    # Create AssetSymbol for AAPL
+    from core.types_registry import AssetSymbol, AssetClass
+    aapl_symbol = AssetSymbol("AAPL", AssetClass.STOCKS)
+    bundle = {aapl_symbol: mock_ohlcv_data}
 
     inputs = {"ohlcv_bundle": bundle, "api_key": "test_api_key"}
 
     with patch("core.api_key_vault.APIKeyVault.get", return_value="test_key"), \
-         patch("services.polygon_service.fetch_bars", new_callable=AsyncMock) as mock_fetch:
+         patch("nodes.core.market.filters.orb_filter_node.fetch_bars", new_callable=AsyncMock) as mock_fetch:
         mock_fetch.return_value = []
         result = await node.execute(inputs)
 
     assert "filtered_ohlcv_bundle" in result
-    assert "AAPL" not in result["filtered_ohlcv_bundle"]
+    assert aapl_symbol not in result["filtered_ohlcv_bundle"]

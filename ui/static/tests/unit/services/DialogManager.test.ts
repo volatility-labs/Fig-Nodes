@@ -6,7 +6,7 @@ describe('DialogManager', () => {
     let mockElement: any;
 
     beforeEach(() => {
-        dialogManager = new DialogManager();
+        dialogManager = new DialogManager(null as any);
 
         mockElement = {
             className: '',
@@ -65,7 +65,7 @@ describe('DialogManager', () => {
     test('showQuickPrompt creates dialog with correct elements', () => {
         const callback = vi.fn();
 
-        dialogManager.showQuickPrompt('Test Title', 'initial value', callback, { type: 'text' });
+        dialogManager.showPrompt('Test Title', 'initial value', false, callback);
 
         expect(document.createElement).toHaveBeenCalledWith('div');
         expect(document.createElement).toHaveBeenCalledWith('input');
@@ -76,7 +76,7 @@ describe('DialogManager', () => {
     test('showQuickPrompt handles numeric input', () => {
         const callback = vi.fn();
 
-        dialogManager.showQuickPrompt('Number Input', 42, callback, { type: 'number' });
+        dialogManager.showPrompt('Number Input', 42, false, callback);
 
         // Should create number input
         expect(document.createElement).toHaveBeenCalledWith('input');
@@ -85,7 +85,7 @@ describe('DialogManager', () => {
     test('showQuickPrompt handles text input', () => {
         const callback = vi.fn();
 
-        dialogManager.showQuickPrompt('Text Input', 'hello', callback, { type: 'text' });
+        dialogManager.showPrompt('Text Input', 'hello', false, callback);
 
         // Should create text input
         expect(document.createElement).toHaveBeenCalledWith('input');
@@ -95,7 +95,7 @@ describe('DialogManager', () => {
         const callback = vi.fn();
         const showQuickValuePromptSpy = vi.spyOn(dialogManager, 'showQuickValuePrompt');
 
-        dialogManager.showCustomPrompt('Title', 'default', false, callback);
+        dialogManager.showPrompt('Title', 'default', false, callback);
 
         expect(showQuickValuePromptSpy).toHaveBeenCalledWith('Title', 'default', false, expect.any(Function));
     });
@@ -103,7 +103,7 @@ describe('DialogManager', () => {
     test('showCustomPrompt creates password dialog', () => {
         const callback = vi.fn();
 
-        dialogManager.showCustomPrompt('Password', 'secret', true, callback);
+        dialogManager.showPrompt('Password', 'secret', true, callback);
 
         expect(document.createElement).toHaveBeenCalledWith('div');
         expect(document.createElement).toHaveBeenCalledWith('label');
@@ -228,7 +228,7 @@ describe('DialogManager', () => {
         const mockEvent = { clientX: 150, clientY: 250 } as MouseEvent;
 
         dialogManager.setLastMouseEvent(mockEvent);
-        dialogManager.showQuickPrompt('Title', 'value', callback);
+        dialogManager.showPrompt('Title', 'value', false, callback);
 
         // Should position dialog at mouse location
         expect(document.body.appendChild).toHaveBeenCalled();

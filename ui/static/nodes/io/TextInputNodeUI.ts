@@ -5,8 +5,8 @@ export default class TextInputNodeUI extends BaseCustomNode {
     private textareaEl: HTMLTextAreaElement | null = null;
     private lastCanvasRef: any = null;
 
-    constructor(title: string, data: any) {
-        super(title, data);
+    constructor(title: string, data: any, serviceRegistry: any) {
+        super(title, data, serviceRegistry);
         this.resizable = true;
         this.size = [360, 200];
 
@@ -65,7 +65,7 @@ export default class TextInputNodeUI extends BaseCustomNode {
     // Do not override mouse handling; textarea will capture events itself
 
     private ensureTextarea() {
-        const graph: any = (this as any).graph;
+        const graph = this.graph;
         if (!graph) return;
         const canvas = graph.list_of_graphcanvas && graph.list_of_graphcanvas[0];
         if (!canvas || !canvas.canvas) return;
@@ -126,7 +126,7 @@ export default class TextInputNodeUI extends BaseCustomNode {
 
     private positionTextarea(localX: number, localY: number, localW: number, localH: number) {
         if (!this.textareaEl) return;
-        const graph: any = (this as any).graph;
+        const graph = this.graph;
         const canvas = graph && graph.list_of_graphcanvas && graph.list_of_graphcanvas[0];
         if (!canvas || !canvas.canvas) return;
 

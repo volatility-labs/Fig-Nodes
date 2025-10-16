@@ -54,12 +54,12 @@ export function setupPalette(allItems: { name: string; category: string; descrip
         renderList(filtered);
         if (event) {
             const p = canvas.convertEventToCanvasOffset(event) as unknown as number[];
-            lastCanvasPos = [p[0], p[1]];
+            lastCanvasPos = [p[0] || 0, p[1] || 0];
         } else {
             const rect = canvas.canvas.getBoundingClientRect();
             const fakeEvent = { clientX: rect.left + rect.width / 2, clientY: rect.top + rect.height / 2 } as MouseEvent;
             const p = canvas.convertEventToCanvasOffset(fakeEvent) as unknown as number[];
-            lastCanvasPos = [p[0], p[1]];
+            lastCanvasPos = [p[0] || 0, p[1] || 0];
         }
         palette.style.position = '';
         palette.style.left = '';
@@ -80,7 +80,7 @@ export function setupPalette(allItems: { name: string; category: string; descrip
         const node = LiteGraph.createNode(item.name);
         if (node) {
             node.pos = [lastCanvasPos[0], lastCanvasPos[1]];
-            graph.add(node as any);
+            graph.add(node);
             canvas.draw(true, true);
         }
         closePalette();

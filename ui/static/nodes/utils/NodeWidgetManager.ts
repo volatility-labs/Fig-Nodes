@@ -1,21 +1,26 @@
-import { LGraphNode } from '@comfyorg/litegraph';
+import { LGraphNode, LiteGraph } from '@comfyorg/litegraph';
+import { NodeProperty } from '@comfyorg/litegraph/dist/LGraphNode';
+import { Dictionary } from '@comfyorg/litegraph/dist/interfaces';
 import { NodeTypeSystem } from './NodeTypeSystem';
+import { ServiceRegistry } from '../../services/ServiceRegistry';
 
 export class NodeWidgetManager {
-    private node: LGraphNode & { properties: { [key: string]: any } };
+    private node: LGraphNode & { properties: Dictionary<NodeProperty | undefined> };
+    private serviceRegistry: ServiceRegistry;
 
-    constructor(node: LGraphNode & { properties: { [key: string]: any } }) {
+    constructor(node: LGraphNode & { properties: Dictionary<NodeProperty | undefined> }, serviceRegistry: ServiceRegistry) {
         this.node = node;
+        this.serviceRegistry = serviceRegistry;
     }
 
-    createWidgetsFromParams(params: any[]) {
-        params.forEach((param: any) => {
+    createWidgetsFromParams(params: Array<{ name: string; type?: string; default?: unknown; options?: unknown[]; min?: number; max?: number; step?: number; precision?: number }>) {
+        params.forEach((param) => {
             let paramType = param.type;
             if (!paramType) {
                 paramType = NodeTypeSystem.determineParamType(param.name);
             }
             const defaultValue = param.default !== undefined ? param.default : NodeTypeSystem.getDefaultValue(param.name);
-            this.node.properties[param.name] = defaultValue;
+            this.node.properties[param.name] = defaultValue as NodeProperty | undefined;
 
             const typeLower = String(paramType || '').toLowerCase();
 
@@ -33,17 +38,18 @@ export class NodeWidgetManager {
         });
 
         // Auto-resize node if it has a textarea widget
-        if (params.some((p: any) => p.type === 'textarea')) {
-            (this.node as any).size[1] = 120; // Default height for nodes with a textarea
+        if (params.some((p) => p.type === 'textarea')) {
+            (this.node as { size: [number, number] }).size[1] = 120; // Default height for nodes with a textarea
         }
     }
 
-    private createTextWidget(param: any) {
+    private createTextWidget(param: { name: string; default?: unknown }) {
         const isSecret = param.name.toLowerCase().includes('key') || param.name.toLowerCase().includes('password');
         const displayValue = isSecret ? (param.default ? '********' : 'Not set') : param.default;
         const initialLabel = `${param.name}: ${displayValue}`;
-        const widget = this.node.addWidget('button', initialLabel, param.default, () => {
-            this.showCustomPrompt('Value', this.node.properties[param.name], isSecret, (newVal: string | null) => {
+        const widget = this.node.addWidget('button', initialLabel, param.default as string | undefined, () => {
+            const currentValue = this.node.properties[param.name];
+            this.showCustomPrompt('Value', typeof currentValue === 'string' ? currentValue : String(currentValue || ''), isSecret, (newVal: string | null) => {
                 if (newVal !== null) {
                     this.node.properties[param.name] = newVal;
                     const shown = isSecret ? (newVal ? '********' : 'Not set') : (typeof newVal === 'string' ? (newVal.substring(0, 15) + (newVal.length > 15 ? '...' : '')) : String(newVal));
@@ -51,67 +57,67 @@ export class NodeWidgetManager {
                 }
             });
         }, {});
-        (widget as any).paramName = param.name;
+        (widget as unknown as { paramName: string }).paramName = param.name;
     }
 
-    private createTextareaWidget(param: any) {
-        const widget = this.node.addWidget('text', param.name, param.default, (v) => {
-            this.node.properties[param.name] = v;
+    private createTextareaWidget(param: { name: string; default?: unknown }) {
+        const widget = this.node.addWidget('text', param.name, param.default as string, (v: unknown) => {
+            this.node.properties[param.name] = v as NodeProperty | undefined;
         }, { multiline: true });
-        (widget as any).paramName = param.name;
+        (widget as unknown as { paramName: string }).paramName = param.name;
     }
 
-    private createNumberWidget(param: any) {
+    private createNumberWidget(param: { name: string; type?: string; default?: unknown; min?: number; max?: number; step?: number; precision?: number }) {
         const isInteger = (String(param.type || '').toLowerCase() === 'integer' || String(param.type || '').toLowerCase() === 'int');
         const stepFromParam = (typeof param.step === 'number' && Number.isFinite(param.step)) ? param.step : (isInteger ? 1 : 0.1);
         const precisionFromParam = (typeof param.precision === 'number' && Number.isFinite(param.precision)) ? param.precision : (isInteger ? 0 : (stepFromParam < 1 ? 2 : 0));
-        const opts = {
-            min: (typeof param.min === 'number') ? param.min : undefined,
-            max: (typeof param.max === 'number') ? param.max : undefined,
-            step: stepFromParam,
-            precision: precisionFromParam,
-        };
-        const widget = this.node.addWidget('number', param.name, param.default, (v) => {
+        const opts: any = {};
+        if (typeof param.min === 'number') opts.min = param.min;
+        if (typeof param.max === 'number') opts.max = param.max;
+        opts.step = stepFromParam;
+        opts.precision = precisionFromParam;
+        const widget = this.node.addWidget('number', param.name, param.default as number, (v: unknown) => {
             let final = v;
             if (isInteger) {
                 const n = Number(v);
                 final = Number.isFinite(n) ? Math.round(n) : this.node.properties[param.name];
             }
-            this.node.properties[param.name] = final;
-            widget.value = final;
+            this.node.properties[param.name] = final as NodeProperty | undefined;
+            widget.value = final as number;
             this.node.setDirtyCanvas(true, true);
         }, opts);
-        widget.value = this.node.properties[param.name];
-        (widget as any).paramName = param.name;
+        widget.value = this.node.properties[param.name] as number;
+        (widget as unknown as { paramName: string }).paramName = param.name;
     }
 
-    private createComboWidget(param: any) {
+    private createComboWidget(param: { name: string; options?: unknown[] }) {
         const initialOptions = param.options || [];
         const widget = this.node.addWidget('button', `${param.name}: ${this.formatComboValue(this.node.properties[param.name])}`, '', () => {
-            const dynamicValues = (widget as any).options?.values;
-            const opts: any[] = Array.isArray(dynamicValues) && dynamicValues.length >= 0 ? dynamicValues : initialOptions;
-            this.showCustomDropdown(param.name, opts, (selectedValue: any) => {
-                this.node.properties[param.name] = selectedValue;
+            const dynamicValues = (widget as { options?: { values?: unknown[] } }).options?.values;
+            const opts: unknown[] = Array.isArray(dynamicValues) && dynamicValues.length >= 0 ? dynamicValues : initialOptions;
+            this.showCustomDropdown(param.name, opts, (selectedValue: unknown) => {
+                this.node.properties[param.name] = selectedValue as NodeProperty | undefined;
                 widget.name = `${param.name}: ${this.formatComboValue(selectedValue)}`;
                 this.node.setDirtyCanvas(true, true);
             });
         }, {});
-        (widget as any).options = { values: initialOptions };
-        (widget as any).paramName = param.name;
+        (widget as unknown as { options: { values: unknown[] }; paramName: string }).options = { values: initialOptions };
+        (widget as unknown as { options: { values: unknown[] }; paramName: string }).paramName = param.name;
     }
 
-    private createDefaultWidget(param: any) {
-        const widget = this.node.addWidget('text', param.name, param.default, (v) => {
-            this.node.properties[param.name] = v;
+    private createDefaultWidget(param: { name: string; default?: unknown }) {
+        const widget = this.node.addWidget('text', param.name, param.default as string, (v: unknown) => {
+            this.node.properties[param.name] = v as NodeProperty | undefined;
         }, {});
-        (widget as any).paramName = param.name;
+        (widget as unknown as { paramName: string }).paramName = param.name;
     }
 
     syncWidgetValues() {
-        if (!(this.node as any).widgets) return;
-        (this.node as any).widgets.forEach((widget: any) => {
-            const explicitName = (widget as any).paramName;
-            const parsedFromLabel = (widget && widget.options && typeof widget.name === 'string') ? widget.name.split(':')[0].trim() : widget?.name;
+        const nodeWithWidgets = this.node as { widgets?: Array<{ type: string; name: string; value: unknown; options?: { values?: unknown[] }; paramName?: string }> };
+        if (!nodeWithWidgets.widgets) return;
+        nodeWithWidgets.widgets.forEach((widget) => {
+            const explicitName = widget.paramName;
+            const parsedFromLabel = (widget && widget.options && typeof widget.name === 'string') ? widget.name.split(':')[0]?.trim() : widget?.name;
             const paramKey = explicitName || parsedFromLabel;
 
             if (!paramKey) return;
@@ -134,9 +140,9 @@ export class NodeWidgetManager {
 
 
     private showCustomPrompt(title: string, defaultValue: string, isPassword: boolean, callback: (value: string | null) => void) {
-        const dialogManager = (window as any).dialogManager;
-        if (dialogManager) {
-            dialogManager.showCustomPrompt(title, defaultValue, isPassword, callback);
+        const dialogManager = this.serviceRegistry.get('dialogManager');
+        if (dialogManager && typeof dialogManager.showPrompt === 'function') {
+            dialogManager.showPrompt(title, defaultValue, isPassword, callback);
         } else {
             // Fallback to simple prompt
             const value = prompt(title, defaultValue);
@@ -144,34 +150,52 @@ export class NodeWidgetManager {
         }
     }
 
-    private showQuickValuePrompt(labelText: string, defaultValue: string | number, numericOnly: boolean, callback: (value: string | null) => void, position?: { x: number; y: number }) {
-        const dialogManager = (window as any).dialogManager;
-        if (dialogManager) {
-            dialogManager.showQuickValuePrompt(labelText, defaultValue, numericOnly, callback, position);
-        } else {
-            // Fallback to simple prompt
-            const value = prompt(labelText, String(defaultValue));
-            callback(value);
-        }
-    }
 
-    formatComboValue(value: any): string {
+    formatComboValue(value: unknown): string {
         if (typeof value === 'boolean') {
             return value ? 'true' : 'false';
         }
         return String(value);
     }
 
-    private showCustomDropdown(paramName: string, options: any[], callback: (value: any) => void) {
-        const dialogManager = (window as any).dialogManager;
-        if (dialogManager) {
-            dialogManager.showCustomDropdown(paramName, options, callback);
+    private showCustomDropdown(paramName: string, options: unknown[], callback: (value: unknown) => void) {
+        const dialogManager = this.serviceRegistry.get('dialogManager');
+        if (dialogManager && typeof dialogManager.showCustomDropdown === 'function') {
+            // Calculate widget position for dropdown placement
+            const widgetPosition = this.calculateWidgetPosition(paramName);
+            dialogManager.showCustomDropdown(paramName, options, callback, widgetPosition || undefined);
         } else {
             // Fallback to simple select
-            const value = prompt(`Select ${paramName}:`, options.join(', '));
+            const value = prompt(`Select ${paramName}:`, options.map(String).join(', '));
             if (value && options.includes(value)) {
                 callback(value);
             }
         }
+    }
+
+    private calculateWidgetPosition(paramName: string): { x: number; y: number } | null {
+        const canvas = this.serviceRegistry.get('canvas');
+        if (!canvas?.canvas) {
+            return null;
+        }
+
+        const canvasRect = canvas.canvas.getBoundingClientRect();
+        const scale = canvas.ds?.scale || 1;
+        const offset = canvas.ds?.offset || [0, 0];
+
+        // Find the widget that triggered this dropdown
+        const nodeWithWidgets = this.node as { widgets?: Array<{ paramName?: string }>; pos: [number, number] };
+        const widgets = nodeWithWidgets.widgets || [];
+        const widgetIndex = widgets.findIndex((w) => w.paramName === paramName);
+        if (widgetIndex === -1) {
+            return null;
+        }
+
+        // Calculate widget position in screen coordinates
+        const widgetY = nodeWithWidgets.pos[1] + LiteGraph.NODE_TITLE_HEIGHT + (widgetIndex * LiteGraph.NODE_WIDGET_HEIGHT);
+        const widgetScreenX = canvasRect.left + (nodeWithWidgets.pos[0] + offset[0]) * scale;
+        const widgetScreenY = canvasRect.top + (widgetY + offset[1]) * scale;
+
+        return { x: widgetScreenX, y: widgetScreenY };
     }
 }

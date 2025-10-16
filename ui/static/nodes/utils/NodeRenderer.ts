@@ -3,26 +3,26 @@ import { LGraphNode, LiteGraph } from '@comfyorg/litegraph';
 export class NodeRenderer {
     protected node: LGraphNode & {
         displayResults: boolean;
-        result: any;
+        result: unknown;
         displayText: string;
         error: string;
         highlightStartTs: number | null;
         readonly highlightDurationMs: number;
         progress: number;
         progressText: string;
-        properties: { [key: string]: any };
+        properties: { [key: string]: unknown };
     };
 
     constructor(node: LGraphNode & {
         displayResults: boolean;
-        result: any;
+        result: unknown;
         displayText: string;
         error: string;
         highlightStartTs: number | null;
         readonly highlightDurationMs: number;
         progress: number;
         progressText: string;
-        properties: { [key: string]: any };
+        properties: { [key: string]: unknown };
     }) {
         this.node = node;
     }
@@ -36,12 +36,12 @@ export class NodeRenderer {
             let currentLine = words[0] || '';
             for (let i = 1; i < words.length; i++) {
                 const word = words[i];
-                const width = ctx.measureText(currentLine + ' ' + word).width;
+                const width = ctx.measureText(currentLine + ' ' + (word || '')).width;
                 if (width < maxWidth) {
                     currentLine += ' ' + word;
                 } else {
                     lines.push(currentLine);
-                    currentLine = word;
+                    currentLine = word || '';
                 }
             }
             if (currentLine) lines.push(currentLine);
@@ -67,9 +67,10 @@ export class NodeRenderer {
                 ctx.save();
                 ctx.strokeStyle = `rgba(33, 150, 243, ${alpha.toFixed(3)})`;
                 ctx.lineWidth = 2;
-                (ctx as any).shadowColor = `rgba(33, 150, 243, ${Math.min(0.8, 0.2 + 0.6 * t).toFixed(3)})`;
-                (ctx as any).shadowBlur = glow;
-                ctx.strokeRect(1, 1, (this.node as any).size[0] - 2, (this.node as any).size[1] - 2);
+                (ctx as { shadowColor: string; shadowBlur: number }).shadowColor = `rgba(33, 150, 243, ${Math.min(0.8, 0.2 + 0.6 * t).toFixed(3)})`;
+                (ctx as { shadowColor: string; shadowBlur: number }).shadowBlur = glow;
+                const nodeWithSize = this.node as { size: [number, number] };
+                ctx.strokeRect(1, 1, nodeWithSize.size[0] - 2, nodeWithSize.size[1] - 2);
                 ctx.restore();
                 this.node.setDirtyCanvas(true, true);
             } else {
@@ -82,7 +83,8 @@ export class NodeRenderer {
         if (this.node.progress >= 0) {
             const barHeight = 5;
             const barY = 2;
-            const barWidth = Math.max(0, (this.node as any).size[0] - 16);
+            const nodeWithSize = this.node as { size: [number, number] };
+            const barWidth = Math.max(0, nodeWithSize.size[0] - 16);
             const barX = 8;
 
             // Background bar
@@ -122,11 +124,12 @@ export class NodeRenderer {
     }
 
     protected drawContent(ctx: CanvasRenderingContext2D) {
-        if ((this.node as any).flags?.collapsed || !this.node.displayResults || !this.node.displayText) {
+        const nodeWithFlags = this.node as { flags?: { collapsed?: boolean }; size: [number, number] };
+        if (nodeWithFlags.flags?.collapsed || !this.node.displayResults || !this.node.displayText) {
             return;
         }
 
-        const maxWidth = (this.node as any).size[0] - 20;
+        const maxWidth = nodeWithFlags.size[0] - 20;
 
         const tempCanvas = document.createElement('canvas');
         const tempCtx = tempCanvas.getContext('2d');
@@ -136,8 +139,9 @@ export class NodeRenderer {
         const lines = this.wrapText(this.node.displayText, maxWidth, tempCtx);
 
         let y = LiteGraph.NODE_TITLE_HEIGHT + 4 + (this.node.progress >= 0 ? 9 : 0);
-        if ((this.node as any).widgets) {
-            y += (this.node as any).widgets.length * LiteGraph.NODE_WIDGET_HEIGHT;
+        const nodeWithWidgets = this.node as { widgets?: unknown[] };
+        if (nodeWithWidgets.widgets) {
+            y += nodeWithWidgets.widgets.length * LiteGraph.NODE_WIDGET_HEIGHT;
         }
 
         const hasContent = lines.length > 0;
@@ -151,8 +155,8 @@ export class NodeRenderer {
             neededHeight += 10;
         }
 
-        if (Math.abs((this.node as any).size[1] - neededHeight) > 1) {
-            (this.node as any).size[1] = neededHeight;
+        if (Math.abs(nodeWithFlags.size[1] - neededHeight) > 1) {
+            nodeWithFlags.size[1] = neededHeight;
             this.node.setDirtyCanvas(true, true);
             return;
         }
@@ -172,14 +176,16 @@ export class NodeRenderer {
             ctx.font = 'bold 12px Arial';
             const errorY = this.calculateErrorY();
             ctx.fillText(`Error: ${this.node.error}`, 10, errorY);
-            (this.node as any).size[1] = Math.max((this.node as any).size[1], errorY + 20);
+            const nodeWithSize = this.node as { size: [number, number] };
+            nodeWithSize.size[1] = Math.max(nodeWithSize.size[1], errorY + 20);
         }
     }
 
     private calculateErrorY(): number {
         const baseY = LiteGraph.NODE_TITLE_HEIGHT + 4 + (this.node.progress >= 0 ? 9 : 0);
-        const widgetOffset = (this.node as any).widgets ? (this.node as any).widgets.length * LiteGraph.NODE_WIDGET_HEIGHT : 0;
-        const contentOffset = this.node.displayText ? this.wrapText(this.node.displayText, (this.node as any).size[0] - 20, { measureText: () => ({ width: 0 }) } as any).length * 15 + 10 : 0;
+        const nodeWithWidgets = this.node as { widgets?: unknown[]; size: [number, number] };
+        const widgetOffset = nodeWithWidgets.widgets ? nodeWithWidgets.widgets.length * LiteGraph.NODE_WIDGET_HEIGHT : 0;
+        const contentOffset = this.node.displayText ? this.wrapText(this.node.displayText, nodeWithWidgets.size[0] - 20, { measureText: () => ({ width: 0 }) } as unknown as CanvasRenderingContext2D).length * 15 + 10 : 0;
         return baseY + widgetOffset + contentOffset;
     }
 

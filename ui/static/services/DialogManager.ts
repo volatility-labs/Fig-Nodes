@@ -1,3 +1,6 @@
+import { ServiceRegistry } from './ServiceRegistry';
+import type { ExtendedHTMLElement } from '../types/litegraph-extensions';
+
 export interface DialogOptions {
     type?: 'number' | 'text';
     input?: 'number' | 'text';
@@ -18,89 +21,31 @@ export interface Position {
 export class DialogManager {
     private lastMouseEvent: MouseEvent | null = null;
 
+    constructor(_serviceRegistry: ServiceRegistry) {
+        // ServiceRegistry is kept for future use but not currently used
+    }
+
     setLastMouseEvent(event: MouseEvent): void {
         this.lastMouseEvent = event;
     }
 
-    showQuickPrompt(
-        title: string,
-        value: unknown,
-        callback: (v: unknown) => void,
-        options?: DialogOptions
-    ): void {
-        const numericOnly = (options && (options.type === 'number' || options.input === 'number')) || typeof value === 'number';
-
-        const overlay = document.createElement('div');
-        overlay.className = 'quick-input-overlay';
-
-        const dialog = document.createElement('div');
-        dialog.className = 'quick-input-dialog';
-
-        const label = document.createElement('div');
-        label.className = 'quick-input-label';
-        label.textContent = title || 'Value';
-
-        const input = document.createElement('input');
-        input.className = 'quick-input-field';
-        input.type = numericOnly ? 'number' : 'text';
-        input.value = (value !== undefined && value !== null) ? String(value) : '';
-        if (numericOnly) {
-            input.setAttribute('step', options?.step?.toString() || '1');
-            input.setAttribute('min', options?.min?.toString() || '0');
-        }
-
-        const okButton = document.createElement('button');
-        okButton.className = 'quick-input-ok';
-        okButton.textContent = 'OK';
-
-        const submit = () => {
-            let out: string | number = input.value;
-            if (numericOnly) {
-                const n = Number(out);
-                if (!Number.isFinite(n)) return;
-                out = Math.floor(n);
-            }
-            if (overlay.parentNode) document.body.removeChild(overlay);
-            try { callback(out); } catch { /* ignore */ }
-        };
-        const cancel = () => { if (overlay.parentNode) document.body.removeChild(overlay); };
-
-        okButton.addEventListener('click', submit);
-        input.addEventListener('keydown', (ev) => {
-            ev.stopPropagation();
-            if (ev.key === 'Enter') submit();
-            else if (ev.key === 'Escape') cancel();
-        });
-        overlay.addEventListener('click', (ev) => {
-            if (ev.target === overlay) cancel();
-        });
-
-        dialog.appendChild(label);
-        dialog.appendChild(input);
-        dialog.appendChild(okButton);
-        overlay.appendChild(dialog);
-        document.body.appendChild(overlay);
-
-        const ev = this.lastMouseEvent;
-        if (ev) {
-            dialog.style.position = 'absolute';
-            dialog.style.left = `${ev.clientX}px`;
-            dialog.style.top = `${ev.clientY - 28}px`;
-            overlay.style.background = 'transparent';
-            overlay.style.pointerEvents = 'none';
-            dialog.style.pointerEvents = 'auto';
-        }
-
-        input.focus();
-        input.select();
+    private isValidPosition(position: Position): boolean {
+        return position &&
+            Number.isFinite(position.x) &&
+            Number.isFinite(position.y) &&
+            position.x >= 0 &&
+            position.y >= 0;
     }
 
-    showCustomPrompt(title: string, defaultValue: string, isPassword: boolean, callback: (value: string | null) => void): void {
-        if (!isPassword) {
-            this.showQuickValuePrompt(title || 'Value', defaultValue, false, (val) => callback(val));
-            return;
+    showPrompt(title: string, defaultValue: string | number, isPassword: boolean, callback: (value: string | null) => void): void {
+        if (isPassword) {
+            this.showPasswordPrompt(title, String(defaultValue), callback);
+        } else {
+            this.showQuickValuePrompt(title, defaultValue, false, callback);
         }
+    }
 
+    private showPasswordPrompt(title: string, defaultValue: string, callback: (value: string | null) => void): void {
         const dialog = document.createElement('div');
         dialog.className = 'custom-input-dialog';
 
@@ -137,6 +82,25 @@ export class DialogManager {
         callback: (value: string | null) => void,
         position?: Position
     ): void {
+        // Try to use LiteGraph's prompt if available
+        try {
+            const graph = window.graph;
+            const canvas = graph?.list_of_graphcanvas?.[0];
+            if (canvas && typeof canvas.prompt === 'function') {
+                canvas.prompt(labelText, String(defaultValue), (value: unknown) => {
+                    if (numericOnly && value !== null) {
+                        const n = Number(value);
+                        callback(Number.isFinite(n) ? String(n) : null);
+                    } else {
+                        callback(value as string | null);
+                    }
+                });
+                return;
+            }
+        } catch {
+            // Fall through to inline dialog
+        }
+
         const overlay = document.createElement('div');
         overlay.className = 'quick-input-overlay';
 
@@ -160,9 +124,7 @@ export class DialogManager {
         const submit = () => {
             if (numericOnly) {
                 const n = Number(input.value);
-                if (!Number.isFinite(n)) {
-                    return;
-                }
+                if (!Number.isFinite(n)) return;
                 callback(String(Math.floor(n)));
             } else {
                 callback(input.value);
@@ -191,44 +153,32 @@ export class DialogManager {
         overlay.appendChild(dialog);
         document.body.appendChild(overlay);
 
-        try {
-            const graph: any = (window as any).graph;
-            const canvas = graph?.list_of_graphcanvas?.[0];
-            const prompt = (canvas && (canvas as any).prompt) || (window as any).LiteGraph?.prompt;
-            if (typeof prompt === 'function') {
-                document.body.removeChild(overlay);
-                prompt(labelText, defaultValue, (val: any) => {
-                    if (numericOnly && val != null) {
-                        const n = Number(val);
-                        if (!Number.isFinite(n)) { callback(null); return; }
-                        callback(String(Math.floor(n)));
-                    } else {
-                        callback(val == null ? null : String(val));
-                    }
-                }, { type: numericOnly ? 'number' : 'text', step: 1, min: 0 });
-                return;
-            }
-        } catch { /* fall back to inline */ }
-
-        if (position && Number.isFinite(position.x) && Number.isFinite(position.y)) {
+        // Position dialog if position provided
+        if (position && this.isValidPosition(position)) {
             dialog.style.position = 'absolute';
             dialog.style.left = `${position.x}px`;
             dialog.style.top = `${position.y}px`;
             overlay.style.background = 'transparent';
-            (overlay.style as any).pointerEvents = 'none';
-            (dialog.style as any).pointerEvents = 'auto';
+            (overlay.style as ExtendedHTMLElement['style']).pointerEvents = 'none';
+            (dialog.style as ExtendedHTMLElement['style']).pointerEvents = 'auto';
         }
 
         input.focus();
         input.select();
     }
 
-    showCustomDropdown(paramName: string, options: any[], callback: (value: any) => void): void {
+    showCustomDropdown(_paramName: string, options: any[], callback: (value: any) => void, position?: Position): void {
         const overlay = document.createElement('div');
         overlay.className = 'custom-dropdown-overlay';
 
         const menu = document.createElement('div');
         menu.className = 'custom-dropdown-menu';
+
+        const removeOverlay = () => {
+            if (overlay.parentNode) {
+                document.body.removeChild(overlay);
+            }
+        };
 
         // Add search bar if there are many options
         const hasSearch = options.length > 10;
@@ -248,42 +198,35 @@ export class DialogManager {
         itemsContainer.className = 'custom-dropdown-items';
         menu.appendChild(itemsContainer);
 
-        const graph = (window as any).graph;
-        const canvas = graph?.list_of_graphcanvas?.[0];
-        if (canvas && canvas.canvas) {
-            const canvasRect = canvas.canvas.getBoundingClientRect();
-            const lastMouseEvent = this.lastMouseEvent;
+        const menuWidth = 280;
+        const searchHeight = hasSearch ? 36 : 0;
+        const menuHeight = Math.min(300, options.length * 26 + searchHeight + 8);
 
-            if (lastMouseEvent) {
-                let menuX = lastMouseEvent.clientX;
-                let menuY = lastMouseEvent.clientY + 5;
+        let menuX: number;
+        let menuY: number;
 
-                const menuWidth = 280;
-                const searchHeight = hasSearch ? 36 : 0;
-                const menuHeight = Math.min(300, options.length * 26 + searchHeight + 8);
-
-                if (menuX + menuWidth > window.innerWidth) {
-                    menuX = window.innerWidth - menuWidth - 10;
-                }
-                if (menuY + menuHeight > window.innerHeight) {
-                    menuY = lastMouseEvent.clientY - menuHeight - 5;
-                }
-
-                menu.style.left = `${menuX}px`;
-                menu.style.top = `${menuY}px`;
-                menu.style.width = `${menuWidth}px`;
-                menu.style.maxHeight = `${menuHeight}px`;
-            } else {
-                const scale = canvas.ds?.scale || 1;
-                const offset = canvas.ds?.offset || [0, 0];
-                const screenX = canvasRect.left + (0 + offset[0]) * scale; // Using 0 for node pos as fallback
-                const screenY = canvasRect.top + (0 + offset[1] + 100) * scale; // Using 100 for node size as fallback
-                menu.style.left = `${screenX}px`;
-                menu.style.top = `${screenY + 5}px`;
-                menu.style.width = '280px';
-                menu.style.maxHeight = '300px';
-            }
+        // Position dropdown using provided widget position or mouse event
+        if (position && this.isValidPosition(position)) {
+            menuX = position.x;
+            menuY = position.y + 25; // Offset below widget
+        } else if (this.lastMouseEvent) {
+            menuX = this.lastMouseEvent.clientX;
+            menuY = this.lastMouseEvent.clientY + 5;
+        } else {
+            // Center on screen as fallback
+            menuX = window.innerWidth / 2 - menuWidth / 2;
+            menuY = window.innerHeight / 2 - menuHeight / 2;
         }
+
+        // Keep menu within viewport bounds
+        const padding = 10;
+        menuX = Math.max(padding, Math.min(menuX, window.innerWidth - menuWidth - padding));
+        menuY = Math.max(padding, Math.min(menuY, window.innerHeight - menuHeight - padding));
+
+        menu.style.left = `${menuX}px`;
+        menu.style.top = `${menuY}px`;
+        menu.style.width = `${menuWidth}px`;
+        menu.style.maxHeight = `${menuHeight}px`;
 
         const renderItems = (itemsToRender: any[]) => {
             itemsContainer.innerHTML = '';
@@ -295,7 +238,7 @@ export class DialogManager {
 
                 item.addEventListener('click', () => {
                     callback(option);
-                    document.body.removeChild(overlay);
+                    removeOverlay();
                 });
 
                 itemsContainer.appendChild(item);
@@ -331,10 +274,10 @@ export class DialogManager {
                         updateSelection();
                     } else if (e.key === 'Enter' && filteredOptions[selectedIndex] !== undefined) {
                         callback(filteredOptions[selectedIndex]);
-                        document.body.removeChild(overlay);
+                        removeOverlay();
                     }
                 } else if (e.key === 'Escape') {
-                    document.body.removeChild(overlay);
+                    removeOverlay();
                 }
             });
         }
@@ -345,7 +288,7 @@ export class DialogManager {
 
         overlay.addEventListener('click', (e) => {
             if (e.target === overlay) {
-                document.body.removeChild(overlay);
+                removeOverlay();
             }
         });
 
@@ -382,9 +325,9 @@ export class DialogManager {
                 updateSelection();
             } else if (e.key === 'Enter' && filteredOptions[selectedIndex] !== undefined) {
                 callback(filteredOptions[selectedIndex]);
-                document.body.removeChild(overlay);
+                removeOverlay();
             } else if (e.key === 'Escape') {
-                document.body.removeChild(overlay);
+                removeOverlay();
             }
         });
 

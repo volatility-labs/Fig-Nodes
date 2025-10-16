@@ -15,7 +15,8 @@ describe('FileManager', () => {
         };
 
         mockCanvas = {
-            draw: vi.fn()
+            draw: vi.fn(),
+            links_render_mode: 0
         };
 
         fileManager = new FileManager(mockGraph, mockCanvas);
@@ -116,7 +117,7 @@ describe('FileManager', () => {
         };
 
         const mockReader = {
-            onload: null,
+            onload: null as ((event: any) => void) | null,
             readAsText: vi.fn()
         };
 
@@ -226,10 +227,10 @@ describe('FileManager', () => {
         };
         (globalThis as any).localStorage = mockLocalStorage;
 
-        const graphData = { nodes: [], links: [] };
+        const graphData = { nodes: [], links: [], extra: { linkRenderMode: 0 } };
         mockGraph.serialize.mockReturnValue(graphData);
 
-        // Set the same JSON as last saved
+        // Set the same JSON as last saved (matching the graph data format used by doAutosave)
         fileManager.setLastSavedGraphJson(JSON.stringify(graphData));
 
         fileManager.doAutosave();

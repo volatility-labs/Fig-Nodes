@@ -4,8 +4,8 @@ export default class StreamingCustomNode extends BaseCustomNode {
     isStreaming: boolean = true;
     status: string = 'Idle';
 
-    constructor(title: string, data: any) {
-        super(title, data);
+    constructor(title: string, data: any, serviceRegistry: any) {
+        super(title, data, serviceRegistry);
         this.color = '#FF00FF'; // Purple for streaming nodes
     }
 

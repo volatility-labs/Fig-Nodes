@@ -279,7 +279,7 @@ describe('app.ts initialization', () => {
         const payload = JSON.parse(savedRaw!);
         // Straight = LiteGraph.STRAIGHT_LINK (0)
         const { LiteGraph } = await import('@comfyorg/litegraph');
-        expect((payload.graph?.config as any)?.linkRenderMode).toBe((LiteGraph as any).STRAIGHT_LINK);
+        expect((payload.graph?.extra as any)?.linkRenderMode).toBe((LiteGraph as any).STRAIGHT_LINK);
     });
 
     test('Save includes linkRenderMode in graph JSON', async () => {
@@ -341,7 +341,7 @@ describe('app.ts initialization', () => {
         expect(capturedBlob).toBeTruthy();
         const json = JSON.parse(await (capturedBlob as unknown as Blob).text());
         const { LiteGraph } = await import('@comfyorg/litegraph');
-        expect((json.config as any).linkRenderMode).toBe((LiteGraph as any).LINEAR_LINK);
+        expect((json.extra as any).linkRenderMode).toBe((LiteGraph as any).LINEAR_LINK);
 
         createSpy.mockRestore();
         urlSpy.mockRestore();
@@ -375,7 +375,7 @@ describe('app.ts initialization', () => {
         // Set up autosave data AFTER setting up localStorage
         const autosaveKey = 'fig-nodes:autosave:v1';
         const { LiteGraph } = await import('@comfyorg/litegraph');
-        const savedGraph = { nodes: [], links: [], config: { linkRenderMode: (LiteGraph as any).LINEAR_LINK } };
+        const savedGraph = { nodes: [], links: [], extra: { linkRenderMode: (LiteGraph as any).LINEAR_LINK } };
         window.localStorage.setItem(autosaveKey, JSON.stringify({ graph: savedGraph, name: 'restored.json' }));
 
         (globalThis as any).fetch = vi.fn(async (url: string) => {
@@ -564,7 +564,7 @@ describe('End-to-end: PolygonUniverseNode parameters restore from saved graph', 
 
         // Test that the UIModuleLoader can handle the module loading
         const { UIModuleLoader } = await import('../../services/UIModuleLoader');
-        const loader = new UIModuleLoader();
+        const loader = new UIModuleLoader(null);
 
         // This should not throw an error
         const result = await loader.registerNodes();

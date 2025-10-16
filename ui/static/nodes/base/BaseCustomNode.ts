@@ -1,10 +1,14 @@
 import { LGraphNode } from '@comfyorg/litegraph';
-import { getTypeColor } from '../../types';
+import { NodeProperty } from '@comfyorg/litegraph/dist/LGraphNode';
+import { Dictionary } from '@comfyorg/litegraph/dist/interfaces';
+import { ISerialisedNode } from '@comfyorg/litegraph/dist/types/serialisation';
+import { getTypeColor, TypeInfo } from '../../types';
 import { showError } from '../../utils/uiUtils';
 import { NodeTypeSystem } from '../utils/NodeTypeSystem';
 import { NodeWidgetManager } from '../utils/NodeWidgetManager';
 import { NodeRenderer } from '../utils/NodeRenderer';
 import { NodeInteractions } from '../utils/NodeInteractions';
+import { ServiceRegistry } from '../../services/ServiceRegistry';
 
 // Reinstate module augmentation at top:
 declare module '@comfyorg/litegraph' {
@@ -20,9 +24,9 @@ declare module '@comfyorg/litegraph' {
 
 export default class BaseCustomNode extends LGraphNode {
     displayResults: boolean = true;
-    result: any;
+    result: unknown;
     displayText: string = '';
-    properties: { [key: string]: any } = {};
+    declare properties: Dictionary<NodeProperty | undefined>;
     error: string = '';
     highlightStartTs: number | null = null;
     readonly highlightDurationMs: number = 900;
@@ -37,19 +41,22 @@ export default class BaseCustomNode extends LGraphNode {
     protected renderer: NodeRenderer;
     protected interactions: NodeInteractions;
 
-    constructor(title: string, data: any) {
+    constructor(title: string, data: { inputs?: unknown; outputs?: unknown; params?: Array<{ name: string; type?: string; default?: unknown; options?: unknown[]; min?: number; max?: number; step?: number; precision?: number }> }, serviceRegistry: ServiceRegistry) {
         super(title);
         this.size = [200, 100];
 
+        // Initialize properties object
+        this.properties = {};
+
         // Initialize modular components
-        this.widgetManager = new NodeWidgetManager(this);
-        this.renderer = new NodeRenderer(this);
-        this.interactions = new NodeInteractions(this);
+        this.widgetManager = new NodeWidgetManager(this as unknown as LGraphNode & { properties: { [key: string]: unknown } }, serviceRegistry);
+        this.renderer = new NodeRenderer(this as unknown as LGraphNode & { displayResults: boolean; result: unknown; displayText: string; error: string; highlightStartTs: number | null; readonly highlightDurationMs: number; progress: number; progressText: string; properties: { [key: string]: unknown } });
+        this.interactions = new NodeInteractions(this as unknown as LGraphNode & { title: string; pos: [number, number]; size: [number, number] });
 
         this.initializeNode(data);
     }
 
-    private initializeNode(data: any) {
+    private initializeNode(data: { inputs?: unknown; outputs?: unknown; params?: Array<{ name: string; type?: string; default?: unknown; options?: unknown[]; min?: number; max?: number; step?: number; precision?: number }> }) {
         // Setup inputs and outputs
         this.setupInputs(data.inputs);
         this.setupOutputs(data.outputs);
@@ -61,19 +68,19 @@ export default class BaseCustomNode extends LGraphNode {
         }
     }
 
-    private setupInputs(inputs: any) {
+    private setupInputs(inputs: unknown) {
         if (!inputs) return;
 
         const isArray = Array.isArray(inputs);
-        const inputEntries: Array<[string, any]> = isArray
+        const inputEntries: Array<[string, unknown]> = isArray
             ? (inputs as string[]).map((name: string) => [name, null])
-            : (Object.entries(inputs) as Array<[string, any]>);
+            : (Object.entries(inputs) as Array<[string, unknown]>);
 
-        inputEntries.forEach(([inp, typeInfo]: [string, any]) => {
+        inputEntries.forEach(([inp, typeInfo]: [string, unknown]) => {
             const typeStr = NodeTypeSystem.parseType(typeInfo);
-            let color;
+            let color: string | undefined;
             if (typeInfo) {
-                color = getTypeColor(typeInfo);
+                color = getTypeColor(typeInfo as TypeInfo);
             }
             const typeStrLower = typeof typeStr === 'string' ? typeStr.toLowerCase() : '';
             if (typeof typeStr === 'string' && (typeStrLower.startsWith('list<') || typeStrLower.startsWith('dict<')) && typeInfo) {
@@ -88,34 +95,34 @@ export default class BaseCustomNode extends LGraphNode {
         });
     }
 
-    private setupOutputs(outputs: any) {
+    private setupOutputs(outputs: unknown) {
         if (!outputs) return;
 
         const isArray = Array.isArray(outputs);
-        const outputEntries: Array<[string, any]> = isArray
+        const outputEntries: Array<[string, unknown]> = isArray
             ? (outputs as string[]).map((name: string) => [name, null])
-            : (Object.entries(outputs) as Array<[string, any]>);
+            : (Object.entries(outputs) as Array<[string, unknown]>);
 
-        outputEntries.forEach(([out, typeInfo]: [string, any], index: number) => {
+        outputEntries.forEach(([out, typeInfo]: [string, unknown], index: number) => {
             const typeStr = NodeTypeSystem.parseType(typeInfo);
             this.addOutput(out, typeStr);
             if (typeInfo) {
-                const color = getTypeColor(typeInfo);
-                this.outputs[index].color = color;
+                const color = getTypeColor(typeInfo as TypeInfo);
+                this.outputs[index]!.color = color;
             }
         });
     }
 
-    private setupProperties(params: any[]) {
+    private setupProperties(params: Array<{ name: string; type?: string; default?: unknown; options?: unknown[]; min?: number; max?: number; step?: number; precision?: number }> | undefined) {
         if (!params) return;
 
-        params.forEach((param: any) => {
+        params.forEach((param) => {
             let paramType = param.type;
             if (!paramType) {
                 paramType = NodeTypeSystem.determineParamType(param.name);
             }
             const defaultValue = param.default !== undefined ? param.default : NodeTypeSystem.getDefaultValue(param.name);
-            this.properties[param.name] = defaultValue;
+            this.properties[param.name] = defaultValue as NodeProperty | undefined;
         });
     }
 
@@ -140,10 +147,10 @@ export default class BaseCustomNode extends LGraphNode {
         return this.interactions.onDblClick(event, pos, canvas);
     }
 
-    updateDisplay(result: any) {
+    updateDisplay(result: unknown) {
         this.result = result;
         if (this.displayResults) {
-            const outputs = Object.values(result);
+            const outputs = Object.values(result as Record<string, unknown>);
             const primaryOutput = outputs.length === 1 ? outputs[0] : result;
             this.displayText = typeof primaryOutput === 'string' ? primaryOutput : JSON.stringify(primaryOutput, null, 2);
         }
@@ -164,16 +171,18 @@ export default class BaseCustomNode extends LGraphNode {
 
     onConnectionsChange() { }
 
-    configure(info: any) {
+    configure(info: ISerialisedNode) {
         super.configure(info);
         this.widgetManager.syncWidgetValues();
         this.setDirtyCanvas(true, true);
     }
 
-    onConnectInput(inputIndex: number, outputType: string | number, _outputSlot: any, _outputNode: any, _outputIndex: number): boolean {
+    onConnectInput(inputIndex: number, outputType: string | number, _outputSlot: unknown, _outputNode: unknown, _outputIndex: number): boolean {
         const inputSlot = this.inputs[inputIndex];
-        const inputType = inputSlot.type;
-        return NodeTypeSystem.validateConnection(inputType, outputType);
+        const inputType = inputSlot?.type;
+        // Handle the case where type is 0 (Any type) - don't convert to empty string
+        const actualInputType = inputType === 0 ? 0 : (inputType || '');
+        return NodeTypeSystem.validateConnection(actualInputType, outputType);
     }
 
     // Delegate methods for backward compatibility
@@ -185,11 +194,11 @@ export default class BaseCustomNode extends LGraphNode {
         return this.renderer.wrapText(text, maxWidth, ctx);
     }
 
-    formatComboValue(value: any): string {
+    formatComboValue(value: unknown): string {
         return this.widgetManager.formatComboValue(value);
     }
 
-    parseType(typeInfo: any): string | number {
+    parseType(typeInfo: unknown): string | number {
         return NodeTypeSystem.parseType(typeInfo);
     }
 

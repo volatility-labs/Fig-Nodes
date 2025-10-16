@@ -50,10 +50,11 @@ export class FileManager {
     saveGraph(): void {
         const graphData = this.graph.serialize();
 
-        // Save link mode to graph config
-        const linkModeManager = (window as any).linkModeManager;
-        if (linkModeManager && typeof linkModeManager.saveToGraphConfig === 'function') {
-            linkModeManager.saveToGraphConfig(graphData);
+        // Save link mode to graph extra
+        const linkModeManager = this.appState.getCanvas()?.links_render_mode;
+        if (linkModeManager !== undefined) {
+            if (!graphData.extra) graphData.extra = {};
+            graphData.extra.linkRenderMode = linkModeManager;
         }
 
         const blob = new Blob([JSON.stringify(graphData, null, 2)], { type: 'application/json' });
@@ -72,9 +73,8 @@ export class FileManager {
                 this.graph.configure(graphData);
 
                 // Restore link mode if saved
-                const linkModeManager = (window as any).linkModeManager;
-                if (linkModeManager) {
-                    linkModeManager.restoreFromGraphConfig(graphData);
+                if (graphData.extra?.linkRenderMode !== undefined) {
+                    this.canvas.links_render_mode = graphData.extra.linkRenderMode as number;
                 }
 
                 try {
@@ -135,11 +135,9 @@ export class FileManager {
         try {
             const data = this.graph.serialize();
 
-            // Save link mode to graph config
-            const linkModeManager = (window as any).linkModeManager;
-            if (linkModeManager && typeof linkModeManager.saveToGraphConfig === 'function') {
-                linkModeManager.saveToGraphConfig(data);
-            }
+            // Save link mode to graph extra
+            if (!data.extra) data.extra = {};
+            data.extra.linkRenderMode = this.canvas.links_render_mode;
 
             const json = JSON.stringify(data);
             if (json !== this.lastSavedGraphJson) {
@@ -161,9 +159,12 @@ export class FileManager {
                     try {
                         this.graph.configure(parsed.graph);
                         // Restore link mode if saved
-                        const linkModeManager = (window as any).linkModeManager;
-                        if (linkModeManager) {
-                            linkModeManager.restoreFromGraphConfig(parsed.graph);
+                        if (parsed.graph.extra?.linkRenderMode !== undefined) {
+                            this.canvas.links_render_mode = parsed.graph.extra.linkRenderMode as number;
+                        }
+                        // Also restore via linkModeManager if available
+                        if (window.linkModeManager && typeof window.linkModeManager.restoreFromGraphConfig === 'function') {
+                            window.linkModeManager.restoreFromGraphConfig(parsed.graph);
                         }
                     } catch (configError) {
                         // Keep going without throwing; we still consider autosave restored to avoid overwriting with default graph

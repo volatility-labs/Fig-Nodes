@@ -2,7 +2,7 @@ from typing import List, Dict, Any, Optional
 import httpx
 import logging
 from nodes.base.base_node import BaseNode
-from core.types_registry import AssetSymbol, AssetClass, register_asset_class, get_type
+from core.types_registry import AssetSymbol, AssetClass, get_type
 from core.api_key_vault import APIKeyVault
 
 logger = logging.getLogger(__name__)
@@ -106,9 +106,13 @@ class PolygonUniverseNode(BaseNode):
                         base_ticker = tick[:-3]
                         quote_currency = tick[-3:]
 
-                if not hasattr(AssetClass, market.upper()):
-                    register_asset_class(market)
-                asset_class = getattr(AssetClass, market.upper())
+                # Map market names to existing AssetClass values
+                market_mapping = {
+                    "crypto": AssetClass.CRYPTO,
+                    "stocks": AssetClass.STOCKS,
+                    "stock": AssetClass.STOCKS,
+                }
+                asset_class = market_mapping.get(market.lower(), AssetClass.STOCKS)
 
                 metadata = {
                     "original_ticker": ticker,

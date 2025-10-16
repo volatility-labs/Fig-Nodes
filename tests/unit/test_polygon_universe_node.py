@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, patch, MagicMock
 
 from nodes.custom.polygon.polygon_universe_node import PolygonUniverseNode
 from core.api_key_vault import APIKeyVault
-from core.types_registry import AssetSymbol, AssetClass, register_asset_class, get_type, NodeExecutionError
+from core.types_registry import AssetSymbol, AssetClass, get_type, NodeExecutionError
 
 
 @pytest.fixture
@@ -234,16 +234,16 @@ async def test_polygon_market_variants_and_otc_flags(mock_client, mock_vault_get
     symbols = await node_stocks._fetch_symbols()
     assert len(symbols) == 1 and symbols[0].asset_class == AssetClass.STOCKS
 
-    # Indices
+    # Indices (now defaults to STOCKS since INDICES is not in the mapping)
     node_indices._execute_inputs = {"api_key": "test_key"}
     symbols = await node_indices._fetch_symbols()
-    assert len(symbols) == 1 and symbols[0].asset_class.name == "INDICES"
+    assert len(symbols) == 1 and symbols[0].asset_class == AssetClass.STOCKS
 
     # FX
     mock_response.json.return_value = {"tickers": [{"ticker": "C:EURUSD", "todaysChangePerc": 1.0, "day": {"v": 1000, "c": 1.05}}]}
     node_fx._execute_inputs = {"api_key": "test_key"}
     symbols = await node_fx._fetch_symbols()
-    assert len(symbols) == 1 and symbols[0].ticker == "EUR" and symbols[0].quote_currency == "USD" and symbols[0].asset_class.name == "FX"
+    assert len(symbols) == 1 and symbols[0].ticker == "EUR" and symbols[0].quote_currency == "USD" and symbols[0].asset_class == AssetClass.STOCKS
 
     # Include OTC flag
     mock_response.json.return_value = {"tickers": [{"ticker": "AAPL", "todaysChangePerc": 1.0, "day": {"v": 1000, "c": 150}}]}

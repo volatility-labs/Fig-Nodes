@@ -50,7 +50,7 @@ class OpenRouterChatNode(BaseNode):
     required_keys = ["OPENROUTER_API_KEY"]
 
     default_params = {
-        "model": "openai/gpt-4o-mini",  # Default model
+        "model": "z-ai/glm-4.6",  # Default model
         "temperature": 0.7,
         "max_tokens": 1024,
         "seed": 0,
@@ -60,10 +60,15 @@ class OpenRouterChatNode(BaseNode):
         "tool_timeout_s": 10,
         "tool_choice": "auto",  # auto | none | required
         "json_mode": False,
+        # Web search controls
+        "web_search_enabled": True,
+        "web_search_engine": "exa",  # exa | native
+        "web_search_max_results": 5,
+        "web_search_context_size": "medium",  # low | medium | high
     }
 
     params_meta = [
-        {"name": "model", "type": "combo", "default": "openai/gpt-4o-mini", "options": []},
+        {"name": "model", "type": "combo", "default": "z-ai/glm-4.6", "options": []},
         {"name": "temperature", "type": "number", "default": 0.7, "min": 0.0, "max": 2.0, "step": 0.05},
         {"name": "max_tokens", "type": "number", "default": 1024, "min": 1, "step": 1, "precision": 0},
         {"name": "seed", "type": "number", "default": 0, "min": 0, "step": 1, "precision": 0},
@@ -72,6 +77,10 @@ class OpenRouterChatNode(BaseNode):
         {"name": "seed_mode", "type": "combo", "default": "fixed", "options": ["fixed", "random", "increment"]},
         {"name": "tool_choice", "type": "combo", "default": "auto", "options": ["auto", "none", "required"]},
         {"name": "json_mode", "type": "combo", "default": False, "options": [False, True]},
+        {"name": "web_search_enabled", "type": "combo", "default": True, "options": [True, False]},
+        {"name": "web_search_engine", "type": "combo", "default": "exa", "options": ["exa", "native"]},
+        {"name": "web_search_max_results", "type": "number", "default": 5, "min": 1, "max": 10, "step": 1, "precision": 0},
+        {"name": "web_search_context_size", "type": "combo", "default": "medium", "options": ["low", "medium", "high"]},
     ]
 
     ui_module = "llm/OpenRouterChatNodeUI"
@@ -134,6 +143,32 @@ class OpenRouterChatNode(BaseNode):
             options["response_format"] = {"type": "json_object"}
         return options
 
+    def _prepare_web_search_options(self) -> Dict[str, Any]:
+        """Prepare web search configuration based on node parameters."""
+        web_search_enabled = bool(self.params.get("web_search_enabled", True))
+        if not web_search_enabled:
+            return {}
+        
+        # For models with :online suffix, web search is enabled automatically
+        # No additional options needed for basic web search functionality
+        return {}
+    
+    def _get_model_with_web_search(self, base_model: str) -> str:
+        """Get model name with web search suffix if enabled."""
+        web_search_enabled = bool(self.params.get("web_search_enabled", True))
+        if not web_search_enabled:
+            return base_model
+        
+        # Add :online suffix to enable web search
+        if not base_model.endswith(":online"):
+            return f"{base_model}:online"
+        return base_model
+    
+    def _get_current_date(self) -> str:
+        """Get current date string for web search prompt."""
+        from datetime import datetime
+        return datetime.now().strftime("%Y-%m-%d")
+
     async def _maybe_execute_tools_and_augment_messages(self, base_messages: List[Dict[str, Any]], tools: Optional[List[Dict[str, Any]]], options: Dict[str, Any]) -> Dict[str, Any]:
         if not tools or not isinstance(tools, list):
             return {"messages": base_messages, "tool_history": [], "thinking_history": []}
@@ -151,13 +186,18 @@ class OpenRouterChatNode(BaseNode):
             if not api_key:
                 raise ValueError("OPENROUTER_API_KEY not found in vault")
 
+            web_search_options = self._prepare_web_search_options()
+            base_model = self.params.get("model", "z-ai/glm-4.6")
+            model_with_web_search = self._get_model_with_web_search(base_model)
+            
             request_body = {
-                "model": self.params.get("model", "openai/gpt-4o-mini"),
+                "model": model_with_web_search,
                 "messages": messages,
                 "tools": tools,
                 "tool_choice": self.params.get("tool_choice") if tools else None,
                 "stream": False,
-                **options
+                **options,
+                **web_search_options
             }
 
             async with httpx.AsyncClient(timeout=30.0) as client:
@@ -340,13 +380,18 @@ class OpenRouterChatNode(BaseNode):
         if not api_key:
             raise ValueError("OPENROUTER_API_KEY not found in vault")
 
+        web_search_options = self._prepare_web_search_options()
+        base_model = self.params.get("model", "openai/gpt-4o-mini")
+        model_with_web_search = self._get_model_with_web_search(base_model)
+        
         request_body = {
-            "model": self.params.get("model", "openai/gpt-4o-mini"),
+            "model": model_with_web_search,
             "messages": messages,
             "tools": final_tools,
             "tool_choice": final_tool_choice if final_tools else None,
             "stream": False,
-            **options
+            **options,
+            **web_search_options
         }
 
         async with httpx.AsyncClient(timeout=60.0) as client:
