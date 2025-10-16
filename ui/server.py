@@ -112,17 +112,29 @@ def list_nodes():
             "category": category,
             "required_keys": getattr(cls, 'required_keys', []),
             "uiModule": getattr(cls, 'ui_module', None) or (
-                "io/TextInputNodeUI" if name == "TextInputNode" else
-                "io/LoggingNodeUI" if name == "LoggingNode" else
-                "OllamaModelSelectorNodeUI" if name == "OllamaModelSelectorNode" else
-                "OllamaChatViewerNodeUI" if name == "OllamaChatViewerNode" else
-                "market/PolygonUniverseNodeUI" if name == "PolygonUniverseNode" else
-                "market/PolygonCustomBarsNodeUI" if name == "PolygonCustomBarsNode" else
-                "market/PolygonBatchCustomBarsNodeUI" if name == "PolygonBatchCustomBarsNode" else
-                "market/SMACrossoverFilterNodeUI" if name == "SMACrossoverFilterNode" else
-                "market/ADXFilterNodeUI" if name == "ADXFilterNode" else
-                "market/RSIFilterNodeUI" if name == "RSIFilterNode" else
-                "io/ExtractSymbolsNodeUI" if name == "ExtractSymbolsNode" else
+                "io/TextInputNodeUI" if name == "TextInput" else
+                "io/LoggingNodeUI" if name == "Logging" else
+                "io/SaveOutputNodeUI" if name == "SaveOutput" else
+                "io/ExtractSymbolsNodeUI" if name == "ExtractSymbols" else
+                "llm/LLMMessagesBuilderNodeUI" if name == "LLMMessagesBuilder" else
+                "llm/OllamaChatNodeUI" if name == "OllamaChat" else
+                "llm/OpenRouterChatNodeUI" if name == "OpenRouterChat" else
+                "llm/SystemPromptLoaderNodeUI" if name == "SystemPromptLoader" else
+                "market/PolygonUniverseNodeUI" if name == "PolygonUniverse" else
+                "market/PolygonCustomBarsNodeUI" if name == "PolygonCustomBars" else
+                "market/PolygonBatchCustomBarsNodeUI" if name == "PolygonBatchCustomBars" else
+                "market/SMACrossoverFilterNodeUI" if name == "SMACrossoverFilter" else
+                "market/ADXFilterNodeUI" if name == "ADXFilter" else
+                "market/RSIFilterNodeUI" if name == "RSIFilter" else
+                "market/ATRFilterNodeUI" if name == "ATRFilter" else
+                "market/ATRIndicatorNodeUI" if name == "ATRIndicator" else
+                "market/SMAFilterNodeUI" if name == "SMAFilter" else
+                "market/OrbFilterNodeUI" if name == "OrbFilter" else
+                "market/LodFilterNodeUI" if name == "LodFilter" else
+                "market/EmaRangeFilterNodeUI" if name == "EmaRangeFilter" else
+                "market/AtrXFilterNodeUI" if name == "AtrXFilter" else
+                "market/AtrXIndicatorNodeUI" if name == "AtrXIndicator" else
+                "market/OHLCVPlotNodeUI" if name == "OHLCVPlot" else
                 None
             )
         }

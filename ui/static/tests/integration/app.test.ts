@@ -553,7 +553,7 @@ describe('End-to-end: PolygonUniverseNode parameters restore from saved graph', 
                                     { name: 'max_price', type: 'number', default: null, label: 'Max Price', unit: 'USD' },
                                     { name: 'include_otc', type: 'boolean', default: false, label: 'Include OTC' },
                                 ],
-                                uiModule: 'PolygonUniverseNodeUI'
+                                uiModule: 'PolygonUniverse'
                             },
                         },
                     })

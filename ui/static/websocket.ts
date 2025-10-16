@@ -140,7 +140,7 @@ export function setupWebSocket(graph: LGraph, _canvas: LGraphCanvas) {
         // Reset LoggingNode UIs before each execution so logs start fresh
         const nodes = ((graph as any)._nodes as any[]) || [];
         nodes.forEach((node: any) => {
-            if (node && node.type === 'LoggingNode' && typeof node.reset === 'function') {
+            if (node && node.type === 'Logging' && typeof node.reset === 'function') {
                 try { node.reset(); } catch { }
             }
         });
@@ -226,7 +226,7 @@ export function setupWebSocket(graph: LGraph, _canvas: LGraphCanvas) {
                     if (!node) continue;
 
                     // Only the LoggingNode should render result payloads inside its UI.
-                    const allowRender = node.type === 'LoggingNode';
+                    const allowRender = node.type === 'Logging';
 
                     if (data.stream) {
                         // Streaming tick: route UI updates only to LoggingNode

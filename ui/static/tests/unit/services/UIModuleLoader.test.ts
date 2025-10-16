@@ -58,7 +58,7 @@ describe('UIModuleLoader', () => {
 
     test('loadUIModule loads module dynamically', async () => {
         // Test with a mocked static module
-        const result = await uiModuleLoader.loadUIModule('io/TextInputNodeUI');
+        const result = await uiModuleLoader.loadUIModule('TextInput');
 
         expect(result).toBeDefined();
         expect(typeof result).toBe('function');
@@ -273,8 +273,8 @@ describe('UIModuleLoader', () => {
         await new Promise(resolve => setTimeout(resolve, 10));
 
         // Verify that static modules are loaded (they should be cached)
-        expect((loader as any).uiModules['io/TextInputNodeUI']).toBeDefined();
-        expect((loader as any).uiModules['io/LoggingNodeUI']).toBeDefined();
-        expect((loader as any).uiModules['llm/OllamaChatNodeUI']).toBeDefined();
+        expect((loader as any).uiModules['TextInput']).toBeDefined();
+        expect((loader as any).uiModules['Logging']).toBeDefined();
+        expect((loader as any).uiModules['OllamaChat']).toBeDefined();
     });
 });

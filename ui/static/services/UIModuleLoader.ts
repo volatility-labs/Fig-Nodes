@@ -18,32 +18,121 @@ export class UIModuleLoader {
 
     private initializeStaticModules(): void {
         // Import all UI modules statically to ensure they're bundled
+        // Map old node names to new backend names
         import('../nodes/io/TextInputNodeUI').then(module => {
+            this.uiModules['TextInput'] = module.default;
             this.uiModules['io/TextInputNodeUI'] = module.default;
         });
         import('../nodes/io/LoggingNodeUI').then(module => {
+            this.uiModules['Logging'] = module.default;
             this.uiModules['io/LoggingNodeUI'] = module.default;
         });
         import('../nodes/io/SaveOutputNodeUI').then(module => {
+            this.uiModules['SaveOutput'] = module.default;
             this.uiModules['io/SaveOutputNodeUI'] = module.default;
         });
         import('../nodes/io/ExtractSymbolsNodeUI').then(module => {
+            this.uiModules['ExtractSymbols'] = module.default;
             this.uiModules['io/ExtractSymbolsNodeUI'] = module.default;
         });
         import('../nodes/llm/LLMMessagesBuilderNodeUI').then(module => {
+            this.uiModules['LLMMessagesBuilder'] = module.default;
             this.uiModules['llm/LLMMessagesBuilderNodeUI'] = module.default;
         });
         import('../nodes/llm/OllamaChatNodeUI').then(module => {
+            this.uiModules['OllamaChat'] = module.default;
             this.uiModules['llm/OllamaChatNodeUI'] = module.default;
+        });
+        import('../nodes/llm/OpenRouterChatNodeUI').then(module => {
+            this.uiModules['OpenRouterChat'] = module.default;
+            this.uiModules['llm/OpenRouterChatNodeUI'] = module.default;
+        });
+        import('../nodes/llm/SystemPromptLoaderNodeUI').then(module => {
+            this.uiModules['SystemPromptLoader'] = module.default;
+            this.uiModules['llm/SystemPromptLoaderNodeUI'] = module.default;
+        });
+        import('../nodes/market/ADXFilterNodeUI').then(module => {
+            this.uiModules['ADXFilter'] = module.default;
+            this.uiModules['market/ADXFilterNodeUI'] = module.default;
+        });
+        import('../nodes/market/AtrXFilterNodeUI').then(module => {
+            this.uiModules['AtrXFilter'] = module.default;
+            this.uiModules['market/AtrXFilterNodeUI'] = module.default;
+        });
+        import('../nodes/market/AtrXIndicatorNodeUI').then(module => {
+            this.uiModules['AtrXIndicator'] = module.default;
+            this.uiModules['market/AtrXIndicatorNodeUI'] = module.default;
+        });
+        import('../nodes/market/PolygonBatchCustomBarsNodeUI').then(module => {
+            this.uiModules['PolygonBatchCustomBars'] = module.default;
+            this.uiModules['market/PolygonBatchCustomBarsNodeUI'] = module.default;
+        });
+        import('../nodes/market/PolygonCustomBarsNodeUI').then(module => {
+            this.uiModules['PolygonCustomBars'] = module.default;
+            this.uiModules['market/PolygonCustomBarsNodeUI'] = module.default;
+        });
+        import('../nodes/market/PolygonUniverseNodeUI').then(module => {
+            this.uiModules['PolygonUniverse'] = module.default;
+            this.uiModules['market/PolygonUniverseNodeUI'] = module.default;
+        });
+        import('../nodes/market/OHLCVPlotNodeUI').then(module => {
+            this.uiModules['OHLCVPlot'] = module.default;
+            this.uiModules['market/OHLCVPlotNodeUI'] = module.default;
+        });
+        import('../nodes/market/RSIFilterNodeUI').then(module => {
+            this.uiModules['RSIFilter'] = module.default;
+            this.uiModules['market/RSIFilterNodeUI'] = module.default;
+        });
+        import('../nodes/market/SMACrossoverFilterNodeUI').then(module => {
+            this.uiModules['SMACrossoverFilter'] = module.default;
+            this.uiModules['market/SMACrossoverFilterNodeUI'] = module.default;
+        });
+        import('../nodes/market/ATRFilterNodeUI').then(module => {
+            this.uiModules['ATRFilter'] = module.default;
+            this.uiModules['market/ATRFilterNodeUI'] = module.default;
+        });
+        import('../nodes/market/ATRIndicatorNodeUI').then(module => {
+            this.uiModules['ATRIndicator'] = module.default;
+            this.uiModules['market/ATRIndicatorNodeUI'] = module.default;
+        });
+        import('../nodes/market/SMAFilterNodeUI').then(module => {
+            this.uiModules['SMAFilter'] = module.default;
+            this.uiModules['market/SMAFilterNodeUI'] = module.default;
+        });
+        import('../nodes/market/OrbFilterNodeUI').then(module => {
+            this.uiModules['OrbFilter'] = module.default;
+            this.uiModules['market/OrbFilterNodeUI'] = module.default;
+        });
+        import('../nodes/market/LodFilterNodeUI').then(module => {
+            this.uiModules['LodFilter'] = module.default;
+            this.uiModules['market/LodFilterNodeUI'] = module.default;
+        });
+        import('../nodes/market/EmaRangeFilterNodeUI').then(module => {
+            this.uiModules['EmaRangeFilter'] = module.default;
+            this.uiModules['market/EmaRangeFilterNodeUI'] = module.default;
+        });
+        import('../nodes/base/StreamingCustomNode').then(module => {
+            this.uiModules['StreamingCustomNode'] = module.default;
+        });
+
+        // Add fallback mappings for old UI module paths referenced by backend
+        import('../nodes/llm/LLMMessagesBuilderNodeUI').then(module => {
+            this.uiModules['llm/LLMMessagesBuilderNodeUI'] = module.default;
         });
         import('../nodes/llm/OpenRouterChatNodeUI').then(module => {
             this.uiModules['llm/OpenRouterChatNodeUI'] = module.default;
         });
+        import('../nodes/llm/OllamaChatNodeUI').then(module => {
+            this.uiModules['llm/OllamaChatNodeUI'] = module.default;
+        });
+        import('../nodes/io/SaveOutputNodeUI').then(module => {
+            this.uiModules['io/SaveOutputNodeUI'] = module.default;
+        });
         import('../nodes/llm/SystemPromptLoaderNodeUI').then(module => {
             this.uiModules['llm/SystemPromptLoaderNodeUI'] = module.default;
         });
-        import('../nodes/market/ADXFilterNodeUI').then(module => {
-            this.uiModules['market/ADXFilterNodeUI'] = module.default;
+        import('../nodes/market/OrbFilterNodeUI').then(module => {
+            this.uiModules['market/OrbFilterNodeUI'] = module.default;
         });
         import('../nodes/market/AtrXFilterNodeUI').then(module => {
             this.uiModules['market/AtrXFilterNodeUI'] = module.default;
@@ -51,26 +140,11 @@ export class UIModuleLoader {
         import('../nodes/market/AtrXIndicatorNodeUI').then(module => {
             this.uiModules['market/AtrXIndicatorNodeUI'] = module.default;
         });
-        import('../nodes/market/PolygonBatchCustomBarsNodeUI').then(module => {
-            this.uiModules['market/PolygonBatchCustomBarsNodeUI'] = module.default;
-        });
-        import('../nodes/market/PolygonCustomBarsNodeUI').then(module => {
-            this.uiModules['market/PolygonCustomBarsNodeUI'] = module.default;
-        });
-        import('../nodes/market/PolygonUniverseNodeUI').then(module => {
-            this.uiModules['PolygonUniverseNodeUI'] = module.default;
-        });
         import('../nodes/market/OHLCVPlotNodeUI').then(module => {
             this.uiModules['market/OHLCVPlotNodeUI'] = module.default;
         });
-        import('../nodes/market/RSIFilterNodeUI').then(module => {
-            this.uiModules['market/RSIFilterNodeUI'] = module.default;
-        });
-        import('../nodes/market/SMACrossoverFilterNodeUI').then(module => {
-            this.uiModules['market/SMACrossoverFilterNodeUI'] = module.default;
-        });
-        import('../nodes/base/StreamingCustomNode').then(module => {
-            this.uiModules['StreamingCustomNode'] = module.default;
+        import('../nodes/market/PolygonCustomBarsNodeUI').then(module => {
+            this.uiModules['market/PolygonCustomBarsNodeUI'] = module.default;
         });
     }
 
