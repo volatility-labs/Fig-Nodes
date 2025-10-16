@@ -25,23 +25,22 @@ jobs:
         with:
           python-version: '3.13'
 
-      - name: Install Poetry
-        uses: abatilo/actions-poetry@v3
+      - name: Install UV
+        uses: astral-sh/setup-uv@v4
         with:
-          poetry-version: '1.8.3'
+          version: "latest"
 
-      - name: Configure Poetry to not create venvs inside
-        run: poetry config virtualenvs.in-project true
-
-      - name: Cache Poetry virtualenv
+      - name: Cache UV dependencies
         uses: actions/cache@v4
         with:
-          path: ./.venv
-          key: ${{ runner.os }}-poetry-${{ hashFiles('pyproject.toml', 'poetry.lock') }}
+          path: ~/.cache/uv
+          key: ${{ runner.os }}-uv-${{ hashFiles('uv.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-uv-
 
       - name: Install dependencies
         run: |
-          poetry install --no-interaction --no-ansi
+          uv sync
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -65,7 +64,7 @@ jobs:
           TAVILY_API_KEY: ''
           OLLAMA_HOST: 'http://127.0.0.1:11434'
         run: |
-          poetry run pytest tests/unit --cov=./ --cov-report=xml --cov-report=term-missing
+          uv run pytest tests/unit --cov=./ --cov-report=xml --cov-report=term-missing
 
       - name: Upload coverage report
         uses: actions/upload-artifact@v4
