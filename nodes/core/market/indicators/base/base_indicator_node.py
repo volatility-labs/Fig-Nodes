@@ -2,7 +2,7 @@ import logging
 from typing import Dict, Any, List, abstractmethod
 import pandas as pd
 import numpy as np
-from nodes.base.base_node import BaseNode
+from nodes.base.base_node import Base
 from core.types_registry import get_type, IndicatorResult, IndicatorType, IndicatorValue
 from services.indicators_service import IndicatorsService
 from abc import ABC, abstractmethod
@@ -10,7 +10,7 @@ from abc import ABC, abstractmethod
 logger = logging.getLogger(__name__)
 
 
-class BaseIndicatorNode(BaseNode, ABC):
+class BaseIndicator(Base, ABC):
     """
     Base class for nodes that compute technical indicators from OHLCV data.
     Subclasses should implement _map_to_indicator_value for specific indicator handling.

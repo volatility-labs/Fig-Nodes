@@ -1,11 +1,11 @@
 from typing import Dict, Any
 import json
 
-from nodes.base.base_node import BaseNode
+from nodes.base.base_node import Base
 from core.types_registry import get_type
 
 
-class TextToLLMMessageNode(BaseNode):
+class TextToLLMMessage(Base):
     """
     Adapter node: wraps generic input data into an LLMChatMessage and LLMChatMessageList.
 

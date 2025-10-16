@@ -1,11 +1,11 @@
 import pytest
 from unittest.mock import AsyncMock, patch
-from nodes.core.llm.open_router_chat_node import OpenRouterChatNode
+from nodes.core.llm.open_router_chat_node import OpenRouterChat
 from core.types_registry import NodeExecutionError
 
 @pytest.fixture
 def chat_node():
-    return OpenRouterChatNode(id=1, params={})
+    return OpenRouterChat(id=1, params={})
 
 @pytest.mark.asyncio
 async def test_execute_basic(chat_node):

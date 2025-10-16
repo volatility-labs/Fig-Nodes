@@ -1,7 +1,7 @@
 
 import pytest
 import pandas as pd
-from nodes.core.market.indicators.atr_indicator_node import ATRIndicatorNode
+from nodes.core.market.indicators.atr_indicator_node import ATRIndicator
 from core.types_registry import IndicatorType
 
 @pytest.fixture
@@ -14,7 +14,7 @@ def sample_ohlcv() -> list[dict[str, float]]:
 
 @pytest.mark.asyncio
 async def test_atr_indicator_node_happy_path(sample_ohlcv):
-    node = ATRIndicatorNode("test", {"window": 14})
+    node = ATRIndicator("test", {"window": 14})
     inputs = {"ohlcv": sample_ohlcv}
     result = await node.execute(inputs)
     assert "results" in result
@@ -27,7 +27,7 @@ async def test_atr_indicator_node_happy_path(sample_ohlcv):
 
 @pytest.mark.asyncio
 async def test_atr_indicator_node_insufficient_data():
-    node = ATRIndicatorNode("test", {"window": 14})
+    node = ATRIndicator("test", {"window": 14})
     inputs = {"ohlcv": []}
     result = await node.execute(inputs)
     assert result == {"results": []}
@@ -38,7 +38,7 @@ async def test_atr_indicator_node_zero_volatility():
         {"timestamp": i * 86400000, "open": 100, "high": 100, "low": 100, "close": 100, "volume": 1000}
         for i in range(20)
     ]
-    node = ATRIndicatorNode("test", {"window": 14})
+    node = ATRIndicator("test", {"window": 14})
     inputs = {"ohlcv": ohlcv}
     result = await node.execute(inputs)
     assert "results" in result
@@ -52,7 +52,7 @@ async def test_atr_indicator_node_small_window():
         {"timestamp": i * 86400000, "open": 100 + i, "high": 105 + i, "low": 95 + i, "close": 100 + i, "volume": 1000}
         for i in range(5)
     ]
-    node = ATRIndicatorNode("test", {"window": 3})
+    node = ATRIndicator("test", {"window": 3})
     inputs = {"ohlcv": ohlcv}
     result = await node.execute(inputs)
     assert "results" in result
@@ -66,7 +66,7 @@ async def test_atr_indicator_node_insufficient_data_for_window():
         {"timestamp": i * 86400000, "open": 100 + i, "high": 105 + i, "low": 95 + i, "close": 100 + i, "volume": 1000}
         for i in range(10)
     ]
-    node = ATRIndicatorNode("test", {"window": 14})
+    node = ATRIndicator("test", {"window": 14})
     inputs = {"ohlcv": ohlcv}
     result = await node.execute(inputs)
     assert "results" in result
@@ -79,7 +79,7 @@ async def test_atr_indicator_node_with_nan_values():
         for i in range(20)
     ]
     ohlcv[5]["high"] = float('nan')  # Introduce NaN
-    node = ATRIndicatorNode("test", {"window": 14})
+    node = ATRIndicator("test", {"window": 14})
     inputs = {"ohlcv": ohlcv}
     result = await node.execute(inputs)
     assert "results" in result

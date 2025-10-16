@@ -1,8 +1,8 @@
 from typing import Dict, Any
-from nodes.base.base_node import BaseNode
+from nodes.base.base_node import Base
 
 
-class SystemPromptLoaderNode(BaseNode):
+class SystemPromptLoader(Base):
     """Loads a system prompt from UI-provided content (e.g., uploaded .md/.txt).
 
     Outputs:

@@ -4,13 +4,13 @@ import asyncio
 import networkx as nx
 from typing import Dict, Any, AsyncGenerator
 from core.graph_executor import GraphExecutor
-from nodes.base.base_node import BaseNode
-from nodes.base.streaming_node import StreamingNode
-from nodes.core.flow.for_each_node import ForEachNode
+from nodes.base.base_node import Base
+from nodes.base.streaming_node import Streaming
+from nodes.core.flow.for_each_node import ForEach
 from core.node_registry import NODE_REGISTRY  # Assuming it's empty or mock
 
 # Mock Node Classes
-class MockBaseNode(BaseNode):
+class MockBaseNode(Base):
     def __init__(self, id: int, params: Dict[str, Any] = None):
         super().__init__(id=id, params=params)
     inputs = {"input": str}
@@ -19,7 +19,7 @@ class MockBaseNode(BaseNode):
     async def _execute_impl(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
         return {"output": f"processed_{inputs.get('input', '')}"}
 
-class MockStreamingNode(StreamingNode):
+class MockStreamingNode(Streaming):
     def __init__(self, id: int, params: Dict[str, Any] = None):
         super().__init__(id=id, params=params)
     inputs = {}
@@ -38,7 +38,7 @@ def mock_registry():
     return {
         "MockBaseNode": MockBaseNode,
         "MockStreamingNode": MockStreamingNode,
-        "ForEachNode": ForEachNode
+        "ForEach": ForEach
     }
 
 @pytest.fixture
@@ -84,7 +84,7 @@ async def test_execute_isolated_node(mock_registry):
 async def test_execute_foreach(mock_registry):
     data = {
         "nodes": [
-            {"id": 1, "type": "ForEachNode"},
+            {"id": 1, "type": "ForEach"},
             {"id": 2, "type": "MockBaseNode"}  # Subgraph node
         ],
         "links": [[0, 1, 0, 2, 0]]  # ForEach to Mock

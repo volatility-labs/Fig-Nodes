@@ -1,12 +1,12 @@
 from typing import Dict, Any, List
 import asyncio
 import requests
-from nodes.base.base_node import BaseNode
+from nodes.base.base_node import Base
 from core.types_registry import AssetSymbol, InstrumentType, AssetClass
 from core.types_registry import get_type
 
 
-class InstrumentResolverNode(BaseNode):
+class InstrumentResolver(Base):
     inputs = {"symbols": get_type("AssetSymbolList")}
     outputs = {"resolved_symbols": get_type("AssetSymbolList")}
     default_params = {

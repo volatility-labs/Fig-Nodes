@@ -1,12 +1,12 @@
 import asyncio
 import pytest
 
-from nodes.core.llm.llm_messages_builder_node import LLMMessagesBuilderNode
+from nodes.core.llm.llm_messages_builder_node import LLMMessagesBuilder
 
 
 @pytest.mark.asyncio
 async def test_builder_merges_multiple_message_lists():
-    node = LLMMessagesBuilderNode(id=1, params={})
+    node = LLMMessagesBuilder(id=1, params={})
     inputs = {
         "message_0": [{"role": "system", "content": "You are an assistant."}],
         "message_1": [{"role": "user", "content": "Hi"}],
@@ -22,7 +22,7 @@ async def test_builder_merges_multiple_message_lists():
 
 @pytest.mark.asyncio
 async def test_builder_drops_empty_with_param_true():
-    node = LLMMessagesBuilderNode(id=1, params={"drop_empty": True})
+    node = LLMMessagesBuilder(id=1, params={"drop_empty": True})
     inputs = {
         "message_0": [{"role": "user", "content": "u1"}, {"role": "user", "content": " "}],
         "message_1": [{"role": "assistant", "content": "a1"}, {"role": "assistant", "content": ""}],
@@ -38,7 +38,7 @@ async def test_builder_drops_empty_with_param_true():
 
 @pytest.mark.asyncio
 async def test_builder_keeps_empty_with_param_false():
-    node = LLMMessagesBuilderNode(id=1, params={"drop_empty": False})
+    node = LLMMessagesBuilder(id=1, params={"drop_empty": False})
     inputs = {
         "message_0": [{"role": "user", "content": "u1"}, {"role": "user", "content": " "}],
         "message_1": [{"role": "assistant", "content": ""}],

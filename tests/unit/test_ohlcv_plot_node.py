@@ -1,7 +1,7 @@
 import pytest
 from typing import Dict, List
 
-from nodes.core.market.utils.ohlcv_plot_node import OHLCVPlotNode
+from nodes.core.market.utils.ohlcv_plot_node import OHLCVPlot
 from core.types_registry import AssetSymbol, AssetClass, OHLCVBar
 
 
@@ -14,7 +14,7 @@ def _sample_bars(n: int = 20) -> List[OHLCVBar]:
 
 @pytest.mark.asyncio
 async def test_plot_node_single_series():
-    node = OHLCVPlotNode(id=1, params={})
+    node = OHLCVPlot(id=1, params={})
     inputs = {"ohlcv": _sample_bars(30)}
     out = await node.execute(inputs)
     assert "images" in out
@@ -27,7 +27,7 @@ async def test_plot_node_single_series():
 
 @pytest.mark.asyncio
 async def test_plot_node_bundle_multiple_symbols():
-    node = OHLCVPlotNode(id=1, params={"max_symbols": 2})
+    node = OHLCVPlot(id=1, params={"max_symbols": 2})
     sym1 = AssetSymbol("AAPL", AssetClass.STOCKS)
     sym2 = AssetSymbol("MSFT", AssetClass.STOCKS)
     bundle: Dict[AssetSymbol, List[OHLCVBar]] = {sym1: _sample_bars(25), sym2: _sample_bars(25)}
@@ -40,7 +40,7 @@ async def test_plot_node_bundle_multiple_symbols():
 
 @pytest.mark.asyncio
 async def test_plot_node_lookback_applied():
-    node = OHLCVPlotNode(id=1, params={"lookback_bars": 10})
+    node = OHLCVPlot(id=1, params={"lookback_bars": 10})
     out = await node.execute({"ohlcv": _sample_bars(50)})
     # Still should produce an image
     assert out["images"]["OHLCV"].startswith("data:image/png;base64,")
@@ -48,7 +48,7 @@ async def test_plot_node_lookback_applied():
 
 @pytest.mark.asyncio
 async def test_plot_node_requires_input():
-    node = OHLCVPlotNode(id=1, params={})
+    node = OHLCVPlot(id=1, params={})
     with pytest.raises(Exception):
         await node.execute({})
 

@@ -2,12 +2,12 @@ import logging
 import pandas as pd
 import numpy as np
 from typing import Dict, Any, List
-from nodes.core.market.indicators.base.base_indicator_node import BaseIndicatorNode
+from nodes.core.market.indicators.base.base_indicator_node import BaseIndicator
 from core.types_registry import get_type, IndicatorResult, IndicatorType, IndicatorValue
 
 logger = logging.getLogger(__name__)
 
-class AtrXIndicatorNode(BaseIndicatorNode):
+class AtrXIndicator(BaseIndicator):
     ui_module = "market/AtrXIndicatorNodeUI"
     """
     Computes the ATRX indicator for a single asset's OHLCV data.

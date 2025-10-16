@@ -1,8 +1,8 @@
 from typing import Dict, Any, List
-from nodes.base.base_node import BaseNode
+from nodes.base.base_node import Base
 
 
-class ForEachNode(BaseNode):
+class ForEach(Base):
     """
     Iterates over a list and executes a subgraph for each item.
     This node is special and requires custom handling in the GraphExecutor.

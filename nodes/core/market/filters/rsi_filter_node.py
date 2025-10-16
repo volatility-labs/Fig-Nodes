@@ -2,11 +2,11 @@ import pandas as pd
 import numpy as np
 from typing import Dict, Any, List
 from ta.momentum import RSIIndicator
-from nodes.core.market.filters.base.base_indicator_filter_node import BaseIndicatorFilterNode
+from nodes.core.market.filters.base.base_indicator_filter_node import BaseIndicatorFilter
 from core.types_registry import OHLCVBar, IndicatorResult, IndicatorType, IndicatorValue
 
 
-class RSIFilterNode(BaseIndicatorFilterNode):
+class RSIFilter(BaseIndicatorFilter):
     """
     Filters assets based on RSI (Relative Strength Index) values.
     """

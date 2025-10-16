@@ -1,6 +1,6 @@
 import pytest
 from typing import Dict, List
-from nodes.core.market.filters.atrx_filter_node import AtrXFilterNode
+from nodes.core.market.filters.atrx_filter_node import AtrXFilter
 from core.types_registry import AssetSymbol, OHLCVBar, IndicatorType
 import pandas as pd
 from core.types_registry import IndicatorResult, IndicatorType, IndicatorValue
@@ -16,7 +16,7 @@ def sample_bundle() -> Dict[AssetSymbol, List[OHLCVBar]]:
 @pytest.mark.asyncio
 async def test_atrx_filter_node_outside(sample_bundle):
     params = {"filter_condition": "outside", "upper_threshold": 5.0, "lower_threshold": -3.0}
-    node = AtrXFilterNode(id=1, params=params)
+    node = AtrXFilter(id=1, params=params)
     result = await node.execute({"ohlcv_bundle": sample_bundle})
     assert "filtered_ohlcv_bundle" in result
     # With constant data (close=102, high=105, low=95), daily_avg=100, EMA trend=100, ATR=10
@@ -29,7 +29,7 @@ async def test_atrx_filter_node_outside(sample_bundle):
 @pytest.mark.parametrize("smoothing", ["RMA", "EMA", "SMA"])
 async def test_atrx_filter_node_smoothing(sample_bundle, smoothing):
     params = {"smoothing": smoothing, "filter_condition": "outside", "upper_threshold": 5.0, "lower_threshold": -3.0}
-    node = AtrXFilterNode(id=1, params=params)
+    node = AtrXFilter(id=1, params=params)
     result = await node.execute({"ohlcv_bundle": sample_bundle})
     assert "filtered_ohlcv_bundle" in result
     # Note: smoothing parameter is now ignored in corrected ATRX calculation (uses SMA for ATR)
@@ -48,7 +48,7 @@ def multi_symbol_bundle() -> Dict[AssetSymbol, List[OHLCVBar]]:
 @pytest.mark.asyncio
 async def test_atrx_filter_node_outside_multi_symbols(multi_symbol_bundle):
     params = {"filter_condition": "outside", "upper_threshold": 5.0, "lower_threshold": -3.0}
-    node = AtrXFilterNode(id=1, params=params)
+    node = AtrXFilter(id=1, params=params)
     with patch.object(node, '_calculate_indicator') as mock_calc:
         mock_calc.side_effect = [
             IndicatorResult(
@@ -80,7 +80,7 @@ async def test_atrx_filter_node_outside_multi_symbols(multi_symbol_bundle):
 @pytest.mark.asyncio
 async def test_atrx_filter_node_inside_multi_symbols(multi_symbol_bundle):
     params = {"filter_condition": "inside", "upper_threshold": 5.0, "lower_threshold": -3.0}
-    node = AtrXFilterNode(id=1, params=params)
+    node = AtrXFilter(id=1, params=params)
     with patch.object(node, '_calculate_indicator') as mock_calc:
         mock_calc.side_effect = [
             IndicatorResult(
@@ -112,7 +112,7 @@ async def test_atrx_filter_node_inside_multi_symbols(multi_symbol_bundle):
 @pytest.mark.asyncio
 async def test_atrx_filter_node_edge_cases_outside(multi_symbol_bundle):
     params = {"filter_condition": "outside", "upper_threshold": 5.0, "lower_threshold": -3.0}
-    node = AtrXFilterNode(id=1, params=params)
+    node = AtrXFilter(id=1, params=params)
     with patch.object(node, '_calculate_indicator') as mock_calc:
         mock_calc.side_effect = [
             IndicatorResult(
@@ -141,7 +141,7 @@ async def test_atrx_filter_node_edge_cases_outside(multi_symbol_bundle):
 @pytest.mark.asyncio
 async def test_atrx_filter_node_edge_cases_inside(multi_symbol_bundle):
     params = {"filter_condition": "inside", "upper_threshold": 5.0, "lower_threshold": -3.0}
-    node = AtrXFilterNode(id=1, params=params)
+    node = AtrXFilter(id=1, params=params)
     with patch.object(node, '_calculate_indicator') as mock_calc:
         mock_calc.side_effect = [
             IndicatorResult(
@@ -170,7 +170,7 @@ async def test_atrx_filter_node_edge_cases_inside(multi_symbol_bundle):
 @pytest.mark.asyncio
 async def test_atrx_filter_node_empty_bundle():
     params = {"filter_condition": "outside", "upper_threshold": 5.0, "lower_threshold": -3.0}
-    node = AtrXFilterNode(id=1, params=params)
+    node = AtrXFilter(id=1, params=params)
     result = await node.execute({"ohlcv_bundle": {}})
     assert "filtered_ohlcv_bundle" in result
     assert result["filtered_ohlcv_bundle"] == {}
@@ -180,7 +180,7 @@ async def test_atrx_filter_node_symbol_with_empty_ohlcv(sample_bundle):
     bundle = sample_bundle.copy()
     bundle[AssetSymbol("EMPTY", AssetClass.CRYPTO)] = []
     params = {"filter_condition": "outside", "upper_threshold": 5.0, "lower_threshold": -3.0}
-    node = AtrXFilterNode(id=1, params=params)
+    node = AtrXFilter(id=1, params=params)
     result = await node.execute({"ohlcv_bundle": bundle})
     filtered = result["filtered_ohlcv_bundle"]
     # Empty OHLCV data should be handled gracefully and not included in results
@@ -190,7 +190,7 @@ async def test_atrx_filter_node_symbol_with_empty_ohlcv(sample_bundle):
 @pytest.mark.asyncio
 async def test_atrx_filter_node_calculation_error(multi_symbol_bundle):
     params = {"filter_condition": "outside", "upper_threshold": 5.0, "lower_threshold": -3.0}
-    node = AtrXFilterNode(id=1, params=params)
+    node = AtrXFilter(id=1, params=params)
     with patch.object(node, '_calculate_indicator') as mock_calc:
         mock_calc.side_effect = [
             IndicatorResult(
@@ -226,7 +226,7 @@ async def test_atrx_filter_node_calculation_error(multi_symbol_bundle):
 ])
 async def test_atrx_filter_node_varying_params(multi_symbol_bundle, condition, upper, lower, expected_kept):
     params = {"filter_condition": condition, "upper_threshold": upper, "lower_threshold": lower}
-    node = AtrXFilterNode(id=1, params=params)
+    node = AtrXFilter(id=1, params=params)
     with patch.object(node, '_calculate_indicator') as mock_calc:
         mock_calc.side_effect = [
             IndicatorResult(
@@ -269,7 +269,7 @@ async def test_atrx_filter_node_real_calc_outside(varying_bundle):
     # ATRX = (current_close - EMA_daily_avg) / 8
     # This should be positive and potentially large, so may pass "outside" filter
     params = {"filter_condition": "outside", "upper_threshold": 1.0, "lower_threshold": -1.0}
-    node = AtrXFilterNode(id=1, params=params)
+    node = AtrXFilter(id=1, params=params)
     result = await node.execute({"ohlcv_bundle": varying_bundle})
     assert "filtered_ohlcv_bundle" in result
     # With trending up data, ATRX should be positive and potentially > 1.0

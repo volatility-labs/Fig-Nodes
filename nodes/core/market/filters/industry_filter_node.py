@@ -2,14 +2,14 @@ import logging
 import asyncio
 import httpx
 from typing import Dict, Any, List
-from nodes.core.market.filters.base.base_filter_node import BaseFilterNode
+from nodes.core.market.filters.base.base_filter_node import BaseFilter
 from core.types_registry import get_type, AssetSymbol, OHLCVBar
 from core.api_key_vault import APIKeyVault
 
 logger = logging.getLogger(__name__)
 
 
-class IndustryFilterNode(BaseFilterNode):
+class IndustryFilter(BaseFilter):
     """
     Filters OHLCV bundles based on company industry from Polygon.io Ticker Overview API.
     Uses sic_description for matching (e.g., 'Computer Programming Services').

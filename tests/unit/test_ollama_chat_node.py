@@ -2,7 +2,7 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch, Mock
 import asyncio
-from nodes.core.llm.ollama_chat_node import OllamaChatNode
+from nodes.core.llm.ollama_chat_node import OllamaChat
 from core.types_registry import LLMChatMessage, LLMChatMetrics
 import os
 import json
@@ -10,7 +10,7 @@ import sys
 
 @pytest.fixture
 def chat_node():
-    return OllamaChatNode(id=1, params={})
+    return OllamaChat(id=1, params={})
 
 @pytest.mark.asyncio
 async def test_start(chat_node):

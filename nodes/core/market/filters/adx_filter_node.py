@@ -1,11 +1,11 @@
 import pandas as pd
 from typing import Dict, Any, List
 from ta.trend import ADXIndicator
-from nodes.core.market.filters.base.base_indicator_filter_node import BaseIndicatorFilterNode
+from nodes.core.market.filters.base.base_indicator_filter_node import BaseIndicatorFilter
 from core.types_registry import OHLCVBar, IndicatorResult, IndicatorType, IndicatorValue
 
 
-class ADXFilterNode(BaseIndicatorFilterNode):
+class ADXFilter(BaseIndicatorFilter):
     """
     Filters assets based on ADX (Average Directional Index) values.
     """

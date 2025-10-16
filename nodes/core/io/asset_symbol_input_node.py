@@ -1,10 +1,10 @@
 from typing import Dict, Any
 from core.types_registry import get_type
-from nodes.base.base_node import BaseNode
+from nodes.base.base_node import Base
 from core.types_registry import AssetSymbol, AssetClass, InstrumentType
 
 
-class AssetSymbolInputNode(BaseNode):
+class AssetSymbolInput(Base):
     """Node to create a single AssetSymbol from user parameters."""
     inputs = {}
     outputs = {"symbol": get_type("AssetSymbol")}

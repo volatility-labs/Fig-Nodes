@@ -21,8 +21,8 @@ async def test_ollama_integration(mock_ollama_client):
         # Define graph: OllamaChat (with selected_model)
         graph_data = {
             "nodes": [
-                {"id": 1, "type": "OllamaChatNode", "properties": {"stream": False, "selected_model": "test_model:latest"}},
-                {"id": 2, "type": "TextInputNode", "properties": {"text": "Hello"}}
+                {"id": 1, "type": "OllamaChat", "properties": {"stream": False, "selected_model": "test_model:latest"}},
+                {"id": 2, "type": "TextInput", "properties": {"text": "Hello"}}
             ],
             "links": [
                 [0, 2, 0, 1, 1]   # text.text -> chat.prompt (slot 1)
@@ -75,8 +75,8 @@ async def test_ollama_streaming_integration(mock_httpx_client, mock_ollama_clien
     # Define graph: OllamaChat (with selected_model, streaming) &lt;- TextInput
     graph_data = {
         "nodes": [
-            {"id": 1, "type": "OllamaChatNode", "properties": {"stream": False, "json_mode": True, "selected_model": "test_model:latest"}},
-            {"id": 2, "type": "TextInputNode", "properties": {"text": "Output empty JSON"}}
+            {"id": 1, "type": "OllamaChat", "properties": {"stream": False, "json_mode": True, "selected_model": "test_model:latest"}},
+            {"id": 2, "type": "TextInput", "properties": {"text": "Output empty JSON"}}
         ],
         "links": [
             [0, 2, 0, 1, 1]  # text -> prompt (slot 1)
@@ -118,28 +118,28 @@ async def test_web_search_tool_with_ollama_integration(mock_httpx_client, mock_o
 
     mock_ollama_client.return_value.chat = AsyncMock(side_effect=mock_responses)
 
-    """Test web search tool integration with OllamaChatNode."""
+    """Test web search tool integration with OllamaChat."""
     # Skip if no API key is available
     if not os.getenv("TAVILY_API_KEY"):
         pytest.skip("TAVILY_API_KEY not set, skipping integration test")
 
-    # Define graph: WebSearchToolNode -> OllamaChatNode (with selected_model)
+    # Define graph: WebSearchTool -> OllamaChat (with selected_model)
     graph_data = {
         "nodes": [
-            {"id": 2, "type": "WebSearchToolNode", "properties": {
+            {"id": 2, "type": "WebSearchTool", "properties": {
                 "provider": "tavily",
                 "default_k": 2,
                 "time_range": "month",
                 "lang": "en",
                 "require_api_key": True
             }},
-            {"id": 3, "type": "OllamaChatNode", "properties": {
+            {"id": 3, "type": "OllamaChat", "properties": {
                 "stream": False,
                 "max_tool_iters": 1,  # Limit iterations for test
                 "tool_timeout_s": 15,
                 "selected_model": "llama3.2:latest"
             }},
-            {"id": 4, "type": "TextInputNode", "properties": {
+            {"id": 4, "type": "TextInput", "properties": {
                 "text": "Search for the latest news about artificial intelligence and summarize the key findings."
             }}
         ],
@@ -155,7 +155,7 @@ async def test_web_search_tool_with_ollama_integration(mock_httpx_client, mock_o
     results = await executor.execute()
 
     # Verify results
-    assert 3 in results  # OllamaChatNode results
+    assert 3 in results  # OllamaChat results
     chat_result = results[3]
 
     assert "message" in chat_result
@@ -200,28 +200,28 @@ async def test_web_search_tool_streaming_with_ollama(mock_httpx_client, mock_oll
 
     mock_ollama_client.return_value.chat = AsyncMock(side_effect=mock_responses)
 
-    """Test web search tool integration with streaming OllamaChatNode."""
+    """Test web search tool integration with streaming OllamaChat."""
     # Skip if no API key is available
     if not os.getenv("TAVILY_API_KEY"):
         pytest.skip("TAVILY_API_KEY not set, skipping integration test")
 
-    # Define graph: WebSearchToolNode -> OllamaChatNode (streaming, with selected_model)
+    # Define graph: WebSearchTool -> OllamaChat (streaming, with selected_model)
     graph_data = {
         "nodes": [
-            {"id": 2, "type": "WebSearchToolNode", "properties": {
+            {"id": 2, "type": "WebSearchTool", "properties": {
                 "provider": "tavily",
                 "default_k": 1,
                 "time_range": "week",
                 "lang": "en",
                 "require_api_key": True
             }},
-            {"id": 3, "type": "OllamaChatNode", "properties": {
+            {"id": 3, "type": "OllamaChat", "properties": {
                 "stream": False,
                 "max_tool_iters": 1,
                 "tool_timeout_s": 10,
                 "selected_model": "llama3.2:latest"
             }},
-            {"id": 4, "type": "TextInputNode", "properties": {
+            {"id": 4, "type": "TextInput", "properties": {
                 "text": "What is the current price of Bitcoin?"
             }}
         ],
@@ -283,8 +283,8 @@ async def test_ollama_integration_stop_triggers_force_kill_mac(mock_popen, mock_
         
         graph_data = {
             "nodes": [
-                {"id": 1, "type": "OllamaChatNode", "properties": {"stream": False, "selected_model": "test_model:latest"}},
-                {"id": 2, "type": "TextInputNode", "properties": {"text": "Hello"}}
+                {"id": 1, "type": "OllamaChat", "properties": {"stream": False, "selected_model": "test_model:latest"}},
+                {"id": 2, "type": "TextInput", "properties": {"text": "Hello"}}
             ],
             "links": [[0, 2, 0, 1, 1]]
         }
@@ -336,8 +336,8 @@ async def test_ollama_integration_stop_triggers_force_kill_linux(mock_popen, moc
         
         graph_data = {
             "nodes": [
-                {"id": 1, "type": "OllamaChatNode", "properties": {"stream": False, "selected_model": "test_model:latest", "host": "http://localhost:54321"}},
-                {"id": 2, "type": "TextInputNode", "properties": {"text": "Hello"}}
+                {"id": 1, "type": "OllamaChat", "properties": {"stream": False, "selected_model": "test_model:latest", "host": "http://localhost:54321"}},
+                {"id": 2, "type": "TextInput", "properties": {"text": "Hello"}}
             ],
             "links": [[0, 2, 0, 1, 1]]
         }

@@ -1,8 +1,8 @@
 from typing import Dict, Any
-from nodes.base.base_node import BaseNode
+from nodes.base.base_node import Base
 
 
-class ScoreNode(BaseNode):
+class Score(Base):
     """
     Computes a score based on a dictionary of indicators.
     """

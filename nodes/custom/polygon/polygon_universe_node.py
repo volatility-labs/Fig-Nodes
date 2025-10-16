@@ -1,14 +1,14 @@
 from typing import List, Dict, Any, Optional
 import httpx
 import logging
-from nodes.base.base_node import BaseNode
+from nodes.base.base_node import Base
 from core.types_registry import AssetSymbol, AssetClass, get_type
 from core.api_key_vault import APIKeyVault
 
 logger = logging.getLogger(__name__)
 
 
-class PolygonUniverseNode(BaseNode):
+class PolygonUniverse(Base):
     inputs = {"filter_symbols": get_type("AssetSymbolList")}
     outputs = {"symbols": get_type("AssetSymbolList")}
     optional_inputs = ["filter_symbols"]

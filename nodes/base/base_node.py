@@ -8,7 +8,7 @@ from pydantic import BaseModel, ValidationError, create_model
 
 logger = logging.getLogger(__name__)
 
-class BaseNode:
+class Base:
     """
     Abstract base class for all graph nodes.
     

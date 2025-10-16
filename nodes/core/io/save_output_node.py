@@ -3,12 +3,12 @@ import json
 import uuid
 from datetime import datetime
 from typing import Dict, Any, List, Union
-from nodes.base.base_node import BaseNode
+from nodes.base.base_node import Base
 from core.types_registry import AssetSymbol, OHLCVBar, LLMChatMessage, LLMToolSpec, LLMChatMetrics, LLMToolHistoryItem, LLMThinkingHistoryItem
 import io
 
 
-class SaveOutputNode(BaseNode):
+class SaveOutput(Base):
     """
     Node to save node outputs to disk in the output folder.
 

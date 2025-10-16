@@ -2,11 +2,11 @@ import logging
 import pandas as pd
 import numpy as np
 from typing import List, Dict, Any
-from nodes.core.market.filters.base.base_indicator_filter_node import BaseIndicatorFilterNode
+from nodes.core.market.filters.base.base_indicator_filter_node import BaseIndicatorFilter
 from core.types_registry import IndicatorResult, IndicatorType, IndicatorValue, OHLCVBar, AssetSymbol
 logger = logging.getLogger(__name__)
 
-class SMAFilterNode(BaseIndicatorFilterNode):
+class SMAFilter(BaseIndicatorFilter):
     default_params = {"period": 200, "prior_days": 1}
     params_meta = [
         {"name": "period", "type": "number", "default": 200, "min": 2, "step": 1},

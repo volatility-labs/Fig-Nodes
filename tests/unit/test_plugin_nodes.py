@@ -4,10 +4,10 @@ from unittest.mock import AsyncMock, patch, MagicMock
 import json
 import asyncio
 import pandas as pd
-from nodes.custom.binance.binance_klines_streaming_node import BinanceKlinesStreamingNode
-from nodes.custom.binance.binance_universe_node import BinancePerpsUniverseNode
+from nodes.custom.binance.binance_klines_streaming_node import BinanceKlinesStreaming
+from nodes.custom.binance.binance_universe_node import BinancePerpsUniverse
 from core.types_registry import AssetSymbol, AssetClass, InstrumentType
-from nodes.base.base_node import BaseNode
+from nodes.base.base_node import Base
 import websockets.exceptions
 
 # Tests for BinanceKlinesStreamingNode
@@ -19,7 +19,7 @@ def mock_connect():
 
 @pytest.fixture
 def binance_klines_node():
-    return BinanceKlinesStreamingNode(id=1, params={"interval": "1m"})
+    return BinanceKlinesStreaming(id=1, params={"interval": "1m"})
 
 class MockWS:
     def __init__(self, messages):
@@ -65,7 +65,7 @@ async def test_binance_klines_start(mock_connect):
     ]
     mock_connect.return_value = MockWS(messages)
 
-    node = BinanceKlinesStreamingNode(id=1, params={"interval": "1m"})
+    node = BinanceKlinesStreaming(id=1, params={"interval": "1m"})
     inputs = {"symbols_0": [AssetSymbol("BTC", AssetClass.CRYPTO, quote_currency="USDT")]}
     gen = node.start(inputs)
     output = await anext(gen)
@@ -92,7 +92,7 @@ async def test_binance_klines_no_symbols(binance_klines_node):
 
 @pytest.fixture
 def binance_universe_node():
-    return BinancePerpsUniverseNode(id=1, params={})
+    return BinancePerpsUniverse(id=1, params={})
 
 @pytest.mark.asyncio
 @patch("requests.get")

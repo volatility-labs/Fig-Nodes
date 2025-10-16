@@ -4,7 +4,7 @@ import json
 import tempfile
 import unittest.mock
 from datetime import datetime
-from nodes.core.io.save_output_node import SaveOutputNode
+from nodes.core.io.save_output_node import SaveOutput
 from core.types_registry import AssetSymbol, AssetClass, InstrumentType, NodeValidationError
 
 
@@ -17,8 +17,8 @@ def temp_output_dir():
 
 @pytest.fixture
 def save_node(temp_output_dir):
-    """Create a SaveOutputNode with temp directory."""
-    node = SaveOutputNode(id=1, params={})
+    """Create a SaveOutput with temp directory."""
+    node = SaveOutput(id=1, params={})
     # Override the output directory for testing
     import unittest.mock
     with unittest.mock.patch('os.path.dirname') as mock_dirname:

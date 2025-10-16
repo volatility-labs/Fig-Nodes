@@ -7,7 +7,7 @@ import matplotlib
 matplotlib.use("Agg")  # non-interactive backend for server-side rendering
 import matplotlib.pyplot as plt
 
-from nodes.base.base_node import BaseNode
+from nodes.base.base_node import Base
 from core.types_registry import get_type, AssetSymbol, OHLCVBar, NodeValidationError
 
 
@@ -61,7 +61,7 @@ def _plot_candles(ax, series: List[Tuple[int, float, float, float, float]]):
     ax.grid(False)
 
 
-class OHLCVPlotNode(BaseNode):
+class OHLCVPlot(Base):
     """
     Renders OHLCV data as candlestick chart(s) and returns base64 PNG image(s).
 

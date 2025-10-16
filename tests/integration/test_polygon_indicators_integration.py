@@ -4,12 +4,12 @@ from unittest.mock import patch, AsyncMock, MagicMock
 from core.graph_executor import GraphExecutor
 from core.node_registry import NODE_REGISTRY
 from core.types_registry import AssetSymbol, AssetClass
-from nodes.custom.polygon.polygon_universe_node import PolygonUniverseNode
-from nodes.core.market.filters.orb_filter_node import OrbFilterNode
+from nodes.custom.polygon.polygon_universe_node import PolygonUniverse
+from nodes.core.market.filters.orb_filter_node import OrbFilter
 
 @pytest.mark.asyncio
 async def test_polygon_indicators_filtering_pipeline():
-    """Integration test for the complete pipeline: PolygonBatchCustomBarsNode -> ADXFilterNode"""
+    """Integration test for the complete pipeline: PolygonBatchCustomBars -> ADXFilter"""
 
     # Create mock OHLCV data that will produce specific indicator values
     mock_ohlcv_data = [
@@ -40,8 +40,8 @@ async def test_polygon_indicators_filtering_pipeline():
     # Define the graph with nodes in pipeline
     graph_data = {
         "nodes": [
-            {"id": 1, "type": "TextInputNode", "properties": {"text": "test_api_key"}},
-            {"id": 2, "type": "PolygonBatchCustomBarsNode", "properties": {
+            {"id": 1, "type": "TextInput", "properties": {"text": "test_api_key"}},
+            {"id": 2, "type": "PolygonBatchCustomBars", "properties": {
                 "multiplier": 1,
                 "timespan": "day",
                 "lookback_period": "3 months",
@@ -51,11 +51,11 @@ async def test_polygon_indicators_filtering_pipeline():
                 "max_concurrent": 2,
                 "rate_limit_per_second": 95,
             }},
-            {"id": 3, "type": "ADXFilterNode", "properties": {
+            {"id": 3, "type": "ADXFilter", "properties": {
                 "min_adx": 0.0,
                 "timeperiod": 14,
             }},
-            {"id": 4, "type": "LoggingNode", "properties": {"format": "auto"}}
+            {"id": 4, "type": "Logging", "properties": {"format": "auto"}}
         ],
         "links": [
             [0, 1, 0, 2, 1],  # api_key -> polygon_batch.api_key
@@ -87,7 +87,7 @@ async def test_polygon_indicators_filtering_pipeline():
     results = await executor.execute()
 
     # Verify the pipeline executed successfully
-    assert 4 in results  # LoggingNode results
+    assert 4 in results  # Logging results
     logging_result = results[4]
     assert "output" in logging_result
 
@@ -99,7 +99,7 @@ async def test_polygon_indicators_filtering_pipeline():
     assert len(logged_output) > 0  # Should not be empty
 
     # Verify that indicators were computed and filtered
-    assert 3 in results  # ADXFilterNode results
+    assert 3 in results  # ADXFilter results
     filter_result = results[3]
     assert "filtered_ohlcv_bundle" in filter_result
     # Note: ADX calculation may fail with mock data, so results might be empty
@@ -138,8 +138,8 @@ async def test_polygon_indicators_filtering_with_strict_filters():
     # Define the graph with strict ADX filter
     graph_data = {
         "nodes": [
-            {"id": 1, "type": "TextInputNode", "properties": {"text": "test_api_key"}},
-            {"id": 2, "type": "PolygonBatchCustomBarsNode", "properties": {
+            {"id": 1, "type": "TextInput", "properties": {"text": "test_api_key"}},
+            {"id": 2, "type": "PolygonBatchCustomBars", "properties": {
                 "multiplier": 1,
                 "timespan": "day",
                 "lookback_period": "3 months",
@@ -149,11 +149,11 @@ async def test_polygon_indicators_filtering_with_strict_filters():
                 "max_concurrent": 2,
                 "rate_limit_per_second": 95,
             }},
-            {"id": 3, "type": "ADXFilterNode", "properties": {
+            {"id": 3, "type": "ADXFilter", "properties": {
                 "min_adx": 50.0,  # Very high threshold that should filter out most symbols
                 "timeperiod": 14,
             }},
-            {"id": 4, "type": "LoggingNode", "properties": {"format": "auto"}}
+            {"id": 4, "type": "Logging", "properties": {"format": "auto"}}
         ],
         "links": [
             [0, 1, 0, 2, 1],  # api_key -> polygon_batch.api_key
@@ -186,7 +186,7 @@ async def test_polygon_indicators_filtering_with_strict_filters():
     results = await executor.execute()
 
     # Verify the pipeline executed successfully
-    assert 4 in results  # LoggingNode results
+    assert 4 in results  # Logging results
     logging_result = results[4]
     assert "output" in logging_result
 
@@ -197,7 +197,7 @@ async def test_polygon_indicators_filtering_with_strict_filters():
     assert isinstance(logged_output, str)
 
     # Verify that the filter node processed the indicators
-    assert 3 in results  # ADXFilterNode results
+    assert 3 in results  # ADXFilter results
     filter_result = results[3]
     assert "filtered_ohlcv_bundle" in filter_result
     assert isinstance(filter_result["filtered_ohlcv_bundle"], dict)
@@ -217,8 +217,8 @@ async def test_polygon_indicators_pipeline_empty_symbols():
         # Define the graph with empty symbols
         graph_data = {
             "nodes": [
-                {"id": 1, "type": "TextInputNode", "properties": {"text": "test_api_key"}},
-                {"id": 2, "type": "PolygonBatchCustomBarsNode", "properties": {
+                {"id": 1, "type": "TextInput", "properties": {"text": "test_api_key"}},
+                {"id": 2, "type": "PolygonBatchCustomBars", "properties": {
                     "multiplier": 1,
                     "timespan": "day",
                     "lookback_period": "3 months",
@@ -228,11 +228,11 @@ async def test_polygon_indicators_pipeline_empty_symbols():
                     "max_concurrent": 2,
                     "rate_limit_per_second": 95,
                 }},
-                {"id": 3, "type": "ADXFilterNode", "properties": {
+                {"id": 3, "type": "ADXFilter", "properties": {
                     "min_adx": 0.0,
                     "timeperiod": 14,
                 }},
-                {"id": 4, "type": "LoggingNode", "properties": {"format": "auto"}}
+                {"id": 4, "type": "Logging", "properties": {"format": "auto"}}
             ],
             "links": [
                 [0, 1, 0, 2, 1],  # api_key -> polygon_batch.api_key
@@ -264,16 +264,16 @@ async def test_polygon_indicators_pipeline_empty_symbols():
         results = await executor.execute()
 
         # Verify empty results propagate through the pipeline
-        assert 4 in results  # LoggingNode results
+        assert 4 in results  # Logging results
         logging_result = results[4]
         assert "output" in logging_result
         assert logging_result["output"] == "{}"  # String representation of empty dict
 
-        assert 3 in results  # ADXFilterNode results
+        assert 3 in results  # ADXFilter results
         filter_result = results[3]
         assert filter_result["filtered_ohlcv_bundle"] == {}
 
-        assert 2 in results  # PolygonBatchCustomBarsNode results
+        assert 2 in results  # PolygonBatchCustomBars results
         bars_result = results[2]
         assert bars_result["ohlcv_bundle"] == {}
 
@@ -311,8 +311,8 @@ async def test_polygon_indicators_filtering_pipeline_with_updated_defaults():
     # Define the graph with updated filter defaults
     graph_data = {
             "nodes": [
-                {"id": 1, "type": "TextInputNode", "properties": {"text": "test_api_key"}},
-                {"id": 2, "type": "PolygonBatchCustomBarsNode", "properties": {
+                {"id": 1, "type": "TextInput", "properties": {"text": "test_api_key"}},
+                {"id": 2, "type": "PolygonBatchCustomBars", "properties": {
                     "multiplier": 1,
                     "timespan": "day",
                     "lookback_period": "3 months",
@@ -322,12 +322,12 @@ async def test_polygon_indicators_filtering_pipeline_with_updated_defaults():
                     "max_concurrent": 2,
                     "rate_limit_per_second": 95,
                 }},
-                {"id": 3, "type": "ADXFilterNode", "properties": {
+                {"id": 3, "type": "ADXFilter", "properties": {
                     # Using updated defaults that should allow most symbols through
                     "min_adx": 0.0,
                     "timeperiod": 14,
                 }},
-                {"id": 4, "type": "LoggingNode", "properties": {"format": "auto"}}
+                {"id": 4, "type": "Logging", "properties": {"format": "auto"}}
             ],
             "links": [
                 [0, 1, 0, 2, 1],  # api_key -> polygon_batch.api_key
@@ -362,7 +362,7 @@ async def test_polygon_indicators_filtering_pipeline_with_updated_defaults():
     results = await executor.execute()
 
     # Verify the pipeline executed successfully
-    assert 4 in results  # LoggingNode results
+    assert 4 in results  # Logging results
     logging_result = results[4]
     assert "output" in logging_result
 
@@ -372,7 +372,7 @@ async def test_polygon_indicators_filtering_pipeline_with_updated_defaults():
     # Note: ADX calculation may fail with mock data, so output might be empty "{}"
 
     # Verify that indicators were computed and filtered
-    assert 3 in results  # ADXFilterNode results
+    assert 3 in results  # ADXFilter results
     filter_result = results[3]
     assert "filtered_ohlcv_bundle" in filter_result
     # Note: ADX calculation may fail with mock data, so results might be empty
@@ -382,7 +382,7 @@ async def test_polygon_indicators_filtering_pipeline_with_updated_defaults():
 @pytest.mark.asyncio
 async def test_polygon_universe_hashability_integration():
     # Create node with test params
-    node = PolygonUniverseNode("test_id", {"market": "stocks", "min_volume": 1000000})
+    node = PolygonUniverse("test_id", {"market": "stocks", "min_volume": 1000000})
     
     # Mock the API response with nested metadata
     with patch("httpx.AsyncClient") as mock_client, patch("core.api_key_vault.APIKeyVault.get") as mock_vault_get:
@@ -432,7 +432,7 @@ async def test_orb_filter_integration():
         {"timestamp": 1012096000, "open": 170.0, "high": 180.0, "low": 165.0, "close": 175.0, "volume": 45000.0},
     ]
 
-    node = OrbFilterNode("orb_id", {})
+    node = OrbFilter("orb_id", {})
 
     # Create AssetSymbol for AAPL
     from core.types_registry import AssetSymbol, AssetClass

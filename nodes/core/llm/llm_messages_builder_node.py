@@ -1,10 +1,10 @@
 from typing import Dict, Any, List, Optional
 
-from nodes.base.base_node import BaseNode
+from nodes.base.base_node import Base
 from core.types_registry import get_type
 
 
-class LLMMessagesBuilderNode(BaseNode):
+class LLMMessagesBuilder(Base):
     """
     Builds a well-formed LLMChatMessageList by merging multiple input lists.
 

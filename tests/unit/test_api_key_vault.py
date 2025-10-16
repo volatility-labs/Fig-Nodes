@@ -62,9 +62,9 @@ def test_get_required_for_graph():
     vault = APIKeyVault()
     graph = {
         "nodes": [
-            {"type": "PolygonUniverseNode", "id": 1},
-            {"type": "WebSearchToolNode", "id": 2},
-            {"type": "TextInputNode", "id": 3}  # No required keys
+            {"type": "PolygonUniverse", "id": 1},
+            {"type": "WebSearchTool", "id": 2},
+            {"type": "TextInput", "id": 3}  # No required keys
         ]
     }
     required = vault.get_required_for_graph(graph)
@@ -126,7 +126,7 @@ def test_get_required_for_graph_unknown_node():
     graph = {
         "nodes": [
             {"type": "UnknownNode", "id": 1},
-            {"type": "PolygonUniverseNode", "id": 2}
+            {"type": "PolygonUniverse", "id": 2}
         ]
     }
     required = vault.get_required_for_graph(graph)
@@ -137,8 +137,8 @@ def test_get_required_for_graph_duplicates():
     vault = APIKeyVault()
     graph = {
         "nodes": [
-            {"type": "PolygonUniverseNode", "id": 1},
-            {"type": "PolygonUniverseNode", "id": 2}
+            {"type": "PolygonUniverse", "id": 1},
+            {"type": "PolygonUniverse", "id": 2}
         ]
     }
     required = vault.get_required_for_graph(graph)

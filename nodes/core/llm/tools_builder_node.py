@@ -1,10 +1,10 @@
 from typing import Dict, Any, List
 
-from nodes.base.base_node import BaseNode
+from nodes.base.base_node import Base
 from core.types_registry import get_type
 
 
-class ToolsBuilderNode(BaseNode):
+class ToolsBuilder(Base):
     """
     Takes a list of exactly 5 tool specs and outputs them as LLMToolSpecList.
 

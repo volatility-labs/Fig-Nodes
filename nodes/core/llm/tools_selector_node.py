@@ -1,11 +1,11 @@
 from typing import Dict, Any, List
 
-from nodes.base.base_node import BaseNode
+from nodes.base.base_node import Base
 from core.types_registry import get_type
 from services.tools.registry import list_tool_names, get_tool_schema
 
 
-class ToolsSelectorNode(BaseNode):
+class ToolsSelector(Base):
     """
     Selects one or more registered tool schemas and outputs them as LLMToolSpecList.
 

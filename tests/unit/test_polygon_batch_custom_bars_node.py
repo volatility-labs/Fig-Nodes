@@ -3,7 +3,7 @@ import asyncio
 from unittest.mock import AsyncMock, patch, MagicMock
 from typing import Dict, Any, List
 import time
-from nodes.custom.polygon.polygon_batch_custom_bars_node import PolygonBatchCustomBarsNode, RateLimiter
+from nodes.custom.polygon.polygon_batch_custom_bars_node import PolygonBatchCustomBars, RateLimiter
 from core.types_registry import AssetSymbol, AssetClass, OHLCVBar, NodeExecutionError
 
 
@@ -18,7 +18,7 @@ def sample_symbols():
 
 @pytest.fixture
 def polygon_batch_node():
-    return PolygonBatchCustomBarsNode(id=1, params={
+    return PolygonBatchCustomBars(id=1, params={
         "multiplier": 1,
         "timespan": "day",
         "lookback_period": "3 months",
@@ -121,8 +121,8 @@ class TestRateLimiter:
         assert isinstance(limiter.lock, asyncio.Lock)
 
 
-class TestPolygonBatchCustomBarsNode:
-    """Comprehensive tests for PolygonBatchCustomBarsNode."""
+class TestPolygonBatchCustomBars:
+    """Comprehensive tests for PolygonBatchCustomBars."""
 
     @pytest.mark.asyncio
     async def test_execute_empty_symbols(self, polygon_batch_node):
@@ -231,7 +231,7 @@ class TestPolygonBatchCustomBarsNode:
     @pytest.mark.asyncio
     async def test_execute_all_symbols_processed(self, mock_bars_response):
         """Test that all symbols are processed regardless of count."""
-        node = PolygonBatchCustomBarsNode(id=1, params={})
+        node = PolygonBatchCustomBars(id=1, params={})
         symbols = [AssetSymbol(f"SYMBOL_{i}", AssetClass.STOCKS) for i in range(20)]
 
         with patch("nodes.custom.polygon.polygon_batch_custom_bars_node.fetch_bars", new_callable=AsyncMock) as mock_fetch:
@@ -397,7 +397,7 @@ class TestPolygonBatchCustomBarsNode:
             "sort": "desc",
             "limit": 100,
         }
-        node = PolygonBatchCustomBarsNode(id=1, params=custom_params)
+        node = PolygonBatchCustomBars(id=1, params=custom_params)
         symbols = [AssetSymbol("AAPL", AssetClass.STOCKS)]
 
         with patch("nodes.custom.polygon.polygon_batch_custom_bars_node.fetch_bars", new_callable=AsyncMock) as mock_fetch:
@@ -421,7 +421,7 @@ class TestPolygonBatchCustomBarsNode:
     @pytest.mark.asyncio
     async def test_execute_concurrent_params(self):
         """Test different concurrency and rate limit parameters."""
-        node = PolygonBatchCustomBarsNode(id=1, params={
+        node = PolygonBatchCustomBars(id=1, params={
             "max_concurrent": 2,
             "rate_limit_per_second": 5,
         })
@@ -505,7 +505,7 @@ class TestPolygonBatchCustomBarsNode:
     async def test_cancellation_propagates_through_fetch_bars(self, sample_symbols):
         """Test that CancelledError during fetch_bars properly propagates and stops execution."""
         # Use single concurrency to ensure deterministic behavior
-        node = PolygonBatchCustomBarsNode(id=1, params={"max_concurrent": 1})
+        node = PolygonBatchCustomBars(id=1, params={"max_concurrent": 1})
         call_count = 0
 
         async def cancellable_fetch(symbol, api_key, params):
@@ -532,7 +532,7 @@ class TestPolygonBatchCustomBarsNode:
     async def test_cancellation_stops_progress_reporting(self, sample_symbols):
         """Test that progress reporting stops immediately after cancellation."""
         # Use single concurrency for predictable behavior
-        node = PolygonBatchCustomBarsNode(id=1, params={"max_concurrent": 1})
+        node = PolygonBatchCustomBars(id=1, params={"max_concurrent": 1})
         progress_calls = []
 
         def mock_report(progress, text):
@@ -601,7 +601,7 @@ class TestPolygonBatchCustomBarsNode:
     @pytest.mark.asyncio
     async def test_cancellation_with_multiple_workers(self, mock_bars_response):
         """Test cancellation with multiple concurrent workers."""
-        node = PolygonBatchCustomBarsNode(id=1, params={"max_concurrent": 3})
+        node = PolygonBatchCustomBars(id=1, params={"max_concurrent": 3})
         symbols = [AssetSymbol(f"SYMBOL_{i}", AssetClass.STOCKS) for i in range(10)]
 
         call_count = 0
@@ -633,7 +633,7 @@ class TestPolygonBatchCustomBarsNode:
     async def test_regular_exception_vs_cancellation(self, sample_symbols):
         """Test that regular exceptions are still caught but cancellation propagates."""
         # Use single concurrency for predictable behavior
-        node = PolygonBatchCustomBarsNode(id=1, params={"max_concurrent": 1})
+        node = PolygonBatchCustomBars(id=1, params={"max_concurrent": 1})
         call_count = 0
 
         async def mixed_fetch(symbol, api_key, params):

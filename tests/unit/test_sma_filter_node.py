@@ -2,13 +2,13 @@ import pytest
 import pandas as pd
 import numpy as np
 from typing import List
-from nodes.core.market.filters.sma_filter_node import SMAFilterNode
+from nodes.core.market.filters.sma_filter_node import SMAFilter
 from core.types_registry import OHLCVBar, AssetSymbol, IndicatorResult, IndicatorType, AssetClass
 from unittest.mock import MagicMock
 
 @pytest.fixture
 def sma_filter_node():
-    node = SMAFilterNode(id=1, params={"period": 5, "prior_days": 1})
+    node = SMAFilter(id=1, params={"period": 5, "prior_days": 1})
     node.indicators_service = MagicMock()
     return node
 

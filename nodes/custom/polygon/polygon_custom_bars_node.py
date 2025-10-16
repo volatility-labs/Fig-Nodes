@@ -2,7 +2,7 @@ from typing import Dict, Any, List
 import httpx
 import logging
 from datetime import datetime, timedelta
-from nodes.base.base_node import BaseNode
+from nodes.base.base_node import Base
 from core.types_registry import get_type, AssetSymbol, OHLCVBar
 from core.api_key_vault import APIKeyVault
 from services.polygon_service import fetch_bars
@@ -10,7 +10,7 @@ from services.polygon_service import fetch_bars
 logger = logging.getLogger(__name__)
 
 
-class PolygonCustomBarsNode(BaseNode):
+class PolygonCustomBars(Base):
     ui_module = "market/PolygonCustomBarsNodeUI"
     """
     Fetches custom aggregate bars (OHLCV) for a symbol from Polygon.io

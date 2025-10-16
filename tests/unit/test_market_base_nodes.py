@@ -3,9 +3,9 @@ import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
 import pandas as pd
 from typing import Dict, Any, List
-from nodes.core.market.filters.base.base_filter_node import BaseFilterNode
-from nodes.core.market.indicators.base.base_indicator_node import BaseIndicatorNode
-from nodes.core.market.filters.base.base_indicator_filter_node import BaseIndicatorFilterNode
+from nodes.core.market.filters.base.base_filter_node import BaseFilter
+from nodes.core.market.indicators.base.base_indicator_node import BaseIndicator
+from nodes.core.market.filters.base.base_indicator_filter_node import BaseIndicatorFilter
 from core.types_registry import AssetSymbol, AssetClass, OHLCVBar, IndicatorResult, IndicatorType, IndicatorValue, NodeExecutionError
 from services.indicators_service import IndicatorsService
 
@@ -31,8 +31,8 @@ def insufficient_ohlcv_bundle():
 
 
 # Tests for BaseFilterNode
-class TestBaseFilterNode:
-    class ConcreteFilterNode(BaseFilterNode):
+class TestBaseFilter:
+    class ConcreteFilter(BaseFilter):
         def __init__(self, id: int, params: Dict[str, Any] = None):
             super().__init__(id=id, params=params)
 
@@ -41,7 +41,7 @@ class TestBaseFilterNode:
 
     @pytest.fixture
     def filter_node(self):
-        return self.ConcreteFilterNode(id=1, params={})
+        return self.ConcreteFilter(id=1, params={})
 
     @pytest.mark.asyncio
     async def test_execute_happy_path(self, filter_node, sample_ohlcv_bundle):
@@ -73,8 +73,8 @@ class TestBaseFilterNode:
 
 
 # Tests for BaseIndicatorNode
-class TestBaseIndicatorNode:
-    class ConcreteIndicatorNode(BaseIndicatorNode):
+class TestBaseIndicator:
+    class ConcreteIndicator(BaseIndicator):
         def __init__(self, id: int, params: Dict[str, Any] = None):
             super().__init__(id=id, params=params)
 
@@ -83,7 +83,7 @@ class TestBaseIndicatorNode:
 
     @pytest.fixture
     def indicator_node(self):
-        return self.ConcreteIndicatorNode(id=1, params={"indicators": [IndicatorType.ADX], "timeframe": "1d"})
+        return self.ConcreteIndicator(id=1, params={"indicators": [IndicatorType.ADX], "timeframe": "1d"})
 
     @pytest.mark.asyncio
     async def test_execute_happy_path(self, indicator_node):
@@ -123,8 +123,8 @@ class TestBaseIndicatorNode:
 
 
 # Tests for BaseIndicatorFilterNode
-class TestBaseIndicatorFilterNode:
-    class ConcreteIndicatorFilterNode(BaseIndicatorFilterNode):
+class TestBaseIndicatorFilter:
+    class ConcreteIndicatorFilter(BaseIndicatorFilter):
         def __init__(self, id: int, params: Dict[str, Any] = None):
             super().__init__(id=id, params=params)
 
@@ -151,7 +151,7 @@ class TestBaseIndicatorFilterNode:
 
     @pytest.fixture
     def ind_filter_node(self):
-        return self.ConcreteIndicatorFilterNode(id=1, params={})
+        return self.ConcreteIndicatorFilter(id=1, params={})
 
     @pytest.mark.asyncio
     async def test_execute_happy_path(self, ind_filter_node, sample_ohlcv_bundle):

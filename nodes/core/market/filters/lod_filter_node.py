@@ -2,12 +2,12 @@ import logging
 import pandas as pd
 from typing import Dict, Any, List
 from ta.volatility import AverageTrueRange
-from nodes.core.market.filters.base.base_indicator_filter_node import BaseIndicatorFilterNode
+from nodes.core.market.filters.base.base_indicator_filter_node import BaseIndicatorFilter
 from core.types_registry import OHLCVBar, IndicatorResult, IndicatorType, IndicatorValue
 
 logger = logging.getLogger(__name__)
 
-class LodFilterNode(BaseIndicatorFilterNode):
+class LodFilter(BaseIndicatorFilter):
     """
     Filters assets based on LoD (Low of Day Distance) values.
 

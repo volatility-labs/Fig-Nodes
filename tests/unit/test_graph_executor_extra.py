@@ -4,10 +4,10 @@ from typing import Any, AsyncGenerator, Dict, List, Optional
 import pytest
 
 from core.graph_executor import GraphExecutor
-from nodes.base.base_node import BaseNode
-from nodes.base.streaming_node import StreamingNode
+from nodes.base.base_node import Base
+from nodes.base.streaming_node import Streaming
 
-class PassNode(BaseNode):
+class PassNode(Base):
     def __init__(self, id: int, params: Dict[str, Any] = None):
         super().__init__(id=id, params=params)
     inputs = {"input": str}
@@ -17,7 +17,7 @@ class PassNode(BaseNode):
         return {"output": f"{inputs.get('input', '')}"}
 
 
-class RaiseNode(BaseNode):
+class RaiseNode(Base):
     def __init__(self, id: int, params: Dict[str, Any] = None):
         super().__init__(id=id, params=params)
     inputs = {}
@@ -27,7 +27,7 @@ class RaiseNode(BaseNode):
         raise RuntimeError("compute error")
 
 
-class StreamSrc(StreamingNode):
+class StreamSrc(Streaming):
     def __init__(self, id: int, params: Dict[str, Any] = None):
         super().__init__(id=id, params=params)
         # Initialize a gate used to control emission of the second tick
@@ -46,7 +46,7 @@ class StreamSrc(StreamingNode):
         self._gate.set()
 
 
-class LLMLikeNode(BaseNode):
+class LLMLikeNode(Base):
     def __init__(self, id: int, params: Dict[str, Any] = None):
         super().__init__(id=id, params=params)
     inputs = {"messages": list}
@@ -63,7 +63,7 @@ class LLMLikeNode(BaseNode):
 
 @pytest.mark.asyncio
 async def test_streaming_exception_propagates_from_task():
-    class BadStream(StreamingNode):
+    class BadStream(Streaming):
         def __init__(self, id: int, params: Dict[str, Any] = None):
             super().__init__(id=id, params=params)
         inputs = {}
@@ -118,7 +118,7 @@ async def test_stop_cancels_stream_tasks_cleanly():
 @pytest.mark.asyncio
 async def test_input_output_slot_mapping_via_metadata():
     # Producer with custom output names
-    class Producer(BaseNode):
+    class Producer(Base):
         def __init__(self, id: int, params: Dict[str, Any] = None):
             super().__init__(id=id, params=params)
         inputs = {}
@@ -128,7 +128,7 @@ async def test_input_output_slot_mapping_via_metadata():
             return {"first": "A", "second": "B"}
 
     # Consumer with custom input names
-    class Consumer(BaseNode):
+    class Consumer(Base):
         def __init__(self, id: int, params: Dict[str, Any] = None):
             super().__init__(id=id, params=params)
         inputs = {"x": str, "y": str}
@@ -161,7 +161,7 @@ async def test_llm_like_edge_cases_empty_and_invalid_messages():
         "links": [[0, 1, 0, 2, 0]],
     }
 
-    class LLMMockBuilder(BaseNode):
+    class LLMMockBuilder(Base):
         def __init__(self, id: int, params: Dict[str, Any] = None):
             super().__init__(id=id, params=params)
         inputs = {}
@@ -199,7 +199,7 @@ async def test_graph_with_cycles():
 
 @pytest.mark.asyncio
 async def test_validate_inputs_skip():
-    class InvalidInputNode(BaseNode):
+    class InvalidInputNode(Base):
         def __init__(self, id: int, params: Dict[str, Any] = None):
             super().__init__(id=id, params=params)
         inputs = {"required": str}

@@ -2,13 +2,13 @@
 import logging
 import pandas as pd
 from typing import Dict, Any, List
-from nodes.core.market.indicators.base.base_indicator_node import BaseIndicatorNode
+from nodes.core.market.indicators.base.base_indicator_node import BaseIndicator
 from core.types_registry import get_type, IndicatorResult, IndicatorType, IndicatorValue
 from ta.volatility import AverageTrueRange
 
 logger = logging.getLogger(__name__)
 
-class ATRIndicatorNode(BaseIndicatorNode):
+class ATRIndicator(BaseIndicator):
     """
     Computes the ATR indicator for a single asset's OHLCV data.
     """

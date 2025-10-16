@@ -3,10 +3,10 @@ import pandas as pd
 import numpy as np
 from typing import List
 from ta.trend import EMAIndicator
-from nodes.core.market.filters.base.base_indicator_filter_node import BaseIndicatorFilterNode
+from nodes.core.market.filters.base.base_indicator_filter_node import BaseIndicatorFilter
 from core.types_registry import IndicatorResult, IndicatorType, OHLCVBar, IndicatorValue
 
-class EmaRangeFilterNode(BaseIndicatorFilterNode):
+class EmaRangeFilter(BaseIndicatorFilter):
     """
     Filters assets where EMA(10, high-low range) > close / 100
     """

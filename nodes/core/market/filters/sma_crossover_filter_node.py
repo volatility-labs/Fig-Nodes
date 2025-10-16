@@ -2,11 +2,11 @@ import pandas as pd
 import numpy as np
 from typing import Dict, Any, List
 from ta.trend import SMAIndicator
-from nodes.core.market.filters.base.base_indicator_filter_node import BaseIndicatorFilterNode
+from nodes.core.market.filters.base.base_indicator_filter_node import BaseIndicatorFilter
 from core.types_registry import OHLCVBar, IndicatorResult, IndicatorType, IndicatorValue
 
 
-class SMACrossoverFilterNode(BaseIndicatorFilterNode):
+class SMACrossoverFilter(BaseIndicatorFilter):
     """
     Filters assets where short-term SMA crosses above long-term SMA (bullish crossover).
     """

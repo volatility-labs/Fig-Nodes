@@ -7,15 +7,15 @@ import os
 import importlib.util
 import inspect
 import logging
-from nodes.base.base_node import BaseNode
-from nodes.core.market.filters.atrx_filter_node import AtrXFilterNode
-from nodes.core.market.filters.orb_filter_node import OrbFilterNode
+from nodes.base.base_node import Base
+from nodes.core.market.filters.atrx_filter_node import AtrXFilter
+from nodes.core.market.filters.orb_filter_node import OrbFilter
 
 logger = logging.getLogger(__name__)
 
 def load_nodes(directories: List[str]) -> Dict[str, type]:
     """
-    Loads all concrete subclasses of BaseNode from the given directories.
+    Loads all concrete subclasses of Base from the given directories.
     
     Args:
         directories: List of relative paths to search for node modules.
@@ -63,7 +63,7 @@ def load_nodes(directories: List[str]) -> Dict[str, type]:
                     module.__package__ = package_name
                     spec.loader.exec_module(module)
                     for name, obj in vars(module).items():
-                        if isinstance(obj, type) and issubclass(obj, BaseNode) and obj != BaseNode and not inspect.isabstract(obj):
+                        if isinstance(obj, type) and issubclass(obj, Base) and obj != Base and not inspect.isabstract(obj):
                             registry[name] = obj
     return registry
 
@@ -75,7 +75,7 @@ NODE_REGISTRY = load_nodes(['nodes/core', 'nodes/custom', *extra_dirs])
 # Developer Notes:
 # To add a new node:
 # 1. Create a new .py file in nodes/core/ or nodes/plugins/.
-# 2. Define a class inheriting from BaseNode (or StreamingNode/UniverseNode).
+# 2. Define a class inheriting from Base (or Streaming/UniverseNode).
 # 3. Implement required attributes (inputs, outputs, etc.) and execute() method.
 # 4. The node will be automatically registered and available in the system.
 # 5. For UI parameters, define params_meta list on the class. 

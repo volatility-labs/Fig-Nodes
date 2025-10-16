@@ -2,7 +2,7 @@ import pytest
 import pandas as pd
 import numpy as np
 from typing import Dict, List
-from nodes.core.market.indicators.atrx_indicator_node import AtrXIndicatorNode
+from nodes.core.market.indicators.atrx_indicator_node import AtrXIndicator
 from core.types_registry import IndicatorType, IndicatorResult
 from unittest.mock import patch
 
@@ -39,7 +39,7 @@ def extreme_ohlcv() -> List[Dict[str, float]]:
 
 @pytest.mark.asyncio
 async def test_atrx_indicator_node_happy_path(sample_ohlcv):
-    node = AtrXIndicatorNode("test_id", {})
+    node = AtrXIndicator("test_id", {})
     result = await node.execute({"ohlcv": sample_ohlcv})
     assert "results" in result
     assert len(result["results"]) == 1
@@ -53,7 +53,7 @@ async def test_atrx_indicator_node_happy_path(sample_ohlcv):
 
 @pytest.mark.asyncio
 async def test_atrx_indicator_node_insufficient_data():
-    node = AtrXIndicatorNode("test_id", {})
+    node = AtrXIndicator("test_id", {})
     result = await node.execute({"ohlcv": []})
     assert result == {"results": []}
 
@@ -62,7 +62,7 @@ async def test_atrx_indicator_node_insufficient_data():
 @pytest.mark.asyncio
 async def test_atrx_indicator_node_varying_data(varying_ohlcv):
     """Test ATRX calculation with trending data"""
-    node = AtrXIndicatorNode("test_id", {})
+    node = AtrXIndicator("test_id", {})
     result = await node.execute({"ohlcv": varying_ohlcv})
     assert "results" in result
     assert len(result["results"]) == 1
@@ -75,7 +75,7 @@ async def test_atrx_indicator_node_varying_data(varying_ohlcv):
 @pytest.mark.asyncio
 async def test_atrx_indicator_node_insufficient_data(insufficient_ohlcv):
     """Test behavior with insufficient data"""
-    node = AtrXIndicatorNode("test_id", {})
+    node = AtrXIndicator("test_id", {})
     result = await node.execute({"ohlcv": insufficient_ohlcv})
     assert "results" in result
     assert len(result["results"]) == 0  # Should return empty results
@@ -83,7 +83,7 @@ async def test_atrx_indicator_node_insufficient_data(insufficient_ohlcv):
 @pytest.mark.asyncio
 async def test_atrx_indicator_node_extreme_values(extreme_ohlcv):
     """Test behavior with extreme values (zero volatility)"""
-    node = AtrXIndicatorNode("test_id", {})
+    node = AtrXIndicator("test_id", {})
     result = await node.execute({"ohlcv": extreme_ohlcv})
     assert "results" in result
     assert len(result["results"]) == 0  # Should return empty results due to zero ATR
@@ -92,7 +92,7 @@ async def test_atrx_indicator_node_extreme_values(extreme_ohlcv):
 @pytest.mark.parametrize("length,ma_length", [(14, 50), (21, 30), (7, 20)])
 async def test_atrx_indicator_node_different_params(sample_ohlcv, length, ma_length):
     """Test ATRX with different parameter combinations"""
-    node = AtrXIndicatorNode("test_id", {"length": length, "ma_length": ma_length})
+    node = AtrXIndicator("test_id", {"length": length, "ma_length": ma_length})
     result = await node.execute({"ohlcv": sample_ohlcv})
     assert "results" in result
     assert len(result["results"]) == 1
@@ -103,7 +103,7 @@ async def test_atrx_indicator_node_different_params(sample_ohlcv, length, ma_len
 @pytest.mark.asyncio
 async def test_atrx_indicator_node_empty_input():
     """Test behavior with empty input"""
-    node = AtrXIndicatorNode("test_id", {})
+    node = AtrXIndicator("test_id", {})
     result = await node.execute({"ohlcv": []})
     assert result == {"results": []}
 
@@ -111,14 +111,14 @@ async def test_atrx_indicator_node_empty_input():
 async def test_atrx_indicator_node_missing_input():
     """Test behavior with missing ohlcv input"""
     from core.types_registry import NodeValidationError
-    node = AtrXIndicatorNode("test_id", {})
+    node = AtrXIndicator("test_id", {})
     with pytest.raises(NodeValidationError):
         await node.execute({})
 
 @pytest.mark.asyncio
 async def test_atrx_indicator_node_malformed_data():
     """Test behavior with malformed OHLCV data"""
-    node = AtrXIndicatorNode("test_id", {})
+    node = AtrXIndicator("test_id", {})
     malformed_data = [
         {"timestamp": 0, "open": 100, "high": 105, "low": 95, "close": 102, "volume": 10000},
         {"timestamp": 1000, "open": "invalid", "high": 105, "low": 95, "close": 102, "volume": 10000},  # Invalid open
@@ -129,7 +129,7 @@ async def test_atrx_indicator_node_malformed_data():
 @pytest.mark.asyncio
 async def test_atrx_indicator_node_calculation_error(sample_ohlcv):
     """Test behavior when calculation service raises an error"""
-    node = AtrXIndicatorNode("test_id", {})
+    node = AtrXIndicator("test_id", {})
     with patch.object(node.indicators_service, 'calculate_atrx') as mock_calc:
         mock_calc.side_effect = Exception("Calculation error")
         result = await node.execute({"ohlcv": sample_ohlcv})
@@ -139,7 +139,7 @@ async def test_atrx_indicator_node_calculation_error(sample_ohlcv):
 @pytest.mark.asyncio
 async def test_atrx_indicator_node_nan_result(sample_ohlcv):
     """Test behavior when calculation returns NaN"""
-    node = AtrXIndicatorNode("test_id", {})
+    node = AtrXIndicator("test_id", {})
     with patch.object(node.indicators_service, 'calculate_atrx') as mock_calc:
         mock_calc.return_value = float('nan')
         result = await node.execute({"ohlcv": sample_ohlcv})
@@ -149,7 +149,7 @@ async def test_atrx_indicator_node_nan_result(sample_ohlcv):
 @pytest.mark.asyncio
 async def test_atrx_indicator_node_result_structure(sample_ohlcv):
     """Test the structure of the returned result"""
-    node = AtrXIndicatorNode("test_id", {})
+    node = AtrXIndicator("test_id", {})
     result = await node.execute({"ohlcv": sample_ohlcv})
     assert "results" in result
     assert isinstance(result["results"], list)
@@ -166,7 +166,7 @@ async def test_atrx_indicator_node_result_structure(sample_ohlcv):
 @pytest.mark.asyncio
 async def test_atrx_indicator_node_default_params(sample_ohlcv):
     """Test that default parameters are used correctly"""
-    node = AtrXIndicatorNode("test_id", {})  # No params provided
+    node = AtrXIndicator("test_id", {})  # No params provided
     with patch.object(node.indicators_service, 'calculate_atrx') as mock_calc:
         mock_calc.return_value = 1.5
         result = await node.execute({"ohlcv": sample_ohlcv})

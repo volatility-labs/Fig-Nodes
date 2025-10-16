@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import patch
-from nodes.core.llm.web_search_tool_node import WebSearchToolNode
+from nodes.core.llm.web_search_tool_node import WebSearchTool
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -16,7 +16,7 @@ def ensure_web_search_tool_registered():
 
 @pytest.fixture
 def web_search_tool_node():
-    return WebSearchToolNode(id=1, params={
+    return WebSearchTool(id=1, params={
         "provider": "tavily",
         "default_k": 5,
         "time_range": "month",
@@ -48,7 +48,7 @@ async def test_execute_returns_tool_schema(web_search_tool_node):
 @pytest.mark.asyncio
 async def test_execute_with_custom_params():
     """Test execute with custom parameter values."""
-    node = WebSearchToolNode(id=1, params={
+    node = WebSearchTool(id=1, params={
         "provider": "tavily",
         "default_k": 3,
         "time_range": "week",
@@ -94,7 +94,7 @@ async def test_execute_handles_missing_properties_gracefully(web_search_tool_nod
 @pytest.mark.asyncio
 async def test_execute_with_none_params():
     """Test execute with None parameter values (should use defaults)."""
-    node = WebSearchToolNode(id=1, params={
+    node = WebSearchTool(id=1, params={
         "provider": "tavily",
         "default_k": None,
         "time_range": None,
@@ -115,7 +115,7 @@ async def test_execute_with_none_params():
 @pytest.mark.asyncio
 async def test_execute_with_empty_params():
     """Test execute with empty string parameter values."""
-    node = WebSearchToolNode(id=1, params={
+    node = WebSearchTool(id=1, params={
         "provider": "tavily",
         "default_k": "",
         "time_range": "",
@@ -136,7 +136,7 @@ async def test_execute_with_empty_params():
 @pytest.mark.asyncio
 async def test_execute_with_invalid_time_range():
     """Test execute with invalid time_range parameter."""
-    node = WebSearchToolNode(id=1, params={
+    node = WebSearchTool(id=1, params={
         "provider": "tavily",
         "default_k": 5,
         "time_range": "invalid_range",
@@ -157,7 +157,7 @@ async def test_execute_with_invalid_time_range():
 @pytest.mark.asyncio
 async def test_execute_with_k_out_of_bounds():
     """Test execute with k parameter out of bounds."""
-    node = WebSearchToolNode(id=1, params={
+    node = WebSearchTool(id=1, params={
         "provider": "tavily",
         "default_k": 15,  # Out of bounds (max 10)
         "time_range": "month",

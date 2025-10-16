@@ -74,10 +74,10 @@ def test_union_type_registration():
 
 def test_union_in_node_inputs():
     from typing import Union
-    from nodes.base.base_node import BaseNode
+    from nodes.base.base_node import Base
     from core.types_utils import parse_type
 
-    class TestNode(BaseNode):
+    class TestNode(Base):
         inputs = {"union_input": Union[str, LLMChatMessage]}
 
     parsed_inputs = {k: parse_type(v) for k, v in TestNode.inputs.items()}

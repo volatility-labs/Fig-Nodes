@@ -2,11 +2,11 @@ from typing import Dict, Any, AsyncGenerator, List
 import asyncio
 import websockets
 import json
-from nodes.base.streaming_node import StreamingNode
+from nodes.base.streaming_node import Streaming
 from core.types_registry import AssetSymbol, AssetClass, get_type, InstrumentType, OHLCVBar
 
 
-class BinanceKlinesStreamingNode(StreamingNode):
+class BinanceKlinesStreaming(Streaming):
     """
     Streaming node that subscribes to Binance kline updates for given symbols.
     Yields closed klines as OHLCVBundle (dict of AssetSymbol to list of OHLCVBar).

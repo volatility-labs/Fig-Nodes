@@ -1,12 +1,12 @@
 from typing import Dict, Any, AsyncGenerator
 from abc import ABC, abstractmethod
-from .base_node import BaseNode
+from .base_node import Base
 import logging
 from core.types_registry import NodeValidationError, NodeExecutionError
 
 logger = logging.getLogger(__name__)
 
-class StreamingNode(BaseNode, ABC):
+class Streaming(Base, ABC):
     """
     Base class for streaming nodes that produce continuous outputs.
     

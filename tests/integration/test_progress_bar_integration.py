@@ -4,7 +4,7 @@ import time
 from unittest.mock import AsyncMock, patch, MagicMock
 from core.graph_executor import GraphExecutor
 from core.node_registry import NODE_REGISTRY
-from nodes.base.base_node import BaseNode
+from nodes.base.base_node import Base
 
 
 @pytest.fixture
@@ -27,10 +27,10 @@ def progress_callback():
 @pytest.fixture
 def mock_polygon_node():
     """Create a mock polygon node for testing."""
-    return MockPolygonBatchCustomBarsNode(id=1, params={"num_symbols": 5})
+    return MockPolygonBatchCustomBars(id=1, params={"num_symbols": 5})
 
 
-class MockPolygonBatchCustomBarsNode(BaseNode):
+class MockPolygonBatchCustomBars(Base):
     """Mock version of PolygonBatchCustomBarsNode for testing progress reporting."""
 
     inputs = {}  # No inputs required for testing
@@ -193,8 +193,8 @@ class TestProgressBarIntegration:
         from core.types_registry import AssetSymbol, AssetClass
 
         # Create two mock nodes
-        node1 = MockPolygonBatchCustomBarsNode(id=1, params={"num_symbols": 2})
-        node2 = MockPolygonBatchCustomBarsNode(id=2, params={"num_symbols": 2})
+        node1 = MockPolygonBatchCustomBars(id=1, params={"num_symbols": 2})
+        node2 = MockPolygonBatchCustomBars(id=2, params={"num_symbols": 2})
 
         # Set different progress callbacks to collect updates separately
         node1_progress = []
@@ -295,7 +295,7 @@ class TestProgressBarIntegration:
 @pytest.mark.asyncio
 async def test_real_polygon_batch_progress_reporting():
     """Integration test with real PolygonBatchCustomBarsNode and mocked API calls."""
-    from nodes.custom.polygon.polygon_batch_custom_bars_node import PolygonBatchCustomBarsNode
+    from nodes.custom.polygon.polygon_batch_custom_bars_node import PolygonBatchCustomBars
     from core.types_registry import AssetSymbol, AssetClass
     from unittest.mock import AsyncMock
 
@@ -311,7 +311,7 @@ async def test_real_polygon_batch_progress_reporting():
         })
 
     # Create node and set progress callback
-    node = PolygonBatchCustomBarsNode(id=1, params={})
+    node = PolygonBatchCustomBars(id=1, params={})
     node.set_progress_callback(progress_callback)
 
     # Create test symbols
@@ -400,7 +400,7 @@ async def test_websocket_progress_communication():
         "nodes": [
             {
                 "id": 1,
-                "type": "MockPolygonBatchCustomBarsNode",
+                "type": "MockPolygonBatchCustomBars",
                 "properties": {}
             }
         ],

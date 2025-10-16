@@ -5,13 +5,13 @@ import asyncio
 import random
 import httpx
 
-from nodes.base.base_node import BaseNode
+from nodes.base.base_node import Base
 
 from core.types_registry import get_type
 from services.tools.registry import get_tool_handler, get_all_credential_providers
 from core.api_key_vault import APIKeyVault
 
-class OpenRouterChatNode(BaseNode):
+class OpenRouterChat(Base):
     """
     Chat node backed by OpenRouter API for multi-provider LLM access.
 

@@ -1,6 +1,6 @@
 import pytest
 import os
-from nodes.core.llm.web_search_tool_node import WebSearchToolNode
+from nodes.core.llm.web_search_tool_node import WebSearchTool as WebSearchToolNode
 from services.tools.web_search import WebSearchTool
 from services.tools.registry import get_tool_handler
 

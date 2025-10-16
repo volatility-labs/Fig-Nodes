@@ -1,9 +1,9 @@
 import networkx as nx
 from typing import Dict, Any, List, AsyncGenerator
-from nodes.base.base_node import BaseNode
-from nodes.core.flow.for_each_node import ForEachNode
+from nodes.base.base_node import Base
+from nodes.core.flow.for_each_node import ForEach
 import asyncio
-from nodes.base.streaming_node import StreamingNode
+from nodes.base.streaming_node import Streaming
 from collections import defaultdict
 from core.api_key_vault import APIKeyVault
 from core.types_registry import NodeExecutionError
@@ -15,11 +15,11 @@ class GraphExecutor:
     def __init__(self, graph: Dict[str, Any], node_registry: Dict[str, type]):
         self.graph = graph
         self.node_registry = node_registry
-        self.nodes: Dict[int, BaseNode] = {}
+        self.nodes: Dict[int, Base] = {}
         self.input_names: Dict[int, List[str]] = {}
         self.output_names: Dict[int, List[str]] = {}
         self.dag = nx.DiGraph()
-        self.is_streaming = any(isinstance(self.nodes[node_id], StreamingNode) and self.dag.degree(node_id) > 0 for node_id in self.dag.nodes)
+        self.is_streaming = any(isinstance(self.nodes[node_id], Streaming) and self.dag.degree(node_id) > 0 for node_id in self.dag.nodes)
         self.streaming_tasks: List[asyncio.Task] = []
         self._stopped = False
         self._is_force_stopped = False  # For idempotency
@@ -57,7 +57,7 @@ class GraphExecutor:
         if not nx.is_directed_acyclic_graph(self.dag):
             raise ValueError("Graph contains cycles")
         
-        self.is_streaming = any(isinstance(self.nodes[node_id], StreamingNode) and self.dag.degree(node_id) > 0 for node_id in self.dag.nodes)
+        self.is_streaming = any(isinstance(self.nodes[node_id], Streaming) and self.dag.degree(node_id) > 0 for node_id in self.dag.nodes)
 
     async def execute(self) -> Dict[str, Any]:
         if self.is_streaming:
@@ -76,7 +76,7 @@ class GraphExecutor:
             if self.dag.in_degree(node_id) == 0 and self.dag.out_degree(node_id) == 0:
                 continue
             node = self.nodes[node_id]
-            if isinstance(node, ForEachNode):
+            if isinstance(node, ForEach):
                 try:
                     await self._execute_foreach_subgraph(node, results)
                 except NodeExecutionError as e:
@@ -163,11 +163,11 @@ class GraphExecutor:
             streaming_pipeline_nodes = set()
             streaming_sources = []
             for node_id in self.dag.nodes:
-                if isinstance(self.nodes[node_id], StreamingNode):
+                if isinstance(self.nodes[node_id], Streaming):
                     degree = self.dag.degree(node_id)
                     in_degree = self.dag.in_degree(node_id)
                     out_degree = self.dag.out_degree(node_id)
-                    print(f"GraphExecutor: StreamingNode {node_id} - degree={degree}, in_degree={in_degree}, out_degree={out_degree}")
+                    print(f"GraphExecutor: Streaming {node_id} - degree={degree}, in_degree={in_degree}, out_degree={out_degree}")
                     
                     # A streaming node should be executed if it has any connections (input or output)
                     # The original condition was too restrictive for leaf nodes (nodes with no outputs)
@@ -176,9 +176,9 @@ class GraphExecutor:
                         streaming_pipeline_nodes.add(node_id)
                         for descendant in nx.descendants(self.dag, node_id):
                             streaming_pipeline_nodes.add(descendant)
-                        print(f"GraphExecutor: Added StreamingNode {node_id} as streaming source")
+                        print(f"GraphExecutor: Added Streaming {node_id} as streaming source")
                     else:
-                        print(f"GraphExecutor: Skipped StreamingNode {node_id} - no connections")
+                        print(f"GraphExecutor: Skipped Streaming {node_id} - no connections")
         except Exception as e:
             print(f"GraphExecutor: Exception in stream setup: {e}")
             import traceback
@@ -298,7 +298,7 @@ class GraphExecutor:
         print("STOP_TRACE: GraphExecutor.stop called")
         self.force_stop()
 
-    async def _execute_foreach_subgraph(self, foreach_node: ForEachNode, results: Dict[str, Any]):
+    async def _execute_foreach_subgraph(self, foreach_node: ForEach, results: Dict[str, Any]):
         inputs = self._get_node_inputs(foreach_node.id, results)
         merged_inputs = {**{k: foreach_node.params.get(k) for k in foreach_node.inputs if k not in inputs}, **inputs}
         print(f"GraphExecutor: Merged inputs for foreach_node {foreach_node.id}: {merged_inputs}")

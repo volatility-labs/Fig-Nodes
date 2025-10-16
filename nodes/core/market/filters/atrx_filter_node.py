@@ -2,12 +2,12 @@ import logging
 import pandas as pd
 import numpy as np
 from typing import Dict, Any, List
-from nodes.core.market.filters.base.base_indicator_filter_node import BaseIndicatorFilterNode
+from nodes.core.market.filters.base.base_indicator_filter_node import BaseIndicatorFilter
 from core.types_registry import AssetSymbol, OHLCVBar, IndicatorResult, IndicatorType, get_type, IndicatorValue
 
 logger = logging.getLogger(__name__)
 
-class AtrXFilterNode(BaseIndicatorFilterNode):
+class AtrXFilter(BaseIndicatorFilter):
     ui_module = "market/AtrXFilterNodeUI"
     """
     Filters OHLCV bundle based on ATRX indicator thresholds.

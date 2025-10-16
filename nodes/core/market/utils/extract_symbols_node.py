@@ -1,12 +1,12 @@
 import logging
 from typing import Dict, Any, List
-from nodes.base.base_node import BaseNode
+from nodes.base.base_node import Base
 from core.types_registry import get_type, AssetSymbol, OHLCVBar
 
 logger = logging.getLogger(__name__)
 
 
-class ExtractSymbolsNode(BaseNode):
+class ExtractSymbols(Base):
     """
     Extracts a list of asset symbols from an OHLCV bundle.
     Takes an OHLCV bundle (Dict[AssetSymbol, List[OHLCVBar]]) and outputs

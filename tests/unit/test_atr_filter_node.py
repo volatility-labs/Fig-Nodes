@@ -1,7 +1,7 @@
 
 import pytest
 from typing import Dict, List
-from nodes.core.market.filters.atr_filter_node import ATRFilterNode
+from nodes.core.market.filters.atr_filter_node import ATRFilter
 from core.types_registry import AssetSymbol, OHLCVBar, IndicatorType, AssetClass, get_type
 
 @pytest.fixture
@@ -21,7 +21,7 @@ def sample_ohlcv_bundle() -> Dict[AssetSymbol, List[OHLCVBar]]:
 
 @pytest.mark.asyncio
 async def test_atr_filter_node(sample_ohlcv_bundle):
-    node = ATRFilterNode(id=1, params={"min_atr": 5.0, "window": 14})
+    node = ATRFilter(id=1, params={"min_atr": 5.0, "window": 14})
     inputs = {"ohlcv_bundle": sample_ohlcv_bundle}
     result = await node.execute(inputs)
     assert "filtered_ohlcv_bundle" in result
@@ -32,7 +32,7 @@ async def test_atr_filter_node(sample_ohlcv_bundle):
 
 @pytest.mark.asyncio
 async def test_atr_filter_node_no_data():
-    node = ATRFilterNode(id=1, params={"min_atr": 0.0, "window": 14})
+    node = ATRFilter(id=1, params={"min_atr": 0.0, "window": 14})
     inputs = {"ohlcv_bundle": {}}
     result = await node.execute(inputs)
     assert result["filtered_ohlcv_bundle"] == {}
@@ -46,7 +46,7 @@ async def test_atr_filter_node_all_pass():
     symbol1 = AssetSymbol("HIGHATR", AssetClass.CRYPTO)
     symbol2 = AssetSymbol("HIGHATR2", AssetClass.CRYPTO)
     bundle = {symbol1: bars, symbol2: bars}
-    node = ATRFilterNode(id=1, params={"min_atr": 1.0, "window": 14})
+    node = ATRFilter(id=1, params={"min_atr": 1.0, "window": 14})
     inputs = {"ohlcv_bundle": bundle}
     result = await node.execute(inputs)
     assert len(result["filtered_ohlcv_bundle"]) == 2
@@ -64,7 +64,7 @@ async def test_atr_filter_node_some_pass():
     symbol1 = AssetSymbol("HIGH", AssetClass.CRYPTO)
     symbol2 = AssetSymbol("LOW", AssetClass.CRYPTO)
     bundle = {symbol1: high_bars, symbol2: low_bars}
-    node = ATRFilterNode(id=1, params={"min_atr": 5.0, "window": 14})
+    node = ATRFilter(id=1, params={"min_atr": 5.0, "window": 14})
     inputs = {"ohlcv_bundle": bundle}
     result = await node.execute(inputs)
     assert len(result["filtered_ohlcv_bundle"]) == 1
@@ -83,7 +83,7 @@ async def test_atr_filter_node_insufficient_data_one_symbol():
     symbol1 = AssetSymbol("OK", AssetClass.CRYPTO)
     symbol2 = AssetSymbol("SHORT", AssetClass.CRYPTO)
     bundle = {symbol1: bars_ok, symbol2: bars_short}
-    node = ATRFilterNode(id=1, params={"min_atr": 1.0, "window": 14})
+    node = ATRFilter(id=1, params={"min_atr": 1.0, "window": 14})
     inputs = {"ohlcv_bundle": bundle}
     result = await node.execute(inputs)
     assert len(result["filtered_ohlcv_bundle"]) <= 1  # SHORT should have error or not pass

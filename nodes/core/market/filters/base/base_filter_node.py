@@ -1,12 +1,12 @@
 import logging
 from typing import Dict, Any, List
-from nodes.base.base_node import BaseNode
+from nodes.base.base_node import Base
 from core.types_registry import get_type, AssetSymbol, OHLCVBar
 
 logger = logging.getLogger(__name__)
 
 
-class BaseFilterNode(BaseNode):
+class BaseFilter(Base):
     """
     Base class for general filter nodes that filter OHLCV bundles based on arbitrary conditions.
     Suitable for non-indicator based filters (e.g., volume thresholds, price ranges, market cap).

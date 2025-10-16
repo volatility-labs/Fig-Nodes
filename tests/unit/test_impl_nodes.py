@@ -2,20 +2,20 @@ import pytest
 from typing import Dict, Any, List
 from unittest.mock import AsyncMock, patch
 import pandas as pd
-from nodes.core.flow.for_each_node import ForEachNode
-from nodes.core.io.text_input_node import TextInputNode
-from nodes.core.io.asset_symbol_input_node import AssetSymbolInputNode
-from nodes.core.io.logging_node import LoggingNode
-from nodes.core.logic.score_node import ScoreNode
-from nodes.core.market.utils.instrument_resolver_node import InstrumentResolverNode
-from nodes.core.llm.text_to_llm_message_node import TextToLLMMessageNode
+from nodes.core.flow.for_each_node import ForEach
+from nodes.core.io.text_input_node import TextInput
+from nodes.core.io.asset_symbol_input_node import AssetSymbolInput
+from nodes.core.io.logging_node import Logging
+from nodes.core.logic.score_node import Score
+from nodes.core.market.utils.instrument_resolver_node import InstrumentResolver
+from nodes.core.llm.text_to_llm_message_node import TextToLLMMessage
 from core.types_registry import AssetSymbol, AssetClass, InstrumentType
 
-# Tests for ForEachNode
+# Tests for ForEach
 
 @pytest.fixture
 def foreach_node():
-    return ForEachNode(id=1, params={})
+    return ForEach(id=1, params={})
 
 @pytest.mark.asyncio
 async def test_foreach_node_execute(foreach_node):
@@ -34,11 +34,11 @@ def test_foreach_node_validate(foreach_node):
     assert foreach_node.validate_inputs({}) is False  # Missing required
 
 
-# Tests for TextInputNode
+# Tests for TextInput
 
 @pytest.fixture
 def text_node():
-    return TextInputNode(id=1, params={"value": "hello"})
+    return TextInput(id=1, params={"value": "hello"})
 
 @pytest.mark.asyncio
 async def test_text_node_execute(text_node):
@@ -47,15 +47,15 @@ async def test_text_node_execute(text_node):
 
 @pytest.mark.asyncio
 async def test_text_node_default():
-    text_node = TextInputNode(id=1, params={})
+    text_node = TextInput(id=1, params={})
     result = await text_node.execute({})
     assert result == {"text": ""}
 
-# Tests for TextToLLMMessageNode
+# Tests for TextToLLMMessage
 
 @pytest.mark.asyncio
 async def test_text_to_llm_message_default_role():
-    node = TextToLLMMessageNode(id=1, params={})
+    node = TextToLLMMessage(id=1, params={})
     result = await node.execute({"data": "hello"})
     assert result["message"]["role"] == "user"
     assert result["message"]["content"] == "hello"
@@ -64,22 +64,22 @@ async def test_text_to_llm_message_default_role():
 @pytest.mark.asyncio
 async def test_text_to_llm_message_roles():
     for role in ["user", "assistant", "system", "tool"]:
-        node = TextToLLMMessageNode(id=1, params={"role": role})
+        node = TextToLLMMessage(id=1, params={"role": role})
         result = await node.execute({"data": "x"})
         assert result["message"]["role"] == role
         assert result["messages"][0]["role"] == role
 
 @pytest.mark.asyncio
 async def test_text_to_llm_message_non_string():
-    node = TextToLLMMessageNode(id=1, params={"role": "assistant"})
+    node = TextToLLMMessage(id=1, params={"role": "assistant"})
     result = await node.execute({"data": 123})
     assert result["message"]["content"] == "123"
 
-# Tests for AssetSymbolInputNode
+# Tests for AssetSymbolInput
 
 @pytest.fixture
 def asset_node():
-    return AssetSymbolInputNode(id=1, params={
+    return AssetSymbolInput(id=1, params={
         "ticker": "btc",
         "asset_class": AssetClass.CRYPTO.name,
         "quote_currency": "usdt",
@@ -96,13 +96,13 @@ async def test_asset_node_execute(asset_node):
     assert sym.instrument_type == InstrumentType.PERPETUAL
 
 def test_asset_node_params_meta():
-    assert len(AssetSymbolInputNode.params_meta) == 4  # Check existence
+    assert len(AssetSymbolInput.params_meta) == 4  # Check existence
 
-# Tests for LoggingNode
+# Tests for Logging
 
 @pytest.fixture
 def logging_node():
-    return LoggingNode(id=1, params={})
+    return Logging(id=1, params={})
 
 @pytest.mark.asyncio
 @patch("builtins.print")
@@ -131,11 +131,11 @@ async def test_logging_node_execute_long_list(mock_print, logging_node):
     expected = ", ".join(str(i) for i in range(101))
     assert call_arg == expected
 
-# Tests for ScoreNode
+# Tests for Score
 
 @pytest.fixture
 def score_node():
-    return ScoreNode(id=1, params={})
+    return Score(id=1, params={})
 
 @pytest.mark.asyncio
 async def test_score_node_execute_empty(score_node):
@@ -148,11 +148,11 @@ async def test_score_node_execute_with_indicators(score_node):
     result = await score_node.execute(inputs)
     assert result == {"score": 0.0}  # Placeholder
 
-# Tests for InstrumentResolverNode
+# Tests for InstrumentResolver
 
 @pytest.fixture
 def resolver_node():
-    return InstrumentResolverNode(id=1, params={"exchange": "binance", "instrument_type": "PERPETUAL", "quote_currency": "USDT"})
+    return InstrumentResolver(id=1, params={"exchange": "binance", "instrument_type": "PERPETUAL", "quote_currency": "USDT"})
 
 @pytest.mark.asyncio
 @patch("requests.get")

@@ -1,11 +1,11 @@
 from typing import Dict, Any, List
 import json
-from nodes.base.base_node import BaseNode
+from nodes.base.base_node import Base
 from core.types_registry import AssetSymbol
 from typing import Any
 
 
-class LoggingNode(BaseNode):
+class Logging(Base):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.last_content_length = 0

@@ -1,14 +1,14 @@
 import logging
 import pandas as pd
 from typing import Dict, Any, List
-from nodes.core.market.filters.base.base_filter_node import BaseFilterNode
+from nodes.core.market.filters.base.base_filter_node import BaseFilter
 from core.types_registry import get_type, AssetSymbol, OHLCVBar, IndicatorResult, IndicatorType
 from services.indicators_service import IndicatorsService
 
 logger = logging.getLogger(__name__)
 
 
-class BaseIndicatorFilterNode(BaseFilterNode):
+class BaseIndicatorFilter(BaseFilter):
     """
     Base class for indicator filter nodes that filter OHLCV bundles based on technical indicators.
 

@@ -1,18 +1,18 @@
 import pytest
 from typing import Dict, Any, List, Type, AsyncGenerator
 from unittest.mock import patch, AsyncMock
-from nodes.base.base_node import BaseNode
-from nodes.base.streaming_node import StreamingNode
+from nodes.base.base_node import Base
+from nodes.base.streaming_node import Streaming
 from core.types_registry import AssetSymbol, AssetClass, NodeExecutionError
 
-class ConcreteBaseNode(BaseNode):
+class ConcreteBaseNode(Base):
     inputs: Dict[str, Type] = {"input": str}
     outputs: Dict[str, Type] = {"output": str}
 
     async def _execute_impl(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
         return {"output": inputs["input"]}
 
-class ConcreteStreamingNode(StreamingNode):
+class ConcreteStreamingNode(Streaming):
     async def _start_impl(self, inputs: Dict[str, Any]) -> AsyncGenerator[Dict[str, Any], None]:
         yield {"output": "stream"}
 
@@ -117,7 +117,7 @@ async def test_base_node_execute(base_node):
 
 @pytest.mark.asyncio
 async def test_abstract_execute():
-    abstract = BaseNode(id=1)
+    abstract = Base(id=1)
     with pytest.raises(NodeExecutionError):
         await abstract.execute({})
 

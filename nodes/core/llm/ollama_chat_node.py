@@ -4,7 +4,7 @@ import json
 import asyncio
 import random
 import httpx
-from nodes.base.base_node import BaseNode
+from nodes.base.base_node import Base
 import subprocess as sp
 
 
@@ -15,7 +15,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-class OllamaChatNode(BaseNode):
+class OllamaChat(Base):
     """
     Non-streaming chat node backed by a local Ollama server.
 
