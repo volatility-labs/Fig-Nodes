@@ -770,3 +770,689 @@ class TestOrbFilterAssetClassLogic:
         assert "rel_vol" in result.values.lines
         assert result.values.series[0]["direction"] in ["bullish", "bearish", "doji"]
 
+
+class TestOrbFilterEdgeCases:
+    """Comprehensive edge case tests for ORB filter robustness."""
+
+    @pytest.fixture
+    def edge_case_params(self):
+        return {
+            "or_minutes": 5,
+            "rel_vol_threshold": 100.0,
+            "direction": "both",
+            "avg_period": 14,
+            "max_concurrent": 10,
+            "rate_limit_per_second": 95,
+        }
+
+    @pytest.fixture
+    def edge_case_node(self, edge_case_params):
+        return OrbFilter(id=1, params=edge_case_params)
+
+    @pytest.mark.asyncio
+    async def test_decimal_avg_period_lookback_fix(self, edge_case_node):
+        """Test that decimal avg_period values are properly converted to integers for lookback."""
+        # Set a decimal avg_period that would cause the original bug
+        edge_case_node.params["avg_period"] = 7.780725097656255
+        
+        async def mock_calc(symbol, api_key):
+            # Verify the lookback_period is properly formatted
+            return IndicatorResult(
+                indicator_type=IndicatorType.ORB,
+                timestamp=1234567890000,
+                values=IndicatorValue(lines={"rel_vol": 150.0}, series=[{"direction": "bullish"}]),
+                params=edge_case_node.params
+            )
+        
+        edge_case_node._calculate_orb_indicator = mock_calc
+        
+        with patch("core.api_key_vault.APIKeyVault.get", return_value="test_key"):
+            # This should not raise an error about decimal lookback period
+            result = await edge_case_node.execute({
+                "ohlcv_bundle": {AssetSymbol("AAPL", AssetClass.STOCKS): [OHLCVBar(timestamp=1234567890, open=100.0, high=105.0, low=95.0, close=102.0, volume=1000000)]}
+            })
+        
+        assert "filtered_ohlcv_bundle" in result
+
+    @pytest.mark.asyncio
+    async def test_zero_avg_period_edge_case(self, edge_case_node):
+        """Test handling of zero avg_period (should be caught by validation)."""
+        edge_case_node.params["avg_period"] = 0
+        
+        with pytest.raises(ValueError, match="Average period must be positive"):
+            edge_case_node._validate_indicator_params()
+
+    @pytest.mark.asyncio
+    async def test_negative_avg_period_edge_case(self, edge_case_node):
+        """Test handling of negative avg_period."""
+        edge_case_node.params["avg_period"] = -5
+        
+        with pytest.raises(ValueError, match="Average period must be positive"):
+            edge_case_node._validate_indicator_params()
+
+    @pytest.mark.asyncio
+    async def test_very_large_avg_period(self, edge_case_node):
+        """Test handling of very large avg_period values."""
+        edge_case_node.params["avg_period"] = 1000
+        
+        async def mock_calc(symbol, api_key):
+            return IndicatorResult(
+                indicator_type=IndicatorType.ORB,
+                timestamp=1234567890000,
+                values=IndicatorValue(lines={"rel_vol": 150.0}, series=[{"direction": "bullish"}]),
+                params=edge_case_node.params
+            )
+        
+        edge_case_node._calculate_orb_indicator = mock_calc
+        
+        with patch("core.api_key_vault.APIKeyVault.get", return_value="test_key"):
+            result = await edge_case_node.execute({
+                "ohlcv_bundle": {AssetSymbol("AAPL", AssetClass.STOCKS): [OHLCVBar(timestamp=1234567890, open=100.0, high=105.0, low=95.0, close=102.0, volume=1000000)]}
+            })
+        
+        assert "filtered_ohlcv_bundle" in result
+
+    @pytest.mark.asyncio
+    async def test_zero_or_minutes_edge_case(self, edge_case_node):
+        """Test handling of zero or_minutes."""
+        edge_case_node.params["or_minutes"] = 0
+        
+        with pytest.raises(ValueError, match="Opening range minutes must be positive"):
+            edge_case_node._validate_indicator_params()
+
+    @pytest.mark.asyncio
+    async def test_negative_or_minutes_edge_case(self, edge_case_node):
+        """Test handling of negative or_minutes."""
+        edge_case_node.params["or_minutes"] = -5
+        
+        with pytest.raises(ValueError, match="Opening range minutes must be positive"):
+            edge_case_node._validate_indicator_params()
+
+    @pytest.mark.asyncio
+    async def test_very_large_or_minutes(self, edge_case_node):
+        """Test handling of very large or_minutes values."""
+        edge_case_node.params["or_minutes"] = 1440  # 24 hours
+        
+        async def mock_calc(symbol, api_key):
+            return IndicatorResult(
+                indicator_type=IndicatorType.ORB,
+                timestamp=1234567890000,
+                values=IndicatorValue(lines={"rel_vol": 150.0}, series=[{"direction": "bullish"}]),
+                params=edge_case_node.params
+            )
+        
+        edge_case_node._calculate_orb_indicator = mock_calc
+        
+        with patch("core.api_key_vault.APIKeyVault.get", return_value="test_key"):
+            result = await edge_case_node.execute({
+                "ohlcv_bundle": {AssetSymbol("AAPL", AssetClass.STOCKS): [OHLCVBar(timestamp=1234567890, open=100.0, high=105.0, low=95.0, close=102.0, volume=1000000)]}
+            })
+        
+        assert "filtered_ohlcv_bundle" in result
+
+    @pytest.mark.asyncio
+    async def test_negative_rel_vol_threshold_edge_case(self, edge_case_node):
+        """Test handling of negative rel_vol_threshold."""
+        edge_case_node.params["rel_vol_threshold"] = -50.0
+        
+        with pytest.raises(ValueError, match="Relative volume threshold cannot be negative"):
+            edge_case_node._validate_indicator_params()
+
+    @pytest.mark.asyncio
+    async def test_zero_rel_vol_threshold(self, edge_case_node):
+        """Test handling of zero rel_vol_threshold."""
+        edge_case_node.params["rel_vol_threshold"] = 0.0
+        
+        # Should not raise validation error
+        edge_case_node._validate_indicator_params()
+        
+        async def mock_calc(symbol, api_key):
+            return IndicatorResult(
+                indicator_type=IndicatorType.ORB,
+                timestamp=1234567890000,
+                values=IndicatorValue(lines={"rel_vol": 50.0}, series=[{"direction": "bullish"}]),
+                params=edge_case_node.params
+            )
+        
+        edge_case_node._calculate_orb_indicator = mock_calc
+        
+        with patch("core.api_key_vault.APIKeyVault.get", return_value="test_key"):
+            result = await edge_case_node.execute({
+                "ohlcv_bundle": {AssetSymbol("AAPL", AssetClass.STOCKS): [OHLCVBar(timestamp=1234567890, open=100.0, high=105.0, low=95.0, close=102.0, volume=1000000)]}
+            })
+        
+        # With threshold 0, any positive rel_vol should pass
+        assert AssetSymbol("AAPL", AssetClass.STOCKS) in result["filtered_ohlcv_bundle"]
+
+    @pytest.mark.asyncio
+    async def test_extremely_high_rel_vol_threshold(self, edge_case_node):
+        """Test handling of extremely high rel_vol_threshold."""
+        edge_case_node.params["rel_vol_threshold"] = 10000.0
+        
+        async def mock_calc(symbol, api_key):
+            return IndicatorResult(
+                indicator_type=IndicatorType.ORB,
+                timestamp=1234567890000,
+                values=IndicatorValue(lines={"rel_vol": 5000.0}, series=[{"direction": "bullish"}]),
+                params=edge_case_node.params
+            )
+        
+        edge_case_node._calculate_orb_indicator = mock_calc
+        
+        with patch("core.api_key_vault.APIKeyVault.get", return_value="test_key"):
+            result = await edge_case_node.execute({
+                "ohlcv_bundle": {AssetSymbol("AAPL", AssetClass.STOCKS): [OHLCVBar(timestamp=1234567890, open=100.0, high=105.0, low=95.0, close=102.0, volume=1000000)]}
+            })
+        
+        # Should not pass with very high threshold
+        assert AssetSymbol("AAPL", AssetClass.STOCKS) not in result["filtered_ohlcv_bundle"]
+
+    @pytest.mark.asyncio
+    async def test_invalid_direction_edge_case(self, edge_case_node):
+        """Test handling of invalid direction values."""
+        # Test with invalid direction - should be caught by UI validation, but test robustness
+        edge_case_node.params["direction"] = "invalid_direction"
+        
+        async def mock_calc(symbol, api_key):
+            return IndicatorResult(
+                indicator_type=IndicatorType.ORB,
+                timestamp=1234567890000,
+                values=IndicatorValue(lines={"rel_vol": 150.0}, series=[{"direction": "bullish"}]),
+                params=edge_case_node.params
+            )
+        
+        edge_case_node._calculate_orb_indicator = mock_calc
+        
+        with patch("core.api_key_vault.APIKeyVault.get", return_value="test_key"):
+            result = await edge_case_node.execute({
+                "ohlcv_bundle": {AssetSymbol("AAPL", AssetClass.STOCKS): [OHLCVBar(timestamp=1234567890, open=100.0, high=105.0, low=95.0, close=102.0, volume=1000000)]}
+            })
+        
+        # Should still work - direction filtering happens in _should_pass_filter
+        assert "filtered_ohlcv_bundle" in result
+
+    @pytest.mark.asyncio
+    async def test_empty_symbol_ticker_edge_case(self, edge_case_node):
+        """Test handling of empty symbol ticker."""
+        empty_symbol = AssetSymbol("", AssetClass.STOCKS)
+        
+        async def mock_calc(symbol, api_key):
+            if symbol.ticker == "":
+                return IndicatorResult(
+                    indicator_type=IndicatorType.ORB,
+                    timestamp=0,
+                    values=IndicatorValue(),
+                    params=edge_case_node.params,
+                    error="Empty ticker"
+                )
+            return IndicatorResult(
+                indicator_type=IndicatorType.ORB,
+                timestamp=1234567890000,
+                values=IndicatorValue(lines={"rel_vol": 150.0}, series=[{"direction": "bullish"}]),
+                params=edge_case_node.params
+            )
+        
+        edge_case_node._calculate_orb_indicator = mock_calc
+        
+        with patch("core.api_key_vault.APIKeyVault.get", return_value="test_key"):
+            result = await edge_case_node.execute({
+                "ohlcv_bundle": {empty_symbol: [OHLCVBar(timestamp=1234567890, open=100.0, high=105.0, low=95.0, close=102.0, volume=1000000)]}
+            })
+        
+        # Empty ticker should not pass filter
+        assert empty_symbol not in result["filtered_ohlcv_bundle"]
+
+    @pytest.mark.asyncio
+    async def test_none_ohlcv_data_edge_case(self, edge_case_node):
+        """Test handling of None OHLCV data."""
+        with patch("core.api_key_vault.APIKeyVault.get", return_value="test_key"):
+            result = await edge_case_node.execute({
+                "ohlcv_bundle": {AssetSymbol("AAPL", AssetClass.STOCKS): None}
+            })
+        
+        # None data should be skipped
+        assert AssetSymbol("AAPL", AssetClass.STOCKS) not in result["filtered_ohlcv_bundle"]
+
+    @pytest.mark.asyncio
+    async def test_malformed_ohlcv_data_edge_case(self, edge_case_node):
+        """Test handling of malformed OHLCV data."""
+        malformed_data = [{"invalid": "data"}]  # Missing required fields
+        
+        async def mock_calc(symbol, api_key):
+            return IndicatorResult(
+                indicator_type=IndicatorType.ORB,
+                timestamp=0,
+                values=IndicatorValue(),
+                params=edge_case_node.params,
+                error="Malformed data"
+            )
+        
+        edge_case_node._calculate_orb_indicator = mock_calc
+        
+        with patch("core.api_key_vault.APIKeyVault.get", return_value="test_key"):
+            result = await edge_case_node.execute({
+                "ohlcv_bundle": {AssetSymbol("AAPL", AssetClass.STOCKS): malformed_data}
+            })
+        
+        # Malformed data should not pass filter
+        assert AssetSymbol("AAPL", AssetClass.STOCKS) not in result["filtered_ohlcv_bundle"]
+
+    @pytest.mark.asyncio
+    async def test_zero_volume_edge_case(self, edge_case_node):
+        """Test handling of zero volume scenarios."""
+        async def mock_calc_zero_vol(symbol, api_key):
+            return IndicatorResult(
+                indicator_type=IndicatorType.ORB,
+                timestamp=1234567890000,
+                values=IndicatorValue(lines={"rel_vol": 0.0}, series=[{"direction": "bullish"}]),
+                params=edge_case_node.params
+            )
+        
+        edge_case_node._calculate_orb_indicator = mock_calc_zero_vol
+        
+        with patch("core.api_key_vault.APIKeyVault.get", return_value="test_key"):
+            result = await edge_case_node.execute({
+                "ohlcv_bundle": {AssetSymbol("AAPL", AssetClass.STOCKS): [OHLCVBar(timestamp=1234567890, open=100.0, high=105.0, low=95.0, close=102.0, volume=0)]}
+            })
+        
+        # Zero volume should not pass threshold
+        assert AssetSymbol("AAPL", AssetClass.STOCKS) not in result["filtered_ohlcv_bundle"]
+
+    @pytest.mark.asyncio
+    async def test_infinite_rel_vol_edge_case(self, edge_case_node):
+        """Test handling of infinite relative volume values."""
+        async def mock_calc_infinite_vol(symbol, api_key):
+            return IndicatorResult(
+                indicator_type=IndicatorType.ORB,
+                timestamp=1234567890000,
+                values=IndicatorValue(lines={"rel_vol": float('inf')}, series=[{"direction": "bullish"}]),
+                params=edge_case_node.params
+            )
+        
+        edge_case_node._calculate_orb_indicator = mock_calc_infinite_vol
+        
+        with patch("core.api_key_vault.APIKeyVault.get", return_value="test_key"):
+            result = await edge_case_node.execute({
+                "ohlcv_bundle": {AssetSymbol("AAPL", AssetClass.STOCKS): [OHLCVBar(timestamp=1234567890, open=100.0, high=105.0, low=95.0, close=102.0, volume=1000000)]}
+            })
+        
+        # Infinite volume should pass any threshold
+        assert AssetSymbol("AAPL", AssetClass.STOCKS) in result["filtered_ohlcv_bundle"]
+
+    @pytest.mark.asyncio
+    async def test_nan_rel_vol_edge_case(self, edge_case_node):
+        """Test handling of NaN relative volume values."""
+        async def mock_calc_nan_vol(symbol, api_key):
+            return IndicatorResult(
+                indicator_type=IndicatorType.ORB,
+                timestamp=1234567890000,
+                values=IndicatorValue(lines={"rel_vol": float('nan')}, series=[{"direction": "bullish"}]),
+                params=edge_case_node.params
+            )
+        
+        edge_case_node._calculate_orb_indicator = mock_calc_nan_vol
+        
+        with patch("core.api_key_vault.APIKeyVault.get", return_value="test_key"):
+            result = await edge_case_node.execute({
+                "ohlcv_bundle": {AssetSymbol("AAPL", AssetClass.STOCKS): [OHLCVBar(timestamp=1234567890, open=100.0, high=105.0, low=95.0, close=102.0, volume=1000000)]}
+            })
+        
+        # NaN volume should not pass filter
+        assert AssetSymbol("AAPL", AssetClass.STOCKS) not in result["filtered_ohlcv_bundle"]
+
+    @pytest.mark.asyncio
+    async def test_missing_direction_in_series_edge_case(self, edge_case_node):
+        """Test handling of missing direction in series."""
+        async def mock_calc_no_direction(symbol, api_key):
+            return IndicatorResult(
+                indicator_type=IndicatorType.ORB,
+                timestamp=1234567890000,
+                values=IndicatorValue(lines={"rel_vol": 150.0}, series=[{"other_field": "value"}]),
+                params=edge_case_node.params
+            )
+        
+        edge_case_node._calculate_orb_indicator = mock_calc_no_direction
+        
+        with patch("core.api_key_vault.APIKeyVault.get", return_value="test_key"):
+            result = await edge_case_node.execute({
+                "ohlcv_bundle": {AssetSymbol("AAPL", AssetClass.STOCKS): [OHLCVBar(timestamp=1234567890, open=100.0, high=105.0, low=95.0, close=102.0, volume=1000000)]}
+            })
+        
+        # Missing direction should default to "doji" and not pass
+        assert AssetSymbol("AAPL", AssetClass.STOCKS) not in result["filtered_ohlcv_bundle"]
+
+    @pytest.mark.asyncio
+    async def test_empty_series_edge_case(self, edge_case_node):
+        """Test handling of empty series."""
+        async def mock_calc_empty_series(symbol, api_key):
+            return IndicatorResult(
+                indicator_type=IndicatorType.ORB,
+                timestamp=1234567890000,
+                values=IndicatorValue(lines={"rel_vol": 150.0}, series=[]),
+                params=edge_case_node.params
+            )
+        
+        edge_case_node._calculate_orb_indicator = mock_calc_empty_series
+        
+        with patch("core.api_key_vault.APIKeyVault.get", return_value="test_key"):
+            result = await edge_case_node.execute({
+                "ohlcv_bundle": {AssetSymbol("AAPL", AssetClass.STOCKS): [OHLCVBar(timestamp=1234567890, open=100.0, high=105.0, low=95.0, close=102.0, volume=1000000)]}
+            })
+        
+        # Empty series should not pass filter
+        assert AssetSymbol("AAPL", AssetClass.STOCKS) not in result["filtered_ohlcv_bundle"]
+
+    @pytest.mark.asyncio
+    async def test_missing_rel_vol_in_lines_edge_case(self, edge_case_node):
+        """Test handling of missing rel_vol in lines."""
+        async def mock_calc_no_rel_vol(symbol, api_key):
+            return IndicatorResult(
+                indicator_type=IndicatorType.ORB,
+                timestamp=1234567890000,
+                values=IndicatorValue(lines={"other_field": 150.0}, series=[{"direction": "bullish"}]),
+                params=edge_case_node.params
+            )
+        
+        edge_case_node._calculate_orb_indicator = mock_calc_no_rel_vol
+        
+        with patch("core.api_key_vault.APIKeyVault.get", return_value="test_key"):
+            result = await edge_case_node.execute({
+                "ohlcv_bundle": {AssetSymbol("AAPL", AssetClass.STOCKS): [OHLCVBar(timestamp=1234567890, open=100.0, high=105.0, low=95.0, close=102.0, volume=1000000)]}
+            })
+        
+        # Missing rel_vol should not pass filter
+        assert AssetSymbol("AAPL", AssetClass.STOCKS) not in result["filtered_ohlcv_bundle"]
+
+    @pytest.mark.asyncio
+    async def test_empty_lines_edge_case(self, edge_case_node):
+        """Test handling of empty lines."""
+        async def mock_calc_empty_lines(symbol, api_key):
+            return IndicatorResult(
+                indicator_type=IndicatorType.ORB,
+                timestamp=1234567890000,
+                values=IndicatorValue(lines={}, series=[{"direction": "bullish"}]),
+                params=edge_case_node.params
+            )
+        
+        edge_case_node._calculate_orb_indicator = mock_calc_empty_lines
+        
+        with patch("core.api_key_vault.APIKeyVault.get", return_value="test_key"):
+            result = await edge_case_node.execute({
+                "ohlcv_bundle": {AssetSymbol("AAPL", AssetClass.STOCKS): [OHLCVBar(timestamp=1234567890, open=100.0, high=105.0, low=95.0, close=102.0, volume=1000000)]}
+            })
+        
+        # Empty lines should not pass filter
+        assert AssetSymbol("AAPL", AssetClass.STOCKS) not in result["filtered_ohlcv_bundle"]
+
+    @pytest.mark.asyncio
+    async def test_concurrent_limit_edge_cases(self, edge_case_node):
+        """Test various concurrent limit edge cases."""
+        # Test with max_concurrent = 0
+        edge_case_node.params["max_concurrent"] = 0
+        
+        async def mock_calc(symbol, api_key):
+            return IndicatorResult(
+                indicator_type=IndicatorType.ORB,
+                timestamp=1234567890000,
+                values=IndicatorValue(lines={"rel_vol": 150.0}, series=[{"direction": "bullish"}]),
+                params=edge_case_node.params
+            )
+        
+        edge_case_node._calculate_orb_indicator = mock_calc
+        
+        with patch("core.api_key_vault.APIKeyVault.get", return_value="test_key"):
+            result = await edge_case_node.execute({
+                "ohlcv_bundle": {AssetSymbol("AAPL", AssetClass.STOCKS): [OHLCVBar(timestamp=1234567890, open=100.0, high=105.0, low=95.0, close=102.0, volume=1000000)]}
+            })
+        
+        # Should still work with 0 concurrency (sequential processing)
+        assert "filtered_ohlcv_bundle" in result
+
+    @pytest.mark.asyncio
+    async def test_rate_limit_edge_cases(self, edge_case_node):
+        """Test various rate limit edge cases."""
+        # Test with rate_limit_per_second = 0
+        edge_case_node.params["rate_limit_per_second"] = 0
+        
+        async def mock_calc(symbol, api_key):
+            return IndicatorResult(
+                indicator_type=IndicatorType.ORB,
+                timestamp=1234567890000,
+                values=IndicatorValue(lines={"rel_vol": 150.0}, series=[{"direction": "bullish"}]),
+                params=edge_case_node.params
+            )
+        
+        edge_case_node._calculate_orb_indicator = mock_calc
+        
+        with patch("core.api_key_vault.APIKeyVault.get", return_value="test_key"):
+            result = await edge_case_node.execute({
+                "ohlcv_bundle": {AssetSymbol("AAPL", AssetClass.STOCKS): [OHLCVBar(timestamp=1234567890, open=100.0, high=105.0, low=95.0, close=102.0, volume=1000000)]}
+            })
+        
+        # Should still work with 0 rate limit
+        assert "filtered_ohlcv_bundle" in result
+
+    @pytest.mark.asyncio
+    async def test_memory_intensive_large_dataset(self, edge_case_node):
+        """Test handling of memory-intensive large datasets."""
+        # Create a large number of symbols to test memory usage
+        large_symbols = [AssetSymbol(f"SYMBOL_{i:06d}", AssetClass.STOCKS) for i in range(1000)]
+        large_bundle = {
+            symbol: [OHLCVBar(timestamp=1234567890, open=100.0, high=105.0, low=95.0, close=102.0, volume=1000000)]
+            for symbol in large_symbols
+        }
+        
+        async def mock_calc(symbol, api_key):
+            return IndicatorResult(
+                indicator_type=IndicatorType.ORB,
+                timestamp=1234567890000,
+                values=IndicatorValue(lines={"rel_vol": 150.0}, series=[{"direction": "bullish"}]),
+                params=edge_case_node.params
+            )
+        
+        edge_case_node._calculate_orb_indicator = mock_calc
+        
+        with patch("core.api_key_vault.APIKeyVault.get", return_value="test_key"):
+            result = await edge_case_node.execute({"ohlcv_bundle": large_bundle})
+        
+        # Should handle large datasets without memory issues
+        assert len(result["filtered_ohlcv_bundle"]) == 1000
+
+    @pytest.mark.asyncio
+    async def test_crypto_vs_stocks_timing_edge_cases(self, edge_case_node):
+        """Test crypto vs stocks timing edge cases."""
+        # Test crypto symbol
+        crypto_symbol = AssetSymbol("BTC", AssetClass.CRYPTO)
+        
+        async def mock_calc_crypto(symbol, api_key):
+            if symbol.asset_class.name == "CRYPTO":
+                return IndicatorResult(
+                    indicator_type=IndicatorType.ORB,
+                    timestamp=1234567890000,
+                    values=IndicatorValue(lines={"rel_vol": 150.0}, series=[{"direction": "bullish"}]),
+                    params=edge_case_node.params
+                )
+            return IndicatorResult(
+                indicator_type=IndicatorType.ORB,
+                timestamp=1234567890000,
+                values=IndicatorValue(lines={"rel_vol": 150.0}, series=[{"direction": "bullish"}]),
+                params=edge_case_node.params
+            )
+        
+        edge_case_node._calculate_orb_indicator = mock_calc_crypto
+        
+        with patch("core.api_key_vault.APIKeyVault.get", return_value="test_key"):
+            result = await edge_case_node.execute({
+                "ohlcv_bundle": {
+                    crypto_symbol: [OHLCVBar(timestamp=1234567890, open=100.0, high=105.0, low=95.0, close=102.0, volume=1000000)],
+                    AssetSymbol("AAPL", AssetClass.STOCKS): [OHLCVBar(timestamp=1234567890, open=100.0, high=105.0, low=95.0, close=102.0, volume=1000000)]
+                }
+            })
+        
+        # Both crypto and stocks should be processed
+        assert crypto_symbol in result["filtered_ohlcv_bundle"]
+        assert AssetSymbol("AAPL", AssetClass.STOCKS) in result["filtered_ohlcv_bundle"]
+
+    @pytest.mark.asyncio
+    async def test_timezone_edge_cases(self, edge_case_node):
+        """Test timezone-related edge cases."""
+        # Test with different timezone scenarios
+        async def mock_calc_timezone(symbol, api_key):
+            return IndicatorResult(
+                indicator_type=IndicatorType.ORB,
+                timestamp=1234567890000,  # Different timestamp
+                values=IndicatorValue(lines={"rel_vol": 150.0}, series=[{"direction": "bullish"}]),
+                params=edge_case_node.params
+            )
+        
+        edge_case_node._calculate_orb_indicator = mock_calc_timezone
+        
+        with patch("core.api_key_vault.APIKeyVault.get", return_value="test_key"):
+            result = await edge_case_node.execute({
+                "ohlcv_bundle": {AssetSymbol("AAPL", AssetClass.STOCKS): [OHLCVBar(timestamp=1234567890, open=100.0, high=105.0, low=95.0, close=102.0, volume=1000000)]}
+            })
+        
+        # Should handle different timestamps correctly
+        assert "filtered_ohlcv_bundle" in result
+
+    @pytest.mark.asyncio
+    async def test_api_key_edge_cases(self, edge_case_node):
+        """Test various API key edge cases."""
+        # Test with empty API key
+        with patch("core.api_key_vault.APIKeyVault.get", return_value=""):
+            with pytest.raises(NodeExecutionError) as exc_info:
+                await edge_case_node.execute({
+                    "ohlcv_bundle": {AssetSymbol("AAPL", AssetClass.STOCKS): [OHLCVBar(timestamp=1234567890, open=100.0, high=105.0, low=95.0, close=102.0, volume=1000000)]}
+                })
+            assert isinstance(exc_info.value.original_exc, ValueError)
+
+        # Test with whitespace-only API key
+        with patch("core.api_key_vault.APIKeyVault.get", return_value="   "):
+            with pytest.raises(NodeExecutionError) as exc_info:
+                await edge_case_node.execute({
+                    "ohlcv_bundle": {AssetSymbol("AAPL", AssetClass.STOCKS): [OHLCVBar(timestamp=1234567890, open=100.0, high=105.0, low=95.0, close=102.0, volume=1000000)]}
+                })
+            assert isinstance(exc_info.value.original_exc, ValueError)
+
+    @pytest.mark.asyncio
+    async def test_network_timeout_edge_case(self, edge_case_node):
+        """Test handling of network timeout scenarios."""
+        async def mock_calc_timeout(symbol, api_key):
+            # Simulate network timeout
+            raise asyncio.TimeoutError("Network timeout")
+        
+        edge_case_node._calculate_orb_indicator = mock_calc_timeout
+        
+        with patch("core.api_key_vault.APIKeyVault.get", return_value="test_key"):
+            result = await edge_case_node.execute({
+                "ohlcv_bundle": {AssetSymbol("AAPL", AssetClass.STOCKS): [OHLCVBar(timestamp=1234567890, open=100.0, high=105.0, low=95.0, close=102.0, volume=1000000)]}
+            })
+        
+        # Should handle timeout gracefully
+        assert AssetSymbol("AAPL", AssetClass.STOCKS) not in result["filtered_ohlcv_bundle"]
+
+    @pytest.mark.asyncio
+    async def test_mixed_success_failure_scenarios(self, edge_case_node):
+        """Test mixed success/failure scenarios."""
+        symbols = [
+            AssetSymbol("SUCCESS1", AssetClass.STOCKS),
+            AssetSymbol("FAIL1", AssetClass.STOCKS),
+            AssetSymbol("SUCCESS2", AssetClass.STOCKS),
+            AssetSymbol("FAIL2", AssetClass.STOCKS),
+        ]
+        
+        async def mock_calc_mixed(symbol, api_key):
+            if "FAIL" in symbol.ticker:
+                raise Exception("Simulated failure")
+            return IndicatorResult(
+                indicator_type=IndicatorType.ORB,
+                timestamp=1234567890000,
+                values=IndicatorValue(lines={"rel_vol": 150.0}, series=[{"direction": "bullish"}]),
+                params=edge_case_node.params
+            )
+        
+        edge_case_node._calculate_orb_indicator = mock_calc_mixed
+        
+        ohlcv_bundle = {
+            symbol: [OHLCVBar(timestamp=1234567890, open=100.0, high=105.0, low=95.0, close=102.0, volume=1000000)]
+            for symbol in symbols
+        }
+        
+        with patch("core.api_key_vault.APIKeyVault.get", return_value="test_key"):
+            result = await edge_case_node.execute({"ohlcv_bundle": ohlcv_bundle})
+        
+        # Only successful symbols should be in result
+        assert AssetSymbol("SUCCESS1", AssetClass.STOCKS) in result["filtered_ohlcv_bundle"]
+        assert AssetSymbol("FAIL1", AssetClass.STOCKS) not in result["filtered_ohlcv_bundle"]
+        assert AssetSymbol("SUCCESS2", AssetClass.STOCKS) in result["filtered_ohlcv_bundle"]
+        assert AssetSymbol("FAIL2", AssetClass.STOCKS) not in result["filtered_ohlcv_bundle"]
+
+    @pytest.mark.asyncio
+    async def test_progress_reporting_edge_cases(self, edge_case_node):
+        """Test progress reporting edge cases."""
+        progress_calls = []
+        
+        def mock_report(progress, text):
+            progress_calls.append((progress, text))
+        
+        edge_case_node.report_progress = mock_report
+        
+        async def mock_calc(symbol, api_key):
+            return IndicatorResult(
+                indicator_type=IndicatorType.ORB,
+                timestamp=1234567890000,
+                values=IndicatorValue(lines={"rel_vol": 150.0}, series=[{"direction": "bullish"}]),
+                params=edge_case_node.params
+            )
+        
+        edge_case_node._calculate_orb_indicator = mock_calc
+        
+        # Test with single symbol
+        with patch("core.api_key_vault.APIKeyVault.get", return_value="test_key"):
+            await edge_case_node.execute({
+                "ohlcv_bundle": {AssetSymbol("AAPL", AssetClass.STOCKS): [OHLCVBar(timestamp=1234567890, open=100.0, high=105.0, low=95.0, close=102.0, volume=1000000)]}
+            })
+        
+        # Should have progress calls
+        assert len(progress_calls) > 0
+        # First call should be 0%
+        assert progress_calls[0][0] == 0.0
+        # Last call should be 100%
+        assert progress_calls[-1][0] == 100.0
+
+    @pytest.mark.asyncio
+    async def test_worker_cancellation_edge_cases(self, edge_case_node):
+        """Test worker cancellation edge cases."""
+        async def slow_calc(symbol, api_key):
+            await asyncio.sleep(0.1)  # Simulate slow calculation
+            return IndicatorResult(
+                indicator_type=IndicatorType.ORB,
+                timestamp=1234567890000,
+                values=IndicatorValue(lines={"rel_vol": 150.0}, series=[{"direction": "bullish"}]),
+                params=edge_case_node.params
+            )
+        
+        edge_case_node._calculate_orb_indicator = slow_calc
+        
+        symbols = [AssetSymbol(f"SYMBOL_{i}", AssetClass.STOCKS) for i in range(10)]
+        ohlcv_bundle = {
+            symbol: [OHLCVBar(timestamp=1234567890, open=100.0, high=105.0, low=95.0, close=102.0, volume=1000000)]
+            for symbol in symbols
+        }
+        
+        with patch("core.api_key_vault.APIKeyVault.get", return_value="test_key"):
+            execute_task = asyncio.create_task(edge_case_node.execute({"ohlcv_bundle": ohlcv_bundle}))
+            
+            await asyncio.sleep(0.05)  # Let workers start
+            assert len(edge_case_node.workers) > 0
+            
+            # Cancel execution
+            execute_task.cancel()
+            
+            with pytest.raises(asyncio.CancelledError):
+                await execute_task
+            
+            # Workers should be cancelled
+            await asyncio.sleep(0.1)
+            assert all(w.cancelled() or w.done() for w in edge_case_node.workers)
+

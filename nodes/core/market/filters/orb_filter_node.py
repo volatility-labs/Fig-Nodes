@@ -10,6 +10,7 @@ from core.api_key_vault import APIKeyVault
 from services.polygon_service import fetch_bars
 import pytz
 from core.types_registry import get_type
+import math
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +76,11 @@ class OrbFilter(BaseIndicatorFilter):
         # Conservative cap to avoid event loop thrashing and ensure predictable batching in tests
         self._max_safe_concurrency = 5
 
+    def validate_inputs(self, inputs: Dict[str, Any]) -> bool:
+        if "ohlcv_bundle" in inputs and isinstance(inputs["ohlcv_bundle"], dict):
+            inputs["ohlcv_bundle"] = {k: v if v is not None else [] for k, v in inputs["ohlcv_bundle"].items()}
+        return super().validate_inputs(inputs)
+
     def force_stop(self):
         if self._is_stopped:
             return
@@ -122,7 +128,7 @@ class OrbFilter(BaseIndicatorFilter):
         fetch_params = {
             "multiplier": 1,
             "timespan": "minute",
-            "lookback_period": f"{avg_period + 1} days",
+            "lookback_period": f"{int(avg_period) + 1} days",
             "adjusted": True,
             "sort": "asc",
             "limit": 50000,
@@ -227,7 +233,10 @@ class OrbFilter(BaseIndicatorFilter):
             return False
 
         rel_vol = indicator_result.values.lines.get("rel_vol", 0)
-        direction = next((s.get("direction") for s in indicator_result.values.series), "doji")
+        if math.isnan(rel_vol):
+            return False
+        directions = [s["direction"] for s in indicator_result.values.series if "direction" in s]
+        direction = directions[0] if directions else "doji"
 
         if direction == "doji":
             return False
