@@ -95,9 +95,12 @@ export default class LoggingNodeUI extends BaseCustomNode {
             try { return JSON.stringify(v, null, 2); } catch { return String(v); }
         };
 
-        if (value && typeof value === 'object' && 'role' in value && value.role === 'assistant' && 'content' in value) {
+        // Handle LLMChatMessage - extract only the content
+        if (value && typeof value === 'object' && 'role' in value && 'content' in value) {
+            // This is an LLMChatMessage - extract only the content
             let text = this.tryFormat(value.content);
-            if ('thinking' in value && value.thinking) {
+            // Optionally include thinking if present and format is not 'plain'
+            if ('thinking' in value && value.thinking && format !== 'plain') {
                 text += '\n\nThinking: ' + this.tryFormat(value.thinking);
             }
             return text;
@@ -332,16 +335,19 @@ export default class LoggingNodeUI extends BaseCustomNode {
         style.top = `${screenY}px`;
         style.width = `${Math.max(0, canvasW)}px`;
         style.height = `${Math.max(0, canvasH)}px`;
-        style.zIndex = '1000'; // Same z-index as TextInputNodeUI
+        style.zIndex = '500'; // Lower z-index to stay below footer
 
         // Match inline title editor behavior: scale font size with zoom
         style.fontSize = `${12 * scale}px`;
 
-        // Hide if too small or out of viewport bounds
+        // Hide if too small or out of viewport bounds, but ensure it doesn't overlap footer
         const viewportWidth = window.innerWidth;
         const viewportHeight = window.innerHeight;
+        const footerHeight = 36; // Footer height from CSS
+        const footerTop = viewportHeight - footerHeight;
+
         if (canvasW <= 2 || canvasH <= 2 || screenX + canvasW < 0 || screenY + canvasH < 0 ||
-            screenX > viewportWidth || screenY > viewportHeight) {
+            screenX > viewportWidth || screenY > footerTop) {
             this.displayTextarea.style.display = 'none';
         } else {
             this.displayTextarea.style.display = '';

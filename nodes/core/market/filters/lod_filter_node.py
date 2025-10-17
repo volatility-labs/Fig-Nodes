@@ -1,7 +1,6 @@
 import logging
 import pandas as pd
 from typing import Dict, Any, List
-from ta.volatility import AverageTrueRange
 from nodes.core.market.filters.base.base_indicator_filter_node import BaseIndicatorFilter
 from core.types_registry import OHLCVBar, IndicatorResult, IndicatorType, IndicatorValue
 
@@ -17,6 +16,14 @@ class LodFilter(BaseIndicatorFilter):
     Formula: LoD Distance % = ((current_price - low_of_day) / ATR) * 100
 
     Only assets with LoD Distance above the minimum threshold will pass the filter.
+
+    Parameter guidance:
+    - min_lod_distance: Enter a percentage of ATR (not price points).
+      For example, 3.16 means the current price is 3.16% of one ATR above the
+      day's low. Use numeric values like 3, 5.5, 10, etc. The underlying unit is '% of ATR'.
+
+    Reference:
+    https://www.tradingview.com/script/uloAa2EI-Swing-Data-ADR-RVol-PVol-Float-Avg-Vol/
     """
 
     default_params = {
@@ -31,8 +38,10 @@ class LodFilter(BaseIndicatorFilter):
             "default": 3.16,
             "min": 0.0,
             "step": 0.1,
+            "precision": 2,
             "label": "Min LoD Distance %",
-            "description": "Minimum Low of Day distance as percentage of ATR"
+            "unit": "%",
+            "description": "Minimum Low of Day distance as percentage of ATR (e.g., 3.16 = 3.16% of ATR)"
         },
         {
             "name": "atr_window",
@@ -72,15 +81,20 @@ class LodFilter(BaseIndicatorFilter):
                 error="Insufficient data for ATR calculation"
             )
 
-        # Calculate ATR for the LoD distance calculation
-        atr_indicator = AverageTrueRange(
-            high=df['high'],
-            low=df['low'],
-            close=df['close'],
-            window=self.params["atr_window"]
-        )
-        atr_series = atr_indicator.average_true_range()
-        latest_atr = atr_series.iloc[-1] if not atr_series.empty else 0.0
+        # Calculate ATR for the LoD distance calculation using Wilder's smoothing (RMA)
+        # This matches TradingView's ATR implementation
+        high_low = df['high'] - df['low']
+        high_close = abs(df['high'] - df['close'].shift(1))
+        low_close = abs(df['low'] - df['close'].shift(1))
+        true_range = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
+        
+        # Wilder's smoothing (RMA) - matches TradingView implementation
+        alpha = 1.0 / self.params["atr_window"]
+        atr = true_range.copy()
+        for i in range(1, len(atr)):
+            atr.iloc[i] = alpha * true_range.iloc[i] + (1 - alpha) * atr.iloc[i-1]
+        
+        latest_atr = atr.iloc[-1] if not atr.empty else 0.0
 
         if pd.isna(latest_atr) or latest_atr <= 0:
             return IndicatorResult(

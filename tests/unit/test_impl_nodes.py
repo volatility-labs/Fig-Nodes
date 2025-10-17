@@ -105,31 +105,64 @@ def logging_node():
     return Logging(id=1, params={})
 
 @pytest.mark.asyncio
-@patch("builtins.print")
-async def test_logging_node_execute_str(mock_print, logging_node):
+@patch("nodes.core.io.logging_node.Logging._safe_print")
+async def test_logging_node_execute_str(mock_safe_print, logging_node):
     inputs = {"input": "test"}
     result = await logging_node.execute(inputs)
     assert result == {"output": "test"}
-    mock_print.assert_called_with("LoggingNode 1: test")
+    mock_safe_print.assert_called_with("LoggingNode 1: test")
 
 @pytest.mark.asyncio
-@patch("builtins.print")
-async def test_logging_node_execute_list_symbols(mock_print, logging_node):
+@patch("nodes.core.io.logging_node.Logging._safe_print")
+async def test_logging_node_execute_list_symbols(mock_safe_print, logging_node):
     symbols = [AssetSymbol("BTC", AssetClass.CRYPTO), AssetSymbol("ETH", AssetClass.CRYPTO)]
     inputs = {"input": symbols}
     result = await logging_node.execute(inputs)
     assert result == {"output": "BTC, ETH"}
-    mock_print.assert_called_with("BTC, ETH")
+    mock_safe_print.assert_called_with("BTC, ETH")
 
 @pytest.mark.asyncio
-@patch("builtins.print")
-async def test_logging_node_execute_long_list(mock_print, logging_node):
+@patch("nodes.core.io.logging_node.Logging._safe_print")
+async def test_logging_node_execute_long_list(mock_safe_print, logging_node):
     symbols = [AssetSymbol(str(i), AssetClass.CRYPTO) for i in range(101)]
     inputs = {"input": symbols}
     await logging_node.execute(inputs)
-    call_arg = mock_print.call_args[0][0]
+    call_arg = mock_safe_print.call_args[0][0]
     expected = ", ".join(str(i) for i in range(101))
     assert call_arg == expected
+
+@pytest.mark.asyncio
+@patch("nodes.core.io.logging_node.Logging._safe_print")
+async def test_logging_node_execute_llm_chat_message(mock_safe_print, logging_node):
+    """Test that LoggingNode extracts only content from LLMChatMessage."""
+    llm_message = {
+        "role": "assistant",
+        "content": "Hello, this is a test message",
+        "thinking": "I should respond with a greeting"
+    }
+    inputs = {"input": llm_message}
+    result = await logging_node.execute(inputs)
+    
+    # Should extract only the content
+    assert result == {"output": "Hello, this is a test message"}
+    mock_safe_print.assert_called_with("LoggingNode 1: Hello, this is a test message")
+
+@pytest.mark.asyncio
+@patch("nodes.core.io.logging_node.Logging._safe_print")
+async def test_logging_node_execute_llm_chat_message_non_string_content(mock_safe_print, logging_node):
+    """Test that LoggingNode handles LLMChatMessage with non-string content."""
+    llm_message = {
+        "role": "assistant",
+        "content": {"tool_calls": [{"name": "test_tool", "arguments": {}}]},
+        "thinking": "I need to call a tool"
+    }
+    inputs = {"input": llm_message}
+    result = await logging_node.execute(inputs)
+    
+    # Should convert non-string content to string
+    expected_content = str(llm_message["content"])
+    assert result == {"output": expected_content}
+    mock_safe_print.assert_called_with(f"LoggingNode 1: {expected_content}")
 
 # Tests for Score
 

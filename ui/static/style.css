@@ -44,6 +44,9 @@ body {
     font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
     font-size: 11px;
     box-shadow: 0 -1px 3px rgba(0, 0, 0, 0.2);
+    position: relative;
+    z-index: 1001;
+    /* Ensure footer stays above textareas */
 }
 
 .footer-section {

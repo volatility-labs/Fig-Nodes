@@ -156,16 +156,19 @@ export default class TextInputNodeUI extends BaseCustomNode {
         style.top = `${screenY}px`;
         style.width = `${Math.max(0, canvasW)}px`;
         style.height = `${Math.max(0, canvasH)}px`;
-        style.zIndex = '1000';
+        style.zIndex = '500'; // Lower z-index to stay below footer
 
         // Match inline title editor behavior: scale font size with zoom
         style.fontSize = `${12 * scale}px`;
 
-        // Hide if too small or out of viewport bounds
+        // Hide if too small or out of viewport bounds, but ensure it doesn't overlap footer
         const viewportWidth = window.innerWidth;
         const viewportHeight = window.innerHeight;
+        const footerHeight = 36; // Footer height from CSS
+        const footerTop = viewportHeight - footerHeight;
+
         if (canvasW <= 2 || canvasH <= 2 || screenX + canvasW < 0 || screenY + canvasH < 0 ||
-            screenX > viewportWidth || screenY > viewportHeight) {
+            screenX > viewportWidth || screenY > footerTop) {
             this.textareaEl.style.display = 'none';
         } else {
             this.textareaEl.style.display = '';
