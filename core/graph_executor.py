@@ -1,5 +1,5 @@
-import networkx as nx
-from typing import Dict, Any, List, AsyncGenerator, Callable, Union
+import rustworkx as rx  
+from typing import Dict, Any, List, AsyncGenerator, Callable, Union, Set, cast
 from nodes.base.base_node import Base
 import asyncio
 from nodes.base.streaming_node import Streaming
@@ -16,7 +16,10 @@ class GraphExecutor:
         self.nodes: Dict[int, Base] = {}
         self.input_names: Dict[int, List[str]] = {}
         self.output_names: Dict[int, List[str]] = {}
-        self.dag: nx.DiGraph = nx.DiGraph()
+        self.dag: Any = rx.PyDiGraph()  # type: ignore[attr-defined]
+        # Mapping between external node_id and internal rustworkx node index
+        self._id_to_idx: Dict[int, int] = {}
+        self._idx_to_id: Dict[int, int] = {}
         self.is_streaming: bool = False
         self.streaming_tasks: List[asyncio.Task[Any]] = []
         self._stopped: bool = False
@@ -39,35 +42,43 @@ class GraphExecutor:
             output_list = [out.get('name', '') for out in node_data.get('outputs', [])]
             if output_list:
                 self.output_names[node_id] = output_list
-            self.dag.add_node(node_id)  # type: ignore
+            # Add node to rustworkx graph and record index mapping
+            idx = self.dag.add_node(node_id)
+            self._id_to_idx[node_id] = idx
+            self._idx_to_id[idx] = node_id
 
         for link in self.graph.get('links', []):
             from_id, to_id = link[1], link[3]
-            self.dag.add_edge(from_id, to_id)  # type: ignore
+            self.dag.add_edge(self._id_to_idx[from_id], self._id_to_idx[to_id], None)
 
-        if not nx.is_directed_acyclic_graph(self.dag):
+        if not _rx_is_dag(self.dag):
             raise ValueError("Graph contains cycles")
         
         # Determine if the graph is streaming by checking if any nodes are streaming and have connections
-        streaming_nodes = (node_id for node_id in self.dag.nodes if isinstance(self.nodes[node_id], Streaming) and self.dag.degree(node_id) > 0)
+        def _total_degree(idx: int) -> int:
+            return self.dag.in_degree(idx) + self.dag.out_degree(idx)
 
-        self.is_streaming = any(streaming_nodes) 
+        self.is_streaming = any(
+            isinstance(self.nodes[node_id], Streaming) and _total_degree(idx) > 0
+            for idx, node_id in self._idx_to_id.items()
+        )
 
-    async def execute(self) -> Dict[str, Any]:
+    async def execute(self) -> Dict[int, Dict[str, Any]]:
         if self.is_streaming:
             raise RuntimeError("Cannot use execute() on a streaming graph. Use stream() instead.")
 
         results: Dict[int, Dict[str, Any]] = {}
-        sorted_nodes = list(nx.topological_sort(self.dag))
-        executed_nodes = set()
+        sorted_indices = _rx_topo(self.dag)
+        executed_nodes: Set[int] = set()
 
-        for node_id in sorted_nodes:
+        for node_idx in sorted_indices:
+            node_id = self._idx_to_id[node_idx]
             if self._stopped:
                 print(f"STOP_TRACE: Execution stopped at node {node_id} in GraphExecutor.execute")
                 break
             if node_id in executed_nodes:
                 continue
-            if self.dag.in_degree(node_id) == 0 and self.dag.out_degree(node_id) == 0:
+            if self.dag.in_degree(node_idx) == 0 and self.dag.out_degree(node_idx) == 0:
                 continue
             node = self.nodes[node_id]
             inputs = self._get_node_inputs(node_id, results)
@@ -76,7 +87,11 @@ class GraphExecutor:
                 print(f"STOP_TRACE: Awaiting node.execute for node {node_id}")
                 outputs = await node.execute(merged_inputs)  # Will raise NodeValidationError if missing/type issues
                 print(f"STOP_TRACE: Completed node.execute for node {node_id}")
+                print(f"DEBUG: Node {node_id} outputs: {list(outputs.keys()) if outputs else 'None'}")
             except NodeExecutionError as e:  # Catches runtime errors only; validation errors propagate to stop graph
+                print(f"ERROR_TRACE: NodeExecutionError in node {node_id}: {str(e)}")
+                if hasattr(e, 'original_exc') and e.original_exc:
+                    print(f"ERROR_TRACE: Original exception: {type(e.original_exc).__name__}: {str(e.original_exc)}")
                 logger.error(f"Node {node_id} failed: {str(e)}")
                 results[node_id] = {"error": str(e)}
                 continue
@@ -84,35 +99,53 @@ class GraphExecutor:
                 print("STOP_TRACE: Caught CancelledError in node.execute await in GraphExecutor")
                 self.force_stop()
                 raise
+            except Exception as e:
+                print(f"ERROR_TRACE: Unexpected exception in node {node_id}: {type(e).__name__}: {str(e)}")
+                logger.error(f"Unexpected error in node {node_id}: {str(e)}", exc_info=True)
+                results[node_id] = {"error": f"Unexpected error: {str(e)}"}
+                continue
             results[node_id] = outputs
         
         return results
 
-    async def _execute_subgraph_for_tick(self, subgraph_nodes: List[int], context: Dict[str, Any]) -> Dict[str, Any]:
-        tick_results = {}
+    async def _execute_subgraph_for_tick(self, subgraph_nodes: List[int], context: Dict[int, Any]) -> Dict[int, Any]:
+        tick_results: Dict[int, Any] = {}
         for sub_node_id in subgraph_nodes:
             # Important: The context for the current tick can be updated by previous nodes in the same tick
-            current_context = {**context, **tick_results}
+            current_context: Dict[int, Any] = {**context, **tick_results}
             sub_node = self.nodes[sub_node_id]
             sub_inputs = self._get_node_inputs(sub_node_id, current_context)
             merged_inputs = {**{k: v for k, v in sub_node.params.items() if k in sub_node.inputs and k not in sub_inputs and v is not None}, **sub_inputs}
             print(f"GraphExecutor: Merged inputs for sub_node {sub_node_id}: {merged_inputs}")
             
             try:
+                print(f"DEBUG: Executing sub_node {sub_node_id} with inputs: {list(merged_inputs.keys())}")
                 sub_outputs = await sub_node.execute(merged_inputs)  # Will raise NodeValidationError if invalid
+                print(f"DEBUG: Sub_node {sub_node_id} completed with outputs: {list(sub_outputs.keys()) if sub_outputs else 'None'}")
             except NodeExecutionError as e:
+                print(f"ERROR_TRACE: NodeExecutionError in sub_node {sub_node_id}: {str(e)}")
+                if hasattr(e, 'original_exc') and e.original_exc:
+                    print(f"ERROR_TRACE: Original exception: {type(e.original_exc).__name__}: {str(e.original_exc)}")
                 logger.error(f"Sub node {sub_node_id} failed: {str(e)}")
                 tick_results[sub_node_id] = {"error": str(e)}
+                continue
+            except Exception as e:
+                print(f"ERROR_TRACE: Unexpected exception in sub_node {sub_node_id}: {type(e).__name__}: {str(e)}")
+                logger.error(f"Unexpected error in sub_node {sub_node_id}: {str(e)}", exc_info=True)
+                tick_results[sub_node_id] = {"error": f"Unexpected error: {str(e)}"}
                 continue
             tick_results[sub_node_id] = sub_outputs
         return tick_results
 
-    async def _run_streaming_source(self, source_id: int, initial_results: Dict[int, Any], result_queue: asyncio.Queue):
-        source_node = self.nodes[source_id]
+    async def _run_streaming_source(self, source_id: int, initial_results: Dict[int, Any], result_queue: asyncio.Queue[Dict[int, Any]]):
+        source_node = cast(Streaming, self.nodes[source_id])
         
-        # Define the subgraph that depends on this source
-        downstream_nodes = list(nx.dfs_preorder_nodes(self.dag, source=source_id))
-        downstream_nodes.remove(source_id)
+        # Define the subgraph that depends on this source using descendants ordered by topological sort
+        source_idx = self._id_to_idx[source_id]
+        topo = _rx_topo(self.dag)
+        descendants = _rx_desc(self.dag, source_idx)
+        downstream_indices = [i for i in topo if i in descendants]
+        downstream_nodes = [self._idx_to_id[i] for i in downstream_indices]
 
         source_inputs = self._get_node_inputs(source_id, initial_results)
         
@@ -133,26 +166,23 @@ class GraphExecutor:
             final_tick_results = {source_id: error_output}
             await result_queue.put(final_tick_results)
 
-    async def stream(self) -> AsyncGenerator[Dict[str, Any], None]:
+    async def stream(self) -> AsyncGenerator[Dict[int, Dict[str, Any]], None]:
         try:
             static_results: Dict[int, Dict[str, Any]] = {}
             
-            streaming_pipeline_nodes = set()
-            streaming_sources = []
-            for node_id in self.dag.nodes:
+            streaming_pipeline_nodes: Set[int] = set()
+            streaming_sources: List[int] = []
+            for idx, node_id in self._idx_to_id.items():
                 if isinstance(self.nodes[node_id], Streaming):
-                    degree = self.dag.degree(node_id)
-                    in_degree = self.dag.in_degree(node_id)
-                    out_degree = self.dag.out_degree(node_id)
+                    in_degree = self.dag.in_degree(idx)
+                    out_degree = self.dag.out_degree(idx)
+                    degree = in_degree + out_degree
                     print(f"GraphExecutor: Streaming {node_id} - degree={degree}, in_degree={in_degree}, out_degree={out_degree}")
-                    
-                    # A streaming node should be executed if it has any connections (input or output)
-                    # The original condition was too restrictive for leaf nodes (nodes with no outputs)
                     if degree > 0:
                         streaming_sources.append(node_id)
                         streaming_pipeline_nodes.add(node_id)
-                        for descendant in nx.descendants(self.dag, node_id):
-                            streaming_pipeline_nodes.add(descendant)
+                        for descendant_idx in _rx_desc(self.dag, idx):
+                            streaming_pipeline_nodes.add(self._idx_to_id[descendant_idx])
                         print(f"GraphExecutor: Added Streaming {node_id} as streaming source")
                     else:
                         print(f"GraphExecutor: Skipped Streaming {node_id} - no connections")
@@ -164,10 +194,11 @@ class GraphExecutor:
 
         try:
             # First, execute all nodes that are NOT part of any streaming pipeline
-            sorted_nodes = list(nx.topological_sort(self.dag))
-            for node_id in sorted_nodes:
+            sorted_indices = _rx_topo(self.dag)
+            for node_idx in sorted_indices:
+                node_id = self._idx_to_id[node_idx]
                 if node_id not in streaming_pipeline_nodes:
-                    if self.dag.in_degree(node_id) == 0 and self.dag.out_degree(node_id) == 0:
+                    if self.dag.in_degree(node_idx) == 0 and self.dag.out_degree(node_idx) == 0:
                         continue
                     node = self.nodes[node_id]
                     inputs = self._get_node_inputs(node_id, static_results)
@@ -204,7 +235,7 @@ class GraphExecutor:
         try:
             # Start the streaming sources and their pipelines
             print("GraphExecutor: Starting streaming sources...")
-            final_results_queue = asyncio.Queue()
+            final_results_queue: asyncio.Queue[Dict[int, Any]] = asyncio.Queue()
             self.streaming_tasks = []
             for source_id in streaming_sources:
                 print(f"GraphExecutor: Creating task for streaming source {source_id}")
@@ -274,26 +305,48 @@ class GraphExecutor:
 
     def _get_node_inputs(self, node_id: int, results: Dict[int, Any]) -> Dict[str, Any]:
         inputs: Dict[str, Any] = {}
-        predecessors = list(self.dag.predecessors(node_id))
-        for pred_id in predecessors:
-            for link in self.graph.get('links', []):
-                if link[1] == pred_id and link[3] == node_id:
-                    output_slot, input_slot = link[2], link[4]
-                    pred_node = self.nodes[pred_id]
-                    pred_outputs = self.output_names.get(pred_id, list(pred_node.outputs.keys()))
-                    if output_slot < len(pred_outputs):
-                        output_key = pred_outputs[output_slot]
-                        if pred_id in results and output_key in results[pred_id]:
-                            value = results[pred_id][output_key]
-                            node_inputs = self.input_names.get(node_id, list(self.nodes[node_id].inputs.keys()))
-                            if input_slot < len(node_inputs):
-                                input_key = node_inputs[input_slot]
-                                inputs[input_key] = value
+        # Derive inputs solely from the link table to avoid index/weight ambiguity
+        for link in self.graph.get('links', []):
+            # link format: [link_id, from_id, from_slot, to_id, to_slot, type]
+            if link[3] != node_id:
+                continue
+            pred_id = link[1]
+            output_slot, input_slot = link[2], link[4]
+            if not isinstance(output_slot, int):
+                continue
+            if not isinstance(input_slot, int):
+                continue
+            pred_node = self.nodes.get(pred_id)
+            if pred_node is None:
+                continue
+            pred_outputs: List[str] = self.output_names.get(pred_id, [str(k) for k in pred_node.outputs.keys()])
+            if output_slot >= len(pred_outputs):
+                continue
+
+            output_key = pred_outputs[output_slot]
+            if pred_id not in results or output_key not in results[pred_id]:
+                continue
+            value = results[pred_id][output_key]
+            
+            node_inputs: List[str] = self.input_names.get(node_id, [str(k) for k in self.nodes[node_id].inputs.keys()])
+            if input_slot < len(node_inputs):
+                input_key = node_inputs[input_slot]
+                inputs[input_key] = value
         return inputs
-    
+
     def set_progress_callback(self, callback: Callable[[int, float, str], None]) -> None:
         """Set a progress callback function."""
         self._progress_callback = callback
-        # Set progress callback on all nodes
         for node in self.nodes.values():
             node.set_progress_callback(callback)
+
+# ---- rustworkx helper shims with precise typing to satisfy the type checker ----
+def _rx_topo(dag: Any) -> List[int]:
+    return list(rx.topological_sort(dag))  # type: ignore[attr-defined]
+
+def _rx_desc(dag: Any, idx: int) -> Set[int]:
+    return rx.descendants(dag, idx)  # type: ignore[attr-defined]
+
+def _rx_is_dag(dag: Any) -> bool:
+    return rx.is_directed_acyclic_graph(dag)  # type: ignore[attr-defined]
+

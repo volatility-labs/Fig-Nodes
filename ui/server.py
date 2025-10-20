@@ -232,9 +232,13 @@ async def execute_endpoint(websocket: WebSocket):
             await queue.cancel_job(job)
             await job.done_event.wait()  # Ensure cleanup even on disconnect
     except Exception as e:
+        print(f"ERROR_TRACE: Exception in execute_endpoint: {type(e).__name__}: {str(e)}")
+        import traceback
+        traceback.print_exc()
         try:
             await websocket.send_json({"type": "error", "message": str(e)})
-        except Exception:
+        except Exception as send_error:
+            print(f"ERROR_TRACE: Failed to send error message: {type(send_error).__name__}: {str(send_error)}")
             pass
     finally:
         pass

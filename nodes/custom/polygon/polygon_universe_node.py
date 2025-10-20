@@ -23,17 +23,31 @@ class PolygonUniverse(Base):
     ]
 
     async def _execute_impl(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
-        symbols = await self._fetch_symbols()
-        filter_symbols = self.collect_multi_input("filter_symbols", inputs)
-        if filter_symbols:
-            filter_set = {str(s) for s in filter_symbols}
-            symbols = [s for s in symbols if str(s) in filter_set]
-        return {"symbols": symbols}
+        print(f"DEBUG: PolygonUniverse node {self.id} starting execution")
+        print(f"DEBUG: PolygonUniverse inputs: {list(inputs.keys())}")
+        try:
+            symbols = await self._fetch_symbols()
+            print(f"DEBUG: PolygonUniverse fetched {len(symbols)} symbols")
+            filter_symbols = self.collect_multi_input("filter_symbols", inputs)
+            if filter_symbols:
+                print(f"DEBUG: PolygonUniverse filtering with {len(filter_symbols)} filter symbols")
+                filter_set = {str(s) for s in filter_symbols}
+                symbols = [s for s in symbols if str(s) in filter_set]
+                print(f"DEBUG: PolygonUniverse after filtering: {len(symbols)} symbols")
+            print(f"DEBUG: PolygonUniverse node {self.id} completed successfully")
+            return {"symbols": symbols}
+        except Exception as e:
+            print(f"ERROR_TRACE: Exception in PolygonUniverse node {self.id}: {type(e).__name__}: {str(e)}")
+            logger.error(f"PolygonUniverse node {self.id} failed: {str(e)}", exc_info=True)
+            raise
 
     async def _fetch_symbols(self) -> List[AssetSymbol]:
+        print(f"DEBUG: PolygonUniverse fetching symbols for market: {self.params.get('market', 'stocks')}")
         api_key = APIKeyVault().get("POLYGON_API_KEY")
         if not api_key:
+            print(f"ERROR_TRACE: POLYGON_API_KEY not found in vault")
             raise ValueError("POLYGON_API_KEY is required but not set in vault")
+        print(f"DEBUG: PolygonUniverse API key found, length: {len(api_key)}")
         market = self.params.get("market", "stocks")
 
         if market == "stocks" or market == "otc":
@@ -53,13 +67,18 @@ class PolygonUniverse(Base):
 
         headers = {"Authorization": f"Bearer {api_key}"}
         symbols: List[AssetSymbol] = []
+        print(f"DEBUG: PolygonUniverse making API request to: {base_url}")
+        print(f"DEBUG: PolygonUniverse request params: {params}")
         async with httpx.AsyncClient() as client:
             response = await client.get(base_url, headers=headers, params=params)
+            print(f"DEBUG: PolygonUniverse API response status: {response.status_code}")
             if response.status_code != 200:
                 error_text = response.text if response.text else response.reason_phrase
+                print(f"ERROR_TRACE: PolygonUniverse API error: {response.status_code} - {error_text}")
                 raise ValueError(f"Failed to fetch snapshot: {response.status_code} - {error_text}")
             data = response.json()
             tickers_data = data.get("tickers", [])
+            print(f"DEBUG: PolygonUniverse received {len(tickers_data)} tickers from API")
 
             min_change_perc = self.params.get("min_change_perc")
             max_change_perc = self.params.get("max_change_perc")

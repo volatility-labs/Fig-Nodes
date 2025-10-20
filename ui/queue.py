@@ -237,7 +237,9 @@ async def execution_worker(queue: ExecutionQueue, node_registry: Dict[str, type]
                             _debug("Worker: Stream generator exhausted (StopAsyncIteration)")
                             break
                         except Exception as e:
-                            print(f"Worker: Unexpected exception in stream: {e}")
+                            print(f"ERROR_TRACE: Unexpected exception in stream: {type(e).__name__}: {str(e)}")
+                            import traceback
+                            traceback.print_exc()
                             stream_failed = True
                             raise
                         await _ws_send_sync(websocket, {"type": "data", "results": _serialize_results(results), "stream": True}, stop_on_fail=True, executor=executor)
@@ -262,6 +264,9 @@ async def execution_worker(queue: ExecutionQueue, node_registry: Dict[str, type]
                 except asyncio.CancelledError:
                     _debug("STOP_TRACE: Caught CancelledError in execution_task await")
                 except Exception as e:
+                    print(f"ERROR_TRACE: Exception in batch execution: {type(e).__name__}: {str(e)}")
+                    import traceback
+                    traceback.print_exc()
                     if websocket.client_state == WebSocketState.CONNECTED:
                         await _ws_send_sync(websocket, {"type": "error", "message": str(e)})
                 finally:
@@ -269,6 +274,9 @@ async def execution_worker(queue: ExecutionQueue, node_registry: Dict[str, type]
                     await asyncio.gather(monitor_task, return_exceptions=True)
 
         except Exception as e:
+            print(f"ERROR_TRACE: Exception in execution_worker: {type(e).__name__}: {str(e)}")
+            import traceback
+            traceback.print_exc()
             await _ws_send_sync(websocket, {"type": "error", "message": str(e)})
         finally:
             try:
@@ -291,4 +299,13 @@ def _serialize_value(v: Any):
     return str(v)
 
 def _serialize_results(results: Dict[int, Dict[str, Any]]):
-    return {str(node_id): {out: _serialize_value(val) for out, val in node_res.items()} for node_id, node_res in results.items()}
+    try:
+        serialized = {str(node_id): {out: _serialize_value(val) for out, val in node_res.items()} for node_id, node_res in results.items()}
+        print(f"DEBUG: Serialized results for {len(serialized)} nodes")
+        return serialized
+    except Exception as e:
+        print(f"ERROR_TRACE: Exception in _serialize_results: {type(e).__name__}: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        # Return a safe fallback
+        return {str(node_id): {"error": f"Serialization failed: {str(e)}"} for node_id in results.keys()}

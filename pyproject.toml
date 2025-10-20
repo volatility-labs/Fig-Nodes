@@ -24,6 +24,7 @@ dependencies = [
   "ollama==0.5.3",
   "ta==0.11.0",
   "matplotlib==3.9.2",
+  "rustworkx>=0.17.1",
 ]
 
 [dependency-groups]

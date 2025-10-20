@@ -1,5 +1,4 @@
 from typing import Dict, Any, List, Optional, Union, Tuple
-import os
 import json
 import asyncio
 import random
@@ -34,8 +33,8 @@ class OpenRouterChat(Base):
     inputs = {
         "messages": get_type("LLMChatMessageList"),
         "prompt": str,
-        "system": Union[str, get_type("LLMChatMessage")],
-        "tools": get_type("LLMToolSpecList"),
+        "system": Union[str, get_type("LLMChatMessage"), None],
+        "tools": Union[get_type("LLMToolSpecList"), None],
     }
 
     outputs = {

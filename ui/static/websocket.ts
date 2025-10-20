@@ -175,6 +175,11 @@ export function setupWebSocket(graph: LGraph, _canvas: LGraphCanvas) {
             const data = JSON.parse(event.data);
 
             if (data.type === 'error') {
+                console.error('ERROR_TRACE: Received error from server:', data);
+                console.error('ERROR_TRACE: Error message:', data.message);
+                console.error('ERROR_TRACE: Error code:', data.code);
+                console.error('ERROR_TRACE: Full error data:', JSON.stringify(data, null, 2));
+
                 if (data.code === 'MISSING_API_KEYS' && Array.isArray(data.missing_keys)) {
                     try { alert(data.message || 'Missing API keys. Opening settings...'); } catch { /* ignore in tests */ }
                     (window as any).setLastMissingKeys?.(data.missing_keys);
@@ -270,13 +275,15 @@ export function setupWebSocket(graph: LGraph, _canvas: LGraphCanvas) {
         };
 
         ws.onclose = (event) => {
-            console.log(`WebSocket closed: code=${event.code}, reason=${event.reason}`);
+            console.log(`ERROR_TRACE: WebSocket closed: code=${event.code}, reason=${event.reason}`);
+            console.log(`ERROR_TRACE: WebSocket close event:`, event);
             forceCleanup();
             hideProgress();
         };
 
         ws.onerror = (err) => {
-            console.error('WebSocket error:', err);
+            console.error('ERROR_TRACE: WebSocket error:', err);
+            console.error('ERROR_TRACE: WebSocket error event:', err);
             if (indicator) indicator.className = 'status-indicator disconnected';
             forceCleanup();
             hideProgress();
