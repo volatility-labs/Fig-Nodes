@@ -1,15 +1,12 @@
 # core/node_registry.py
 # This module handles dynamic loading of node classes from specified directories.
-# It allows for easy extension by placing new node implementations in 'nodes/impl' or 'plugins'.
 
-from typing import Dict, List
+from typing import Dict, List, Optional
 import os
 import importlib.util
 import inspect
 import logging
 from nodes.base.base_node import Base
-from nodes.core.market.filters.atrx_filter_node import AtrXFilter
-from nodes.core.market.filters.orb_filter_node import OrbFilter
 
 logger = logging.getLogger(__name__)
 
@@ -27,14 +24,14 @@ def load_nodes(directories: List[str]) -> Dict[str, type]:
     To support extensibility, explicitly imports __init__.py in each subdirectory first
     to run any initialization code (e.g., type registrations via register_type).
     """
-    registry = {}
+    registry: Dict[str, type] = {}
     for dir_path in directories:
-        # Support absolute and relative directories
+        base_dir: Optional[str] = None
         if os.path.isabs(dir_path):
             base_dir = dir_path
         else:
             base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', dir_path))
-        for root, subdirs, files in os.walk(base_dir):
+        for root, _subdirs, files in os.walk(base_dir):
             # Explicitly import __init__.py if it exists to run extension registrations
             init_path = os.path.join(root, '__init__.py')
             if os.path.exists(init_path):
@@ -44,6 +41,9 @@ def load_nodes(directories: List[str]) -> Dict[str, type]:
                 if module_name.endswith('.'):  # Handle root package
                     module_name = module_name[:-1]
                 spec = importlib.util.spec_from_file_location(module_name, init_path)
+                if spec is None or spec.loader is None:
+                    logger.warning(f"Failed to get spec for {init_path}")
+                    continue
                 module = importlib.util.module_from_spec(spec)
                 module.__package__ = module_name.rsplit('.', 1)[0] if '.' in module_name else module_name
                 try:
@@ -57,6 +57,9 @@ def load_nodes(directories: List[str]) -> Dict[str, type]:
                     rel_path = os.path.relpath(module_path, start=os.path.dirname(os.path.dirname(__file__)))
                     module_name = rel_path.replace(os.sep, '.').rsplit('.py', 1)[0]
                     spec = importlib.util.spec_from_file_location(module_name, module_path)
+                    if spec is None or spec.loader is None:
+                        logger.warning(f"Failed to get spec for {module_path}")
+                        continue
                     module = importlib.util.module_from_spec(spec)
                     # Adjust package to allow for relative imports within the nodes directory
                     package_name = module_name.split('.')[0]
@@ -67,18 +70,4 @@ def load_nodes(directories: List[str]) -> Dict[str, type]:
                             registry[name] = obj
     return registry
 
-extra_dirs_env = os.getenv('FIG_NODES_PATHS', '')
-extra_dirs: List[str] = [p for p in extra_dirs_env.split(':') if p]
-
-NODE_REGISTRY = load_nodes(['nodes/core', 'nodes/custom', *extra_dirs])
-
-# Developer Notes:
-# To add a new node:
-# 1. Create a new .py file in nodes/core/ or nodes/plugins/.
-# 2. Define a class inheriting from Base (or Streaming/UniverseNode).
-# 3. Implement required attributes (inputs, outputs, etc.) and execute() method.
-# 4. The node will be automatically registered and available in the system.
-# 5. For UI parameters, define params_meta list on the class. 
-# For extensions in nodes/custom:
-# - Add registration code (e.g., register_type) in your subdirectory's __init__.py.
-# - It will be auto-imported during loading for seamless integration. 
+NODE_REGISTRY = load_nodes(['nodes/core', 'nodes/custom'])

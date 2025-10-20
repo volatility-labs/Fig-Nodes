@@ -1,8 +1,7 @@
 import logging
-import pandas as pd
 from typing import Dict, Any, List
 from nodes.core.market.filters.base.base_filter_node import BaseFilter
-from core.types_registry import get_type, AssetSymbol, OHLCVBar, IndicatorResult, IndicatorType
+from core.types_registry import get_type, AssetSymbol, OHLCVBar, IndicatorResult
 from services.indicators_service import IndicatorsService
 
 logger = logging.getLogger(__name__)

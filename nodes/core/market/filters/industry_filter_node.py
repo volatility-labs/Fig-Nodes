@@ -1,5 +1,4 @@
 import logging
-import asyncio
 import httpx
 from typing import Dict, Any, List
 from nodes.core.market.filters.base.base_filter_node import BaseFilter

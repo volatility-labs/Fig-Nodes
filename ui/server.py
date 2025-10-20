@@ -1,17 +1,10 @@
-import sys
 import os
 import asyncio
-from typing import cast
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-import pandas as pd
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from typing import Dict, Any, List
-from core.graph_executor import GraphExecutor
 from core.node_registry import NODE_REGISTRY
-import typing
 from core.types_utils import parse_type
-from starlette.websockets import WebSocketState
 
 # Add back missing imports
 from fastapi.staticfiles import StaticFiles
@@ -20,7 +13,7 @@ from contextlib import asynccontextmanager
 from dotenv import unset_key, find_dotenv
 
 # Import the refactored queue components
-from .queue import ExecutionQueue, execution_worker, _serialize_results
+from .queue import ExecutionQueue, execution_worker
 from .queue import JobState
 from core.api_key_vault import APIKeyVault
 

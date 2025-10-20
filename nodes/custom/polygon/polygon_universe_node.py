@@ -7,12 +7,9 @@ from core.api_key_vault import APIKeyVault
 
 logger = logging.getLogger(__name__)
 
-
 class PolygonUniverse(Base):
-    inputs = {"filter_symbols": get_type("AssetSymbolList")}
+    inputs = {"filter_symbols": Optional[get_type("AssetSymbolList")]}
     outputs = {"symbols": get_type("AssetSymbolList")}
-    optional_inputs = ["filter_symbols"]
-
     required_keys = ["POLYGON_API_KEY"]
     uiModule = "PolygonUniverseNodeUI"
     params_meta = [

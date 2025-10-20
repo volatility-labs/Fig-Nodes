@@ -1,4 +1,4 @@
-from typing import Dict, Any, List, Optional, AsyncGenerator, Union
+from typing import Dict, Any, List, Optional
 import os
 import json
 import asyncio
@@ -7,9 +7,7 @@ import httpx
 from nodes.base.base_node import Base
 import subprocess as sp
 
-
-from core.types_registry import get_type
-from core.types_registry import NodeValidationError, NodeExecutionError
+from core.types_registry import LLMToolSpec, LLMToolSpecList, get_type
 from services.tools.registry import get_tool_handler, get_all_credential_providers
 import logging
 
@@ -62,7 +60,6 @@ class OllamaChat(Base):
         "eval_duration",
     )
 
-    # Mark as data_source category so default Base UI does not display inline output
     CATEGORY = 'data_source'
 
     default_params = {
@@ -211,16 +208,18 @@ class OllamaChat(Base):
             result.append({"role": "user", "content": prompt})
         return result
 
-    def _collect_tools(self, inputs: Dict[str, Any]) -> List[Dict[str, Any]]:
+    def _collect_tools(self, inputs: Dict[str, Any]) -> List[LLMToolSpec]:
         """
         Collect and combine tools from both 'tools' (list) and 'tool' (single/multi) inputs.
         """
-        result: List[Dict[str, Any]] = []
+        result: List[LLMToolSpec] = []
 
         # Add tools from the 'tools' input (list)
-        tools_list = inputs.get("tools")
-        if tools_list and isinstance(tools_list, list):
-            result.extend(tools_list)
+        tools_list: LLMToolSpecList = inputs.get("tools")
+        if tools_list:
+            for tool in tools_list:
+                if isinstance(tool, dict) and tool.get("type") == "function":
+                    result.append(tool)
 
         # Add tools from the 'tool' multi-input
         for tool_spec in self.collect_multi_input("tool", inputs):
@@ -699,19 +698,6 @@ class OllamaChat(Base):
         except Exception as e:
             error_message = {"role": "assistant", "content": ""}
             return {"message": error_message, "metrics": {"error": str(e)}, "tool_history": [], "thinking_history": []}
-
-    # Override StreamingNode.execute to support non-streaming execution in tests and callers
-    # Remove the following override
-    # async def execute(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
-    #     if not self.validate_inputs(inputs):
-    #         raise NodeValidationError(self.id, f"Missing or invalid inputs: {self.inputs}")
-    #     try:
-    #         result = await self._execute_impl(inputs)
-    #         self._validate_outputs(result)
-    #         return result
-    #     except Exception as e:
-    #         logger.error(f"Execution failed in node {self.id}: {str(e)}", exc_info=True)
-    #         raise NodeExecutionError(self.id, "Execution failed", original_exc=e) from e
 
     def _parse_content_if_json_mode(self, message: Dict[str, Any], metrics: Dict[str, Any]) -> None:
         if bool(self.params.get("json_mode", False)):

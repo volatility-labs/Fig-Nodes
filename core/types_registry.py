@@ -1,10 +1,8 @@
 from typing import List, Dict, Any, Type, Optional, AsyncGenerator, TypedDict, Literal, Union, NotRequired
 from dataclasses import dataclass, field
 from enum import Enum, auto
-import warnings
 
 # Core enums for shared concepts
-
 class AssetClass(Enum):
     CRYPTO = auto()
     STOCKS = auto()
@@ -81,7 +79,7 @@ class LLMThinkingHistoryItem(TypedDict):
     thinking: str
     iteration: int
 
-class OHLCVBar(TypedDict, total=False):
+class OHLCVBar(TypedDict, total=True):
     """OHLCV (Open, High, Low, Close, Volume) bar data"""
     timestamp: int  # Unix timestamp in milliseconds
     open: float
@@ -89,9 +87,6 @@ class OHLCVBar(TypedDict, total=False):
     low: float
     close: float
     volume: float
-    vw: float  # Volume weighted average price (optional)
-    n: int  # Number of transactions (optional)
-    otc: bool  # OTC ticker flag (optional)
 
 @dataclass(frozen=True)
 class IndicatorValue:
@@ -124,7 +119,6 @@ class IndicatorResult:
         }
 
 # Immutable, hashable types with methods
-
 @dataclass(frozen=True)
 class AssetSymbol:
     ticker: str
@@ -139,7 +133,7 @@ class AssetSymbol:
         return self.ticker.upper()
 
     @staticmethod
-    def from_string(s: str, asset_class: AssetClass, metadata: Dict[str, Any] = None) -> "AssetSymbol":
+    def from_string(s: str, asset_class: AssetClass, metadata: Optional[Dict[str, Any]] = None) -> "AssetSymbol":
         if asset_class == AssetClass.CRYPTO:
             if "USDT" in s.upper():
                 ticker, _quote = s.upper().split("USDT")
@@ -173,9 +167,7 @@ LLMToolSpecList = List[LLMToolSpec]
 LLMToolHistory = List[LLMToolHistoryItem]
 LLMThinkingHistory = List[LLMThinkingHistoryItem]
 
-# Centralized type registry for dynamic type lookup
-
-TYPE_REGISTRY: Dict[str, Type] = {
+TYPE_REGISTRY: Dict[str, Type[Any]] = {
     "AssetSymbol": AssetSymbol,
     "AssetSymbolList": AssetSymbolList,
     "Exchange": str,
@@ -187,7 +179,6 @@ TYPE_REGISTRY: Dict[str, Type] = {
     "OHLCVBundle": OHLCVBundle,
     "Score": float,
     "OHLCVStream": OHLCVStream,
-    # LLM types
     "LLMChatMessage": LLMChatMessage,
     "LLMChatMessageList": LLMChatMessageList,
     "LLMToolSpec": LLMToolSpec,
@@ -200,20 +191,13 @@ TYPE_REGISTRY: Dict[str, Type] = {
 }
 
 # Type registry functions
-def get_type(type_name: str) -> Type:
+def get_type(type_name: str) -> Type[Any]:  
     """Get a type from the registry by name."""
     if type_name not in TYPE_REGISTRY:
         raise ValueError(f"Unknown type: {type_name}")
     return TYPE_REGISTRY[type_name]
 
-def register_type(type_name: str, type_obj: Type):
-    """Register a new type in the registry."""
-    if type_name in TYPE_REGISTRY:
-        warnings.warn(f"Type {type_name} already registered; overwriting with new definition.")
-    TYPE_REGISTRY[type_name] = type_obj
-
 # Node exceptions
-
 class NodeError(Exception):
     """Base exception for all node-related errors."""
     pass
@@ -229,10 +213,7 @@ class NodeExecutionError(NodeError):
         super().__init__(f"Node {node_id}: {message}")
         self.original_exc = original_exc
 
-# Register exceptions in the type registry
-register_type("NodeError", NodeError)
-register_type("NodeValidationError", NodeValidationError)
-register_type("NodeExecutionError", NodeExecutionError)
+# No dynamic registration; registry remains static in this package
 
 __all__ = [
     # Enums
@@ -248,7 +229,7 @@ __all__ = [
     'OHLCV', 'OHLCVBundle', 'OHLCVStream',
     'LLMChatMessageList', 'LLMToolSpecList', 'LLMToolHistory', 'LLMThinkingHistory',
     # Registry functions
-    'TYPE_REGISTRY', 'get_type', 'register_type',
+    'TYPE_REGISTRY', 'get_type',
     # Exceptions
     'NodeError', 'NodeValidationError', 'NodeExecutionError',
 ] 

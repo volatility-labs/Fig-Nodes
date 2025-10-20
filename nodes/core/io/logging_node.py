@@ -1,15 +1,14 @@
-from typing import Dict, Any, List
+from typing import Dict, Any
 import json
 import logging
-import asyncio
 from nodes.base.base_node import Base
-from core.types_registry import AssetSymbol, LLMChatMessage
+from core.types_registry import AssetSymbol
 from typing import Any
 
 
 class Logging(Base):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, id: int, params: Dict[str, Any]):
+        super().__init__(id, params)
         self.last_content_length = 0
         self.logger = logging.getLogger(f"LoggingNode-{self.id}")
 

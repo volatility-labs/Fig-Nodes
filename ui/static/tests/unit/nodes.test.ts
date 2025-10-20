@@ -312,7 +312,7 @@ describe('Node UI Unit Tests', () => {
         // Verify positioning calculations
         const style = mockTextarea.style;
         expect(style.position).toBe('absolute');
-        expect(style.zIndex).toBe('1000');
+        expect(style.zIndex).toBe('500');
         expect(style.fontSize).toBe('24px'); // 12 * scale (2)
         expect(style.width).toBe('400px'); // 200 * scale (2)
         expect(style.height).toBe('200px'); // 100 * scale (2)

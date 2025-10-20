@@ -1,6 +1,6 @@
 import logging
-import pandas as pd
-from typing import Dict, Any, List
+import math
+from typing import List
 from nodes.core.market.filters.base.base_indicator_filter_node import BaseIndicatorFilter
 from core.types_registry import OHLCVBar, IndicatorResult, IndicatorType, IndicatorValue
 
@@ -70,43 +70,52 @@ class LodFilter(BaseIndicatorFilter):
                 params=self.params,
                 error="No data"
             )
-
-        df = pd.DataFrame(ohlcv_data)
-        if len(df) < self.params["atr_window"]:
+        timestamp_value: int = ohlcv_data[-1]['timestamp']
+        
+        if len(ohlcv_data) < self.params["atr_window"]:
             return IndicatorResult(
                 indicator_type=IndicatorType.LOD,
-                timestamp=int(df['timestamp'].iloc[-1]),
+                timestamp=timestamp_value,
                 values=IndicatorValue(lines={"lod_distance_pct": 0.0}),
                 params=self.params,
                 error="Insufficient data for ATR calculation"
             )
 
         # Calculate ATR for the LoD distance calculation using Wilder's smoothing (RMA)
-        # This matches TradingView's ATR implementation
-        high_low = df['high'] - df['low']
-        high_close = abs(df['high'] - df['close'].shift(1))
-        low_close = abs(df['low'] - df['close'].shift(1))
-        true_range = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
+        true_ranges: List[float] = []
+        for i in range(len(ohlcv_data)):
+            if i == 0:
+                # First bar: true range is just high - low
+                true_range: float = ohlcv_data[i]['high'] - ohlcv_data[i]['low']
+            else:
+                # Subsequent bars: max of (high-low, |high-prev_close|, |low-prev_close|)
+                high_low: float = ohlcv_data[i]['high'] - ohlcv_data[i]['low']
+                high_close: float = abs(ohlcv_data[i]['high'] - ohlcv_data[i-1]['close'])
+                low_close: float = abs(ohlcv_data[i]['low'] - ohlcv_data[i-1]['close'])
+                true_range: float = max(high_low, high_close, low_close)
+            true_ranges.append(true_range)
         
         # Wilder's smoothing (RMA) - matches TradingView implementation
         alpha = 1.0 / self.params["atr_window"]
-        atr = true_range.copy()
-        for i in range(1, len(atr)):
-            atr.iloc[i] = alpha * true_range.iloc[i] + (1 - alpha) * atr.iloc[i-1]
+        atr_values = [true_ranges[0]]  # First ATR value is just the first true range
         
-        latest_atr = atr.iloc[-1] if not atr.empty else 0.0
+        for i in range(1, len(true_ranges)):
+            atr_value = alpha * true_ranges[i] + (1 - alpha) * atr_values[i-1]
+            atr_values.append(atr_value)
+        
+        latest_atr = atr_values[-1] if atr_values else 0.0
 
-        if pd.isna(latest_atr) or latest_atr <= 0:
+        if latest_atr <= 0:
             return IndicatorResult(
                 indicator_type=IndicatorType.LOD,
-                timestamp=int(df['timestamp'].iloc[-1]),
+                timestamp=ohlcv_data[-1]['timestamp'],
                 values=IndicatorValue(lines={"lod_distance_pct": 0.0}),
                 params=self.params,
                 error="Invalid ATR calculation"
             )
 
         # Get current (latest) price and low of the day
-        latest_bar = df.iloc[-1]
+        latest_bar = ohlcv_data[-1]
         current_price = latest_bar['close']
         low_of_day = latest_bar['low']
 
@@ -119,7 +128,7 @@ class LodFilter(BaseIndicatorFilter):
 
         return IndicatorResult(
             indicator_type=IndicatorType.LOD,
-            timestamp=int(latest_bar['timestamp']),
+            timestamp=latest_bar['timestamp'],
             values=IndicatorValue(lines={
                 "lod_distance_pct": lod_distance_pct,
                 "current_price": current_price,
@@ -137,10 +146,10 @@ class LodFilter(BaseIndicatorFilter):
         lines = indicator_result.values.lines
         if "lod_distance_pct" not in lines:
             return False
-
+        
         lod_distance_pct = lines["lod_distance_pct"]
-        if pd.isna(lod_distance_pct):
-            return False
 
-        # Only pass stocks with LoD distance above the threshold
+        if not math.isfinite(lod_distance_pct):
+            return False
+        
         return lod_distance_pct >= self.params["min_lod_distance"]

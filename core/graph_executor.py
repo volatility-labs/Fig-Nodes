@@ -1,10 +1,8 @@
 import networkx as nx
-from typing import Dict, Any, List, AsyncGenerator
+from typing import Dict, Any, List, AsyncGenerator, Callable, Union
 from nodes.base.base_node import Base
-from nodes.core.flow.for_each_node import ForEach
 import asyncio
 from nodes.base.streaming_node import Streaming
-from collections import defaultdict
 from core.api_key_vault import APIKeyVault
 from core.types_registry import NodeExecutionError
 import logging
@@ -18,21 +16,14 @@ class GraphExecutor:
         self.nodes: Dict[int, Base] = {}
         self.input_names: Dict[int, List[str]] = {}
         self.output_names: Dict[int, List[str]] = {}
-        self.dag = nx.DiGraph()
-        self.is_streaming = any(isinstance(self.nodes[node_id], Streaming) and self.dag.degree(node_id) > 0 for node_id in self.dag.nodes)
-        self.streaming_tasks: List[asyncio.Task] = []
-        self._stopped = False
-        self._is_force_stopped = False  # For idempotency
-        self._progress_callback = None
+        self.dag: nx.DiGraph = nx.DiGraph()
+        self.is_streaming: bool = False
+        self.streaming_tasks: List[asyncio.Task[Any]] = []
+        self._stopped: bool = False
+        self._is_force_stopped: bool = False  # For idempotency
+        self._progress_callback: Union[Callable[[int, float, str], None], None] = None
         self.vault = APIKeyVault()
         self._build_graph()
-
-    def set_progress_callback(self, callback):
-        """Set a progress callback function."""
-        self._progress_callback = callback
-        # Set progress callback on all nodes
-        for node in self.nodes.values():
-            node.set_progress_callback(callback)
 
     def _build_graph(self):
         for node_data in self.graph.get('nodes', []):
@@ -48,16 +39,19 @@ class GraphExecutor:
             output_list = [out.get('name', '') for out in node_data.get('outputs', [])]
             if output_list:
                 self.output_names[node_id] = output_list
-            self.dag.add_node(node_id)
+            self.dag.add_node(node_id)  # type: ignore
 
         for link in self.graph.get('links', []):
             from_id, to_id = link[1], link[3]
-            self.dag.add_edge(from_id, to_id)
+            self.dag.add_edge(from_id, to_id)  # type: ignore
 
         if not nx.is_directed_acyclic_graph(self.dag):
             raise ValueError("Graph contains cycles")
         
-        self.is_streaming = any(isinstance(self.nodes[node_id], Streaming) and self.dag.degree(node_id) > 0 for node_id in self.dag.nodes)
+        # Determine if the graph is streaming by checking if any nodes are streaming and have connections
+        streaming_nodes = (node_id for node_id in self.dag.nodes if isinstance(self.nodes[node_id], Streaming) and self.dag.degree(node_id) > 0)
+
+        self.is_streaming = any(streaming_nodes) 
 
     async def execute(self) -> Dict[str, Any]:
         if self.is_streaming:
@@ -76,32 +70,21 @@ class GraphExecutor:
             if self.dag.in_degree(node_id) == 0 and self.dag.out_degree(node_id) == 0:
                 continue
             node = self.nodes[node_id]
-            if isinstance(node, ForEach):
-                try:
-                    await self._execute_foreach_subgraph(node, results)
-                except NodeExecutionError as e:
-                    logger.error(f"ForEach subgraph for node {node_id} failed: {str(e)}")
-                    results[node_id] = {"error": str(e)}
-                subgraph_nodes = list(nx.dfs_preorder_nodes(self.dag, source=node_id))
-                executed_nodes.update(subgraph_nodes)
-            else:
-                inputs = self._get_node_inputs(node_id, results)
-                merged_inputs = {**{k: v for k, v in node.params.items() if k in node.inputs and k not in inputs and v is not None}, **inputs}
-                if not node.validate_inputs(merged_inputs):
-                    continue
-                try:
-                    print(f"STOP_TRACE: Awaiting node.execute for node {node_id}")
-                    outputs = await node.execute(merged_inputs)
-                    print(f"STOP_TRACE: Completed node.execute for node {node_id}")
-                except NodeExecutionError as e:
-                    logger.error(f"Node {node_id} failed: {str(e)}")
-                    results[node_id] = {"error": str(e)}
-                    continue
-                except asyncio.CancelledError:
-                    print("STOP_TRACE: Caught CancelledError in node.execute await in GraphExecutor")
-                    self.force_stop()
-                    raise
-                results[node_id] = outputs
+            inputs = self._get_node_inputs(node_id, results)
+            merged_inputs = {**{k: v for k, v in node.params.items() if k in node.inputs and k not in inputs and v is not None}, **inputs}
+            try:
+                print(f"STOP_TRACE: Awaiting node.execute for node {node_id}")
+                outputs = await node.execute(merged_inputs)  # Will raise NodeValidationError if missing/type issues
+                print(f"STOP_TRACE: Completed node.execute for node {node_id}")
+            except NodeExecutionError as e:  # Catches runtime errors only; validation errors propagate to stop graph
+                logger.error(f"Node {node_id} failed: {str(e)}")
+                results[node_id] = {"error": str(e)}
+                continue
+            except asyncio.CancelledError:
+                print("STOP_TRACE: Caught CancelledError in node.execute await in GraphExecutor")
+                self.force_stop()
+                raise
+            results[node_id] = outputs
         
         return results
 
@@ -115,14 +98,8 @@ class GraphExecutor:
             merged_inputs = {**{k: v for k, v in sub_node.params.items() if k in sub_node.inputs and k not in sub_inputs and v is not None}, **sub_inputs}
             print(f"GraphExecutor: Merged inputs for sub_node {sub_node_id}: {merged_inputs}")
             
-            if not sub_node.validate_inputs(merged_inputs):
-                missing = [k for k in sub_node.inputs if k not in merged_inputs]
-                print(f"GraphExecutor: Skipping node {sub_node_id} due to missing inputs: {missing}")
-                # TODO: Handle errors more gracefully
-                continue
-                
             try:
-                sub_outputs = await sub_node.execute(merged_inputs)
+                sub_outputs = await sub_node.execute(merged_inputs)  # Will raise NodeValidationError if invalid
             except NodeExecutionError as e:
                 logger.error(f"Sub node {sub_node_id} failed: {str(e)}")
                 tick_results[sub_node_id] = {"error": str(e)}
@@ -196,9 +173,7 @@ class GraphExecutor:
                     inputs = self._get_node_inputs(node_id, static_results)
                     merged_inputs = {**{k: v for k, v in node.params.items() if k in node.inputs and k not in inputs and v is not None}, **inputs}
                     print(f"GraphExecutor: Merged inputs for node {node_id}: {merged_inputs}")
-                    if not node.validate_inputs(merged_inputs):
-                        continue
-                    outputs = await node.execute(merged_inputs)
+                    outputs = await node.execute(merged_inputs)  # Will raise NodeValidationError if invalid
                     static_results[node_id] = outputs
             
             # Yield the initial results from the static part of the graph
@@ -278,7 +253,6 @@ class GraphExecutor:
         self._is_force_stopped = True
         self._stopped = True
 
-        print(f"STOP_TRACE: Force stopping {len(self.nodes)} nodes in GraphExecutor")
         # Immediately force stop all nodes (batch and stream)
         for node_id, node in self.nodes.items():
             print(f"STOP_TRACE: Calling force_stop on node {node_id} ({type(node).__name__})")
@@ -298,26 +272,6 @@ class GraphExecutor:
         print("STOP_TRACE: GraphExecutor.stop called")
         self.force_stop()
 
-    async def _execute_foreach_subgraph(self, foreach_node: ForEach, results: Dict[str, Any]):
-        inputs = self._get_node_inputs(foreach_node.id, results)
-        merged_inputs = {**{k: foreach_node.params.get(k) for k in foreach_node.inputs if k not in inputs}, **inputs}
-        print(f"GraphExecutor: Merged inputs for foreach_node {foreach_node.id}: {merged_inputs}")
-        item_list = merged_inputs.get("list") or []
-        
-        subgraph_nodes = list(nx.dfs_preorder_nodes(self.dag, source=foreach_node.id))
-        subgraph_nodes.remove(foreach_node.id)
-
-        foreach_results = []
-        for item in item_list:
-            subgraph_context = {**results, foreach_node.id: {"item": item}}
-            subgraph_results = await self._execute_subgraph_for_tick(subgraph_nodes, subgraph_context)
-            
-            if subgraph_nodes:
-                last_node_id = subgraph_nodes[-1]
-                foreach_results.append(subgraph_results.get(last_node_id, {}))
-
-        results[foreach_node.id] = {"results": foreach_results}
-
     def _get_node_inputs(self, node_id: int, results: Dict[int, Any]) -> Dict[str, Any]:
         inputs: Dict[str, Any] = {}
         predecessors = list(self.dag.predecessors(node_id))
@@ -336,3 +290,10 @@ class GraphExecutor:
                                 input_key = node_inputs[input_slot]
                                 inputs[input_key] = value
         return inputs
+    
+    def set_progress_callback(self, callback: Callable[[int, float, str], None]) -> None:
+        """Set a progress callback function."""
+        self._progress_callback = callback
+        # Set progress callback on all nodes
+        for node in self.nodes.values():
+            node.set_progress_callback(callback)

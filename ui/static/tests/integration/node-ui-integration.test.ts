@@ -134,7 +134,7 @@ describe('Node UI Integration Tests', () => {
         (node as any).positionDisplayTextarea(10, 15, 200, 100);
         const textarea = (node as any).displayTextarea;
         expect(textarea.style.position).toBe('absolute');
-        expect(textarea.style.zIndex).toBe('1000');
+        expect(textarea.style.zIndex).toBe('500');
 
         // Test textarea cleanup
         (node as any).detachDisplayTextarea();

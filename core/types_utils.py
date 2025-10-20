@@ -1,5 +1,5 @@
 import typing
-from typing import Any, Dict, List, Union
+from typing import Any, Dict
 
 
 def parse_type(type_hint: Any) -> Dict[str, Any]:

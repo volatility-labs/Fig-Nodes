@@ -1,8 +1,5 @@
 from typing import Any, Awaitable, Callable, Dict, List, Optional
 from abc import ABC, abstractmethod
-import asyncio
-import json
-
 
 # A lightweight registry for LLM tool schemas and async handlers.
 # Handlers should be async callables: async def handler(arguments: Dict[str, Any], context: Dict[str, Any]) -> Any
@@ -12,11 +9,10 @@ _TOOL_HANDLERS: Dict[str, Callable[[Dict[str, Any], Dict[str, Any]], Awaitable[A
 _TOOL_FACTORIES: Dict[str, Callable[[], 'ToolHandler']] = {}
 _CREDENTIAL_PROVIDERS: Dict[str, Callable[[], str]] = {}
 
-
 def register_tool_schema(name: str, schema: Dict[str, Any]) -> None:
-    if not isinstance(name, str) or not name:
+    if not name:
         raise ValueError("Tool schema name must be a non-empty string")
-    if not isinstance(schema, dict) or not schema:
+    if not schema:
         raise ValueError("Tool schema must be a non-empty dict")
     _TOOL_SCHEMAS[name] = schema
 
@@ -41,7 +37,7 @@ def register_tool_handler(
     name: str,
     handler: Callable[[Dict[str, Any], Dict[str, Any]], Awaitable[Any]],
 ) -> None:
-    if not isinstance(name, str) or not name:
+    if not name:
         raise ValueError("Tool handler name must be a non-empty string")
     if not callable(handler):
         raise ValueError("Tool handler must be callable")
@@ -54,7 +50,7 @@ def get_tool_handler(name: str) -> Optional[Callable[[Dict[str, Any], Dict[str, 
 
 def register_tool_factory(name: str, factory: Callable[[], 'ToolHandler']) -> None:
     """Register a tool factory that can create tool instances with credentials."""
-    if not isinstance(name, str) or not name:
+    if not name:
         raise ValueError("Tool factory name must be a non-empty string")
     if not callable(factory):
         raise ValueError("Tool factory must be callable")
@@ -82,7 +78,7 @@ def get_tool_factory(name: str) -> Optional[Callable[[], 'ToolHandler']]:
 
 def register_credential_provider(name: str, provider: Callable[[], str]) -> None:
     """Register a credential provider for a specific credential type."""
-    if not isinstance(name, str) or not name:
+    if not name:
         raise ValueError("Credential provider name must be a non-empty string")
     if not callable(provider):
         raise ValueError("Credential provider must be callable")

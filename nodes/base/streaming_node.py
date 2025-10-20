@@ -17,9 +17,8 @@ class Streaming(Base, ABC):
     Error Handling Contract: Base class wraps _start_impl with validation and uniform error raising (NodeExecutionError). Subclasses should not add broad try/except in _start_impl.
     """
     is_streaming = True
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, id: int, params: Dict[str, Any]):
+        super().__init__(id, params)
         self._is_force_stopped = False  # For idempotency
 
     async def start(self, inputs: Dict[str, Any]) -> AsyncGenerator[Dict[str, Any], None]:

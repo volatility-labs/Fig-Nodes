@@ -1,9 +1,8 @@
 import pytest
 from typing import Dict, Any, List, Type, AsyncGenerator
-from unittest.mock import patch, AsyncMock
 from nodes.base.base_node import Base
 from nodes.base.streaming_node import Streaming
-from core.types_registry import AssetSymbol, AssetClass, NodeExecutionError
+from core.types_registry import NodeExecutionError
 
 class ConcreteBaseNode(Base):
     inputs: Dict[str, Type] = {"input": str}
@@ -86,23 +85,6 @@ def test_validate_inputs_invalid_list_element(base_node):
     with pytest.raises(TypeError):
         base_node.validate_inputs(inputs)
 
-def test_validate_inputs_asset_class(base_node):
-    base_node.inputs = {"asset": AssetSymbol}
-    base_node.required_asset_class = AssetClass.CRYPTO
-    valid_asset = AssetSymbol("BTC", AssetClass.CRYPTO, quote_currency="USDT")
-    invalid_asset = AssetSymbol("AAPL", AssetClass.STOCKS)
-    assert base_node.validate_inputs({"asset": valid_asset}) is True
-    with pytest.raises(ValueError):
-        base_node.validate_inputs({"asset": invalid_asset})
-
-def test_validate_inputs_multi_asset_class(base_node):
-    base_node.inputs = {"assets": List[AssetSymbol]}
-    base_node.required_asset_class = AssetClass.CRYPTO
-    valid_assets = [AssetSymbol("BTC", AssetClass.CRYPTO, quote_currency="USDT")]
-    invalid_assets = [AssetSymbol("AAPL", AssetClass.STOCKS)]
-    assert base_node.validate_inputs({"assets_0": valid_assets}) is True
-    with pytest.raises(ValueError):
-        base_node.validate_inputs({"assets_0": invalid_assets})
 
 def test_validate_inputs_single_list(base_node):
     base_node.inputs = {"list_input": List[str]}
@@ -117,7 +99,7 @@ async def test_base_node_execute(base_node):
 
 @pytest.mark.asyncio
 async def test_abstract_execute():
-    abstract = Base(id=1)
+    abstract = Base(id=1, params={})
     with pytest.raises(NodeExecutionError):
         await abstract.execute({})
 
@@ -125,7 +107,7 @@ async def test_abstract_execute():
 
 @pytest.fixture
 def streaming_node():
-    return ConcreteStreamingNode(id=1)
+    return ConcreteStreamingNode(id=1, params={})
 
 @pytest.mark.asyncio
 async def test_streaming_node_execute(streaming_node):

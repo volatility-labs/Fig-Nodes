@@ -1,7 +1,7 @@
 import typing
-from typing import Dict, Any, Type, Optional, get_origin, get_args, List
-from core.types_registry import get_type, AssetSymbol, AssetClass, NodeValidationError, NodeExecutionError
-from typing import Any as TypingAny
+from typing import Dict, Any, Type, get_origin, get_args, List, cast, Callable
+from collections.abc import Hashable
+from core.types_registry import NodeValidationError, NodeExecutionError
 import logging
 from abc import abstractmethod
 from pydantic import BaseModel, ValidationError, create_model
@@ -9,94 +9,86 @@ from pydantic import BaseModel, ValidationError, create_model
 logger = logging.getLogger(__name__)
 
 class Base:
-    """
-    Abstract base class for all graph nodes.
-    
-    Subclasses must define:
-    - inputs: Dict[str, Type] - Expected input types
-    - outputs: Dict[str, Type] - Produced output types
-    - default_params: Dict[str, Any] - Default parameter values
-    - Optional: params_meta - List of dicts for UI parameter config
-    - _execute_impl(self, inputs: Dict[str, Any]) -> Dict[str, Any]  # New: Core logic only; base handles errors
-    
-    Optional:
-    - required_asset_class: AssetClass - For asset-specific nodes
-    - validate_inputs(self, inputs) - Custom validation
-    
-    For specialized hierarchies (e.g., filter nodes), extend this class with abstract methods for shared behavior, then create concrete subclasses. Example: BaseFilterNode extends BaseNode with filtering logic, and BaseIndicatorFilterNode extends BaseFilterNode for indicator-specific filters.
-    
-    Error Handling Contract: Base class wraps _execute_impl with validation and uniform error raising (NodeExecutionError). Subclasses should not add broad try/except in _execute_impl; raise specific errors for domain logic.
-    """
-    inputs: Dict[str, Type] = {}
-    outputs: Dict[str, Type] = {"output": Any}
+    inputs = {}
+    outputs = {}
+    params_meta = []
     default_params: Dict[str, Any] = {}
-    required_asset_class: Optional[AssetClass] = None
-    # New: unified optional input support at the base level
-    optional_inputs: List[str] = []
 
-    def __init__(self, id: int, params: Dict[str, Any] = None):
+    def __init__(self, id: int, params: Dict[str, Any]):
         self.id = id
         self.params = {**self.default_params, **(params or {})}
-        # Ensure per-instance mutable copies to avoid cross-test/class mutation
         self.inputs = dict(getattr(self, "inputs", {}))
         self.outputs = dict(getattr(self, "outputs", {}))
-        self._progress_callback = None
-        self._is_stopped = False  # For idempotency in force_stop
-        # Lazy caches for dynamic pydantic models
-        self._input_model_cls: Optional[Type[BaseModel]] = None
-        self._output_model_cls: Optional[Type[BaseModel]] = None
+        self._progress_callback: typing.Union[Callable[[int, float, str], None], None] = None
+        self._is_stopped = False  
+        # Execution state flags
+        
+    @staticmethod
+    def _normalize_to_list(value: Any) -> List[Any]:
+        if value is None:
+            return []
+        if isinstance(value, list):
+            return cast(List[Any], value)
+        return [value]
+
+    @staticmethod
+    def _dedupe_preserve_order(items: List[Any]) -> List[Any]:
+        if not items:
+            return []
+        result: List[Any] = []
+        seen_hashables: set[Hashable] = set()
+        for item in items:
+            if isinstance(item, Hashable):
+                if item in seen_hashables:
+                    continue
+                seen_hashables.add(item)
+            result.append(item)
+        return result
+
+    @staticmethod
+    def _is_declared_list(expected_type: typing.Union[Type[Any], None]) -> bool:
+        if expected_type is None:
+            return False
+        return get_origin(expected_type) in (list, typing.List)
 
     def collect_multi_input(self, key: str, inputs: Dict[str, Any]) -> List[Any]:
         expected_type = self.inputs.get(key)
-        if expected_type is None:
-            val = inputs.get(key)
-            return [val] if val is not None else []
-        origin = get_origin(expected_type)
-        if origin not in (list, typing.List):
-            val = inputs.get(key)
-            return [val] if val is not None else []
 
-        collected = []
-        if key in inputs:
-            val = inputs[key]
-            if val is not None:
-                if isinstance(val, list):
-                    collected.extend(val)
-                else:
-                    collected.append(val)
+        # If not declared as List[...], just normalize the primary value to a list
+        if not self._is_declared_list(expected_type):
+            return self._normalize_to_list(inputs.get(key))
+
+        # Declared as List[...] – collect primary and suffixed values into a single list
+        collected: List[Any] = []
+        collected.extend(self._normalize_to_list(inputs.get(key)))
 
         i = 0
         while True:
             multi_key = f"{key}_{i}"
             if multi_key not in inputs:
                 break
-            val = inputs[multi_key]
-            if val is None:
-                i += 1
-                continue
-            if isinstance(val, list):
-                collected.extend(val)
-            else:
-                collected.append(val)
+            collected.extend(self._normalize_to_list(inputs.get(multi_key)))
             i += 1
 
-        # Deduplicate
-        seen = set()
-        unique = []
-        for item in collected:
-            item_str = str(item)
-            if item_str not in seen:
-                seen.add(item_str)
-                unique.append(item)
+        return self._dedupe_preserve_order(collected)
+    
+    def _type_allows_none(self, tp: Type[Any]) -> bool:
+        # Works for Union[T, None] and T | None
+        return type(None) in get_args(tp)
 
-        return unique
+    def _get_or_build_model(self, fields: Dict[str, Type[Any]]) -> Type[BaseModel]:
+        # All fields are required at the model level; None acceptance comes from the type
+        field_defs: Dict[str, Any] = {name: (tp, ...) for name, tp in fields.items()}
+        return create_model(
+            f"Node{type(self).__name__}Model",
+            __base__=BaseModel,
+            **field_defs,
+    )
 
-    def validate_inputs(self, inputs: Dict[str, Any]) -> bool:
-        """Validate inputs against declared types using Pydantic with support for optional and multi-inputs.
+    def validate_inputs(self, inputs: Dict[str, Any]) -> None:  
+        """Validate inputs using Pydantic with support for multi-inputs and explicit None via type unions.
 
-        Returns True when inputs are valid or sufficient according to optional_inputs.
-        Returns False when required inputs are missing (to allow executor to skip node).
-        Raises TypeError/ValueError for type or asset-class mismatches.
+        Raises NodeValidationError on missing required inputs or type mismatches.
         """
 
         # 1) Normalize inputs to fold multi-inputs (key_0, key_1, ...) into the main key when expected is a List[...] 
@@ -105,87 +97,42 @@ class Base:
             if key in normalized:
                 continue
             origin = get_origin(expected_type)
-            if origin in (list, typing.List):
+            if origin in (list, List):
                 # Collect any suffixed items and fold into a single list
                 collected = self.collect_multi_input(key, inputs)
                 if collected:
                     normalized[key] = collected
 
-        # 2) Check required presence honoring optional_inputs
-        missing_required = [k for k in self.inputs.keys() if k not in normalized and k not in (self.optional_inputs or [])]
-        if missing_required:
-            return False
+        # 2) Normalize missing nullable to explicit None (preserves intent without special skip logic)
+        for key, tp in self.inputs.items():
+            if key not in normalized and self._type_allows_none(tp):
+                normalized[key] = None
 
-        # 3) Build and apply a dynamic Pydantic model for type validation
+        # 3) Build and apply a dynamic Pydantic model for type validation (missing required will raise here)
         try:
-            input_model = self._get_or_build_model(self.inputs, optional_fields=(self.optional_inputs or []))
-            # Only validate declared fields; ignore extra keys
-            # Pydantic v2: use model_validate with from attributes
+            input_model = self._get_or_build_model(self.inputs)
             input_model.model_validate(normalized, strict=False)
         except ValidationError as ve:
-            # Provide concise message for developer ergonomics
-            raise TypeError(f"Input validation failed for node {self.id}: {ve}") from ve
-
-        # 4) Additional domain-specific checks: required_asset_class
-        for key, expected_type in self.inputs.items():
-            if key not in normalized:
-                continue
-            value = normalized[key]
-            origin = get_origin(expected_type)
-            if origin in (list, typing.List):
-                elem_t = get_args(expected_type)[0] if get_args(expected_type) else Any
-                if elem_t == AssetSymbol and isinstance(value, list) and self.required_asset_class:
-                    for item in value:
-                        if isinstance(item, AssetSymbol) and item.asset_class != self.required_asset_class:
-                            raise ValueError(
-                                f"Invalid asset class for item in '{key}' in node {self.id}: expected {self.required_asset_class}, got {item.asset_class}"
-                            )
-            else:
-                if expected_type == AssetSymbol and isinstance(value, AssetSymbol) and self.required_asset_class:
-                    if value.asset_class != self.required_asset_class:
-                        raise ValueError(
-                            f"Invalid asset class for '{key}' in node {self.id}: expected {self.required_asset_class}, got {value.asset_class}"
-                        )
-        return True
-
-    def _get_or_build_model(self, fields: Dict[str, Type], optional_fields: List[str]) -> Type[BaseModel]:
-        """Create a Pydantic model class for the provided field mapping. Caches per instance.
-
-        We generate models with all declared fields; optional fields accept None by default.
-        """
-        # Simple cache keyed by id of dict to avoid re-creating per call
-        cache_attr = '_input_model_cls' if fields is self.inputs else '_output_model_cls'
-        cached = getattr(self, cache_attr, None)
-        if cached is not None:
-            return cached
-        model_fields: Dict[str, tuple] = {}
-        for name, tp in fields.items():
-            if name in (optional_fields or []):
-                model_fields[name] = (Optional[tp], None)
-            else:
-                model_fields[name] = (tp, ...)
-        model_cls = create_model(
-            f"Node{type(self).__name__}{cache_attr.title()}",
-            **model_fields,
-        )
-        setattr(self, cache_attr, model_cls)
-        return model_cls
+            raise NodeValidationError(self.id, f"Input validation failed: {ve}") from ve
 
     def _validate_outputs(self, outputs: Dict[str, Any]) -> None:
         """Best-effort output validation using Pydantic. Only validates declared outputs.
 
         Intentionally lenient: fields are optional and only validated if present.
         """
-        if not isinstance(self.outputs, dict) or not self.outputs:
+        if not self.outputs:
             return
         try:
-            # Make all outputs optional for validation to avoid over-constraining nodes
-            output_model = self._get_or_build_model(self.outputs, optional_fields=list(self.outputs.keys()))
-            output_model.model_validate(outputs or {}, strict=False)
+            # Validate only provided outputs (lenient presence), but enforce declared types on those present
+            if outputs:
+                present_fields: Dict[str, Type[Any]] = {k: self.outputs[k] for k in self.outputs.keys() if k in outputs}
+                if present_fields:
+                    output_model = self._get_or_build_model(present_fields)
+                    output_model.model_validate({k: outputs[k] for k in present_fields.keys()}, strict=False)
         except ValidationError as ve:
             raise TypeError(f"Output validation failed for node {self.id}: {ve}") from ve
 
-    def set_progress_callback(self, callback):
+    def set_progress_callback(self, callback: Callable[[int, float, str], None]) -> None:
         """Set a callback function to report progress during execution."""
         self._progress_callback = callback
 
@@ -205,8 +152,7 @@ class Base:
 
     async def execute(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
         """Template method for execution with uniform error handling."""
-        if not self.validate_inputs(inputs):
-            raise NodeValidationError(self.id, f"Missing or invalid inputs: {self.inputs}")
+        self.validate_inputs(inputs)  # Raises NodeValidationError if invalid (missing or type issues)
         
         try:
             result = await self._execute_impl(inputs)
