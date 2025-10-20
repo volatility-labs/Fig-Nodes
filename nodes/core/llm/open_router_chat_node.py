@@ -11,27 +11,8 @@ from services.tools.registry import get_tool_handler, get_all_credential_provide
 from core.api_key_vault import APIKeyVault
 
 class OpenRouterChat(Base):
-    """
-    Chat node backed by OpenRouter API for multi-provider LLM access.
-
-    Constraints:
-    - Requires OPENROUTER_API_KEY in the vault.
-
-    Inputs:
-    - messages: List[Dict[str, Any]] (chat history with role, content, etc.)
-    - prompt: str
-    - system: str or LLMChatMessage
-    - tools: List[LLMToolSpec] (optional tool schema)
-
-    Outputs:
-    - message: Dict[str, Any] (assistant message with role, content, tool_calls, etc.)
-    - metrics: Dict[str, Any] (generation stats like token counts, cost)
-    - tool_history: List[Dict[str, Any]] (history of tool calls and results)
-    - thinking_history: List[Dict[str, Any]] (history of thinking steps)
-    """
-
     inputs = {
-        "messages": get_type("LLMChatMessageList"),
+        "messages": Union[get_type("LLMChatMessageList"), None],
         "prompt": str,
         "system": Union[str, get_type("LLMChatMessage"), None],
         "tools": Union[get_type("LLMToolSpecList"), None],

@@ -1,8 +1,8 @@
-from typing import Dict, Any, AsyncGenerator
+from typing import Dict, Any, AsyncIterator
 from abc import ABC, abstractmethod
 from .base_node import Base
 import logging
-from core.types_registry import NodeValidationError, NodeExecutionError
+from core.types_registry import NodeExecutionError
 
 logger = logging.getLogger(__name__)
 
@@ -21,10 +21,13 @@ class Streaming(Base, ABC):
         super().__init__(id, params)
         self._is_force_stopped = False  # For idempotency
 
-    async def start(self, inputs: Dict[str, Any]) -> AsyncGenerator[Dict[str, Any], None]:
+    def validate_inputs(self, inputs: Dict[str, Any]) -> None:
+        """Validate inputs for streaming nodes. Raises NodeValidationError if invalid."""
+        super().validate_inputs(inputs)
+
+    async def start(self, inputs: Dict[str, Any]) -> AsyncIterator[Dict[str, Any]]:
         """Template method for streaming with uniform error handling."""
-        if not self.validate_inputs(inputs):
-            raise NodeValidationError(self.id, f"Missing or invalid inputs: {self.inputs}")
+        self.validate_inputs(inputs)
         
         try:
             async for item in self._start_impl(inputs):
@@ -34,7 +37,7 @@ class Streaming(Base, ABC):
             raise NodeExecutionError(self.id, "Streaming failed", original_exc=e) from e
 
     @abstractmethod
-    async def _start_impl(self, inputs: Dict[str, Any]) -> AsyncGenerator[Dict[str, Any], None]:
+    def _start_impl(self, inputs: Dict[str, Any]) -> AsyncIterator[Dict[str, Any]]:
         """
         Core streaming logic - implement in subclasses. Do not add try/except here; let base handle errors.
         """

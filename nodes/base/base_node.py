@@ -1,14 +1,14 @@
-import typing
-from typing import Dict, Any, Type, get_origin, get_args, List, cast, Callable
+from typing import Dict, Any, Type, Union, get_origin, get_args, List, cast, Callable
 from collections.abc import Hashable
 from core.types_registry import NodeValidationError, NodeExecutionError
 import logging
 from abc import abstractmethod
 from pydantic import BaseModel, ValidationError, create_model
+from abc import ABC
 
 logger = logging.getLogger(__name__)
 
-class Base:
+class Base(ABC):
     inputs = {}
     outputs = {}
     params_meta = []
@@ -19,9 +19,8 @@ class Base:
         self.params = {**self.default_params, **(params or {})}
         self.inputs = dict(getattr(self, "inputs", {}))
         self.outputs = dict(getattr(self, "outputs", {}))
-        self._progress_callback: typing.Union[Callable[[int, float, str], None], None] = None
+        self._progress_callback: Union[Callable[[int, float, str], None], None] = None
         self._is_stopped = False  
-        # Execution state flags
         
     @staticmethod
     def _normalize_to_list(value: Any) -> List[Any]:
@@ -46,10 +45,10 @@ class Base:
         return result
 
     @staticmethod
-    def _is_declared_list(expected_type: typing.Union[Type[Any], None]) -> bool:
+    def _is_declared_list(expected_type: Union[Type[Any], None]) -> bool:
         if expected_type is None:
             return False
-        return get_origin(expected_type) in (list, typing.List)
+        return get_origin(expected_type) in (list, List)
 
     def collect_multi_input(self, key: str, inputs: Dict[str, Any]) -> List[Any]:
         expected_type = self.inputs.get(key)

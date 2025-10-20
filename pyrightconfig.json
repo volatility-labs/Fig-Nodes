@@ -1,0 +1,33 @@
+{
+    "include": [
+        "core",
+        "nodes",
+        "services",
+        "ui",
+        "tests"
+    ],
+    "exclude": [
+        "test_venv",
+        "htmlcov",
+        "ui/static/node_modules",
+        "ui/static/dist",
+        "fig_node.egg-info",
+        "testing_artifacts"
+    ],
+    "typeCheckingMode": "strict",
+    "executionEnvironments": [
+        {
+            "root": ".",
+            "typeCheckingMode": "strict"
+        },
+        {
+            "root": "tests",
+            "typeCheckingMode": "basic"
+        }
+    ],
+    "diagnosticSeverityOverrides": {
+        "reportUnknownMemberType": "warning",
+        "reportUnknownArgumentType": "warning",
+        "reportMissingTypeStubs": "warning"
+    }
+}
