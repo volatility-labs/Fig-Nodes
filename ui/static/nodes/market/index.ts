@@ -1,7 +1,8 @@
 export { default as ADXFilterNodeUI } from './ADXFilterNodeUI';
 export { default as AtrXFilterNodeUI } from './AtrXFilterNodeUI';
 export { default as AtrXIndicatorNodeUI } from './AtrXIndicatorNodeUI';
-export { default as LodFilterNodeUI } from './LodFilterNodeUI';
+export { default as LodMaxFilterNodeUI } from './LodMaxFilterNodeUI';
+export { default as WideningEMAsFilterNodeUI } from './WideningEMAsFilterNodeUI';
 export { default as PolygonBatchCustomBarsNodeUI } from './PolygonBatchCustomBarsNodeUI';
 export { default as PolygonCustomBarsNodeUI } from './PolygonCustomBarsNodeUI';
 export { default as PolygonUniverseNodeUI } from './PolygonUniverseNodeUI';

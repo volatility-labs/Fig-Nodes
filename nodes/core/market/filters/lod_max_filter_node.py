@@ -6,7 +6,7 @@ from core.types_registry import OHLCVBar, IndicatorResult, IndicatorType, Indica
 
 logger = logging.getLogger(__name__)
 
-class LodFilter(BaseIndicatorFilter):
+class LodMaxFilter(BaseIndicatorFilter):
     """
     Filters assets based on LoD (Low of Day Distance) values.
 
@@ -15,19 +15,20 @@ class LodFilter(BaseIndicatorFilter):
 
     Formula: LoD Distance % = ((current_price - low_of_day) / ATR) * 100
 
-    Only assets with LoD Distance above the minimum threshold will pass the filter.
+    Only assets with LoD Distance below the maximum threshold will pass the filter.
 
     Parameter guidance:
-    - min_lod_distance: Enter a percentage of ATR (not price points).
-      For example, 3.16 means the current price is 3.16% of one ATR above the
-      day's low. Use numeric values like 3, 5.5, 10, etc. The underlying unit is '% of ATR'.
+    - min_lod_distance: Maximum LoD distance percentage threshold.
+      For example, 70.0 means only symbols with current price less than 70% of ATR
+      from the day's low will pass. Use numeric values like 50, 70, 100, etc.
+      The underlying unit is '% of ATR'.
 
     Reference:
     https://www.tradingview.com/script/uloAa2EI-Swing-Data-ADR-RVol-PVol-Float-Avg-Vol/
     """
 
     default_params = {
-        "min_lod_distance": 3.16,  # Minimum LoD distance percentage threshold
+        "min_lod_distance": 70.0,  # Maximum LoD distance percentage threshold
         "atr_window": 14,          # ATR calculation window
     }
 
@@ -35,13 +36,13 @@ class LodFilter(BaseIndicatorFilter):
         {
             "name": "min_lod_distance",
             "type": "number",
-            "default": 3.16,
+            "default": 70.0,
             "min": 0.0,
             "step": 0.1,
             "precision": 2,
-            "label": "Min LoD Distance %",
+            "label": "Max LoD Distance %",
             "unit": "%",
-            "description": "Minimum Low of Day distance as percentage of ATR (e.g., 3.16 = 3.16% of ATR)"
+            "description": "Maximum Low of Day distance as percentage of ATR (e.g., 70.0 = filter symbols below 70% of ATR from low)"
         },
         {
             "name": "atr_window",
@@ -119,6 +120,16 @@ class LodFilter(BaseIndicatorFilter):
         current_price = latest_bar['close']
         low_of_day = latest_bar['low']
 
+        # Check for invalid price data
+        if not (math.isfinite(current_price) and math.isfinite(low_of_day)):
+            return IndicatorResult(
+                indicator_type=IndicatorType.LOD,
+                timestamp=latest_bar['timestamp'],
+                values=IndicatorValue(lines={"lod_distance_pct": 0.0}),
+                params=self.params,
+                error="Invalid price data (NaN or infinite)"
+            )
+
         # Calculate LoD Distance as percentage of ATR
         # LoD Distance % = ((current_price - low_of_day) / ATR) * 100
         lod_distance_pct = ((current_price - low_of_day) / latest_atr) * 100
@@ -139,17 +150,17 @@ class LodFilter(BaseIndicatorFilter):
         )
 
     def _should_pass_filter(self, indicator_result: IndicatorResult) -> bool:
-        """Pass filter if LoD Distance is above minimum threshold."""
+        """Pass filter if LoD Distance is below maximum threshold."""
         if indicator_result.error:
             return False
 
         lines = indicator_result.values.lines
         if "lod_distance_pct" not in lines:
             return False
-        
+
         lod_distance_pct = lines["lod_distance_pct"]
 
         if not math.isfinite(lod_distance_pct):
             return False
-        
-        return lod_distance_pct >= self.params["min_lod_distance"]
+
+        return lod_distance_pct <= self.params["min_lod_distance"]

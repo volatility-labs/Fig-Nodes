@@ -123,7 +123,10 @@ def run_dev(host: str, backend_port: int, vite_port: int) -> int:
         "--reload",
     ]
 
-    backend_proc = _start_process(backend_cmd, cwd=REPO_ROOT)
+    # Set dev mode environment variable for backend
+    backend_env = os.environ.copy()
+    backend_env["FIG_NODES_DEV"] = "1"
+    backend_proc = _start_process(backend_cmd, cwd=REPO_ROOT, env=backend_env)
 
     # Frontend (Vite dev) with proxy to backend (configured in vite.config.ts)
     pm_cmd, pm_name = _select_node_pm(UI_DIR)

@@ -40,7 +40,7 @@ app.mount(
     name="examples",
 )
 
-if 'PYTEST_CURRENT_TEST' not in os.environ:
+if 'PYTEST_CURRENT_TEST' not in os.environ and 'FIG_NODES_DEV' not in os.environ:
     app.mount("/static", StaticFiles(directory=os.path.join(os.path.dirname(__file__), "static/dist")), name="static")
 
 @app.get("/style.css")
@@ -123,7 +123,8 @@ def list_nodes():
                 "market/ATRIndicatorNodeUI" if name == "ATRIndicator" else
                 "market/SMAFilterNodeUI" if name == "SMAFilter" else
                 "market/OrbFilterNodeUI" if name == "OrbFilter" else
-                "market/LodFilterNodeUI" if name == "LodFilter" else
+                "market/LodMaxFilterNodeUI" if name == "LodMaxFilter" else
+                "market/WideningEMAsFilterNodeUI" if name == "WideningEMAsFilter" else
                 "market/EmaRangeFilterNodeUI" if name == "EmaRangeFilter" else
                 "market/AtrXFilterNodeUI" if name == "AtrXFilter" else
                 "market/AtrXIndicatorNodeUI" if name == "AtrXIndicator" else
@@ -244,7 +245,7 @@ async def execute_endpoint(websocket: WebSocket):
         pass
 
 # Mount the built frontend at root as well, so the app is served from '/'
-if 'PYTEST_CURRENT_TEST' not in os.environ:
+if 'PYTEST_CURRENT_TEST' not in os.environ and 'FIG_NODES_DEV' not in os.environ:
     app.mount("/", StaticFiles(directory=os.path.join(os.path.dirname(__file__), "static", "dist"), html=True), name="root_static")
 
 if __name__ == "__main__":

@@ -1,9 +1,9 @@
 import BaseCustomNode from '../base/BaseCustomNode';
 
-export default class LodFilterNodeUI extends BaseCustomNode {
+export default class WideningEMAsFilterNodeUI extends BaseCustomNode {
     constructor(title: string, data: any, serviceRegistry: any) {
         super(title, data, serviceRegistry);
-        this.size = [360, 120];
+        this.size = [380, 140];
         this.color = '#2c5530';  // Green theme for market data
         this.bgcolor = '#1a3320';
 
@@ -14,17 +14,18 @@ export default class LodFilterNodeUI extends BaseCustomNode {
                 if (!widget) return;
 
                 const label = param.label || param.name;
-                const unitSuffix = param.unit ? ` (${param.unit})` : '';
 
-                // Update number widgets to include label and unit
+                // Update number widgets to include label
                 if (widget.type === 'number') {
-                    widget.name = `${label}${unitSuffix}`;
+                    widget.name = label;
                     if (param.step !== undefined) {
                         widget.options.step = param.step;
                     }
-                    if (param.precision !== undefined) {
-                        widget.options.precision = param.precision;
-                    }
+                }
+
+                // Update boolean widgets
+                if (widget.type === 'toggle' || param.type === 'boolean') {
+                    widget.name = label;
                 }
             });
         }

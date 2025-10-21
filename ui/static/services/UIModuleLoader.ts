@@ -103,9 +103,13 @@ export class UIModuleLoader {
             this.uiModules['OrbFilter'] = module.default;
             this.uiModules['market/OrbFilterNodeUI'] = module.default;
         });
-        import('../nodes/market/LodFilterNodeUI').then(module => {
-            this.uiModules['LodFilter'] = module.default;
-            this.uiModules['market/LodFilterNodeUI'] = module.default;
+        import('../nodes/market/LodMaxFilterNodeUI').then(module => {
+            this.uiModules['LodMaxFilter'] = module.default;
+            this.uiModules['market/LodMaxFilterNodeUI'] = module.default;
+        });
+        import('../nodes/market/WideningEMAsFilterNodeUI').then(module => {
+            this.uiModules['WideningEMAsFilter'] = module.default;
+            this.uiModules['market/WideningEMAsFilterNodeUI'] = module.default;
         });
         import('../nodes/market/EmaRangeFilterNodeUI').then(module => {
             this.uiModules['EmaRangeFilter'] = module.default;
