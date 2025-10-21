@@ -10,13 +10,14 @@ class SMAFilter(BaseIndicatorFilter):
     """
     Filters assets based on Simple Moving Average (SMA) slope and price position.
 
-    This filter checks if the SMA is trending upward by comparing the current SMA
-    with the SMA from N days ago, and optionally checks if price is above the SMA.
+    This filter ALWAYS requires current price to be above the SMA, and optionally
+    checks if the SMA is trending upward by comparing the current SMA with the SMA
+    from N days ago.
 
     Examples:
-    - prior_days = 1: Compare current SMA vs SMA from 1 day ago (upward slope)
-    - prior_days = 5: Compare current SMA vs SMA from 5 days ago (upward slope)
-    - prior_days = 0: Check if current price is above SMA (no slope requirement)
+    - prior_days = 0: Price above SMA only (no slope requirement)
+    - prior_days = 1: Price above SMA AND current SMA > SMA from 1 day ago
+    - prior_days = 5: Price above SMA AND current SMA > SMA from 5 days ago
 
     Parameters:
     - period: SMA calculation period (default: 200)
@@ -73,7 +74,7 @@ class SMAFilter(BaseIndicatorFilter):
                 error="Unable to compute current SMA"
             )
 
-        # If prior_days is 0, only check price above SMA
+        # Always include current price for price above SMA check
         if self.prior_days == 0:
             values = IndicatorValue(lines={
                 "current": current_sma, 
@@ -89,7 +90,7 @@ class SMAFilter(BaseIndicatorFilter):
                 return IndicatorResult(
                     indicator_type=IndicatorType.SMA,
                     timestamp=last_ts,
-                    values=IndicatorValue(lines={"current": current_sma, "previous": np.nan}),
+                    values=IndicatorValue(lines={"current": current_sma, "previous": np.nan, "current_price": current_price}),
                     error="Insufficient data for previous SMA"
                 )
 
@@ -98,11 +99,11 @@ class SMAFilter(BaseIndicatorFilter):
                 return IndicatorResult(
                     indicator_type=IndicatorType.SMA,
                     timestamp=last_ts,
-                    values=IndicatorValue(lines={"current": current_sma, "previous": np.nan}),
+                    values=IndicatorValue(lines={"current": current_sma, "previous": np.nan, "current_price": current_price}),
                     error="Unable to compute previous SMA"
                 )
 
-            values = IndicatorValue(lines={"current": current_sma, "previous": previous_sma})
+            values = IndicatorValue(lines={"current": current_sma, "previous": previous_sma, "current_price": current_price})
 
         return IndicatorResult(
             indicator_type=IndicatorType.SMA,
@@ -119,13 +120,19 @@ class SMAFilter(BaseIndicatorFilter):
         if np.isnan(current):
             return False
 
-        # If prior_days is 0, check if price is above SMA
-        if self.prior_days == 0:
-            current_price = lines.get("current_price", np.nan)
-            if np.isnan(current_price):
-                return False
-            return current_price > current
+        # Always check if price is above SMA
+        current_price = lines.get("current_price", np.nan)
+        if np.isnan(current_price):
+            return False
+        
+        if current_price <= current:  # Price must be above SMA
+            return False
 
+        # If prior_days is 0, only check price above SMA (already done above)
+        if self.prior_days == 0:
+            return True
+
+        # For prior_days > 0, also check slope (current SMA > previous SMA)
         previous = lines.get("previous", np.nan)
         if np.isnan(previous):
             return False

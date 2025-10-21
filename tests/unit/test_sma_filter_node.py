@@ -32,9 +32,13 @@ def sample_ohlcv_bars() -> List[OHLCVBar]:
 
 @pytest.mark.asyncio
 async def test_sma_filter_happy_path(sma_filter_node, sample_ohlcv_bars):
-    """Test filter passes when current SMA > previous SMA."""
-    # Mock SMA calculations
-    sma_filter_node.indicators_service.calculate_sma.side_effect = lambda df, p, price='Close': df[price].tail(p).mean()
+    """Test filter passes when current SMA > previous SMA AND price > SMA."""
+    # Mock SMA calculations - return values that ensure price > SMA and upward slope
+    def mock_sma(df, p, price='Close'):
+        if len(df) >= p:
+            return df[price].tail(p).mean() - 5  # SMA lower than closes to ensure price > SMA
+        return np.nan
+    sma_filter_node.indicators_service.calculate_sma.side_effect = mock_sma
 
     inputs = {
         "ohlcv_bundle": {AssetSymbol("TEST", AssetClass.STOCKS): sample_ohlcv_bars}
@@ -42,7 +46,7 @@ async def test_sma_filter_happy_path(sma_filter_node, sample_ohlcv_bars):
     result = await sma_filter_node.execute(inputs)
 
     assert "filtered_ohlcv_bundle" in result
-    assert AssetSymbol("TEST", AssetClass.STOCKS) in result["filtered_ohlcv_bundle"]  # Should pass since closes are increasing
+    assert AssetSymbol("TEST", AssetClass.STOCKS) in result["filtered_ohlcv_bundle"]  # Should pass since closes are increasing and price > SMA
 
 
 @pytest.mark.asyncio
@@ -52,8 +56,12 @@ async def test_sma_filter_does_not_pass(sma_filter_node, sample_ohlcv_bars):
     for i, bar in enumerate(sample_ohlcv_bars):
         bar['close'] = 100 - i * 2
 
-    # Mock SMA calculations
-    sma_filter_node.indicators_service.calculate_sma.side_effect = lambda df, p, price='Close': df[price].tail(p).mean()
+    # Mock SMA calculations - return values that ensure downward slope
+    def mock_sma(df, p, price='Close'):
+        if len(df) >= p:
+            return df[price].tail(p).mean() + 10  # SMA higher than closes to ensure downward slope
+        return np.nan
+    sma_filter_node.indicators_service.calculate_sma.side_effect = mock_sma
 
     inputs = {
         "ohlcv_bundle": {AssetSymbol("TEST", AssetClass.STOCKS): sample_ohlcv_bars}
@@ -61,7 +69,7 @@ async def test_sma_filter_does_not_pass(sma_filter_node, sample_ohlcv_bars):
     result = await sma_filter_node.execute(inputs)
 
     assert "filtered_ohlcv_bundle" in result
-    assert AssetSymbol("TEST", AssetClass.STOCKS) not in result["filtered_ohlcv_bundle"]  # Should not pass
+    assert AssetSymbol("TEST", AssetClass.STOCKS) not in result["filtered_ohlcv_bundle"]  # Should not pass due to downward slope
 
 
 @pytest.mark.asyncio
@@ -96,10 +104,10 @@ async def test_sma_filter_multiple_symbols(sma_filter_node, sample_ohlcv_bars):
     for bar in decreasing_bars:
         bar['close'] = 100 - (sample_ohlcv_bars.index(bar) * 2)  # Make decreasing
 
-    # Mock different SMA for each
+    # Mock different SMA for each - ensure price > SMA and upward slope for PASS
     def mock_sma(df, p):
         if df['Close'].iloc[-1] > 100:  # Passing condition
-            return df['Close'].tail(p).mean()
+            return df['Close'].tail(p).mean() - 5  # SMA lower than closes to ensure price > SMA
         else:
             return np.nan  # Force fail
 
@@ -163,6 +171,27 @@ async def test_sma_filter_zero_prior_days_price_below_sma(sma_filter_node, sampl
     result = await sma_filter_node.execute(inputs)
 
     assert AssetSymbol("TEST", AssetClass.STOCKS) not in result["filtered_ohlcv_bundle"]  # Should not pass since close (118) < SMA (150)
+
+
+@pytest.mark.asyncio
+async def test_sma_filter_price_below_sma_with_slope(sma_filter_node, sample_ohlcv_bars):
+    """Test that price below SMA fails even with upward slope."""
+    sma_filter_node.prior_days = 1
+    # Mock SMA to return a value higher than the last close price (price < SMA)
+    # but ensure upward slope by returning different values for current vs previous
+    def mock_sma(df, p, price='Close'):
+        if len(df) >= p:
+            # Return SMA higher than closes to ensure price < SMA
+            return df[price].tail(p).mean() + 20
+        return np.nan
+    sma_filter_node.indicators_service.calculate_sma.side_effect = mock_sma
+
+    inputs = {
+        "ohlcv_bundle": {AssetSymbol("TEST", AssetClass.STOCKS): sample_ohlcv_bars}
+    }
+    result = await sma_filter_node.execute(inputs)
+
+    assert AssetSymbol("TEST", AssetClass.STOCKS) not in result["filtered_ohlcv_bundle"]  # Should not pass since price < SMA
 
 
 @pytest.mark.asyncio
