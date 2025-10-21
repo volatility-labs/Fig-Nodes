@@ -1,5 +1,4 @@
 import BaseCustomNode from '../base/BaseCustomNode';
-// import { LiteGraph } from '@comfyorg/litegraph';
 
 export default class PolygonCustomBarsNodeUI extends BaseCustomNode {
     constructor(title: string, data: any, serviceRegistry: any) {

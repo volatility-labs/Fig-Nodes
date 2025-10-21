@@ -1,5 +1,5 @@
 import rustworkx as rx  
-from typing import Dict, Any, List, AsyncGenerator, Callable, Union, Set, cast
+from typing import Dict, Any, List, AsyncGenerator, Callable, NotRequired, Required, Type, TypedDict, Union, Set, cast
 from nodes.base.base_node import Base
 import asyncio
 from nodes.base.streaming_node import Streaming
@@ -9,15 +9,76 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# Types for the graph serialisation from LiteGraph.asSerialisable().
+class SerialisedLink(TypedDict, total=False):
+    """Object-based link used by LiteGraph.asSerialisable()."""
+    id: Required[int]
+    origin_id: Required[int]
+    origin_slot: Required[int]
+    target_id: Required[int]
+    target_slot: Required[int]
+    type: Required[Any]
+    parentId: NotRequired[int]
+
+class SerialisedNodeInput(TypedDict, total=False):
+    name: str
+    type: Any
+    linkIds: NotRequired[List[int]]
+
+class SerialisedNodeOutput(TypedDict, total=False):
+    name: str
+    type: Any
+    linkIds: NotRequired[List[int]]
+
+class SerialisedNode(TypedDict, total=False):
+    id: Required[int]
+    type: Required[str]
+    title: NotRequired[str]
+    pos: NotRequired[List[float]]
+    size: NotRequired[List[float]]
+    flags: NotRequired[Dict[str, Any]]
+    order: NotRequired[int]
+    mode: NotRequired[int]
+    inputs: NotRequired[List[SerialisedNodeInput]]
+    outputs: NotRequired[List[SerialisedNodeOutput]]
+    properties: NotRequired[Dict[str, Any]]
+    shape: NotRequired[Any]
+    boxcolor: NotRequired[str]
+    color: NotRequired[str]
+    bgcolor: NotRequired[str]
+    showAdvanced: NotRequired[bool]
+    widgets_values: NotRequired[List[Any]]
+
+class SerialisedGraphState(TypedDict, total=True):
+    lastNodeId: int
+    lastLinkId: int
+    lastGroupId: int
+    lastRerouteId: int
+
+# Main graph serialisation type that copies the LiteGraph.asSerialisable() schema.
+class SerialisableGraph(TypedDict, total=False):
+    """Newer LiteGraph schema produced by graph.asSerialisable()."""
+    id: str
+    revision: int
+    version: int  # 0 | 1
+    state: SerialisedGraphState
+    nodes: List[SerialisedNode]
+    links: NotRequired[List[SerialisedLink]]
+    floatingLinks: NotRequired[List[SerialisedLink]]
+    reroutes: NotRequired[List[Dict[str, Any]]]
+    groups: NotRequired[List[Dict[str, Any]]]
+    extra: NotRequired[Dict[str, Any]]
+    definitions: NotRequired[Dict[str, Any]]
+
+
 class GraphExecutor:
-    def __init__(self, graph: Dict[str, Any], node_registry: Dict[str, type]):
+    def __init__(self, graph: SerialisableGraph, node_registry: Dict[str, Type[Base]]):
         self.graph = graph
         self.node_registry = node_registry
         self.nodes: Dict[int, Base] = {}
         self.input_names: Dict[int, List[str]] = {}
         self.output_names: Dict[int, List[str]] = {}
-        self.dag: Any = rx.PyDiGraph()  # type: ignore[attr-defined]
-        # Mapping between external node_id and internal rustworkx node index
+        self.dag: rx.PyDiGraph = rx.PyDiGraph() 
         self._id_to_idx: Dict[int, int] = {}
         self._idx_to_id: Dict[int, int] = {}
         self.is_streaming: bool = False
@@ -29,7 +90,7 @@ class GraphExecutor:
         self._build_graph()
 
     def _build_graph(self):
-        for node_data in self.graph.get('nodes', []):
+        for node_data in self.graph.get('nodes', []) or []:
             node_id = node_data['id']
             node_type = node_data['type']
             if node_type not in self.node_registry:
@@ -47,8 +108,10 @@ class GraphExecutor:
             self._id_to_idx[node_id] = idx
             self._idx_to_id[idx] = node_id
 
-        for link in self.graph.get('links', []):
-            from_id, to_id = link[1], link[3]
+        for link in self.graph.get('links', []) or []:
+            s_link: SerialisedLink = link  # TypedDict with required keys
+            from_id = s_link['origin_id']
+            to_id = s_link['target_id']
             self.dag.add_edge(self._id_to_idx[from_id], self._id_to_idx[to_id], None)
 
         if not _rx_is_dag(self.dag):
@@ -64,9 +127,6 @@ class GraphExecutor:
         )
 
     async def execute(self) -> Dict[int, Dict[str, Any]]:
-        if self.is_streaming:
-            raise RuntimeError("Cannot use execute() on a streaming graph. Use stream() instead.")
-
         results: Dict[int, Dict[str, Any]] = {}
         sorted_indices = _rx_topo(self.dag)
         executed_nodes: Set[int] = set()
@@ -74,7 +134,6 @@ class GraphExecutor:
         for node_idx in sorted_indices:
             node_id = self._idx_to_id[node_idx]
             if self._stopped:
-                print(f"STOP_TRACE: Execution stopped at node {node_id} in GraphExecutor.execute")
                 break
             if node_id in executed_nodes:
                 continue
@@ -84,12 +143,8 @@ class GraphExecutor:
             inputs = self._get_node_inputs(node_id, results)
             merged_inputs = {**{k: v for k, v in node.params.items() if k in node.inputs and k not in inputs and v is not None}, **inputs}
             try:
-                print(f"STOP_TRACE: Awaiting node.execute for node {node_id}")
-                outputs = await node.execute(merged_inputs)  # Will raise NodeValidationError if missing/type issues
-                print(f"STOP_TRACE: Completed node.execute for node {node_id}")
-                print(f"DEBUG: Node {node_id} outputs: {list(outputs.keys()) if outputs else 'None'}")
+                outputs = await node.execute(merged_inputs) 
             except NodeExecutionError as e:  # Catches runtime errors only; validation errors propagate to stop graph
-                print(f"ERROR_TRACE: NodeExecutionError in node {node_id}: {str(e)}")
                 if hasattr(e, 'original_exc') and e.original_exc:
                     print(f"ERROR_TRACE: Original exception: {type(e.original_exc).__name__}: {str(e.original_exc)}")
                 logger.error(f"Node {node_id} failed: {str(e)}")
@@ -306,16 +361,13 @@ class GraphExecutor:
     def _get_node_inputs(self, node_id: int, results: Dict[int, Any]) -> Dict[str, Any]:
         inputs: Dict[str, Any] = {}
         # Derive inputs solely from the link table to avoid index/weight ambiguity
-        for link in self.graph.get('links', []):
-            # link format: [link_id, from_id, from_slot, to_id, to_slot, type]
-            if link[3] != node_id:
+        for link in self.graph.get('links', []) or []:
+            s_link: SerialisedLink = link
+            if s_link['target_id'] != node_id:
                 continue
-            pred_id = link[1]
-            output_slot, input_slot = link[2], link[4]
-            if not isinstance(output_slot, int):
-                continue
-            if not isinstance(input_slot, int):
-                continue
+            pred_id = s_link['origin_id']
+            output_slot = s_link['origin_slot']
+            input_slot = s_link['target_slot']
             pred_node = self.nodes.get(pred_id)
             if pred_node is None:
                 continue

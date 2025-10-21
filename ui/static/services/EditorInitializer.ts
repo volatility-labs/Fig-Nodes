@@ -9,11 +9,11 @@ import { LinkModeManager } from './LinkModeManager';
 import { FileManager } from './FileManager';
 import { UIModuleLoader } from './UIModuleLoader';
 import { ServiceRegistry } from './ServiceRegistry';
-import type { ExtendedLGraphCanvas, ExtendedLGraph, ExtendedLiteGraph } from '../types/litegraph-extensions';
+
 
 export interface EditorInstance {
-    graph: ExtendedLGraph;
-    canvas: ExtendedLGraphCanvas;
+    graph: LGraph;
+    canvas: LGraphCanvas;
     linkModeManager: LinkModeManager;
     fileManager: FileManager;
     dialogManager: DialogManager;
@@ -26,6 +26,7 @@ export class EditorInitializer {
     private serviceRegistry: ServiceRegistry;
     private dialogManager: DialogManager;
     private apiKeyManager: APIKeyManager;
+    private linkModeManager!: LinkModeManager;
 
     constructor() {
         this.appState = AppState.getInstance();
@@ -38,15 +39,41 @@ export class EditorInitializer {
         try {
             updateStatus('loading', 'Initializing...');
 
-            const graph = new LGraph() as unknown as ExtendedLGraph;
+            const graph = new LGraph();
             const canvasElement = container.querySelector('#litegraph-canvas') as HTMLCanvasElement;
-            const canvas = new LGraphCanvas(canvasElement, graph as any) as unknown as ExtendedLGraphCanvas;
-            canvas.showSearchBox = () => { };
+            const canvas = new LGraphCanvas(canvasElement, graph);
+            // Suppress native search UI with correctly typed no-op
+            canvas.showSearchBox = function (event: MouseEvent, _searchOptions?: unknown): HTMLDivElement {
+                event?.preventDefault?.();
+                const el = document.createElement('div');
+                el.style.display = 'none';
+                el.setAttribute('aria-hidden', 'true');
+                return el;
+            };
+
+            // Override native prompt to use our custom quick input overlay
+            const dm = this.dialogManager;
+            canvas.prompt = function (labelText: string, defaultValue: string, callback: (value: string | null) => void): HTMLDivElement {
+                const maybeNumber = Number(defaultValue);
+                const numericOnly = Number.isFinite(maybeNumber);
+                try {
+                    dm.showQuickValuePrompt(labelText, defaultValue, numericOnly, (val) => {
+                        callback(val);
+                    });
+                } catch {
+                    // Fallback: still return a hidden element to satisfy callers
+                }
+                const el = document.createElement('div');
+                el.style.display = 'none';
+                el.setAttribute('aria-hidden', 'true');
+                return el;
+            } as unknown as typeof canvas.prompt;
 
             // Initialize services
             const linkModeManager = new LinkModeManager(canvas as any);
             const fileManager = new FileManager(graph as any, canvas as any);
             const uiModuleLoader = new UIModuleLoader(this.serviceRegistry);
+            this.linkModeManager = linkModeManager;
 
             // Register services in ServiceRegistry
             this.serviceRegistry.register('graph', graph as any);
@@ -61,8 +88,7 @@ export class EditorInitializer {
             this.appState.setCurrentGraph(graph as any);
             this.appState.setCanvas(canvas as any);
 
-            // Set up canvas prompt functionality
-            this.setupCanvasPrompt(canvas);
+            // Do not override native prompt; use application dialogs when needed
 
             // Register nodes and set up palette
             // Proactively warm up node metadata cache so '/nodes' is fetched even if UIModuleLoader is mocked
@@ -77,7 +103,7 @@ export class EditorInitializer {
             this.setupProgressBar();
 
             // Set up WebSocket and other services
-            setupWebSocket(graph as any, canvas as any);
+            setupWebSocket(graph as any, canvas as any, this.apiKeyManager);
             setupResize(canvasElement, canvas as any);
 
             // Set up file handling
@@ -86,16 +112,12 @@ export class EditorInitializer {
             // Add footer buttons
             this.addFooterButtons();
 
-            // Expose services globally for debugging and external access (before autosave restoration)
-            window.linkModeManager = linkModeManager;
-            window.dialogManager = this.dialogManager;
-            window.openSettings = () => this.apiKeyManager.openSettings();
-            this.appState.exposeGlobally();
+            // Expose services globally for debugging if needed (avoid relying on globals in production code)
 
             // Attempt to restore from autosave first; fallback to default graph
             const restoredFromAutosave = await fileManager.restoreFromAutosave();
             if (!restoredFromAutosave) {
-                await this.loadDefaultGraph(graph, canvas, linkModeManager);
+                await this.loadDefaultGraph(graph, canvas);
             }
 
             // Set up autosave
@@ -104,9 +126,14 @@ export class EditorInitializer {
             // Set up new graph handler
             this.setupNewGraphHandler(graph, canvas, fileManager);
 
-            graph.start();
+            // Custom start loop that mirrors legacy graph.start() behaviour using RAF
+            const graphRunner = this.createGraphRunner(graph);
+            (window as any).graphRunner = graphRunner;
+            graphRunner.start();
+            window.addEventListener('beforeunload', graphRunner.stop);
 
-            // Ensure button label reflects current link mode after all initialization
+            // Load persisted link mode preference and apply after all initialization
+            linkModeManager.loadFromPreferences();
             linkModeManager.applyLinkMode(linkModeManager.getCurrentLinkMode());
 
             updateStatus('connected', 'Ready');
@@ -126,25 +153,10 @@ export class EditorInitializer {
         }
     }
 
-    private setupCanvasPrompt(canvas: ExtendedLGraphCanvas): void {
-        const showQuickPrompt = (
-            title: string,
-            value: unknown,
-            callback: (v: unknown) => void,
-            options?: { type?: 'number' | 'text'; input?: 'number' | 'text'; step?: number; min?: number }
-        ) => {
-            const numericOnly = (options && (options.type === 'number' || options.input === 'number')) || typeof value === 'number';
-            this.dialogManager.showQuickValuePrompt(title, String(value ?? ''), numericOnly, (val) => callback(val));
-        };
-
-        canvas.prompt = showQuickPrompt;
-        (LiteGraph as unknown as ExtendedLiteGraph).prompt = showQuickPrompt;
-    }
-
     private setupEventListeners(
         canvasElement: HTMLCanvasElement,
-        canvas: ExtendedLGraphCanvas,
-        graph: ExtendedLGraph,
+        canvas: LGraphCanvas,
+        graph: LGraph,
         palette: ReturnType<typeof setupPalette>
     ): void {
         // Tooltip setup
@@ -161,10 +173,7 @@ export class EditorInitializer {
         tooltip.style.zIndex = '1000';
         document.body.appendChild(tooltip);
 
-        let lastMouseEvent: MouseEvent | null = null;
-
         canvasElement.addEventListener('mousemove', (e: MouseEvent) => {
-            lastMouseEvent = e;
             this.dialogManager.setLastMouseEvent(e);
 
             // Check for slot hover and show tooltip
@@ -209,7 +218,7 @@ export class EditorInitializer {
                 tooltip.style.display = 'none';
             }
         });
-        canvas.getLastMouseEvent = () => lastMouseEvent;
+        // Do not add non-native methods to canvas
 
         // Keyboard event handling
         document.addEventListener('keydown', (e: KeyboardEvent) => {
@@ -283,8 +292,12 @@ export class EditorInitializer {
                         const canvasPos = canvas.convertEventToCanvasOffset(e) as number[];
                         if (!canvasPos || !Array.isArray(canvasPos) || canvasPos.length < 2) return;
                         const localPos: [number, number] = [canvasPos[0]! - (node.pos?.[0] ?? 0), canvasPos[1]! - (node.pos?.[1] ?? 0)];
-                        const handled = node.onDblClick(e, localPos, canvas);
-                        if (handled) return;
+                        // Adjust event to CanvasPointerEvent to satisfy native signature
+                        const evt = e as unknown as MouseEvent & { isAdjusted?: boolean };
+                        canvas.adjustMouseEvent(evt as unknown as any);
+                        // Native onDblClick returns void; do not test truthiness
+                        node.onDblClick(evt as unknown as any, localPos, canvas);
+                        return;
                     } catch { }
                 }
                 return;
@@ -320,7 +333,7 @@ export class EditorInitializer {
             linkModeBtn.id = 'link-mode-btn';
             linkModeBtn.className = 'btn-secondary';
             linkModeBtn.addEventListener('click', () => {
-                window.linkModeManager?.cycleLinkMode();
+                try { this.linkModeManager?.cycleLinkMode(); } catch { /* ignore */ }
             });
             footerCenter.appendChild(linkModeBtn);
 
@@ -334,15 +347,13 @@ export class EditorInitializer {
         }
     }
 
-    private async loadDefaultGraph(graph: ExtendedLGraph, canvas: ExtendedLGraphCanvas, linkModeManager: LinkModeManager): Promise<void> {
+    private async loadDefaultGraph(graph: LGraph, canvas: LGraphCanvas): Promise<void> {
         try {
             const resp = await fetch('/examples/default-graph.json', { cache: 'no-store' });
             if (!resp.ok) throw new Error('Response not OK');
             const json = await resp.json();
             if (json && json.nodes && json.links) {
                 graph.configure(json);
-                // Restore link mode if saved
-                linkModeManager.restoreFromGraphConfig(json);
                 canvas.draw(true);
                 const graphNameEl = document.getElementById('graph-name');
                 if (graphNameEl) graphNameEl.textContent = 'default-graph.json';
@@ -362,7 +373,7 @@ export class EditorInitializer {
         });
     }
 
-    private setupNewGraphHandler(graph: ExtendedLGraph, canvas: ExtendedLGraphCanvas, fileManager: FileManager): void {
+    private setupNewGraphHandler(graph: LGraph, canvas: LGraphCanvas, fileManager: FileManager): void {
         const newBtn = document.getElementById('new');
         if (newBtn) {
             newBtn.addEventListener('click', () => {
@@ -373,5 +384,43 @@ export class EditorInitializer {
                 fileManager.doAutosave();
             });
         }
+    }
+
+    private createGraphRunner(graph: LGraph) {
+        let rafId = 0 as number | 0;
+        let running = false;
+        let started = false;
+        const onStart = () => {
+            try { (graph as any).onPlayEvent?.(); } catch { }
+            try { (graph as any).sendEventToAllNodes?.('onStart'); } catch { }
+            try {
+                (graph as any).starttime = (LiteGraph as any).getTime?.() ?? Date.now();
+                (graph as any).last_update_time = (graph as any).starttime;
+            } catch { }
+        };
+        const onStop = () => {
+            try { (graph as any).onStopEvent?.(); } catch { }
+            try { (graph as any).sendEventToAllNodes?.('onStop'); } catch { }
+        };
+        const step = () => {
+            if (!running) return;
+            try { (graph as any).onBeforeStep?.(); } catch { }
+            try { graph.runStep(1, false); } catch { }
+            try { (graph as any).onAfterStep?.(); } catch { }
+            rafId = requestAnimationFrame(step);
+        };
+        const start = () => {
+            if (running) return;
+            running = true;
+            if (!started) { onStart(); started = true; }
+            rafId = requestAnimationFrame(step);
+        };
+        const stop = () => {
+            if (!running) return;
+            running = false;
+            if (rafId) cancelAnimationFrame(rafId);
+            onStop();
+        };
+        return { start, stop, get running() { return running; } };
     }
 }

@@ -1,7 +1,7 @@
 import { LGraphCanvas, LiteGraph } from '@comfyorg/litegraph';
-import type { GraphData } from '../types/litegraph-extensions';
 
 export class LinkModeManager {
+    private static readonly STORAGE_KEY = 'fig-nodes:linkRenderMode';
     private canvas: LGraphCanvas;
     private currentLinkMode: number;
     private readonly linkModeNames = ['Curved', 'Orthogonal', 'Straight'];
@@ -14,6 +14,7 @@ export class LinkModeManager {
     }
 
     private initialize(): void {
+        this.loadFromPreferences();
         this.applyLinkMode(this.currentLinkMode);
     }
 
@@ -27,6 +28,7 @@ export class LinkModeManager {
         }
 
         this.updateButtonLabel();
+        this.persistCurrentMode();
     }
 
     cycleLinkMode(): void {
@@ -58,17 +60,19 @@ export class LinkModeManager {
         }
     }
 
-    // Save/restore link mode for graph serialization
-    saveToGraphConfig(graphData: GraphData): void {
-        if (!graphData.config) graphData.config = {};
-        graphData.config.linkRenderMode = this.currentLinkMode;
+    private persistCurrentMode(): void {
+        try {
+            localStorage.setItem(LinkModeManager.STORAGE_KEY, String(this.currentLinkMode));
+        } catch { /* ignore */ }
     }
 
-    restoreFromGraphConfig(graphData: GraphData): void {
-        // Check both config and extra for linkRenderMode (extra is the current format)
-        const linkRenderMode = graphData.extra?.linkRenderMode ?? graphData.config?.linkRenderMode;
-        if (typeof linkRenderMode === 'number') {
-            this.applyLinkMode(linkRenderMode);
-        }
+    loadFromPreferences(): void {
+        try {
+            const raw = localStorage.getItem(LinkModeManager.STORAGE_KEY);
+            const n = raw != null ? Number(raw) : NaN;
+            if (Number.isFinite(n) && this.linkModeValues.includes(n)) {
+                this.currentLinkMode = n;
+            }
+        } catch { /* ignore */ }
     }
 }

@@ -1,4 +1,5 @@
 import { LGraph, LGraphCanvas } from '@comfyorg/litegraph';
+import type { SerialisableGraph } from '@comfyorg/litegraph/dist/types/serialisation';
 import { AppState } from './AppState';
 import { APIKeyManager } from './APIKeyManager';
 import { updateStatus } from '../utils/uiUtils';
@@ -16,6 +17,54 @@ export class FileManager {
         this.canvas = canvas;
         this.appState = AppState.getInstance();
         this.apiKeyManager = new APIKeyManager();
+    }
+
+    // Enforce the LiteGraph.asSerialisable schema (new format) and reject legacy formats
+    private isValidAsSerialisableGraph(data: any): data is SerialisableGraph {
+        if (!data || typeof data !== 'object') return false;
+
+        // Required top-level fields in asSerialisable
+        if (typeof data.id !== 'string') return false;
+        if (typeof data.revision !== 'number') return false;
+        if (data.version !== 0 && data.version !== 1) return false;
+        if (!data.state || typeof data.state !== 'object') return false;
+        if (typeof data.state.lastNodeId !== 'number') return false;
+        if (typeof data.state.lastLinkId !== 'number') return false;
+        if (typeof data.state.lastGroupId !== 'number') return false;
+        if (typeof data.state.lastRerouteId !== 'number') return false;
+
+        // Required arrays: nodes, groups; required object: extra (can be empty object)
+        if (!Array.isArray(data.nodes)) return false;
+        if (!Array.isArray(data.groups)) return false;
+        if (data.extra === undefined || typeof data.extra !== 'object') return false;
+
+        // Minimal node checks per ISerialisedNode
+        for (const node of data.nodes) {
+            if (!node || typeof node !== 'object') return false;
+            if (typeof node.id !== 'number') return false;
+            if (typeof node.type !== 'string') return false;
+            if (!Array.isArray(node.pos) || node.pos.length !== 2) return false;
+            if (!Array.isArray(node.size) || node.size.length !== 2) return false;
+            if (typeof node.order !== 'number') return false;
+            if (typeof node.mode !== 'number') return false;
+        }
+
+        // Links: new format uses object-based links; allow missing or empty array
+        if (data.links !== undefined) {
+            if (!Array.isArray(data.links)) return false;
+            for (const link of data.links) {
+                if (!link || typeof link !== 'object') return false;
+                if (typeof link.id !== 'number') return false;
+                if (typeof link.origin_id !== 'number') return false;
+                if (typeof link.origin_slot !== 'number') return false;
+                if (typeof link.target_id !== 'number') return false;
+                if (typeof link.target_slot !== 'number') return false;
+                // link.type can be a string or number depending on slot system; accept any defined value
+                if (link.type === undefined) return false;
+            }
+        }
+
+        return true;
     }
 
     setupFileHandling(): void {
@@ -48,14 +97,7 @@ export class FileManager {
     }
 
     saveGraph(): void {
-        const graphData = this.graph.serialize();
-
-        // Save link mode to graph extra
-        const linkModeManager = this.appState.getCanvas()?.links_render_mode;
-        if (linkModeManager !== undefined) {
-            if (!graphData.extra) graphData.extra = {};
-            graphData.extra.linkRenderMode = linkModeManager;
-        }
+        const graphData = this.graph.asSerialisable({ sortNodes: true });
 
         const blob = new Blob([JSON.stringify(graphData, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
@@ -70,15 +112,14 @@ export class FileManager {
         const processContent = async (content: string) => {
             try {
                 const graphData = JSON.parse(content);
+                if (!this.isValidAsSerialisableGraph(graphData)) {
+                    try { alert('Unsupported graph format. Please use a graph saved with the new format.'); } catch { /* ignore in tests */ }
+                    return;
+                }
                 this.graph.configure(graphData);
 
-                // Restore link mode if saved
-                if (graphData.extra?.linkRenderMode !== undefined) {
-                    this.canvas.links_render_mode = graphData.extra.linkRenderMode as number;
-                }
-
                 try {
-                    this.lastSavedGraphJson = JSON.stringify(this.graph.serialize());
+                    this.lastSavedGraphJson = JSON.stringify(this.graph.asSerialisable({ sortNodes: true }));
                 } catch {
                     this.lastSavedGraphJson = '';
                 }
@@ -133,11 +174,7 @@ export class FileManager {
     // Autosave functionality
     doAutosave(): void {
         try {
-            const data = this.graph.serialize();
-
-            // Save link mode to graph extra
-            if (!data.extra) data.extra = {};
-            data.extra.linkRenderMode = this.canvas.links_render_mode;
+            const data = this.graph.asSerialisable({ sortNodes: true });
 
             const json = JSON.stringify(data);
             if (json !== this.lastSavedGraphJson) {
@@ -153,26 +190,17 @@ export class FileManager {
             const saved = this.safeLocalStorageGet('fig-nodes:autosave:v1');
             if (saved) {
                 const parsed = JSON.parse(saved);
-                if (parsed && Array.isArray(parsed.graph?.nodes) && Array.isArray(parsed.graph?.links)) {
+                if (parsed && this.isValidAsSerialisableGraph(parsed.graph)) {
                     // Set name immediately so UI reflects autosave even if configure fails
                     this.updateGraphName(parsed.name || 'autosave.json');
                     try {
                         this.graph.configure(parsed.graph);
-                        // Restore link mode if saved
-                        if (parsed.graph.extra?.linkRenderMode !== undefined) {
-                            this.canvas.links_render_mode = parsed.graph.extra.linkRenderMode as number;
-                        }
-                        // Also restore via linkModeManager if available
-                        if (window.linkModeManager && typeof window.linkModeManager.restoreFromGraphConfig === 'function') {
-                            window.linkModeManager.restoreFromGraphConfig(parsed.graph);
-                        }
                     } catch (configError) {
-                        // Keep going without throwing; we still consider autosave restored to avoid overwriting with default graph
                         console.error('Failed to configure graph from autosave:', configError);
                     }
                     try { this.canvas.draw(true); } catch { /* ignore */ }
                     try {
-                        this.lastSavedGraphJson = JSON.stringify(this.graph.serialize());
+                        this.lastSavedGraphJson = JSON.stringify(this.graph.asSerialisable({ sortNodes: true }));
                     } catch {
                         this.lastSavedGraphJson = '';
                     }

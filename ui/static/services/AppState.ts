@@ -1,10 +1,7 @@
 import { LGraph, LGraphCanvas } from '@comfyorg/litegraph';
+import type { SerialisableGraph } from '@comfyorg/litegraph/dist/types/serialisation';
 
-export interface GraphData {
-    nodes: any[];
-    links: any[];
-    config?: any;
-}
+type GraphDataView = Pick<SerialisableGraph, 'nodes' | 'links' | 'config'>;
 
 export class AppState {
     private static instance: AppState;
@@ -36,9 +33,17 @@ export class AppState {
         return this.canvas;
     }
 
-    getCurrentGraphData(): GraphData {
+    getCurrentGraphData(): GraphDataView {
         try {
-            return this.currentGraph?.serialize() || { nodes: [], links: [] };
+            const data = this.currentGraph?.asSerialisable({ sortNodes: true }) as any;
+            if (data) {
+                return {
+                    nodes: Array.isArray(data.nodes) ? data.nodes : [],
+                    links: Array.isArray(data.links) ? data.links : [],
+                    config: data.config
+                };
+            }
+            return { nodes: [], links: [] };
         } catch {
             return { nodes: [], links: [] };
         }
@@ -65,7 +70,7 @@ export class AppState {
         return this.nodeMetadata;
     }
 
-    async getRequiredKeysForGraph(graphData: GraphData): Promise<string[]> {
+    async getRequiredKeysForGraph(graphData: Pick<SerialisableGraph, 'nodes'>): Promise<string[]> {
         const meta = await this.getNodeMetadata();
         const required = new Set<string>();
         for (const node of graphData.nodes || []) {
@@ -84,14 +89,4 @@ export class AppState {
         const currentKeys = (await response.json()).keys;
         return requiredKeys.filter(key => !currentKeys[key] || currentKeys[key] === '');
     }
-
-    // Expose methods globally for debugging and external access
-    exposeGlobally(): void {
-        window.getCurrentGraphData = () => this.getCurrentGraphData();
-        window.getRequiredKeysForGraph = (graphData: GraphData) => this.getRequiredKeysForGraph(graphData);
-        window.checkMissingKeys = (requiredKeys: string[]) => this.checkMissingKeys(requiredKeys);
-        window.setLastMissingKeys = (keys: string[]) => this.setMissingKeys(keys);
-        window.getLastMissingKeys = () => this.getMissingKeys();
-    }
-
 }

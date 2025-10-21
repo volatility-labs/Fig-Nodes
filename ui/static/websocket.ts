@@ -1,5 +1,6 @@
 import { LGraph, LGraphCanvas } from '@comfyorg/litegraph';
 import { showError } from './utils/uiUtils';
+import { APIKeyManager } from './services/APIKeyManager';
 
 let ws: WebSocket | null = null;
 export let executionState: 'idle' | 'connecting' | 'executing' | 'stopping' = 'idle';
@@ -73,7 +74,7 @@ function forceCleanup() {
     }
 }
 
-export function setupWebSocket(graph: LGraph, _canvas: LGraphCanvas) {
+export function setupWebSocket(graph: LGraph, _canvas: LGraphCanvas, apiKeyManager: APIKeyManager) {
     const progressRoot = document.getElementById('top-progress');
     const progressBar = document.getElementById('top-progress-bar');
     const progressText = document.getElementById('top-progress-text');
@@ -117,20 +118,16 @@ export function setupWebSocket(graph: LGraph, _canvas: LGraphCanvas) {
         }
 
         // Preflight API key check BEFORE any progress/ui changes or websocket connection
-        const graphData = graph.serialize();
+        const graphData = graph.asSerialisable({ sortNodes: true });
         try {
-            const getRequiredKeysForGraph = (window as any).getRequiredKeysForGraph as undefined | ((g: any) => Promise<string[]>);
-            const checkMissingKeys = (window as any).checkMissingKeys as undefined | ((keys: string[]) => Promise<string[]>);
-            if (typeof getRequiredKeysForGraph === 'function' && typeof checkMissingKeys === 'function') {
-                const requiredKeys = await getRequiredKeysForGraph(graphData);
-                if (requiredKeys.length > 0) {
-                    const missing = await checkMissingKeys(requiredKeys);
-                    if (missing.length > 0) {
-                        try { alert(`Missing API keys for this graph: ${missing.join(', ')}. Please set them in the settings menu.`); } catch { /* ignore in tests */ }
-                        (window as any).setLastMissingKeys?.(missing);
-                        (window as any).openSettings?.(missing);
-                        return; // Abort execution; do not show progress bar or change state
-                    }
+            const requiredKeys = await apiKeyManager.getRequiredKeysForGraph(graphData as any);
+            if (requiredKeys.length > 0) {
+                const missing = await apiKeyManager.checkMissingKeys(requiredKeys);
+                if (missing.length > 0) {
+                    try { alert(`Missing API keys for this graph: ${missing.join(', ')}. Please set them in the settings menu.`); } catch { /* ignore in tests */ }
+                    apiKeyManager.setLastMissingKeys(missing);
+                    await apiKeyManager.openSettings(missing);
+                    return; // Abort execution; do not show progress bar or change state
                 }
             }
         } catch {
@@ -177,8 +174,8 @@ export function setupWebSocket(graph: LGraph, _canvas: LGraphCanvas) {
             if (data.type === 'error') {
                 if (data.code === 'MISSING_API_KEYS' && Array.isArray(data.missing_keys)) {
                     try { alert(data.message || 'Missing API keys. Opening settings...'); } catch { /* ignore in tests */ }
-                    (window as any).setLastMissingKeys?.(data.missing_keys);
-                    (window as any).openSettings?.(data.missing_keys);
+                    apiKeyManager.setLastMissingKeys(data.missing_keys);
+                    apiKeyManager.openSettings(data.missing_keys);
                 } else {
                     alert('Error: ' + data.message);
                 }

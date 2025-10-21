@@ -1,5 +1,4 @@
 import BaseCustomNode from '../base/BaseCustomNode';
-import type { ExtendedWidget } from '../../types/litegraph-extensions';
 
 export default class OpenRouterChatNodeUI extends BaseCustomNode {
     constructor(title: string, data: any, serviceRegistry: any) {
@@ -20,18 +19,13 @@ export default class OpenRouterChatNodeUI extends BaseCustomNode {
             .then(data => {
                 const models = Array.isArray(data?.data) ? data.data.map((m: any) => m.id).filter((x: any) => typeof x === 'string') : [];
                 models.sort((a: string, b: string) => a.localeCompare(b));
-                const widgets: ExtendedWidget[] = this.widgets || [];
-                const modelWidget = widgets.find(w => w.paramName === 'model');
-                if (modelWidget) {
-                    modelWidget.options = { values: models };
-                    const current = this.properties.model || 'z-ai/glm-4.6';
-                    if (!models.includes(current) && models.length > 0) {
-                        this.properties.model = models[0];
-                    }
-                    // Update label to reflect current value
-                    modelWidget.name = `model: ${this.properties.model}`;
-                    this.setDirtyCanvas(true, true);
+                this.widgetManager.setComboValues('model', models);
+                const current = this.properties.model || 'z-ai/glm-4.6';
+                if (!models.includes(current) && models.length > 0) {
+                    this.properties.model = models[0];
                 }
+                this.widgetManager.setWidgetLabel('model', `model: ${this.properties.model}`);
+                this.setDirtyCanvas(true, true);
             })
             .catch(error => {
                 console.error('Failed to fetch OpenRouter models:', error);

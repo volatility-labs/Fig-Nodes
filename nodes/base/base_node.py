@@ -90,7 +90,6 @@ class Base(ABC):
         Raises NodeValidationError on missing required inputs or type mismatches.
         """
 
-        # 1) Normalize inputs to fold multi-inputs (key_0, key_1, ...) into the main key when expected is a List[...] 
         normalized: Dict[str, Any] = dict(inputs)
         for key, expected_type in self.inputs.items():
             if key in normalized:
@@ -102,12 +101,10 @@ class Base(ABC):
                 if collected:
                     normalized[key] = collected
 
-        # 2) Normalize missing nullable to explicit None (preserves intent without special skip logic)
         for key, tp in self.inputs.items():
             if key not in normalized and self._type_allows_none(tp):
                 normalized[key] = None
 
-        # 3) Build and apply a dynamic Pydantic model for type validation (missing required will raise here)
         try:
             input_model = self._get_or_build_model(self.inputs)
             input_model.model_validate(normalized, strict=False)
@@ -122,7 +119,6 @@ class Base(ABC):
         if not self.outputs:
             return
         try:
-            # Validate only provided outputs (lenient presence), but enforce declared types on those present
             if outputs:
                 present_fields: Dict[str, Type[Any]] = {k: self.outputs[k] for k in self.outputs.keys() if k in outputs}
                 if present_fields:

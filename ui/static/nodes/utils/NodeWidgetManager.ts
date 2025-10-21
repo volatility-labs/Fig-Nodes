@@ -116,25 +116,43 @@ export class NodeWidgetManager {
         const nodeWithWidgets = this.node as { widgets?: Array<{ type: string; name: string; value: unknown; options?: { values?: unknown[] }; paramName?: string }> };
         if (!nodeWithWidgets.widgets) return;
         nodeWithWidgets.widgets.forEach((widget) => {
-            const explicitName = widget.paramName;
-            const parsedFromLabel = (widget && widget.options && typeof widget.name === 'string') ? widget.name.split(':')[0]?.trim() : widget?.name;
-            const paramKey = explicitName || parsedFromLabel;
+            const key = widget.paramName;
+            if (!key) return;
 
-            if (!paramKey) return;
-
-            if ((widget.type === 'number' || widget.type === 'combo' || widget.type === 'text' || widget.type === 'button') && Object.prototype.hasOwnProperty.call(this.node.properties, paramKey)) {
+            if ((widget.type === 'number' || widget.type === 'text' || widget.type === 'button') && Object.prototype.hasOwnProperty.call(this.node.properties, key)) {
                 if (widget.type === 'button' && widget.options?.values) {
-                    // Combo button: update label only below
+                    // combo-style button: do not overwrite value, only label below
                 } else {
-                    widget.value = this.node.properties[paramKey];
+                    widget.value = this.node.properties[key];
                 }
             }
 
-            if (widget.options?.values && Object.prototype.hasOwnProperty.call(this.node.properties, paramKey)) {
-                const leftLabel = (typeof widget.name === 'string' && widget.name.includes(':')) ? widget.name.split(':')[0] : String(paramKey);
-                widget.name = `${leftLabel}: ${this.formatComboValue(this.node.properties[paramKey])}`;
+            if (widget.options?.values && Object.prototype.hasOwnProperty.call(this.node.properties, key)) {
+                const left = (typeof widget.name === 'string' && widget.name.includes(':')) ? widget.name.split(':')[0] : String(key);
+                widget.name = `${left}: ${this.formatComboValue(this.node.properties[key])}`;
             }
         });
+    }
+
+    // Helpers for paramName-based widget operations
+    findWidgetByParamName(paramName: string) {
+        const nodeWithWidgets = this.node as { widgets?: Array<{ paramName?: string }> };
+        return (nodeWithWidgets.widgets || []).find(w => (w as any).paramName === paramName);
+    }
+
+    setComboValues(paramName: string, values: unknown[]) {
+        const w = this.findWidgetByParamName(paramName) as any;
+        if (!w) return;
+        w.options = w.options || {};
+        w.options.values = Array.isArray(values) ? values : [];
+        this.node.setDirtyCanvas(true, true);
+    }
+
+    setWidgetLabel(paramName: string, label: string) {
+        const w = this.findWidgetByParamName(paramName) as any;
+        if (!w) return;
+        w.name = label;
+        this.node.setDirtyCanvas(true, true);
     }
 
 

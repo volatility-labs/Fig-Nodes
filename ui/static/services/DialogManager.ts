@@ -1,5 +1,5 @@
 import { ServiceRegistry } from './ServiceRegistry';
-import type { ExtendedHTMLElement } from '../types/litegraph-extensions';
+
 
 export interface DialogOptions {
     type?: 'number' | 'text';
@@ -82,25 +82,6 @@ export class DialogManager {
         callback: (value: string | null) => void,
         position?: Position
     ): void {
-        // Try to use LiteGraph's prompt if available
-        try {
-            const graph = window.graph;
-            const canvas = graph?.list_of_graphcanvas?.[0];
-            if (canvas && typeof canvas.prompt === 'function') {
-                canvas.prompt(labelText, String(defaultValue), (value: unknown) => {
-                    if (numericOnly && value !== null) {
-                        const n = Number(value);
-                        callback(Number.isFinite(n) ? String(n) : null);
-                    } else {
-                        callback(value as string | null);
-                    }
-                });
-                return;
-            }
-        } catch {
-            // Fall through to inline dialog
-        }
-
         const overlay = document.createElement('div');
         overlay.className = 'quick-input-overlay';
 
@@ -153,14 +134,22 @@ export class DialogManager {
         overlay.appendChild(dialog);
         document.body.appendChild(overlay);
 
-        // Position dialog if position provided
-        if (position && this.isValidPosition(position)) {
+        // Position dialog near widget/cursor when possible
+        const applyAbsolutePosition = (x: number, y: number) => {
             dialog.style.position = 'absolute';
-            dialog.style.left = `${position.x}px`;
-            dialog.style.top = `${position.y}px`;
+            dialog.style.left = `${x}px`;
+            dialog.style.top = `${y}px`;
             overlay.style.background = 'transparent';
-            (overlay.style as ExtendedHTMLElement['style']).pointerEvents = 'none';
-            (dialog.style as ExtendedHTMLElement['style']).pointerEvents = 'auto';
+            overlay.style.setProperty('pointer-events', 'none');
+            dialog.style.setProperty('pointer-events', 'auto');
+        };
+
+        if (position && this.isValidPosition(position)) {
+            applyAbsolutePosition(position.x, position.y);
+        } else if (this.lastMouseEvent) {
+            const mouseX = this.lastMouseEvent.clientX;
+            const mouseY = this.lastMouseEvent.clientY + 5;
+            applyAbsolutePosition(mouseX, mouseY);
         }
 
         input.focus();

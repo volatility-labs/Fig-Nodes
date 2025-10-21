@@ -1,7 +1,7 @@
 # core/node_registry.py
 # This module handles dynamic loading of node classes from specified directories.
 
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Type
 import os
 import importlib.util
 import inspect
@@ -10,7 +10,7 @@ from nodes.base.base_node import Base
 
 logger = logging.getLogger(__name__)
 
-def load_nodes(directories: List[str]) -> Dict[str, type]:
+def load_nodes(directories: List[str]) -> Dict[str, Type[Base]]:
     """
     Loads all concrete subclasses of Base from the given directories.
     
@@ -24,7 +24,7 @@ def load_nodes(directories: List[str]) -> Dict[str, type]:
     To support extensibility, explicitly imports __init__.py in each subdirectory first
     to run any initialization code (e.g., type registrations via register_type).
     """
-    registry: Dict[str, type] = {}
+    registry: Dict[str, Type[Base]] = {}
     for dir_path in directories:
         base_dir: Optional[str] = None
         if os.path.isabs(dir_path):
