@@ -7,10 +7,21 @@ from core.types_registry import IndicatorResult, IndicatorType, IndicatorValue, 
 logger = logging.getLogger(__name__)
 
 class SMAFilter(BaseIndicatorFilter):
+    """
+    Filters assets based on Simple Moving Average (SMA) slope.
+
+    Compares the current SMA with the SMA from N days ago to ensure the moving average
+    is trending upward. Set prior_days to 0 to disable slope filtering and only check
+    that the SMA can be calculated.
+
+    Parameters:
+    - period: SMA calculation period (default: 200)
+    - prior_days: Days to look back for slope comparison (default: 1, 0 = disable slope check)
+    """
     default_params = {"period": 200, "prior_days": 1}
     params_meta = [
         {"name": "period", "type": "number", "default": 200, "min": 2, "step": 1},
-        {"name": "prior_days", "type": "number", "default": 1, "min": 1, "step": 1},
+        {"name": "prior_days", "type": "number", "default": 1, "min": 0, "step": 1, "description": "Days to look back for slope comparison (0 = disable slope filter)"},
     ]
 
     def _validate_indicator_params(self):
@@ -47,9 +58,6 @@ class SMAFilter(BaseIndicatorFilter):
             )
 
         last_ts = ohlcv_data[-1]['timestamp']
-        cutoff_ts = last_ts - (self.prior_days * 86400000)  # prior_days in ms
-        cutoff = pd.to_datetime(cutoff_ts, unit='ms')
-        previous_df = df[df.index < cutoff]
 
         current_sma = self.indicators_service.calculate_sma(df, self.period)
         if np.isnan(current_sma):
@@ -60,24 +68,33 @@ class SMAFilter(BaseIndicatorFilter):
                 error="Unable to compute current SMA"
             )
 
-        if len(previous_df) < self.period:
-            return IndicatorResult(
-                indicator_type=IndicatorType.SMA,
-                timestamp=last_ts,
-                values=IndicatorValue(lines={"current": current_sma, "previous": np.nan}),
-                error="Insufficient data for previous SMA"
-            )
+        # If prior_days is 0, skip slope comparison
+        if self.prior_days == 0:
+            values = IndicatorValue(lines={"current": current_sma, "previous": current_sma})  # Set previous = current to pass slope check
+        else:
+            cutoff_ts = last_ts - (self.prior_days * 86400000)  # prior_days in ms
+            cutoff = pd.to_datetime(cutoff_ts, unit='ms')
+            previous_df = df[df.index < cutoff]
 
-        previous_sma = self.indicators_service.calculate_sma(previous_df, self.period)
-        if np.isnan(previous_sma):
-            return IndicatorResult(
-                indicator_type=IndicatorType.SMA,
-                timestamp=last_ts,
-                values=IndicatorValue(lines={"current": current_sma, "previous": np.nan}),
-                error="Unable to compute previous SMA"
-            )
+            if len(previous_df) < self.period:
+                return IndicatorResult(
+                    indicator_type=IndicatorType.SMA,
+                    timestamp=last_ts,
+                    values=IndicatorValue(lines={"current": current_sma, "previous": np.nan}),
+                    error="Insufficient data for previous SMA"
+                )
 
-        values = IndicatorValue(lines={"current": current_sma, "previous": previous_sma})
+            previous_sma = self.indicators_service.calculate_sma(previous_df, self.period)
+            if np.isnan(previous_sma):
+                return IndicatorResult(
+                    indicator_type=IndicatorType.SMA,
+                    timestamp=last_ts,
+                    values=IndicatorValue(lines={"current": current_sma, "previous": np.nan}),
+                    error="Unable to compute previous SMA"
+                )
+
+            values = IndicatorValue(lines={"current": current_sma, "previous": previous_sma})
+
         return IndicatorResult(
             indicator_type=IndicatorType.SMA,
             timestamp=last_ts,
@@ -90,7 +107,14 @@ class SMAFilter(BaseIndicatorFilter):
             return False
         lines = indicator_result.values.lines
         current = lines.get("current", np.nan)
+        if np.isnan(current):
+            return False
+
+        # If prior_days is 0, skip slope check and just ensure SMA exists
+        if self.prior_days == 0:
+            return True
+
         previous = lines.get("previous", np.nan)
-        if np.isnan(current) or np.isnan(previous):
+        if np.isnan(previous):
             return False
         return current > previous
