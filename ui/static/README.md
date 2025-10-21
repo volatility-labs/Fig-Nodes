@@ -7,7 +7,7 @@ This directory contains the TypeScript frontend for the node-based editor, built
 - `app.ts`: Main entry point.
 - `components/`: Reusable UI components (e.g., NodeList.ts).
 - `nodes/`: Custom node UI classes (extend BaseCustomNode.ts).
-- `utils/`: Helper functions (e.g., uiUtils.ts, websocket.ts).
+- `utils/`: Helper functions (e.g., websocket.ts).
 - `tests/`: Vitest tests.
 - `types.ts`: Type handling.
 - `style.css`: Styles.

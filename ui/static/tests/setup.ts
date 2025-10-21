@@ -212,35 +212,8 @@ vi.mock('@comfyorg/litegraph', () => {
     return { LGraphNode, LGraphCanvas, LGraph, LiteGraph };
 });
 
-// Mute UI utilities side-effects during tests; provide no-op implementations
-vi.mock('@/utils/uiUtils', () => ({
-    setupResize: vi.fn(),
-    setupKeyboard: vi.fn(),
-    updateStatus: vi.fn(),
-    showError: vi.fn(),
-}));
-
-// Mock UIModuleLoader only for integration tests to avoid dynamic imports
-// Unit tests will use the real implementation
-
 // Silence websocket wiring in tests
 vi.mock('../websocket', () => ({
     setupWebSocket: vi.fn(),
-}));
-
-// Mock other services to avoid delays (do not mock APIKeyManager so unit tests use real impl)
-
-// Do not mock DialogManager for unit tests; use real implementation
-
-vi.mock('../utils/paletteUtils', () => ({
-    setupPalette: vi.fn(() => ({
-        paletteVisible: false,
-        filtered: [],
-        selectionIndex: 0,
-        openPalette: vi.fn(),
-        closePalette: vi.fn(),
-        updateSelectionHighlight: vi.fn(),
-        addSelectedNode: vi.fn()
-    }))
 }));
 

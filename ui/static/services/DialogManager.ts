@@ -22,7 +22,24 @@ export class DialogManager {
     private lastMouseEvent: MouseEvent | null = null;
 
     constructor(_serviceRegistry: ServiceRegistry) {
-        // ServiceRegistry is kept for future use but not currently used
+
+    }
+    showError(message: string): void {
+        const dialog = document.createElement('div');
+        dialog.classList.add('error-dialog');
+
+        const content = document.createElement('p');
+        content.textContent = message;
+
+        const button = document.createElement('button');
+        button.textContent = 'OK';
+        button.onclick = () => {
+            document.body.removeChild(dialog);
+        };
+
+        dialog.appendChild(content);
+        dialog.appendChild(button);
+        document.body.appendChild(dialog);
     }
 
     setLastMouseEvent(event: MouseEvent): void {

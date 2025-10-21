@@ -1,5 +1,5 @@
 import { LGraph, LGraphCanvas } from '@comfyorg/litegraph';
-import { showError } from './utils/uiUtils';
+import { ServiceRegistry } from './services/ServiceRegistry';
 import { APIKeyManager } from './services/APIKeyManager';
 
 let ws: WebSocket | null = null;
@@ -180,7 +180,16 @@ export function setupWebSocket(graph: LGraph, _canvas: LGraphCanvas, apiKeyManag
                     alert('Error: ' + data.message);
                 }
                 console.error('Execution error:', data.message);
-                showError(data.message);
+                try {
+                    const sr: ServiceRegistry | undefined = (window as any).serviceRegistry || undefined;
+                    const dm = sr?.get?.('dialogManager');
+                    if (dm && typeof (dm as any).showError === 'function') {
+                        (dm as any).showError(data.message);
+                    } else {
+                        // Fallback
+                        alert(data.message);
+                    }
+                } catch { /* ignore */ }
                 if (indicator) {
                     indicator.className = 'status-indicator disconnected';
                 }

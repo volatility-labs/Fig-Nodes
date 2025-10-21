@@ -1,7 +1,26 @@
 import { LGraph, LGraphCanvas, LiteGraph } from '@comfyorg/litegraph';
 import { setupWebSocket } from '../websocket';
-import { setupResize, updateStatus } from '../utils/uiUtils';
-import { setupPalette } from '../utils/paletteUtils';
+export function updateStatus(status: 'connected' | 'disconnected' | 'loading' | 'executing', message?: string) {
+    const indicator = document.getElementById('status-indicator');
+    if (indicator) {
+        indicator.className = `status-indicator ${status}`;
+        const label = message || status.charAt(0).toUpperCase() + status.slice(1);
+        indicator.setAttribute('title', label);
+        indicator.setAttribute('aria-label', label);
+        if (indicator.firstChild) {
+            indicator.textContent = '';
+        }
+    }
+
+    const progressRoot = document.getElementById('top-progress');
+    const progressText = document.getElementById('top-progress-text');
+    if (progressText) {
+        progressText.textContent = message || status.charAt(0).toUpperCase() + status.slice(1);
+    }
+    if (progressRoot) {
+        progressRoot.style.display = 'block';
+    }
+}
 import { AppState } from './AppState';
 import { APIKeyManager } from './APIKeyManager';
 import { DialogManager } from './DialogManager';
@@ -94,7 +113,7 @@ export class EditorInitializer {
             // Proactively warm up node metadata cache so '/nodes' is fetched even if UIModuleLoader is mocked
             try { await this.appState.getNodeMetadata(); } catch { /* ignore in init flow */ }
             const { allItems } = await uiModuleLoader.registerNodes();
-            const palette = setupPalette(allItems, canvas as any, graph as any);
+            const palette = this.setupPalette(allItems, canvas as any, graph as any);
 
             // Set up event listeners
             this.setupEventListeners(canvasElement, canvas, graph, palette);
@@ -104,7 +123,7 @@ export class EditorInitializer {
 
             // Set up WebSocket and other services
             setupWebSocket(graph as any, canvas as any, this.apiKeyManager);
-            setupResize(canvasElement, canvas as any);
+            this.setupResize(canvasElement, canvas as any);
 
             // Set up file handling
             fileManager.setupFileHandling();
@@ -113,7 +132,7 @@ export class EditorInitializer {
             this.addFooterButtons();
 
             // Expose services globally for debugging if needed (avoid relying on globals in production code)
-
+            ; (window as any).serviceRegistry = this.serviceRegistry;
             // Attempt to restore from autosave first; fallback to default graph
             const restoredFromAutosave = await fileManager.restoreFromAutosave();
             if (!restoredFromAutosave) {
@@ -157,7 +176,7 @@ export class EditorInitializer {
         canvasElement: HTMLCanvasElement,
         canvas: LGraphCanvas,
         graph: LGraph,
-        palette: ReturnType<typeof setupPalette>
+        palette: { openPalette: (event?: MouseEvent) => void; closePalette: () => void; addSelectedNode: () => void; updateSelectionHighlight: () => void; selectionIndex: number; filtered: { name: string; category: string; description?: string }[]; paletteVisible: boolean }
     ): void {
         // Tooltip setup
         const tooltip = document.createElement('div');
@@ -310,6 +329,146 @@ export class EditorInitializer {
             // Update mouse position for widget interactions
             this.dialogManager.setLastMouseEvent(e);
         });
+    }
+
+    private setupResize(canvasElement: HTMLCanvasElement, canvas: any) {
+        const resizeCanvas = () => {
+            const rect = canvasElement.parentElement!.getBoundingClientRect();
+            const dpr = window.devicePixelRatio || 1;
+            if (canvas.canvas.width !== rect.width * dpr || canvas.canvas.height !== rect.height * dpr) {
+                canvas.canvas.width = rect.width * dpr;
+                canvas.canvas.height = rect.height * dpr;
+                canvas.canvas.style.width = `${rect.width}px`;
+                canvas.canvas.style.height = `${rect.height}px`;
+                const ctx = canvas.canvas.getContext('2d');
+                if (ctx) ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            }
+            canvas.draw(true, true);
+        };
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+    }
+
+    private setupPalette(allItems: { name: string; category: string; description?: string }[], canvas: LGraphCanvas, graph: LGraph) {
+        const overlay = document.getElementById('node-palette-overlay') as HTMLDivElement | null;
+        const palette = document.getElementById('node-palette') as HTMLDivElement | null;
+        const searchInput = document.getElementById('node-palette-search') as HTMLInputElement | null;
+        const listContainer = document.getElementById('node-palette-list') as HTMLDivElement | null;
+
+        let paletteVisible = false;
+        let selectionIndex = 0;
+        let filtered = allItems.slice();
+        let lastCanvasPos: [number, number] = [0, 0];
+
+        function updateSelectionHighlight() {
+            if (!listContainer) return;
+            const children = Array.from(listContainer.children) as HTMLElement[];
+            children.forEach((el, i) => {
+                if (i === selectionIndex) el.classList.add('selected');
+                else el.classList.remove('selected');
+            });
+            const selectedEl = children[selectionIndex];
+            if (selectedEl) selectedEl.scrollIntoView({ block: 'nearest' });
+        }
+
+        function renderList(items: typeof allItems) {
+            if (!listContainer) return;
+            listContainer.innerHTML = '';
+            items.forEach((item, idx) => {
+                const row = document.createElement('div');
+                row.className = 'node-palette-item' + (idx === selectionIndex ? ' selected' : '');
+                const title = document.createElement('div');
+                title.className = 'node-palette-title';
+                title.textContent = item.name;
+                const subtitle = document.createElement('div');
+                subtitle.className = 'node-palette-subtitle';
+                subtitle.textContent = `${item.category}${item.description ? ' — ' + item.description : ''}`;
+                row.appendChild(title);
+                row.appendChild(subtitle);
+                row.addEventListener('mouseenter', () => {
+                    selectionIndex = idx;
+                    updateSelectionHighlight();
+                });
+                row.addEventListener('click', () => addSelectedNode());
+                listContainer.appendChild(row);
+            });
+        }
+
+        const openPalette = (event?: MouseEvent) => {
+            if (!overlay || !palette || !searchInput) return;
+            paletteVisible = true;
+            overlay.style.display = 'flex';
+            selectionIndex = 0;
+            filtered = allItems.slice();
+            renderList(filtered);
+            if (event) {
+                const p = canvas.convertEventToCanvasOffset(event) as unknown as number[];
+                lastCanvasPos = [p[0] || 0, p[1] || 0];
+            } else {
+                const rect = canvas.canvas.getBoundingClientRect();
+                const fakeEvent = { clientX: rect.left + rect.width / 2, clientY: rect.top + rect.height / 2 } as MouseEvent;
+                const p = canvas.convertEventToCanvasOffset(fakeEvent) as unknown as number[];
+                lastCanvasPos = [p[0] || 0, p[1] || 0];
+            }
+            palette.style.position = '';
+            palette.style.left = '';
+            palette.style.top = '';
+            searchInput.value = '';
+            setTimeout(() => searchInput.focus(), 0);
+        };
+
+        const closePalette = () => {
+            if (!overlay) return;
+            paletteVisible = false;
+            overlay.style.display = 'none';
+        };
+
+        const addSelectedNode = () => {
+            const item = filtered[selectionIndex];
+            if (!item) return;
+            const node = LiteGraph.createNode(item.name);
+            if (node) {
+                node.pos = [lastCanvasPos[0], lastCanvasPos[1]];
+                graph.add(node);
+                canvas.draw(true, true);
+            }
+            closePalette();
+        };
+
+        if (overlay) {
+            overlay.addEventListener('click', (e) => {
+                if (e.target === overlay) closePalette();
+            });
+        }
+
+        if (searchInput) {
+            searchInput.addEventListener('input', () => {
+                const q = searchInput.value.trim().toLowerCase();
+                selectionIndex = 0;
+                if (!q) {
+                    filtered = allItems.slice();
+                } else {
+                    filtered = allItems.filter((x) =>
+                        x.name.toLowerCase().includes(q) ||
+                        x.category.toLowerCase().includes(q) ||
+                        (x.description || '').toLowerCase().includes(q)
+                    );
+                }
+                renderList(filtered);
+            });
+        }
+
+        return {
+            openPalette,
+            addSelectedNode,
+            get paletteVisible() { return paletteVisible; },
+            get selectionIndex() { return selectionIndex; },
+            set selectionIndex(val: number) { selectionIndex = val; },
+            get filtered() { return filtered; },
+            set filtered(val) { filtered = val; },
+            closePalette,
+            updateSelectionHighlight
+        };
     }
 
     private setupProgressBar(): void {

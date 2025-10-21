@@ -3,7 +3,6 @@ import { NodeProperty } from '@comfyorg/litegraph/dist/LGraphNode';
 import { Dictionary } from '@comfyorg/litegraph/dist/interfaces';
 import { ISerialisedNode } from '@comfyorg/litegraph/dist/types/serialisation';
 import { getTypeColor, TypeInfo } from '../../types';
-import { showError } from '../../utils/uiUtils';
 import { NodeTypeSystem } from '../utils/NodeTypeSystem';
 import { NodeWidgetManager } from '../utils/NodeWidgetManager';
 import { NodeRenderer } from '../utils/NodeRenderer';
@@ -127,7 +126,13 @@ export default class BaseCustomNode extends LGraphNode {
         this.error = message;
         this.color = '#FF0000'; // Red border for error
         this.setDirtyCanvas(true, true);
-        showError(message);
+        try {
+            const sr: ServiceRegistry | undefined = (window as any).serviceRegistry || undefined;
+            const dm = sr?.get?.('dialogManager');
+            if (dm && typeof (dm as any).showError === 'function') {
+                (dm as any).showError(message);
+            }
+        } catch { /* ignore */ }
     }
 
     // Delegate to renderer

@@ -2,7 +2,7 @@ import { describe, expect, test, vi, beforeEach } from 'vitest';
 import { JSDOM } from 'jsdom';
 
 // Import after mocks from setup are applied
-import * as uiUtils from '../../utils/uiUtils';
+import { updateStatus } from '../../services/EditorInitializer';
 
 describe('app.ts initialization', () => {
     beforeEach(() => {
@@ -57,7 +57,7 @@ describe('app.ts initialization', () => {
         });
 
         // Spy on utilities
-        const statusSpy = vi.spyOn(uiUtils, 'updateStatus');
+        const statusSpy = vi.spyOn({ updateStatus }, 'updateStatus');
 
         // Import app.ts which attaches DOMContentLoaded listener
         const mod = await import('../../app.ts');
@@ -117,7 +117,7 @@ describe('app.ts initialization', () => {
             return { ok: true, json: async () => ({}) } as any;
         });
 
-        const statusSpy = vi.spyOn(uiUtils, 'updateStatus');
+        const statusSpy = vi.spyOn({ updateStatus }, 'updateStatus');
         const mod = await import('../../app.ts');
         expect(mod).toBeTruthy();
 
@@ -404,7 +404,7 @@ describe('Autosave bug coverage', () => {
         // Clear storage
         window.localStorage.removeItem('fig-nodes:autosave:v1');
 
-        const statusSpy = vi.spyOn(uiUtils, 'updateStatus');
+        const statusSpy = vi.spyOn({ updateStatus }, 'updateStatus');
 
         // Load app
         await import('../../app.ts');
@@ -484,7 +484,7 @@ describe('Autosave bug coverage', () => {
             return { ok: true, json: async () => ({}) } as any;
         });
 
-        const statusSpy = vi.spyOn(uiUtils, 'updateStatus');
+        const statusSpy = vi.spyOn({ updateStatus }, 'updateStatus');
 
         // Load app
         await import('../../app.ts');

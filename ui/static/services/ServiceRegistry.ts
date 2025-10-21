@@ -29,6 +29,11 @@ export class ServiceRegistry {
         return service as ServiceMap[K] | null;
     }
 
+    // Allow weak get for untyped access in fallbacks
+    getAny(name: string): unknown | null {
+        return (this.services as any).get(name) ?? null;
+    }
+
     has(name: ServiceName): boolean {
         return this.services.has(name);
     }

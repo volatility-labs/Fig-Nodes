@@ -54,8 +54,7 @@ class APIKeyVault:
         """
         required_keys: Set[str] = set()
         try:
-            # Local import to avoid import cycles at module import time
-            from core.node_registry import NODE_REGISTRY  # type: ignore
+            from core.node_registry import NODE_REGISTRY 
         except Exception:
             NODE_REGISTRY = {}
 

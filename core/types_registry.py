@@ -216,20 +216,14 @@ class NodeExecutionError(NodeError):
 # No dynamic registration; registry remains static in this package
 
 __all__ = [
-    # Enums
     'AssetClass', 'InstrumentType', 'Provider', 'IndicatorType',
-    # TypedDicts
     'LLMToolFunction', 'LLMToolSpec', 'LLMToolCallFunction', 'LLMToolCall',
     'LLMChatMessage', 'LLMChatMetrics', 'LLMToolHistoryItem', 'LLMThinkingHistoryItem',
     'OHLCVBar',
-    # Dataclasses
     'AssetSymbol', 'IndicatorValue', 'IndicatorResult',
-    # Type aliases
     'AssetSymbolList', 'IndicatorDict', 'AnyList', 'ConfigDict',
     'OHLCV', 'OHLCVBundle', 'OHLCVStream',
     'LLMChatMessageList', 'LLMToolSpecList', 'LLMToolHistory', 'LLMThinkingHistory',
-    # Registry functions
     'TYPE_REGISTRY', 'get_type',
-    # Exceptions
     'NodeError', 'NodeValidationError', 'NodeExecutionError',
 ] 

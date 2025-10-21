@@ -178,23 +178,7 @@ describe('EditorInitializer', () => {
             }))
         }));
 
-        // Mock utility functions
-        vi.mock('../../../utils/uiUtils', () => ({
-            updateStatus: vi.fn(),
-            setupResize: vi.fn()
-        }));
-
-        vi.mock('../../../utils/paletteUtils', () => ({
-            setupPalette: vi.fn().mockReturnValue({
-                paletteVisible: false,
-                filtered: [],
-                selectionIndex: 0,
-                openPalette: vi.fn(),
-                closePalette: vi.fn(),
-                updateSelectionHighlight: vi.fn(),
-                addSelectedNode: vi.fn()
-            })
-        }));
+        // No uiUtils mock needed
 
         vi.mock('../../../websocket', () => ({
             setupWebSocket: vi.fn()

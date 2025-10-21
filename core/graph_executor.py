@@ -55,7 +55,7 @@ class SerialisedGraphState(TypedDict, total=True):
     lastGroupId: int
     lastRerouteId: int
 
-# Main graph serialisation type that copies the LiteGraph.asSerialisable() schema.
+# Main graph serialisation type that transcribes from the LiteGraph.asSerialisable() schema.
 class SerialisableGraph(TypedDict, total=False):
     """Newer LiteGraph schema produced by graph.asSerialisable()."""
     id: str
@@ -103,7 +103,6 @@ class GraphExecutor:
             output_list = [out.get('name', '') for out in node_data.get('outputs', [])]
             if output_list:
                 self.output_names[node_id] = output_list
-            # Add node to rustworkx graph and record index mapping
             idx = self.dag.add_node(node_id)
             self._id_to_idx[node_id] = idx
             self._idx_to_id[idx] = node_id

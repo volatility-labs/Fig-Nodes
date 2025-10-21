@@ -1,13 +1,11 @@
 import { LGraph, LGraphCanvas } from '@comfyorg/litegraph';
 import type { SerialisableGraph } from '@comfyorg/litegraph/dist/types/serialisation';
-import { AppState } from './AppState';
 import { APIKeyManager } from './APIKeyManager';
-import { updateStatus } from '../utils/uiUtils';
+import { updateStatus } from './EditorInitializer';
 
 export class FileManager {
     private graph: LGraph;
     private canvas: LGraphCanvas;
-    private appState: AppState;
     private apiKeyManager: APIKeyManager;
     private currentGraphName: string = 'untitled.json';
     private lastSavedGraphJson: string = '';
@@ -15,7 +13,6 @@ export class FileManager {
     constructor(graph: LGraph, canvas: LGraphCanvas) {
         this.graph = graph;
         this.canvas = canvas;
-        this.appState = AppState.getInstance();
         this.apiKeyManager = new APIKeyManager();
     }
 
