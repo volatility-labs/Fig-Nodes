@@ -137,17 +137,32 @@ async def test_sma_filter_equal_smas(sma_filter_node, sample_ohlcv_bars):
 
 @pytest.mark.asyncio
 async def test_sma_filter_zero_prior_days(sma_filter_node, sample_ohlcv_bars):
-    """Test handling of prior_days = 0."""
+    """Test handling of prior_days = 0 - should check price above SMA."""
     sma_filter_node.prior_days = 0
-    # Mock SMA
-    sma_filter_node.indicators_service.calculate_sma.side_effect = lambda df, p, price='Close': df[price].tail(p).mean()
+    # Mock SMA to return a value lower than the last close price
+    sma_filter_node.indicators_service.calculate_sma.side_effect = lambda df, p, price='Close': 100.0  # Lower than last close (118)
 
     inputs = {
         "ohlcv_bundle": {AssetSymbol("TEST", AssetClass.STOCKS): sample_ohlcv_bars}
     }
     result = await sma_filter_node.execute(inputs)
 
-    assert AssetSymbol("TEST", AssetClass.STOCKS) in result["filtered_ohlcv_bundle"]  # Likely passes for increasing data
+    assert AssetSymbol("TEST", AssetClass.STOCKS) in result["filtered_ohlcv_bundle"]  # Should pass since close (118) > SMA (100)
+
+
+@pytest.mark.asyncio
+async def test_sma_filter_zero_prior_days_price_below_sma(sma_filter_node, sample_ohlcv_bars):
+    """Test prior_days = 0 when price is below SMA."""
+    sma_filter_node.prior_days = 0
+    # Mock SMA to return a value higher than the last close price
+    sma_filter_node.indicators_service.calculate_sma.side_effect = lambda df, p, price='Close': 150.0  # Higher than last close (118)
+
+    inputs = {
+        "ohlcv_bundle": {AssetSymbol("TEST", AssetClass.STOCKS): sample_ohlcv_bars}
+    }
+    result = await sma_filter_node.execute(inputs)
+
+    assert AssetSymbol("TEST", AssetClass.STOCKS) not in result["filtered_ohlcv_bundle"]  # Should not pass since close (118) < SMA (150)
 
 
 @pytest.mark.asyncio

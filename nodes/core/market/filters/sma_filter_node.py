@@ -8,20 +8,24 @@ logger = logging.getLogger(__name__)
 
 class SMAFilter(BaseIndicatorFilter):
     """
-    Filters assets based on Simple Moving Average (SMA) slope.
+    Filters assets based on Simple Moving Average (SMA) slope and price position.
 
-    Compares the current SMA with the SMA from N days ago to ensure the moving average
-    is trending upward. Set prior_days to 0 to disable slope filtering and only check
-    that the SMA can be calculated.
+    This filter checks if the SMA is trending upward by comparing the current SMA
+    with the SMA from N days ago, and optionally checks if price is above the SMA.
+
+    Examples:
+    - prior_days = 1: Compare current SMA vs SMA from 1 day ago (upward slope)
+    - prior_days = 5: Compare current SMA vs SMA from 5 days ago (upward slope)
+    - prior_days = 0: Check if current price is above SMA (no slope requirement)
 
     Parameters:
     - period: SMA calculation period (default: 200)
-    - prior_days: Days to look back for slope comparison (default: 1, 0 = disable slope check)
+    - prior_days: Days to look back for slope comparison (default: 1, 0 = price above SMA only)
     """
     default_params = {"period": 200, "prior_days": 1}
     params_meta = [
         {"name": "period", "type": "number", "default": 200, "min": 2, "step": 1},
-        {"name": "prior_days", "type": "number", "default": 1, "min": 0, "step": 1, "description": "Days to look back for slope comparison (0 = disable slope filter)"},
+        {"name": "prior_days", "type": "number", "default": 1, "min": 0, "step": 1, "description": "Days to look back for slope comparison (0 = price above SMA only)"},
     ]
 
     def _validate_indicator_params(self):
@@ -58,6 +62,7 @@ class SMAFilter(BaseIndicatorFilter):
             )
 
         last_ts = ohlcv_data[-1]['timestamp']
+        current_price = ohlcv_data[-1]['close']
 
         current_sma = self.indicators_service.calculate_sma(df, self.period)
         if np.isnan(current_sma):
@@ -68,9 +73,13 @@ class SMAFilter(BaseIndicatorFilter):
                 error="Unable to compute current SMA"
             )
 
-        # If prior_days is 0, skip slope comparison
+        # If prior_days is 0, only check price above SMA
         if self.prior_days == 0:
-            values = IndicatorValue(lines={"current": current_sma, "previous": current_sma})  # Set previous = current to pass slope check
+            values = IndicatorValue(lines={
+                "current": current_sma, 
+                "previous": current_sma,  # Set previous = current to pass slope check
+                "current_price": current_price
+            })
         else:
             cutoff_ts = last_ts - (self.prior_days * 86400000)  # prior_days in ms
             cutoff = pd.to_datetime(cutoff_ts, unit='ms')
@@ -110,9 +119,12 @@ class SMAFilter(BaseIndicatorFilter):
         if np.isnan(current):
             return False
 
-        # If prior_days is 0, skip slope check and just ensure SMA exists
+        # If prior_days is 0, check if price is above SMA
         if self.prior_days == 0:
-            return True
+            current_price = lines.get("current_price", np.nan)
+            if np.isnan(current_price):
+                return False
+            return current_price > current
 
         previous = lines.get("previous", np.nan)
         if np.isnan(previous):
