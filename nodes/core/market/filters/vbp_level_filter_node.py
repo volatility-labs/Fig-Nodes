@@ -267,9 +267,38 @@ class VBPLevelFilter(BaseIndicatorFilter):
                 error=f"Insufficient data: need at least 10 bars, got {len(filtered_data)}"
             )
         
-        # Aggregate to weekly if requested
-        if not self.params.get("use_weekly", False):
-            filtered_data = self._aggregate_to_weekly(filtered_data)
+    def _calculate_indicator(self, ohlcv_data: List[OHLCVBar]) -> IndicatorResult:
+        """Calculate VBP levels and return IndicatorResult."""
+        if not ohlcv_data:
+            return IndicatorResult(
+                indicator_type=IndicatorType.VBP,
+                timestamp=0,
+                values=IndicatorValue(lines={}),
+                params=self.params,
+                error="No OHLCV data"
+            )
+        
+        # If use_weekly is True, we need to fetch weekly bars from Polygon
+        # For now, we'll aggregate daily bars to weekly regardless of the flag
+        # TODO: Implement direct weekly bar fetching from Polygon when use_weekly=True
+        
+        # Filter data based on lookback period
+        lookback_years = self.params["lookback_years"]
+        cutoff_timestamp = ohlcv_data[-1]['timestamp'] - (lookback_years * 365 * 24 * 60 * 60 * 1000)  # Approximate milliseconds
+        
+        filtered_data = [bar for bar in ohlcv_data if bar['timestamp'] >= cutoff_timestamp]
+        
+        if len(filtered_data) < 10:
+            return IndicatorResult(
+                indicator_type=IndicatorType.VBP,
+                timestamp=ohlcv_data[-1]['timestamp'],
+                values=IndicatorValue(lines={}),
+                params=self.params,
+                error=f"Insufficient data: need at least 10 bars, got {len(filtered_data)}"
+            )
+        
+        # Always aggregate to weekly for now (matches standalone script behavior)
+        filtered_data = self._aggregate_to_weekly(filtered_data)
         
         if len(filtered_data) < 10:
             return IndicatorResult(
