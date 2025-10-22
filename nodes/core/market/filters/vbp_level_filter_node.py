@@ -40,7 +40,7 @@ class VBPLevelFilter(BaseIndicatorFilter):
             "max": 200,
             "step": 5,
             "label": "Number of Bins",
-            "description": "Number of bins for volume histogram"
+            "description": "Number of bins for volume histogram. More bins = finer granularity"
         },
         {
             "name": "lookback_months",
@@ -50,7 +50,7 @@ class VBPLevelFilter(BaseIndicatorFilter):
             "max": 24,
             "step": 1,
             "label": "Lookback Period (Months)",
-            "description": "Number of months to look back for volume data"
+            "description": "Number of months to look back for volume data. Uses daily bars from upstream node."
         },
         {
             "name": "num_levels",
