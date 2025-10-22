@@ -4,6 +4,9 @@ import numpy as np
 from typing import List, Dict, Any
 from nodes.core.market.filters.base.base_indicator_filter_node import BaseIndicatorFilter
 from core.types_registry import IndicatorResult, IndicatorType, IndicatorValue, OHLCVBar, AssetSymbol
+from core.api_key_vault import APIKeyVault
+from services.polygon_service import fetch_bars
+import asyncio
 
 logger = logging.getLogger(__name__)
 
@@ -15,20 +18,24 @@ class VBPLevelFilter(BaseIndicatorFilter):
     Calculates significant price levels based on volume distribution and checks if current price
     is within specified distance from support (below) and resistance (above).
     
+    Can either use weekly bars (fetched directly from Polygon) or aggregate daily bars to weekly.
+    
     Parameters:
     - bins: Number of bins for volume histogram (default: 50)
-    - lookback_months: Number of months to look back for volume data (default: 2)
+    - lookback_years: Number of years to look back for volume data (default: 2)
     - num_levels: Number of significant volume levels to identify (default: 5)
     - max_distance_to_support: Maximum % distance to nearest support level (default: 5.0)
     - min_distance_to_resistance: Minimum % distance to nearest resistance level (default: 5.0)
+    - use_weekly: If True, fetch weekly bars from Polygon (default: False, uses daily bars from upstream)
     """
     
     default_params = {
         "bins": 50,
-        "lookback_months": 2,
+        "lookback_years": 2,
         "num_levels": 5,
         "max_distance_to_support": 5.0,
         "min_distance_to_resistance": 5.0,
+        "use_weekly": False,
     }
     
     params_meta = [
@@ -43,14 +50,14 @@ class VBPLevelFilter(BaseIndicatorFilter):
             "description": "Number of bins for volume histogram. More bins = finer granularity"
         },
         {
-            "name": "lookback_months",
+            "name": "lookback_years",
             "type": "number",
             "default": 2,
             "min": 1,
-            "max": 24,
+            "max": 10,
             "step": 1,
-            "label": "Lookback Period (Months)",
-            "description": "Number of months to look back for volume data. Uses daily bars from upstream node."
+            "label": "Lookback Period (Years)",
+            "description": "Number of years to look back for volume data"
         },
         {
             "name": "num_levels",
@@ -84,15 +91,47 @@ class VBPLevelFilter(BaseIndicatorFilter):
             "label": "Min Distance to Resistance (%)",
             "description": "Minimum % distance to nearest resistance level"
         },
+        {
+            "name": "use_weekly",
+            "type": "boolean",
+            "default": False,
+            "label": "Use Weekly Bars",
+            "description": "If true, fetch weekly bars from Polygon. If false, aggregate daily bars to weekly"
+        },
     ]
     
     def _validate_indicator_params(self):
         if self.params["bins"] < 10:
             raise ValueError("Number of bins must be at least 10")
-        if self.params["lookback_months"] < 1:
-            raise ValueError("Lookback period must be at least 1 month")
+        if self.params["lookback_years"] < 1:
+            raise ValueError("Lookback period must be at least 1 year")
         if self.params["num_levels"] < 1:
             raise ValueError("Number of levels must be at least 1")
+    
+    def _aggregate_to_weekly(self, ohlcv_data: List[OHLCVBar]) -> List[OHLCVBar]:
+        """Aggregate daily bars to weekly bars."""
+        if not ohlcv_data:
+            return []
+        
+        df = pd.DataFrame(ohlcv_data)
+        df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+        
+        # Group by week (Monday-Sunday)
+        df['week'] = df['timestamp'].dt.to_period('W').apply(lambda r: r.start_time)
+        
+        weekly_bars = []
+        for week, group in df.groupby('week'):
+            weekly_bar = {
+                'timestamp': int(week.timestamp() * 1000),
+                'open': group['open'].iloc[0],
+                'high': group['high'].max(),
+                'low': group['low'].min(),
+                'close': group['close'].iloc[-1],
+                'volume': group['volume'].sum()
+            }
+            weekly_bars.append(weekly_bar)
+        
+        return weekly_bars
     
     def _calculate_vbp_levels(self, ohlcv_data: List[OHLCVBar]) -> Dict[str, Any]:
         """
@@ -202,9 +241,20 @@ class VBPLevelFilter(BaseIndicatorFilter):
                 error="No OHLCV data"
             )
         
+    def _calculate_indicator(self, ohlcv_data: List[OHLCVBar]) -> IndicatorResult:
+        """Calculate VBP levels and return IndicatorResult."""
+        if not ohlcv_data:
+            return IndicatorResult(
+                indicator_type=IndicatorType.VBP,
+                timestamp=0,
+                values=IndicatorValue(lines={}),
+                params=self.params,
+                error="No OHLCV data"
+            )
+        
         # Filter data based on lookback period
-        lookback_months = self.params["lookback_months"]
-        cutoff_timestamp = ohlcv_data[-1]['timestamp'] - (lookback_months * 30 * 24 * 60 * 60 * 1000)  # Approximate milliseconds
+        lookback_years = self.params["lookback_years"]
+        cutoff_timestamp = ohlcv_data[-1]['timestamp'] - (lookback_years * 365 * 24 * 60 * 60 * 1000)  # Approximate milliseconds
         
         filtered_data = [bar for bar in ohlcv_data if bar['timestamp'] >= cutoff_timestamp]
         
@@ -215,6 +265,19 @@ class VBPLevelFilter(BaseIndicatorFilter):
                 values=IndicatorValue(lines={}),
                 params=self.params,
                 error=f"Insufficient data: need at least 10 bars, got {len(filtered_data)}"
+            )
+        
+        # Aggregate to weekly if requested
+        if not self.params.get("use_weekly", False):
+            filtered_data = self._aggregate_to_weekly(filtered_data)
+        
+        if len(filtered_data) < 10:
+            return IndicatorResult(
+                indicator_type=IndicatorType.VBP,
+                timestamp=ohlcv_data[-1]['timestamp'],
+                values=IndicatorValue(lines={}),
+                params=self.params,
+                error=f"Insufficient data after aggregation: need at least 10 bars, got {len(filtered_data)}"
             )
         
         # Calculate VBP levels
