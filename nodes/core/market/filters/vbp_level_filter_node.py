@@ -234,8 +234,19 @@ class VBPLevelFilter(BaseIndicatorFilter):
         closest_support = vbp_data["lowest_level"]
         closest_resistance = vbp_data["highest_level"]
         
+        # Check if there are any resistance levels above current price
+        all_levels = vbp_data["levels"]
+        resistance_levels = [level for level in all_levels if level["price"] > current_price]
+        has_resistance_above = len(resistance_levels) > 0
+        
         distance_to_support = abs(current_price - closest_support) / closest_support * 100 if closest_support > 0 else 0
-        distance_to_resistance = abs(closest_resistance - current_price) / current_price * 100 if current_price > 0 else 0
+        
+        # If no resistance levels above, set distance to resistance to a very large value
+        if has_resistance_above:
+            distance_to_resistance = abs(closest_resistance - current_price) / current_price * 100 if current_price > 0 else 0
+        else:
+            # No resistance levels above - set to infinity to indicate "above all levels"
+            distance_to_resistance = float('inf')
         
         return IndicatorResult(
             indicator_type=IndicatorType.VBP,
@@ -247,7 +258,8 @@ class VBPLevelFilter(BaseIndicatorFilter):
                 "distance_to_support": distance_to_support,
                 "distance_to_resistance": distance_to_resistance,
                 "num_levels": len(vbp_data["levels"]),
-                "price_range": vbp_data["price_range"]
+                "price_range": vbp_data["price_range"],
+                "has_resistance_above": has_resistance_above
             }),
             params=self.params
         )
@@ -261,8 +273,9 @@ class VBPLevelFilter(BaseIndicatorFilter):
         
         distance_to_support = lines.get("distance_to_support", 0)
         distance_to_resistance = lines.get("distance_to_resistance", 0)
+        has_resistance_above = lines.get("has_resistance_above", True)
         
-        if not np.isfinite(distance_to_support) or not np.isfinite(distance_to_resistance):
+        if not np.isfinite(distance_to_support):
             return False
         
         max_distance_support = self.params["max_distance_to_support"]
@@ -272,7 +285,14 @@ class VBPLevelFilter(BaseIndicatorFilter):
         if distance_to_support > max_distance_support:
             return False
         
-        # Check if at least min distance to resistance
+        # If no resistance levels above, automatically pass (price is above all levels)
+        if not has_resistance_above:
+            return True
+        
+        # Check if at least min distance to resistance (only if resistance exists)
+        if not np.isfinite(distance_to_resistance):
+            return False
+        
         if distance_to_resistance < min_distance_resistance:
             return False
         
