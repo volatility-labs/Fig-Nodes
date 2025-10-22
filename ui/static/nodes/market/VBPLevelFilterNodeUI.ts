@@ -1,18 +1,18 @@
-import { BaseCustomNode } from "../../base/BaseCustomNode";
-import { LGraphNode } from "litegraph.js";
+import BaseCustomNode from '../base/BaseCustomNode';
 
 export default class VBPLevelFilterNodeUI extends BaseCustomNode {
-    static nodeType = "VBPLevelFilter";
-
-    constructor(node?: LGraphNode) {
-        super(node);
-        this.init();
+    constructor(title: string, data: any, serviceRegistry: any) {
+        super(title, data, serviceRegistry);
+        this.size = [360, 160];
+        this.color = '#2c5530';  // Green theme for market data
+        this.bgcolor = '#1a3320';
     }
 
-    init() {
-        this.title = "VBP Level Filter";
-        this.color = "#2c5530";
-        this.bgcolor = "#1a3320";
+    updateDisplay(result: any) {
+        // Store result for other functionality but don't display in node
+        this.result = result;
+        this.displayText = '';
+        this.setDirtyCanvas(true, true);
     }
 }
 
