@@ -108,6 +108,23 @@ class VBPLevelFilter(BaseIndicatorFilter):
         if self.params["num_levels"] < 1:
             raise ValueError("Number of levels must be at least 1")
     
+    async def _fetch_weekly_bars(self, symbol: AssetSymbol, api_key: str) -> List[OHLCVBar]:
+        """Fetch weekly bars directly from Polygon API."""
+        lookback_years = self.params["lookback_years"]
+        lookback_days = lookback_years * 365
+        
+        fetch_params = {
+            "multiplier": 1,
+            "timespan": "week",
+            "lookback_period": f"{lookback_days} days",
+            "adjusted": True,
+            "sort": "asc",
+            "limit": 50000,
+        }
+        
+        bars = await fetch_bars(symbol, api_key, fetch_params)
+        return bars
+    
     def _aggregate_to_weekly(self, ohlcv_data: List[OHLCVBar]) -> List[OHLCVBar]:
         """Aggregate daily bars to weekly bars."""
         if not ohlcv_data:
@@ -278,10 +295,6 @@ class VBPLevelFilter(BaseIndicatorFilter):
                 error="No OHLCV data"
             )
         
-        # If use_weekly is True, we need to fetch weekly bars from Polygon
-        # For now, we'll aggregate daily bars to weekly regardless of the flag
-        # TODO: Implement direct weekly bar fetching from Polygon when use_weekly=True
-        
         # Filter data based on lookback period
         lookback_years = self.params["lookback_years"]
         cutoff_timestamp = ohlcv_data[-1]['timestamp'] - (lookback_years * 365 * 24 * 60 * 60 * 1000)  # Approximate milliseconds
@@ -297,8 +310,9 @@ class VBPLevelFilter(BaseIndicatorFilter):
                 error=f"Insufficient data: need at least 10 bars, got {len(filtered_data)}"
             )
         
-        # Always aggregate to weekly for now (matches standalone script behavior)
-        filtered_data = self._aggregate_to_weekly(filtered_data)
+        # Aggregate to weekly if we're not already using weekly bars
+        if not self.params.get("use_weekly", False):
+            filtered_data = self._aggregate_to_weekly(filtered_data)
         
         if len(filtered_data) < 10:
             return IndicatorResult(
@@ -306,7 +320,7 @@ class VBPLevelFilter(BaseIndicatorFilter):
                 timestamp=ohlcv_data[-1]['timestamp'],
                 values=IndicatorValue(lines={}),
                 params=self.params,
-                error=f"Insufficient data after aggregation: need at least 10 bars, got {len(filtered_data)}"
+                error=f"Insufficient data after processing: need at least 10 bars, got {len(filtered_data)}"
             )
         
         # Calculate VBP levels
@@ -389,4 +403,34 @@ class VBPLevelFilter(BaseIndicatorFilter):
             return False
         
         return True
+    
+    async def _execute_impl(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        """Override to handle weekly bar fetching when use_weekly=True."""
+        ohlcv_bundle: Dict[AssetSymbol, List[OHLCVBar]] = inputs.get("ohlcv_bundle", {})
+        
+        if not ohlcv_bundle:
+            return {"filtered_ohlcv_bundle": {}}
+        
+        # If use_weekly is True, fetch weekly bars from Polygon for each symbol
+        if self.params.get("use_weekly", False):
+            api_key = APIKeyVault().get("POLYGON_API_KEY")
+            if not api_key:
+                raise ValueError("Polygon API key not found in vault")
+            
+            updated_bundle = {}
+            for symbol, ohlcv_data in ohlcv_bundle.items():
+                try:
+                    weekly_bars = await self._fetch_weekly_bars(symbol, api_key)
+                    if weekly_bars:
+                        updated_bundle[symbol] = weekly_bars
+                    else:
+                        updated_bundle[symbol] = ohlcv_data  # Fallback to original data
+                except Exception as e:
+                    logger.warning(f"Failed to fetch weekly bars for {symbol}: {e}")
+                    updated_bundle[symbol] = ohlcv_data  # Fallback to original data
+            
+            ohlcv_bundle = updated_bundle
+        
+        # Call parent's execute implementation
+        return await super()._execute_impl({"ohlcv_bundle": ohlcv_bundle})
 
