@@ -111,6 +111,10 @@ export class UIModuleLoader {
             this.uiModules['WideningEMAsFilter'] = module.default;
             this.uiModules['market/WideningEMAsFilterNodeUI'] = module.default;
         });
+        import('../nodes/market/VBPLevelFilterNodeUI').then(module => {
+            this.uiModules['VBPLevelFilter'] = module.default;
+            this.uiModules['market/VBPLevelFilterNodeUI'] = module.default;
+        });
         import('../nodes/market/EmaRangeFilterNodeUI').then(module => {
             this.uiModules['EmaRangeFilter'] = module.default;
             this.uiModules['market/EmaRangeFilterNodeUI'] = module.default;

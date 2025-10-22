@@ -1,0 +1,280 @@
+import logging
+import pandas as pd
+import numpy as np
+from typing import List, Dict, Any
+from nodes.core.market.filters.base.base_indicator_filter_node import BaseIndicatorFilter
+from core.types_registry import IndicatorResult, IndicatorType, IndicatorValue, OHLCVBar, AssetSymbol
+
+logger = logging.getLogger(__name__)
+
+
+class VBPLevelFilter(BaseIndicatorFilter):
+    """
+    Filters assets based on Volume Profile (VBP) levels and distance from support/resistance.
+    
+    Calculates significant price levels based on volume distribution and checks if current price
+    is within specified distance from support (below) and resistance (above).
+    
+    Parameters:
+    - bins: Number of bins for volume histogram (default: 50)
+    - lookback_months: Number of months to look back for volume data (default: 2)
+    - num_levels: Number of significant volume levels to identify (default: 5)
+    - max_distance_to_support: Maximum % distance to nearest support level (default: 5.0)
+    - min_distance_to_resistance: Minimum % distance to nearest resistance level (default: 5.0)
+    """
+    
+    default_params = {
+        "bins": 50,
+        "lookback_months": 2,
+        "num_levels": 5,
+        "max_distance_to_support": 5.0,
+        "min_distance_to_resistance": 5.0,
+    }
+    
+    params_meta = [
+        {
+            "name": "bins",
+            "type": "number",
+            "default": 50,
+            "min": 10,
+            "max": 200,
+            "step": 5,
+            "label": "Number of Bins",
+            "description": "Number of bins for volume histogram"
+        },
+        {
+            "name": "lookback_months",
+            "type": "number",
+            "default": 2,
+            "min": 1,
+            "max": 24,
+            "step": 1,
+            "label": "Lookback Period (Months)",
+            "description": "Number of months to look back for volume data"
+        },
+        {
+            "name": "num_levels",
+            "type": "number",
+            "default": 5,
+            "min": 1,
+            "max": 20,
+            "step": 1,
+            "label": "Number of Levels",
+            "description": "Number of significant volume levels to identify"
+        },
+        {
+            "name": "max_distance_to_support",
+            "type": "number",
+            "default": 5.0,
+            "min": 0.0,
+            "max": 50.0,
+            "step": 0.1,
+            "precision": 2,
+            "label": "Max Distance to Support (%)",
+            "description": "Maximum % distance to nearest support level"
+        },
+        {
+            "name": "min_distance_to_resistance",
+            "type": "number",
+            "default": 5.0,
+            "min": 0.0,
+            "max": 50.0,
+            "step": 0.1,
+            "precision": 2,
+            "label": "Min Distance to Resistance (%)",
+            "description": "Minimum % distance to nearest resistance level"
+        },
+    ]
+    
+    def _validate_indicator_params(self):
+        if self.params["bins"] < 10:
+            raise ValueError("Number of bins must be at least 10")
+        if self.params["lookback_months"] < 1:
+            raise ValueError("Lookback period must be at least 1 month")
+        if self.params["num_levels"] < 1:
+            raise ValueError("Number of levels must be at least 1")
+    
+    def _calculate_vbp_levels(self, ohlcv_data: List[OHLCVBar]) -> Dict[str, Any]:
+        """
+        Calculate Volume Profile levels from OHLCV data.
+        
+        Returns a dict with:
+        - levels: List of significant price levels with their volume
+        - current_price: Current price
+        - highest_level: Highest resistance level
+        - lowest_level: Lowest support level
+        """
+        if not ohlcv_data:
+            return {
+                "levels": [],
+                "current_price": 0.0,
+                "highest_level": 0.0,
+                "lowest_level": 0.0,
+                "error": "No data"
+            }
+        
+        # Convert to DataFrame
+        df = pd.DataFrame(ohlcv_data)
+        
+        # Get current price (last close)
+        current_price = df['close'].iloc[-1]
+        
+        # Get price range
+        price_min = df['low'].min()
+        price_max = df['high'].max()
+        
+        # Create bins
+        bins = self.params["bins"]
+        bin_edges = np.linspace(price_min, price_max, bins + 1)
+        
+        # Distribute volume across price bins
+        volume_profile = np.zeros(bins)
+        
+        for _, row in df.iterrows():
+            high = row['high']
+            low = row['low']
+            volume = row['volume']
+            
+            if high == low:
+                # Single price level, add all volume to that bin
+                bin_idx = np.digitize(high, bin_edges) - 1
+                bin_idx = np.clip(bin_idx, 0, bins - 1)
+                volume_profile[bin_idx] += volume
+            else:
+                # Distribute volume across price range
+                price_range = high - low
+                for i in range(bins):
+                    bin_low = bin_edges[i]
+                    bin_high = bin_edges[i + 1]
+                    
+                    # Calculate overlap between bar and bin
+                    overlap_low = max(low, bin_low)
+                    overlap_high = min(high, bin_high)
+                    
+                    if overlap_low < overlap_high:
+                        overlap_pct = (overlap_high - overlap_low) / price_range
+                        volume_profile[i] += volume * overlap_pct
+        
+        # Calculate bin centers
+        bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
+        
+        # Find significant levels (top volume bins)
+        num_levels = self.params["num_levels"]
+        top_indices = np.argsort(volume_profile)[-num_levels:]
+        
+        # Create level list sorted by volume
+        levels = []
+        for idx in top_indices:
+            if volume_profile[idx] > 0:
+                levels.append({
+                    "price": float(bin_centers[idx]),
+                    "volume": float(volume_profile[idx])
+                })
+        
+        # Sort by volume descending
+        levels.sort(key=lambda x: x["volume"], reverse=True)
+        
+        # Find support and resistance levels
+        support_levels = [level for level in levels if level["price"] < current_price]
+        resistance_levels = [level for level in levels if level["price"] > current_price]
+        
+        # Get closest support and resistance
+        closest_support = max(support_levels, key=lambda x: x["price"])["price"] if support_levels else price_min
+        closest_resistance = min(resistance_levels, key=lambda x: x["price"])["price"] if resistance_levels else price_max
+        
+        return {
+            "levels": levels,
+            "current_price": float(current_price),
+            "highest_level": float(closest_resistance),
+            "lowest_level": float(closest_support),
+            "price_range": float(price_max - price_min),
+            "num_data_points": len(df)
+        }
+    
+    def _calculate_indicator(self, ohlcv_data: List[OHLCVBar]) -> IndicatorResult:
+        """Calculate VBP levels and return IndicatorResult."""
+        if not ohlcv_data:
+            return IndicatorResult(
+                indicator_type=IndicatorType.VBP,
+                timestamp=0,
+                values=IndicatorValue(lines={}),
+                params=self.params,
+                error="No OHLCV data"
+            )
+        
+        # Filter data based on lookback period
+        lookback_months = self.params["lookback_months"]
+        cutoff_timestamp = ohlcv_data[-1]['timestamp'] - (lookback_months * 30 * 24 * 60 * 60 * 1000)  # Approximate milliseconds
+        
+        filtered_data = [bar for bar in ohlcv_data if bar['timestamp'] >= cutoff_timestamp]
+        
+        if len(filtered_data) < 10:
+            return IndicatorResult(
+                indicator_type=IndicatorType.VBP,
+                timestamp=ohlcv_data[-1]['timestamp'],
+                values=IndicatorValue(lines={}),
+                params=self.params,
+                error=f"Insufficient data: need at least 10 bars, got {len(filtered_data)}"
+            )
+        
+        # Calculate VBP levels
+        vbp_data = self._calculate_vbp_levels(filtered_data)
+        
+        if "error" in vbp_data:
+            return IndicatorResult(
+                indicator_type=IndicatorType.VBP,
+                timestamp=ohlcv_data[-1]['timestamp'],
+                values=IndicatorValue(lines={}),
+                params=self.params,
+                error=vbp_data["error"]
+            )
+        
+        # Calculate distances
+        current_price = vbp_data["current_price"]
+        closest_support = vbp_data["lowest_level"]
+        closest_resistance = vbp_data["highest_level"]
+        
+        distance_to_support = abs(current_price - closest_support) / closest_support * 100 if closest_support > 0 else 0
+        distance_to_resistance = abs(closest_resistance - current_price) / current_price * 100 if current_price > 0 else 0
+        
+        return IndicatorResult(
+            indicator_type=IndicatorType.VBP,
+            timestamp=ohlcv_data[-1]['timestamp'],
+            values=IndicatorValue(lines={
+                "current_price": current_price,
+                "closest_support": closest_support,
+                "closest_resistance": closest_resistance,
+                "distance_to_support": distance_to_support,
+                "distance_to_resistance": distance_to_resistance,
+                "num_levels": len(vbp_data["levels"]),
+                "price_range": vbp_data["price_range"]
+            }),
+            params=self.params
+        )
+    
+    def _should_pass_filter(self, indicator_result: IndicatorResult) -> bool:
+        """Pass filter if distance to support and resistance meet criteria."""
+        if indicator_result.error:
+            return False
+        
+        lines = indicator_result.values.lines
+        
+        distance_to_support = lines.get("distance_to_support", 0)
+        distance_to_resistance = lines.get("distance_to_resistance", 0)
+        
+        if not np.isfinite(distance_to_support) or not np.isfinite(distance_to_resistance):
+            return False
+        
+        max_distance_support = self.params["max_distance_to_support"]
+        min_distance_resistance = self.params["min_distance_to_resistance"]
+        
+        # Check if within max distance to support
+        if distance_to_support > max_distance_support:
+            return False
+        
+        # Check if at least min distance to resistance
+        if distance_to_resistance < min_distance_resistance:
+            return False
+        
+        return True
+

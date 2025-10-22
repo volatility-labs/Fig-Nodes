@@ -33,6 +33,7 @@ class IndicatorType(Enum):
     EMA_RANGE = auto()  # EMA on price range
     ORB = auto()  # Custom Indicator
     LOD = auto()  # Low of Day Distance
+    VBP = auto()  # Volume Profile
 
 # Structured dict types with fixed fields
 

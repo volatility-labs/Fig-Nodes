@@ -3,6 +3,7 @@ export { default as AtrXFilterNodeUI } from './AtrXFilterNodeUI';
 export { default as AtrXIndicatorNodeUI } from './AtrXIndicatorNodeUI';
 export { default as LodMaxFilterNodeUI } from './LodMaxFilterNodeUI';
 export { default as WideningEMAsFilterNodeUI } from './WideningEMAsFilterNodeUI';
+export { default as VBPLevelFilterNodeUI } from './VBPLevelFilterNodeUI';
 export { default as PolygonBatchCustomBarsNodeUI } from './PolygonBatchCustomBarsNodeUI';
 export { default as PolygonCustomBarsNodeUI } from './PolygonCustomBarsNodeUI';
 export { default as PolygonUniverseNodeUI } from './PolygonUniverseNodeUI';

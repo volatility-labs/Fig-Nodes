@@ -125,6 +125,7 @@ def list_nodes():
                 "market/OrbFilterNodeUI" if name == "OrbFilter" else
                 "market/LodMaxFilterNodeUI" if name == "LodMaxFilter" else
                 "market/WideningEMAsFilterNodeUI" if name == "WideningEMAsFilter" else
+                "market/VBPLevelFilterNodeUI" if name == "VBPLevelFilter" else
                 "market/EmaRangeFilterNodeUI" if name == "EmaRangeFilter" else
                 "market/AtrXFilterNodeUI" if name == "AtrXFilter" else
                 "market/AtrXIndicatorNodeUI" if name == "AtrXIndicator" else
