@@ -239,7 +239,7 @@ class VBPLevelFilter(BaseIndicatorFilter):
         resistance_levels = [level for level in all_levels if level["price"] > current_price]
         has_resistance_above = len(resistance_levels) > 0
         
-        distance_to_support = abs(current_price - closest_support) / closest_support * 100 if closest_support > 0 else 0
+        distance_to_support = abs(current_price - closest_support) / current_price * 100 if current_price > 0 else 0
         
         # If no resistance levels above, set distance to resistance to a very large value
         if has_resistance_above:
