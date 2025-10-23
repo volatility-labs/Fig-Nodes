@@ -1,41 +1,56 @@
-from typing import Dict, Any, Type, Union, get_origin, get_args, List, cast, Optional
-from collections.abc import Hashable
-from core.types_registry import DefaultParams, NodeCategory, NodeInputs, NodeOutputs, NodeValidationError, NodeExecutionError, ParamMeta, ProgressCallback, ProgressEvent, ProgressState
 import logging
-from abc import abstractmethod
+from abc import ABC, abstractmethod
+from collections.abc import Hashable
+from typing import Any, cast, get_args, get_origin
+
 from pydantic import BaseModel, ValidationError, create_model
-from abc import ABC
+
+from core.types_registry import (
+    DefaultParams,
+    NodeCategory,
+    NodeExecutionError,
+    NodeInputs,
+    NodeOutputs,
+    NodeValidationError,
+    ParamMeta,
+    ProgressCallback,
+    ProgressEvent,
+    ProgressState,
+)
 
 logger = logging.getLogger(__name__)
 
+
 class Base(ABC):
+    # Default values for inputs, outputs, params_meta, default_params, and CATEGORY
     inputs: NodeInputs = {}
     outputs: NodeOutputs = {}
-    params_meta: List[ParamMeta] = []
+    params_meta: list[ParamMeta] = []
     default_params: DefaultParams = {}
+    required_keys: list[str] = []
     CATEGORY: NodeCategory = NodeCategory.BASE
 
-    def __init__(self, id: int, params: Dict[str, Any]):
+    def __init__(self, id: int, params: dict[str, Any]):
         self.id = id
         self.params = {**self.default_params, **(params or {})}
         self.inputs = dict(getattr(self, "inputs", {}))
         self.outputs = dict(getattr(self, "outputs", {}))
-        self._progress_callback: Optional[ProgressCallback] = None
-        self._is_stopped = False  
-        
+        self._progress_callback: ProgressCallback | None = None
+        self._is_stopped = False
+
     @staticmethod
-    def _normalize_to_list(value: Any) -> List[Any]:
+    def _normalize_to_list(value: Any) -> list[Any]:
         if value is None:
             return []
         if isinstance(value, list):
-            return cast(List[Any], value)
+            return cast(list[Any], value)
         return [value]
 
     @staticmethod
-    def _dedupe_preserve_order(items: List[Any]) -> List[Any]:
+    def _dedupe_preserve_order(items: list[Any]) -> list[Any]:
         if not items:
             return []
-        result: List[Any] = []
+        result: list[Any] = []
         seen_hashables: set[Hashable] = set()
         for item in items:
             if isinstance(item, Hashable):
@@ -46,12 +61,12 @@ class Base(ABC):
         return result
 
     @staticmethod
-    def _is_declared_list(expected_type: Union[Type[Any], None]) -> bool:
+    def _is_declared_list(expected_type: type[Any] | None) -> bool:
         if expected_type is None:
             return False
-        return get_origin(expected_type) in (list, List)
+        return get_origin(expected_type) in (list, list)
 
-    def collect_multi_input(self, key: str, inputs: Dict[str, Any]) -> List[Any]:
+    def collect_multi_input(self, key: str, inputs: dict[str, Any]) -> list[Any]:
         expected_type = self.inputs.get(key)
 
         # If not declared as List[...], just normalize the primary value to a list
@@ -59,7 +74,7 @@ class Base(ABC):
             return self._normalize_to_list(inputs.get(key))
 
         # Declared as List[...] – collect primary and suffixed values into a single list
-        collected: List[Any] = []
+        collected: list[Any] = []
         collected.extend(self._normalize_to_list(inputs.get(key)))
 
         i = 0
@@ -71,32 +86,32 @@ class Base(ABC):
             i += 1
 
         return self._dedupe_preserve_order(collected)
-    
-    def _type_allows_none(self, tp: Type[Any]) -> bool:
+
+    def _type_allows_none(self, tp: type[Any]) -> bool:
         # Works for Union[T, None] and T | None
         return type(None) in get_args(tp)
 
-    def _get_or_build_model(self, fields: Dict[str, Type[Any]]) -> Type[BaseModel]:
+    def _get_or_build_model(self, fields: dict[str, type[Any]]) -> type[BaseModel]:
         # All fields are required at the model level; None acceptance comes from the type
-        field_defs: Dict[str, Any] = {name: (tp, ...) for name, tp in fields.items()}
+        field_defs: dict[str, Any] = {name: (tp, ...) for name, tp in fields.items()}
         return create_model(
             f"Node{type(self).__name__}Model",
             __base__=BaseModel,
             **field_defs,
-    )
+        )
 
-    def validate_inputs(self, inputs: Dict[str, Any]) -> None:  
+    def validate_inputs(self, inputs: dict[str, Any]) -> None:
         """Validate inputs using Pydantic with support for multi-inputs and explicit None via type unions.
 
         Raises NodeValidationError on missing required inputs or type mismatches.
         """
 
-        normalized: Dict[str, Any] = dict(inputs)
+        normalized: dict[str, Any] = dict(inputs)
         for key, expected_type in self.inputs.items():
             if key in normalized:
                 continue
             origin = get_origin(expected_type)
-            if origin in (list, List):
+            if origin in (list, list):
                 # Collect any suffixed items and fold into a single list
                 collected = self.collect_multi_input(key, inputs)
                 if collected:
@@ -112,7 +127,7 @@ class Base(ABC):
         except ValidationError as ve:
             raise NodeValidationError(self.id, f"Input validation failed: {ve}") from ve
 
-    def _validate_outputs(self, outputs: Dict[str, Any]) -> None:
+    def _validate_outputs(self, outputs: dict[str, Any]) -> None:
         """Best-effort output validation using Pydantic. Only validates declared outputs.
 
         Intentionally lenient: fields are optional and only validated if present.
@@ -121,10 +136,14 @@ class Base(ABC):
             return
         try:
             if outputs:
-                present_fields: Dict[str, Type[Any]] = {k: self.outputs[k] for k in self.outputs.keys() if k in outputs}
+                present_fields: dict[str, type[Any]] = {
+                    k: self.outputs[k] for k in self.outputs.keys() if k in outputs
+                }
                 if present_fields:
                     output_model = self._get_or_build_model(present_fields)
-                    output_model.model_validate({k: outputs[k] for k in present_fields.keys()}, strict=False)
+                    output_model.model_validate(
+                        {k: outputs[k] for k in present_fields.keys()}, strict=False
+                    )
         except ValidationError as ve:
             raise TypeError(f"Output validation failed for node {self.id}: {ve}") from ve
 
@@ -139,7 +158,13 @@ class Base(ABC):
             return 1.0
         return value
 
-    def _emit_progress(self, state: ProgressState, progress: Optional[float] = None, text: str = "", meta: Optional[Dict[str, Any]] = None) -> None:
+    def _emit_progress(
+        self,
+        state: ProgressState,
+        progress: float | None = None,
+        text: str = "",
+        meta: dict[str, Any] | None = None,
+    ) -> None:
         if not self._progress_callback:
             return
         event: ProgressEvent = {
@@ -160,17 +185,19 @@ class Base(ABC):
 
     def force_stop(self):
         """Immediately terminate node execution and clean up resources. Idempotent."""
-        logger.debug(f"BaseNode: force_stop called for node {self.id}, already stopped: {self._is_stopped}")
+        logger.debug(
+            f"BaseNode: force_stop called for node {self.id}, already stopped: {self._is_stopped}"
+        )
         if self._is_stopped:
             return  # Idempotent
         self._is_stopped = True
-        # Base implementation: no-op, subclasses can override for specific kill logic
-        logger.debug(f"BaseNode: Force stopping node {self.id} (no-op in base class)")
         self._emit_progress(ProgressState.STOPPED, 1.0, "stopped")
 
-    async def execute(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
+    async def execute(self, inputs: dict[str, Any]) -> dict[str, Any]:
         """Template method for execution with uniform error handling and progress lifecycle."""
-        self.validate_inputs(inputs)  # Raises NodeValidationError if invalid (missing or type issues)
+        self.validate_inputs(
+            inputs
+        )  # Raises NodeValidationError if invalid (missing or type issues)
         self._emit_progress(ProgressState.START, 0.0, "start")
         try:
             result = await self._execute_impl(inputs)
@@ -182,6 +209,6 @@ class Base(ABC):
             raise NodeExecutionError(self.id, "Execution failed", original_exc=e) from e
 
     @abstractmethod
-    async def _execute_impl(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
+    async def _execute_impl(self, inputs: dict[str, Any]) -> dict[str, Any]:
         """Core execution logic - implement in subclasses. Do not add try/except here; let base handle errors."""
-        raise NotImplementedError("Subclasses must implement _execute_impl()") 
+        raise NotImplementedError("Subclasses must implement _execute_impl()")

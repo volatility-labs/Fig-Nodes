@@ -43,7 +43,6 @@ class SaveOutput(Base):
     ]
 
     CATEGORY = "io"
-    ui_module = "io/SaveOutputNodeUI"
 
     def _serialize_value(self, value: Any) -> Any:
         """Recursively serialize a value to JSON-compatible format with type preservation."""

@@ -1,9 +1,9 @@
-from typing import Dict, Any
+from typing import Any
 
-from nodes.base.base_node import Base
-from core.types_registry import get_type
-from services.tools.registry import register_credential_provider, get_tool_schema
 from core.api_key_vault import APIKeyVault
+from core.types_registry import NodeCategory, NodeInputs, get_type
+from nodes.base.base_node import Base
+from services.tools.registry import get_tool_schema, register_credential_provider
 
 
 class WebSearchTool(Base):
@@ -38,14 +38,24 @@ class WebSearchTool(Base):
     params_meta = [
         {"name": "provider", "type": "combo", "default": "tavily", "options": ["tavily"]},
         {"name": "default_k", "type": "number", "default": 5},
-        {"name": "time_range", "type": "combo", "default": "month", "options": ["day", "week", "month", "year"]},
-        {"name": "topic", "type": "combo", "default": "general", "options": ["general", "news", "finance"]},
+        {
+            "name": "time_range",
+            "type": "combo",
+            "default": "month",
+            "options": ["day", "week", "month", "year"],
+        },
+        {
+            "name": "topic",
+            "type": "combo",
+            "default": "general",
+            "options": ["general", "news", "finance"],
+        },
         {"name": "lang", "type": "text", "default": "en"},
     ]
 
-    CATEGORY = "llm"
+    CATEGORY = NodeCategory.LLM
 
-    async def _execute_impl(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
+    async def _execute_impl(self, inputs: NodeInputs) -> dict[str, Any]:
         vault = APIKeyVault()
         api_key = vault.get("TAVILY_API_KEY")
         if not api_key:
@@ -65,7 +75,10 @@ class WebSearchTool(Base):
                 params = fn.get("parameters", {})
                 props = params.get("properties", {})
                 if "k" in props:
-                    props["k"]["default"] = int(self.params.get("default_k", 5) or 5)
+                    default_k = self.params.get("default_k", 5)
+                    props["k"]["default"] = (
+                        int(default_k) if isinstance(default_k, (int, float)) else 5
+                    )
                 if "time_range" in props:
                     tr = self.params.get("time_range") or "month"
                     if tr in ["day", "week", "month", "year"]:
@@ -81,5 +94,3 @@ class WebSearchTool(Base):
                 pass
 
         return {"tool": schema}
-
-

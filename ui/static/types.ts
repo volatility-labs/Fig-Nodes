@@ -53,11 +53,3 @@ export function getTypeColor(typeInfo: TypeInfo): string {
     if (TYPE_COLOR_OVERRIDES[typeString]) return TYPE_COLOR_OVERRIDES[typeString];
     return hslFromHash(hashString(typeString.toLowerCase()));
 }
-
-export function registerTypeColorOverride(typeString: string, color: string) {
-    TYPE_COLOR_OVERRIDES[typeString] = color;
-}
-
-export function getTypeColorOverrides(): { [type: string]: string } {
-    return { ...TYPE_COLOR_OVERRIDES };
-}

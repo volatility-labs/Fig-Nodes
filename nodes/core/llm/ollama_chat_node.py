@@ -7,7 +7,7 @@ import httpx
 from nodes.base.base_node import Base
 import subprocess as sp
 
-from core.types_registry import LLMToolSpec, LLMToolSpecList, get_type
+from core.types_registry import LLMToolSpec, LLMToolSpecList, NodeCategory, get_type
 from services.tools.registry import get_tool_handler, get_all_credential_providers
 import logging
 
@@ -60,7 +60,7 @@ class OllamaChat(Base):
         "eval_duration",
     )
 
-    CATEGORY = 'data_source'
+    CATEGORY = NodeCategory.LLM
 
     default_params = {
         "options": "",  # JSON string of options, passthrough (hidden from UI)
