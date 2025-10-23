@@ -11,6 +11,20 @@ The VBP Level Filter is part of the Fig Nodes platform. Ensure you have:
 - Fig Nodes installed and configured
 - Polygon API key configured in your environment
 
+### Getting the Node
+
+To use the VBP Level Filter, pull the branch containing the implementation:
+
+```bash
+git fetch origin
+git checkout feature/vbp-level-filter-docs
+```
+
+The node files are already included:
+- Backend: `nodes/core/market/filters/vbp_level_filter_node.py`
+- Frontend: `ui/static/nodes/market/VBPLevelFilterNodeUI.ts`
+- Registry: Automatically registered via the node registry system
+
 ## Node Information
 
 ### Node Class
