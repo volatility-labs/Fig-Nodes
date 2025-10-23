@@ -349,6 +349,11 @@ class VBPLevelFilter(BaseIndicatorFilter):
         else:
             distance_to_resistance = float('inf')
         
+        logger.info(f"VBP calculation: current_price={current_price:.2f}, closest_support={closest_support:.2f}, "
+                   f"closest_resistance={closest_resistance:.2f}, distance_to_support={distance_to_support:.2f}%, "
+                   f"distance_to_resistance={distance_to_resistance:.2f}%, num_levels={len(unique_levels)}, "
+                   f"has_resistance_above={has_resistance_above}")
+        
         return IndicatorResult(
             indicator_type=IndicatorType.VBP,
             timestamp=ohlcv_data[-1]['timestamp'],
@@ -367,6 +372,7 @@ class VBPLevelFilter(BaseIndicatorFilter):
     def _should_pass_filter(self, indicator_result: IndicatorResult) -> bool:
         """Pass filter if distance to support and resistance meet criteria."""
         if indicator_result.error:
+            logger.info(f"VBP filter FAILED: {indicator_result.error}")
             return False
         
         lines = indicator_result.values.lines
@@ -376,6 +382,7 @@ class VBPLevelFilter(BaseIndicatorFilter):
         has_resistance_above = lines.get("has_resistance_above", True)
         
         if not np.isfinite(distance_to_support):
+            logger.info(f"VBP filter FAILED: distance_to_support is not finite")
             return False
         
         max_distance_support = self.params["max_distance_to_support"]
@@ -383,19 +390,25 @@ class VBPLevelFilter(BaseIndicatorFilter):
         
         # Check if within max distance to support
         if distance_to_support > max_distance_support:
+            logger.info(f"VBP filter FAILED: distance_to_support={distance_to_support:.2f}% > max={max_distance_support:.2f}%")
             return False
         
         # If no resistance levels above, automatically pass (price is above all levels)
         if not has_resistance_above:
+            logger.info(f"VBP filter PASSED: No resistance levels above (above all levels)")
             return True
         
         # Check if at least min distance to resistance (only if resistance exists)
         if not np.isfinite(distance_to_resistance):
+            logger.info(f"VBP filter FAILED: distance_to_resistance is not finite")
             return False
         
         if distance_to_resistance < min_distance_resistance:
+            logger.info(f"VBP filter FAILED: distance_to_resistance={distance_to_resistance:.2f}% < min={min_distance_resistance:.2f}%")
             return False
         
+        logger.info(f"VBP filter PASSED: distance_to_support={distance_to_support:.2f}% <= max={max_distance_support:.2f}%, "
+                   f"distance_to_resistance={distance_to_resistance:.2f}% >= min={min_distance_resistance:.2f}%")
         return True
     
     async def _execute_impl(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
