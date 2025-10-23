@@ -48,8 +48,6 @@ class OrbFilter(BaseIndicatorFilter):
     Filters assets based on Opening Range Breakout (ORB) criteria including relative volume and direction.
     """
 
-    ui_module = "market/OrbFilterNodeUI"
-
     inputs = {
         "ohlcv_bundle": get_type("OHLCVBundle"), 
     }

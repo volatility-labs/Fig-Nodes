@@ -1,7 +1,7 @@
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List
 
 from nodes.base.base_node import Base
-from core.types_registry import get_type
+from core.types_registry import LLMChatMessage, NodeCategory, get_type
 
 
 class LLMMessagesBuilder(Base):
@@ -33,11 +33,10 @@ class LLMMessagesBuilder(Base):
         {"name": "drop_empty", "type": "combo", "default": True, "options": [True, False]},
     ]
 
-    CATEGORY = "llm"
-    ui_module = "llm/LLMMessagesBuilderNodeUI"
+    CATEGORY = NodeCategory.LLM
 
     async def _execute_impl(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
-        merged = []
+        merged: List[LLMChatMessage] = []
         for i in range(10):
             msg_list = inputs.get(f"message_{i}")
             if msg_list:
@@ -46,7 +45,7 @@ class LLMMessagesBuilder(Base):
         # Apply filtering based on params
         messages = merged
         if self.params.get("drop_empty", True):
-            messages = [m for m in messages if m and (m.get("content") or "").strip()]
+            messages = [m for m in messages if m and str(m.get("content") or "").strip()]
 
         return {"messages": messages}
 

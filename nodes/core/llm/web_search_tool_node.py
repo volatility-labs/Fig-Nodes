@@ -2,7 +2,6 @@ from typing import Dict, Any
 
 from nodes.base.base_node import Base
 from core.types_registry import get_type
-from services.tools.web_search import WebSearchTool
 from services.tools.registry import register_credential_provider, get_tool_schema
 from core.api_key_vault import APIKeyVault
 

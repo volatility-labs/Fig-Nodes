@@ -2,8 +2,8 @@ import asyncio
 import pytest
 from unittest.mock import Mock, AsyncMock, patch
 from fastapi.testclient import TestClient
-import ui.server as server_module
-from ui.queue import ExecutionQueue, ExecutionJob, JobState
+import server.server as server_module
+from server.queue import ExecutionQueue, ExecutionJob, JobState
 from core.graph_executor import GraphExecutor
 
 
@@ -130,8 +130,8 @@ class TestGraphExecutionStopping:
     @pytest.mark.asyncio
     async def test_worker_skips_cancelled_job_before_execution(self, mock_executor, mock_websocket):
         """Test that worker skips jobs cancelled before execution starts."""
-        with patch('ui.server.GraphExecutor', return_value=mock_executor), \
-             patch('ui.server.NODE_REGISTRY', {}):
+        with patch('server.server.GraphExecutor', return_value=mock_executor), \
+             patch('server.server.NODE_REGISTRY', {}):
 
             # Enqueue a job, then cancel it before worker picks it up
             queue = ExecutionQueue()
@@ -152,8 +152,8 @@ class TestGraphExecutionStopping:
     @pytest.mark.asyncio
     async def test_worker_cancels_during_execution(self, mock_executor, mock_websocket):
         """Test cancellation during execution."""
-        with patch('ui.server.GraphExecutor', return_value=mock_executor), \
-             patch('ui.server.NODE_REGISTRY', {}):
+        with patch('server.server.GraphExecutor', return_value=mock_executor), \
+             patch('server.server.NODE_REGISTRY', {}):
 
             job = ExecutionJob(1, mock_websocket, {"nodes": [], "links": []})
 

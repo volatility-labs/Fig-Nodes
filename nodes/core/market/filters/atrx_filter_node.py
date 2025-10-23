@@ -8,7 +8,6 @@ from core.types_registry import AssetSymbol, OHLCVBar, IndicatorResult, Indicato
 logger = logging.getLogger(__name__)
 
 class AtrXFilter(BaseIndicatorFilter):
-    ui_module = "market/AtrXFilterNodeUI"
     """
     Filters OHLCV bundle based on ATRX indicator thresholds.
     """

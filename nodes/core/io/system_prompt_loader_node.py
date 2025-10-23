@@ -19,9 +19,6 @@ class SystemPromptLoader(Base):
     # Keep visible in IO category
     CATEGORY = 'io'
 
-    # Custom UI component for file upload & preview
-    ui_module = "llm/SystemPromptLoaderNodeUI"
-
     async def _execute_impl(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
         content = self.params.get("content") or ""
         if not isinstance(content, str):

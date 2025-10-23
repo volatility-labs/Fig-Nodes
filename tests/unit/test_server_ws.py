@@ -6,7 +6,7 @@ import core.graph_executor as graph_executor_module
 
 from fastapi.testclient import TestClient
 import main as main_module
-import ui.server as server_module
+import server.server as server_module
 import time
 
 class _StreamingExecDummy:

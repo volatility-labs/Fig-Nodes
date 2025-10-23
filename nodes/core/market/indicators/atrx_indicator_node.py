@@ -8,7 +8,6 @@ from core.types_registry import get_type, IndicatorResult, IndicatorType, Indica
 logger = logging.getLogger(__name__)
 
 class AtrXIndicator(BaseIndicator):
-    ui_module = "market/AtrXIndicatorNodeUI"
     """
     Computes the ATRX indicator for a single asset's OHLCV data.
     A = ATR% = ATR / Last Done Price

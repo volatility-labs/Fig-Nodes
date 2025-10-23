@@ -23,12 +23,12 @@ class AssetSymbolInput(Base):
 
     async def _execute_impl(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
         # Coerce params to enums and normalized cases
-        ticker_value = (self.params.get("ticker") or "").upper()
+        ticker_value = str(self.params.get("ticker") or "").upper()
         asset_class_param = self.params.get("asset_class", AssetClass.CRYPTO.name)
         instrument_type_param = self.params.get("instrument_type", InstrumentType.SPOT.name)
         quote_currency_value = (self.params.get("quote_currency") or None)
         if quote_currency_value:
-            quote_currency_value = quote_currency_value.upper()
+            quote_currency_value = str(quote_currency_value).upper()
 
         # Accept both enum instance and name string for asset_class
         if isinstance(asset_class_param, AssetClass):
@@ -51,7 +51,7 @@ class AssetSymbolInput(Base):
         symbol = AssetSymbol(
             ticker=ticker_value,
             asset_class=asset_class_value,
-            quote_currency=quote_currency_value,
+            quote_currency=str(quote_currency_value) if quote_currency_value else None,
             instrument_type=instrument_type_value,
         )
         return {"symbol": symbol}

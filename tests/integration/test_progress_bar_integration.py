@@ -420,7 +420,7 @@ async def test_websocket_progress_communication():
         }))
 
     # Mock the GraphExecutor creation and execution
-    with patch('ui.server.GraphExecutor') as mock_graph_executor_class:
+    with patch('server.server.GraphExecutor') as mock_graph_executor_class:
         mock_executor_instance = MagicMock()
         mock_executor_instance.is_streaming = False
         mock_executor_instance.set_progress_callback = mock_progress_callback

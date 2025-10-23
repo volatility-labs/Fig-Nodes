@@ -9,7 +9,8 @@
     "format": "prettier --write .",
     "dev": "vite",
     "build": "vite build",
-    "serve": "vite preview"
+    "serve": "vite preview",
+    "generate-types": "openapi-typescript http://localhost:8000/openapi.json -o types/api.ts"
   },
   "keywords": [],
   "author": "",
@@ -28,6 +29,7 @@
     "eslint": "^8.57.0",
     "http-proxy-middleware": "^3.0.0",
     "jsdom": "^26.1.0",
+    "openapi-typescript": "^6.0.0",
     "prettier": "^3.3.3",
     "typescript": "^5.8.3",
     "vite": "^5.0.0",

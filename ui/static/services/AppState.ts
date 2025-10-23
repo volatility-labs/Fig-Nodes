@@ -63,7 +63,7 @@ export class AppState {
 
     async getNodeMetadata(): Promise<any> {
         if (!this.nodeMetadata) {
-            const response = await fetch('/nodes');
+            const response = await fetch('/api/v1/nodes');
             if (!response.ok) throw new Error('Failed to fetch node metadata');
             this.nodeMetadata = (await response.json()).nodes;
         }
@@ -84,7 +84,7 @@ export class AppState {
     }
 
     async checkMissingKeys(requiredKeys: string[]): Promise<string[]> {
-        const response = await fetch('/api_keys');
+        const response = await fetch('/api/v1/api_keys');
         if (!response.ok) throw new Error('Failed to fetch current keys');
         const currentKeys = (await response.json()).keys;
         return requiredKeys.filter(key => !currentKeys[key] || currentKeys[key] === '');

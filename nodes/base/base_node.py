@@ -1,6 +1,6 @@
-from typing import Dict, Any, Type, Union, get_origin, get_args, List, cast, Callable
+from typing import Dict, Any, Type, Union, get_origin, get_args, List, cast, Optional
 from collections.abc import Hashable
-from core.types_registry import NodeValidationError, NodeExecutionError
+from core.types_registry import DefaultParams, NodeCategory, NodeInputs, NodeOutputs, NodeValidationError, NodeExecutionError, ParamMeta, ProgressCallback, ProgressEvent, ProgressState
 import logging
 from abc import abstractmethod
 from pydantic import BaseModel, ValidationError, create_model
@@ -9,17 +9,18 @@ from abc import ABC
 logger = logging.getLogger(__name__)
 
 class Base(ABC):
-    inputs = {}
-    outputs = {}
-    params_meta = []
-    default_params: Dict[str, Any] = {}
+    inputs: NodeInputs = {}
+    outputs: NodeOutputs = {}
+    params_meta: List[ParamMeta] = []
+    default_params: DefaultParams = {}
+    CATEGORY: NodeCategory = NodeCategory.BASE
 
     def __init__(self, id: int, params: Dict[str, Any]):
         self.id = id
         self.params = {**self.default_params, **(params or {})}
         self.inputs = dict(getattr(self, "inputs", {}))
         self.outputs = dict(getattr(self, "outputs", {}))
-        self._progress_callback: Union[Callable[[int, float, str], None], None] = None
+        self._progress_callback: Optional[ProgressCallback] = None
         self._is_stopped = False  
         
     @staticmethod
@@ -127,14 +128,35 @@ class Base(ABC):
         except ValidationError as ve:
             raise TypeError(f"Output validation failed for node {self.id}: {ve}") from ve
 
-    def set_progress_callback(self, callback: Callable[[int, float, str], None]) -> None:
+    def set_progress_callback(self, callback: ProgressCallback) -> None:
         """Set a callback function to report progress during execution."""
         self._progress_callback = callback
 
+    def _clamp_progress(self, value: float) -> float:
+        if value < 0.0:
+            return 0.0
+        if value > 1.0:
+            return 1.0
+        return value
+
+    def _emit_progress(self, state: ProgressState, progress: Optional[float] = None, text: str = "", meta: Optional[Dict[str, Any]] = None) -> None:
+        if not self._progress_callback:
+            return
+        event: ProgressEvent = {
+            "node_id": self.id,
+            "state": state,
+        }
+        if progress is not None:
+            event["progress"] = self._clamp_progress(progress)
+        if text:
+            event["text"] = text
+        if meta:
+            event["meta"] = meta
+        self._progress_callback(event)
+
     def report_progress(self, progress: float, text: str = ""):
-        """Report progress to the execution system."""
-        if self._progress_callback:
-            self._progress_callback(self.id, progress, text)
+        """Convenience helper for subclasses to report an UPDATE event."""
+        self._emit_progress(ProgressState.UPDATE, progress, text)
 
     def force_stop(self):
         """Immediately terminate node execution and clean up resources. Idempotent."""
@@ -144,18 +166,19 @@ class Base(ABC):
         self._is_stopped = True
         # Base implementation: no-op, subclasses can override for specific kill logic
         logger.debug(f"BaseNode: Force stopping node {self.id} (no-op in base class)")
+        self._emit_progress(ProgressState.STOPPED, 1.0, "stopped")
 
     async def execute(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
-        """Template method for execution with uniform error handling."""
+        """Template method for execution with uniform error handling and progress lifecycle."""
         self.validate_inputs(inputs)  # Raises NodeValidationError if invalid (missing or type issues)
-        
+        self._emit_progress(ProgressState.START, 0.0, "start")
         try:
             result = await self._execute_impl(inputs)
-            # Validate outputs (lenient)
             self._validate_outputs(result)
+            self._emit_progress(ProgressState.DONE, 1.0, "done")
             return result
         except Exception as e:
-            logger.error(f"Execution failed in node {self.id}: {str(e)}", exc_info=True)
+            self._emit_progress(ProgressState.ERROR, 1.0, f"error: {type(e).__name__}: {str(e)}")
             raise NodeExecutionError(self.id, "Execution failed", original_exc=e) from e
 
     @abstractmethod

@@ -10,6 +10,9 @@ class Streaming(Base, ABC):
     """
     Base class for streaming nodes that produce continuous outputs.
     
+    NOTE: This class is currently not being used in the codebase and will undergo
+    significant changes in a future refactor. Do not rely on its current API.
+    
     Subclasses must implement:
     - _start_impl(self, inputs) -> AsyncGenerator[Dict[str, Any], None]  # New: Core streaming logic
     - stop(self)

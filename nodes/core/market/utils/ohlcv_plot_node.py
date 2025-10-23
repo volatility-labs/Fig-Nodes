@@ -81,7 +81,6 @@ class OHLCVPlot(Base):
 
     # UI metadata
     CATEGORY = "Market"
-    ui_module = "market/OHLCVPlotNodeUI"
     default_params = {
         "max_symbols": 12,
         "lookback_bars": None,  # if set, clip to last N bars

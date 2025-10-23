@@ -59,7 +59,7 @@ export class APIKeyManager {
     }
 
     async checkMissingKeys(requiredKeys: string[]): Promise<string[]> {
-        const response = await fetch('/api_keys');
+        const response = await fetch('/api/v1/api_keys');
         if (!response.ok) throw new Error('Failed to fetch current keys');
         const currentKeys = (await response.json()).keys;
         return requiredKeys.filter(key => !currentKeys[key] || currentKeys[key] === '');
@@ -102,7 +102,7 @@ export class APIKeyManager {
     private async fetchKeyMetadata(): Promise<{ [key: string]: KeyMetadata }> {
         let keyMeta: { [key: string]: KeyMetadata } = {};
         try {
-            const metaResp = await fetch('/api_keys/meta');
+            const metaResp = await fetch('/api/v1/api_keys/meta');
             if (metaResp.ok) {
                 keyMeta = (await metaResp.json()).meta || {};
             }
@@ -119,7 +119,7 @@ export class APIKeyManager {
     }
 
     private async getNodeMetadata(): Promise<any> {
-        const response = await fetch('/nodes');
+        const response = await fetch('/api/v1/nodes');
         if (!response.ok) throw new Error('Failed to fetch node metadata');
         return (await response.json()).nodes;
     }
@@ -244,7 +244,7 @@ export class APIKeyManager {
             e.preventDefault();
             const formData = new FormData(e.target as HTMLFormElement);
             for (const [key, value] of formData.entries()) {
-                await fetch('/api_keys', {
+                await fetch('/api/v1/api_keys', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ key_name: key, value: value as string })
@@ -299,7 +299,7 @@ export class APIKeyManager {
             }
 
             try {
-                await fetch('/api_keys', {
+                await fetch('/api/v1/api_keys', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ key_name: keyName, value: keyValue })

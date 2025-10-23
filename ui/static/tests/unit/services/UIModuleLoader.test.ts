@@ -47,32 +47,34 @@ describe('UIModuleLoader', () => {
 
     });
 
-    test('loadUIModule returns cached module', async () => {
+    test('loadUIModuleByPath returns cached module', async () => {
         const mockModule = { default: class MockNode { } };
-        (uiModuleLoader as any).uiModules['test/module'] = mockModule.default;
+        (uiModuleLoader as any).uiModules['TestNodeNodeUI'] = mockModule.default;
 
-        const result = await uiModuleLoader.loadUIModule('test/module');
+        const result = await (uiModuleLoader as any).loadUIModuleByPath('TestNodeNodeUI');
 
         expect(result).toBe(mockModule.default);
     });
 
-    test('loadUIModule loads module dynamically', async () => {
-        // Test with a mocked static module
-        const result = await uiModuleLoader.loadUIModule('TextInput');
+    test('loadUIModuleByPath searches across folders', async () => {
+        // Mock the glob to return a matching file from any folder
+        const mockModule = { default: class MockTextInputNodeUI { } };
+        vi.mock('../../../nodes/io/TextInputNodeUI', () => mockModule);
+
+        const result = await (uiModuleLoader as any).loadUIModuleByPath('TextInputNodeUI');
 
         expect(result).toBeDefined();
         expect(typeof result).toBe('function');
     });
 
-    test('loadUIModule falls back to BaseCustomNode on import error', async () => {
+    test('loadUIModuleByPath falls back to BaseCustomNode on import error', async () => {
         const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => { });
 
-        const result = await uiModuleLoader.loadUIModule('nonexistent/module');
+        const result = await (uiModuleLoader as any).loadUIModuleByPath('NonexistentNodeUI');
 
         expect(result).toBe(BaseCustomNode);
         expect(consoleSpy).toHaveBeenCalledWith(
-            'Failed to load UI module nonexistent/module:',
-            expect.any(Error)
+            '[UIModuleLoader] No UI module found for path: NonexistentNodeUI'
         );
 
         consoleSpy.mockRestore();
@@ -90,8 +92,7 @@ describe('UIModuleLoader', () => {
                 category: 'Custom',
                 inputs: {},
                 outputs: {},
-                params: [],
-                uiModule: 'custom/CustomNodeUI'
+                params: []
             }
         };
 
@@ -100,13 +101,9 @@ describe('UIModuleLoader', () => {
             json: async () => ({ nodes: mockMetadata })
         });
 
-        // Mock UI module loading
-        const mockUIModule = class MockCustomNode { };
-        vi.spyOn(uiModuleLoader, 'loadUIModule').mockResolvedValue(mockUIModule);
-
         const result = await uiModuleLoader.registerNodes();
 
-        expect(mockFetch).toHaveBeenCalledWith('/nodes');
+        expect(mockFetch).toHaveBeenCalledWith('/api/v1/nodes');
         expect((globalThis as any).LiteGraph.registerNodeType).toHaveBeenCalledTimes(2);
         expect(result.allItems).toHaveLength(2);
         expect(result.categorizedNodes.Test).toEqual(['TestNode']);
@@ -144,7 +141,7 @@ describe('UIModuleLoader', () => {
 
         const result = await uiModuleLoader.registerNodes();
 
-        expect(result.categorizedNodes.Utilities).toEqual(['UncategorizedNode']);
+        expect(result.categorizedNodes.base).toEqual(['UncategorizedNode']);
     });
 
     test('registerNodes creates custom class with UI module', async () => {
@@ -153,8 +150,7 @@ describe('UIModuleLoader', () => {
                 category: 'Test',
                 inputs: {},
                 outputs: {},
-                params: [],
-                uiModule: 'custom/CustomNodeUI'
+                params: []
             }
         };
 
@@ -163,12 +159,8 @@ describe('UIModuleLoader', () => {
             json: async () => ({ nodes: mockMetadata })
         });
 
-        const mockUIModule = class MockCustomNode { };
-        vi.spyOn(uiModuleLoader, 'loadUIModule').mockResolvedValue(mockUIModule);
-
         await uiModuleLoader.registerNodes();
 
-        expect(uiModuleLoader.loadUIModule).toHaveBeenCalledWith('custom/CustomNodeUI');
         expect((globalThis as any).LiteGraph.registerNodeType).toHaveBeenCalledWith(
             'CustomNode',
             expect.any(Function)
@@ -181,8 +173,7 @@ describe('UIModuleLoader', () => {
                 category: 'Test',
                 inputs: {},
                 outputs: {},
-                params: [],
-                uiModule: 'custom/CustomNodeUI'
+                params: []
             }
         };
 
@@ -191,13 +182,11 @@ describe('UIModuleLoader', () => {
             json: async () => ({ nodes: mockMetadata })
         });
 
-        vi.spyOn(uiModuleLoader, 'loadUIModule').mockResolvedValue(null);
-
         const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => { });
 
         await uiModuleLoader.registerNodes();
 
-        expect(consoleSpy).toHaveBeenCalledWith('UI module custom/CustomNodeUI not found');
+        expect(consoleSpy).toHaveBeenCalledWith('[UIModuleLoader] No UI module found for path: CustomNodeNodeUI');
         expect((globalThis as any).LiteGraph.registerNodeType).toHaveBeenCalledWith(
             'CustomNode',
             expect.any(Function)
@@ -265,16 +254,39 @@ describe('UIModuleLoader', () => {
         expect(result.allItems).toHaveLength(3);
     });
 
-    test('initializeStaticModules loads static UI modules', async () => {
-        // Create new instance to trigger initializeStaticModules
+    test('registerNodes loads UI modules on demand', async () => {
+        const mockMetadata = {
+            'TextInput': {
+                category: 'io',
+                inputs: {},
+                outputs: {},
+                params: []
+            },
+            'Logging': {
+                category: 'io',
+                inputs: {},
+                outputs: {},
+                params: []
+            },
+            'OllamaChat': {
+                category: 'llm',
+                inputs: {},
+                outputs: {},
+                params: []
+            }
+        };
+
+        mockFetch.mockResolvedValue({
+            ok: true,
+            json: async () => ({ nodes: mockMetadata })
+        });
+
         const loader = new UIModuleLoader(null as any);
+        await loader.registerNodes();
 
-        // Wait for static modules to load
-        await new Promise(resolve => setTimeout(resolve, 10));
-
-        // Verify that static modules are loaded (they should be cached)
-        expect((loader as any).uiModules['TextInput']).toBeDefined();
-        expect((loader as any).uiModules['Logging']).toBeDefined();
-        expect((loader as any).uiModules['OllamaChat']).toBeDefined();
+        // Verify that modules are loaded (they should be cached)
+        expect((loader as any).uiModules['TextInputNodeUI']).toBeDefined();
+        expect((loader as any).uiModules['LoggingNodeUI']).toBeDefined();
+        expect((loader as any).uiModules['OllamaChatNodeUI']).toBeDefined();
     });
 });

@@ -1,8 +1,11 @@
-from typing import List, Dict, Any, Type, Optional, AsyncGenerator, TypedDict, Literal, Union, NotRequired
+from typing import List, Dict, Any, Required, Type, Optional, AsyncGenerator, TypeAlias, TypedDict, Literal, Union, NotRequired, Callable, TYPE_CHECKING
 from dataclasses import dataclass, field
 from enum import Enum, auto
 
-# Core enums for shared concepts
+# Type checking only import for circular dependency avoidance
+if TYPE_CHECKING:
+    from nodes.base.base_node import Base
+
 class AssetClass(Enum):
     CRYPTO = auto()
     STOCKS = auto()
@@ -34,8 +37,15 @@ class IndicatorType(Enum):
     ORB = auto()  # Custom Indicator
     LOD = auto()  # Low of Day Distance
 
-# Structured dict types with fixed fields
+# Progress/lifecycle enums for node execution
+class ProgressState(str, Enum):
+    START = "start"
+    UPDATE = "update"
+    DONE = "done"
+    ERROR = "error"
+    STOPPED = "stopped"
 
+# Structured dict types with fixed fields
 class LLMToolFunction(TypedDict, total=False):
     name: str
     description: Optional[str]
@@ -56,7 +66,6 @@ class LLMToolCall(TypedDict, total=False):
 class LLMChatMessage(TypedDict, total=True):
     role: Literal["system", "user", "assistant", "tool"]
     content: Union[str, Dict[str, Any]]
-    # Optional fields must be marked NotRequired so validators don't require their presence
     thinking: NotRequired[str]
     images: NotRequired[List[str]]
     tool_calls: NotRequired[List[LLMToolCall]]
@@ -87,6 +96,44 @@ class OHLCVBar(TypedDict, total=True):
     low: float
     close: float
     volume: float
+
+# Base node based types
+# Scalar and value types accepted for parameter defaults/options
+ParamScalar = Union[str, int, float, bool]
+ParamValue = Union[ParamScalar, None, List[ParamScalar], Dict[str, Any]]
+
+# UI param type tags used by the frontend
+ParamType = Literal['text', 'textarea', 'number', 'integer', 'int', 'float', 'combo']
+
+class ParamMeta(TypedDict, total=False):
+    name: Required[str]
+    type: NotRequired[ParamType]
+    default: NotRequired[ParamValue]
+    options: NotRequired[List[ParamScalar]]
+    min: NotRequired[float]
+    max: NotRequired[float]
+    step: NotRequired[float]
+    precision: NotRequired[int]
+    label: NotRequired[str]
+    unit: NotRequired[str]
+    description: NotRequired[str]
+
+DefaultParams: TypeAlias = Dict[str, ParamValue]
+NodeInputs:TypeAlias = Dict[str, Any]
+NodeOutputs:TypeAlias = Dict[str, Any]
+
+# Type alias for the node registry
+if TYPE_CHECKING:
+    NodeRegistry: TypeAlias = Dict[str, Type[Base]]
+else:
+    NodeRegistry: TypeAlias = Dict[str, Type[Any]]
+
+class NodeCategory(str, Enum):
+    IO = "io"
+    LLM = "llm"
+    MARKET = "market"
+    BASE = "base"
+    CORE = "core"
 
 @dataclass(frozen=True)
 class IndicatorValue:
@@ -153,19 +200,90 @@ class AssetSymbol:
 
     def __hash__(self):
         return hash((self.ticker, self.asset_class, self.quote_currency, self.instrument_type))
+    
+# Types for the graph serialisation from LiteGraph.asSerialisable().
+class SerialisedLink(TypedDict, total=False):
+    """Object-based link used by LiteGraph.asSerialisable()."""
+    id: Required[int]
+    origin_id: Required[int]
+    origin_slot: Required[int]
+    target_id: Required[int]
+    target_slot: Required[int]
+    type: Required[Any]
+    parentId: NotRequired[int]
+
+class SerialisedNodeInput(TypedDict, total=False):
+    name: str
+    type: Any
+    linkIds: NotRequired[List[int]]
+
+class SerialisedNodeOutput(TypedDict, total=False):
+    name: str
+    type: Any
+    linkIds: NotRequired[List[int]]
+
+class SerialisedNode(TypedDict, total=False):
+    id: Required[int]
+    type: Required[str]
+    title: NotRequired[str]
+    pos: NotRequired[List[float]]
+    size: NotRequired[List[float]]
+    flags: NotRequired[Dict[str, Any]]
+    order: NotRequired[int]
+    mode: NotRequired[int]
+    inputs: NotRequired[List[SerialisedNodeInput]]
+    outputs: NotRequired[List[SerialisedNodeOutput]]
+    properties: NotRequired[Dict[str, Any]]
+    shape: NotRequired[Any]
+    boxcolor: NotRequired[str]
+    color: NotRequired[str]
+    bgcolor: NotRequired[str]
+    showAdvanced: NotRequired[bool]
+    widgets_values: NotRequired[List[Any]]
+
+class SerialisedGraphState(TypedDict, total=True):
+    lastNodeId: int
+    lastLinkId: int
+    lastGroupId: int
+    lastRerouteId: int
+
+# Main graph serialisation type that transcribes from the LiteGraph.asSerialisable() schema.
+class SerialisableGraph(TypedDict, total=False):
+    id: str
+    revision: int
+    version: int  # 0 | 1
+    state: SerialisedGraphState
+    nodes: List[SerialisedNode]
+    links: NotRequired[List[SerialisedLink]]
+    floatingLinks: NotRequired[List[SerialisedLink]]
+    reroutes: NotRequired[List[Dict[str, Any]]]
+    groups: NotRequired[List[Dict[str, Any]]]
+    extra: NotRequired[Dict[str, Any]]
+    definitions: NotRequired[Dict[str, Any]]
+
 
 # Type aliases for complex/composed types
-AssetSymbolList = List[AssetSymbol]
-IndicatorDict = Dict[str, float]
-AnyList = List[Any]
-ConfigDict = Dict[str, Any]
-OHLCV = List[OHLCVBar]
-OHLCVBundle = Dict[AssetSymbol, List[OHLCVBar]]
-OHLCVStream = AsyncGenerator[Dict[AssetSymbol, List[OHLCVBar]], None]
-LLMChatMessageList = List[LLMChatMessage]
-LLMToolSpecList = List[LLMToolSpec]
-LLMToolHistory = List[LLMToolHistoryItem]
-LLMThinkingHistory = List[LLMThinkingHistoryItem]
+AssetSymbolList: TypeAlias = List[AssetSymbol]
+IndicatorDict: TypeAlias = Dict[str, float]
+AnyList: TypeAlias = List[Any]
+ConfigDict: TypeAlias = Dict[str, Any]
+OHLCV: TypeAlias = List[OHLCVBar]
+OHLCVBundle: TypeAlias = Dict[AssetSymbol, List[OHLCVBar]]
+OHLCVStream: TypeAlias = AsyncGenerator[Dict[AssetSymbol, List[OHLCVBar]], None]
+LLMChatMessageList: TypeAlias = List[LLMChatMessage]
+LLMToolSpecList: TypeAlias = List[LLMToolSpec]
+LLMToolHistory: TypeAlias = List[LLMToolHistoryItem]
+LLMThinkingHistory: TypeAlias = List[LLMThinkingHistoryItem]
+
+# Structured progress event contract for execution reporting
+class ProgressEvent(TypedDict, total=False):
+    node_id: int
+    state: ProgressState
+    progress: float
+    text: str
+    meta: Dict[str, Any]
+
+ProgressCallback = Callable[[ProgressEvent], None]
 
 TYPE_REGISTRY: Dict[str, Type[Any]] = {
     "AssetSymbol": AssetSymbol,
@@ -213,7 +331,6 @@ class NodeExecutionError(NodeError):
         super().__init__(f"Node {node_id}: {message}")
         self.original_exc = original_exc
 
-# No dynamic registration; registry remains static in this package
 
 __all__ = [
     'AssetClass', 'InstrumentType', 'Provider', 'IndicatorType',
@@ -226,4 +343,5 @@ __all__ = [
     'LLMChatMessageList', 'LLMToolSpecList', 'LLMToolHistory', 'LLMThinkingHistory',
     'TYPE_REGISTRY', 'get_type',
     'NodeError', 'NodeValidationError', 'NodeExecutionError',
+    'ProgressState', 'ProgressEvent', 'ProgressCallback',
 ] 

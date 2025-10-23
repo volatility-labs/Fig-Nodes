@@ -1,7 +1,7 @@
 import os
-from typing import Dict, Any, List, Optional, Set
+from typing import Dict, List, Optional, Set
 from dotenv import load_dotenv, find_dotenv, set_key, unset_key
-
+from core.types_registry import NodeRegistry, SerialisableGraph
 
 class APIKeyVault:
     """Singleton class for managing API keys stored in environment variables."""
@@ -45,22 +45,23 @@ class APIKeyVault:
                key in ['POLYGON_API_KEY', 'TAVILY_API_KEY', 'OLLAMA_API_KEY']:
                 result[key] = value
         return result
-
-    def get_required_for_graph(self, graph: Dict[str, Any]) -> List[str]:
+    
+    def get_required_for_graph(self, graph: SerialisableGraph, node_registry: NodeRegistry) -> List[str]:
         """Get all required API keys for a given graph.
 
-        This resolves node classes dynamically from the global NODE_REGISTRY
+        Args:
+            graph: The serializable graph to analyze
+            node_registry: Optional registry of node types. If None, will attempt to import NODE_REGISTRY.
+        
+        This resolves node classes dynamically from the provided node registry
         to avoid hardcoding specific node types.
         """
+        
         required_keys: Set[str] = set()
-        try:
-            from core.node_registry import NODE_REGISTRY 
-        except Exception:
-            NODE_REGISTRY = {}
 
         for node_data in graph.get('nodes', []):
             node_type = node_data.get('type', '')
-            cls = (NODE_REGISTRY or {}).get(node_type)
+            cls = node_registry.get(node_type)
             if not cls:
                 continue
             keys = getattr(cls, 'required_keys', []) or []
@@ -68,26 +69,6 @@ class APIKeyVault:
                 if isinstance(key, str) and key:
                     required_keys.add(key)
         return list(required_keys)
-
-    def get_known_key_metadata(self) -> Dict[str, Dict[str, str]]:
-        """Return metadata for known API keys for UI tooltips/help.
-
-        Keys may be present or absent in env; this provides descriptions and docs links.
-        """
-        return {
-            'POLYGON_API_KEY': {
-                'description': 'API key for Polygon.io market data.',
-                'docs_url': 'https://polygon.io'
-            },
-            'TAVILY_API_KEY': {
-                'description': 'API key for Tavily search.',
-                'docs_url': 'https://tavily.com'
-            },
-            'OLLAMA_API_KEY': {
-                'description': 'Optional key for Ollama API access.',
-                'docs_url': 'https://github.com/ollama/ollama'
-            }
-        }
 
     def unset(self, key: str) -> None:
         """Remove an API key from cache, environment, and .env file."""

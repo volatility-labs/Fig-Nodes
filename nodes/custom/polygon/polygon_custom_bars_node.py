@@ -11,7 +11,6 @@ logger = logging.getLogger(__name__)
 
 
 class PolygonCustomBars(Base):
-    ui_module = "market/PolygonCustomBarsNodeUI"
     """
     Fetches custom aggregate bars (OHLCV) for a symbol from Polygon.io
     """

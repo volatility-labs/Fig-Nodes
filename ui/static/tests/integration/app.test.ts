@@ -40,15 +40,15 @@ describe('app.ts initialization', () => {
     });
 
     test('registers nodes and starts graph', async () => {
-        // Mock fetch for /nodes metadata
+        // Mock fetch for /api/v1/nodes metadata
         (globalThis as any).fetch = vi.fn(async (url: string) => {
-            if (url === '/nodes') {
+            if (url === '/api/v1/nodes') {
                 return {
                     ok: true,
                     json: async () => ({
                         nodes: {
-                            'Test/NodeA': { category: 'Test', inputs: {}, outputs: {}, params: [], uiModule: undefined },
-                            'Test/NodeB': { category: 'Test', inputs: {}, outputs: {}, params: [], uiModule: 'StreamingCustomNode' },
+                            'TestNodeA': { category: 'Test', inputs: {}, outputs: {}, params: [] },
+                            'TestNodeB': { category: 'Test', inputs: {}, outputs: {}, params: [] },
                         },
                     }),
                 } as any;
@@ -86,7 +86,7 @@ describe('app.ts initialization', () => {
         const savedGraph = {
             nodes: [{
                 id: 1,
-                type: 'Test/NodeA',
+                type: 'TestNodeA',
                 pos: [100, 100],
                 size: [200, 100],
                 flags: {},
@@ -536,13 +536,13 @@ describe('End-to-end: PolygonUniverseNode parameters restore from saved graph', 
 
         // Mock fetch for nodes
         (globalThis as any).fetch = vi.fn(async (url: string) => {
-            if (url === '/nodes') {
+            if (url === '/api/v1/nodes') {
                 return {
                     ok: true,
                     json: async () => ({
                         nodes: {
-                            'PolygonUniverseNode': {
-                                category: 'Data',
+                            'PolygonUniverse': {
+                                category: 'market',
                                 inputs: {},
                                 outputs: { symbols: { base: 'list', subtype: { base: 'AssetSymbol' } } },
                                 params: [
@@ -552,8 +552,7 @@ describe('End-to-end: PolygonUniverseNode parameters restore from saved graph', 
                                     { name: 'min_price', type: 'number', default: null, label: 'Min Price', unit: 'USD' },
                                     { name: 'max_price', type: 'number', default: null, label: 'Max Price', unit: 'USD' },
                                     { name: 'include_otc', type: 'boolean', default: false, label: 'Include OTC' },
-                                ],
-                                uiModule: 'PolygonUniverse'
+                                ]
                             },
                         },
                     })

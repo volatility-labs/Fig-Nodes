@@ -91,7 +91,6 @@ class OllamaChat(Base):
  
     ]
 
-    ui_module = "llm/OllamaChatNodeUI"
 
     def __init__(self, id: int, params: Dict[str, Any] = None):
         super().__init__(id, params)

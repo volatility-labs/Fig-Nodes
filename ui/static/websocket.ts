@@ -1,6 +1,18 @@
 import { LGraph, LGraphCanvas } from '@comfyorg/litegraph';
 import { ServiceRegistry } from './services/ServiceRegistry';
 import { APIKeyManager } from './services/APIKeyManager';
+import type { ExecutionResults } from './types/resultTypes';
+import type {
+    ClientToServerMessage,
+    ServerToClientMessage
+} from './types/websocketType';
+import {
+    isErrorMessage,
+    isStatusMessage,
+    isStoppedMessage,
+    isDataMessage,
+    isProgressMessage
+} from './types/websocketType';
 
 let ws: WebSocket | null = null;
 export let executionState: 'idle' | 'connecting' | 'executing' | 'stopping' = 'idle';
@@ -32,7 +44,8 @@ async function stopExecution(): Promise<void> {
         stopPromiseResolver = resolve;
         if (ws && ws.readyState === WebSocket.OPEN) {
             console.log('Stop execution: Sending stop message to backend');
-            ws.send(JSON.stringify({ type: 'stop' }));
+            const message: ClientToServerMessage = { type: 'stop' };
+            ws.send(JSON.stringify(message));
             // Wait for backend "stopped" confirmation (handled in onmessage)
         } else {
             console.log('Stop execution: No active WebSocket, forcing cleanup');
@@ -165,13 +178,14 @@ export function setupWebSocket(graph: LGraph, _canvas: LGraphCanvas, apiKeyManag
         ws.onopen = () => {
             executionState = 'executing';
             if (indicator) indicator.className = 'status-indicator executing';
-            ws?.send(JSON.stringify({ type: 'graph', graph_data: graphData }));
+            const message: ClientToServerMessage = { type: 'graph', graph_data: graphData };
+            ws?.send(JSON.stringify(message));
         };
 
         ws.onmessage = (event) => {
-            const data = JSON.parse(event.data);
+            const data: ServerToClientMessage = JSON.parse(event.data);
 
-            if (data.type === 'error') {
+            if (isErrorMessage(data)) {
                 if (data.code === 'MISSING_API_KEYS' && Array.isArray(data.missing_keys)) {
                     try { alert(data.message || 'Missing API keys. Opening settings...'); } catch { /* ignore in tests */ }
                     apiKeyManager.setLastMissingKeys(data.missing_keys);
@@ -195,7 +209,7 @@ export function setupWebSocket(graph: LGraph, _canvas: LGraphCanvas, apiKeyManag
                 }
                 forceCleanup();
                 hideProgress();
-            } else if (data.type === 'status') {
+            } else if (isStatusMessage(data)) {
                 if (indicator) indicator.className = 'status-indicator executing';
                 // Keep progress visible and reflect coarse states
                 const msg: string = data.message || '';
@@ -215,18 +229,18 @@ export function setupWebSocket(graph: LGraph, _canvas: LGraphCanvas, apiKeyManag
                 if (data.message.includes('finished')) {
                     forceCleanup();
                 }
-            } else if (data.type === 'stopped') {
+            } else if (isStoppedMessage(data)) {
                 // Handle stop confirmation from backend
                 console.log('Stop execution: Received stopped confirmation from backend:', data.message);
                 forceCleanup();
-            } else if (data.type === 'data') {
+            } else if (isDataMessage(data)) {
                 // Overlay is never shown during execution now
                 if (Object.keys(data.results).length === 0) {
                     if (indicator) indicator.className = 'status-indicator executing';
                     showProgress('Streaming...', false);
                     return;
                 }
-                const results = data.results;
+                const results: ExecutionResults = data.results;
                 for (const nodeId in results) {
                     const node: any = graph.getNodeById(parseInt(nodeId));
                     if (!node) continue;
@@ -265,12 +279,12 @@ export function setupWebSocket(graph: LGraph, _canvas: LGraphCanvas, apiKeyManag
                     // Keep showing indeterminate until a finished status arrives.
                     showProgress('Running...', false);
                 }
-            } else if (data.type === 'progress') {
+            } else if (isProgressMessage(data)) {
                 // Update node progress but DO NOT hide the global canvas progress.
                 // The top progress bar should remain active until the graph finishes.
-                const node: any = graph.getNodeById(data.node_id);
+                const node: any = graph.getNodeById(data.node_id as number);
                 if (node && typeof node.setProgress === 'function') {
-                    node.setProgress(data.progress, data.text);
+                    node.setProgress(data.progress ?? 0, data.text ?? '');
                 }
             }
         };

@@ -6,7 +6,7 @@ import httpx
 
 from nodes.base.base_node import Base
 
-from core.types_registry import get_type
+from core.types_registry import LLMChatMessage, NodeCategory, get_type
 from services.tools.registry import get_tool_handler, get_all_credential_providers
 from core.api_key_vault import APIKeyVault
 
@@ -25,7 +25,7 @@ class OpenRouterChat(Base):
         "thinking_history": get_type("LLMThinkingHistory"),
     }
 
-    CATEGORY = 'data_source'
+    CATEGORY = NodeCategory.LLM
     # Keys required for this node to function
     required_keys = ["OPENROUTER_API_KEY"]
 
@@ -63,22 +63,20 @@ class OpenRouterChat(Base):
         {"name": "web_search_context_size", "type": "combo", "default": "medium", "options": ["low", "medium", "high"]},
     ]
 
-    ui_module = "llm/OpenRouterChatNodeUI"
-
-    def __init__(self, id: int, params: Dict[str, Any] = None):
+    def __init__(self, id: int, params: Dict[str, Any]):
         super().__init__(id, params)
         self.optional_inputs = ["tools", "tool", "messages", "prompt", "system"]
         # Maintain seed state for increment mode
-        self._seed_state: Optional[int] = None
+        self._seed_state: int | None = None
         self.vault = APIKeyVault()
 
     @staticmethod
-    def _build_messages(existing_messages: Optional[List[Dict[str, Any]]], prompt: Optional[str], system_input: Optional[Any]) -> List[Dict[str, Any]]:
+    def _build_messages(existing_messages: Optional[List[LLMChatMessage]], prompt: Optional[str], system_input: Union[LLMChatMessage, str]) -> List[LLMChatMessage]:
         result = list(existing_messages or [])
         if system_input and not any(m.get("role") == "system" for m in result):
             if isinstance(system_input, str):
                 result.insert(0, {"role": "system", "content": system_input})
-            elif isinstance(system_input, dict):
+            else:
                 result.insert(0, system_input)
         if prompt:
             result.append({"role": "user", "content": prompt})

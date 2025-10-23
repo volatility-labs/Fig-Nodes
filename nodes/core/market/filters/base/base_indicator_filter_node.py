@@ -18,7 +18,7 @@ class BaseIndicatorFilter(BaseFilter):
         "filtered_ohlcv_bundle": get_type("OHLCVBundle"),  # Changed to registry type
     }
 
-    def __init__(self, id: int, params: Dict[str, Any] = None):  # Explicit constructor for consistency
+    def __init__(self, id: int, params: Dict[str, Any]):  # Explicit constructor for consistency
         super().__init__(id, params)
         self.indicators_service = IndicatorsService()
         self._validate_indicator_params()

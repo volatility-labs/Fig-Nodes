@@ -6,6 +6,33 @@ export interface NodeRegistry {
     categorizedNodes: { [key: string]: string[] };
 }
 
+export type NodeCategory = 'io' | 'llm' | 'market' | 'base';
+
+type ModuleFactory = () => Promise<{ default: any }>;
+
+const UI_GLOB = {
+    ...import.meta.glob('../nodes/**/*NodeUI.ts'),
+    ...import.meta.glob('../nodes/**/*NodeUI.tsx'),
+    ...import.meta.glob('../nodes/**/*NodeUI.js'),
+} as Record<string, ModuleFactory>;
+
+function resolveGlobKey(modulePath: string): string | null {
+    // modulePath is now just the filename without extension (e.g., "OllamaChatNodeUI")
+    // Search through all glob keys to find a match regardless of folder structure
+    const extensions = ['.ts', '.tsx', '.js'];
+
+    for (const ext of extensions) {
+        const targetName = modulePath + ext;
+        // Find any key that ends with the target filename
+        for (const key in UI_GLOB) {
+            if (key.endsWith(targetName)) {
+                return key;
+            }
+        }
+    }
+    return null;
+}
+
 export class UIModuleLoader {
     private uiModules: { [key: string]: any } = {};
     private nodeMetadata: any = null;
@@ -13,207 +40,57 @@ export class UIModuleLoader {
 
     constructor(serviceRegistry: any) {
         this.serviceRegistry = serviceRegistry;
-        this.initializeStaticModules();
     }
 
-    private initializeStaticModules(): void {
-        // Import all UI modules statically to ensure they're bundled
-        // Map old node names to new backend names
-        import('../nodes/io/TextInputNodeUI').then(module => {
-            this.uiModules['TextInput'] = module.default;
-            this.uiModules['io/TextInputNodeUI'] = module.default;
-        });
-        import('../nodes/io/LoggingNodeUI').then(module => {
-            this.uiModules['Logging'] = module.default;
-            this.uiModules['io/LoggingNodeUI'] = module.default;
-        });
-        import('../nodes/io/SaveOutputNodeUI').then(module => {
-            this.uiModules['SaveOutput'] = module.default;
-            this.uiModules['io/SaveOutputNodeUI'] = module.default;
-        });
-        import('../nodes/io/ExtractSymbolsNodeUI').then(module => {
-            this.uiModules['ExtractSymbols'] = module.default;
-            this.uiModules['io/ExtractSymbolsNodeUI'] = module.default;
-        });
-        import('../nodes/llm/LLMMessagesBuilderNodeUI').then(module => {
-            this.uiModules['LLMMessagesBuilder'] = module.default;
-            this.uiModules['llm/LLMMessagesBuilderNodeUI'] = module.default;
-        });
-        import('../nodes/llm/OllamaChatNodeUI').then(module => {
-            this.uiModules['OllamaChat'] = module.default;
-            this.uiModules['llm/OllamaChatNodeUI'] = module.default;
-        });
-        import('../nodes/llm/OpenRouterChatNodeUI').then(module => {
-            this.uiModules['OpenRouterChat'] = module.default;
-            this.uiModules['llm/OpenRouterChatNodeUI'] = module.default;
-        });
-        import('../nodes/llm/SystemPromptLoaderNodeUI').then(module => {
-            this.uiModules['SystemPromptLoader'] = module.default;
-            this.uiModules['llm/SystemPromptLoaderNodeUI'] = module.default;
-        });
-        import('../nodes/market/ADXFilterNodeUI').then(module => {
-            this.uiModules['ADXFilter'] = module.default;
-            this.uiModules['market/ADXFilterNodeUI'] = module.default;
-        });
-        import('../nodes/market/AtrXFilterNodeUI').then(module => {
-            this.uiModules['AtrXFilter'] = module.default;
-            this.uiModules['market/AtrXFilterNodeUI'] = module.default;
-        });
-        import('../nodes/market/AtrXIndicatorNodeUI').then(module => {
-            this.uiModules['AtrXIndicator'] = module.default;
-            this.uiModules['market/AtrXIndicatorNodeUI'] = module.default;
-        });
-        import('../nodes/market/PolygonBatchCustomBarsNodeUI').then(module => {
-            this.uiModules['PolygonBatchCustomBars'] = module.default;
-            this.uiModules['market/PolygonBatchCustomBarsNodeUI'] = module.default;
-        });
-        import('../nodes/market/PolygonCustomBarsNodeUI').then(module => {
-            this.uiModules['PolygonCustomBars'] = module.default;
-            this.uiModules['market/PolygonCustomBarsNodeUI'] = module.default;
-        });
-        import('../nodes/market/PolygonUniverseNodeUI').then(module => {
-            this.uiModules['PolygonUniverse'] = module.default;
-            this.uiModules['market/PolygonUniverseNodeUI'] = module.default;
-        });
-        import('../nodes/market/OHLCVPlotNodeUI').then(module => {
-            this.uiModules['OHLCVPlot'] = module.default;
-            this.uiModules['market/OHLCVPlotNodeUI'] = module.default;
-        });
-        import('../nodes/market/RSIFilterNodeUI').then(module => {
-            this.uiModules['RSIFilter'] = module.default;
-            this.uiModules['market/RSIFilterNodeUI'] = module.default;
-        });
-        import('../nodes/market/SMACrossoverFilterNodeUI').then(module => {
-            this.uiModules['SMACrossoverFilter'] = module.default;
-            this.uiModules['market/SMACrossoverFilterNodeUI'] = module.default;
-        });
-        import('../nodes/market/ATRFilterNodeUI').then(module => {
-            this.uiModules['ATRFilter'] = module.default;
-            this.uiModules['market/ATRFilterNodeUI'] = module.default;
-        });
-        import('../nodes/market/ATRIndicatorNodeUI').then(module => {
-            this.uiModules['ATRIndicator'] = module.default;
-            this.uiModules['market/ATRIndicatorNodeUI'] = module.default;
-        });
-        import('../nodes/market/SMAFilterNodeUI').then(module => {
-            this.uiModules['SMAFilter'] = module.default;
-            this.uiModules['market/SMAFilterNodeUI'] = module.default;
-        });
-        import('../nodes/market/OrbFilterNodeUI').then(module => {
-            this.uiModules['OrbFilter'] = module.default;
-            this.uiModules['market/OrbFilterNodeUI'] = module.default;
-        });
-        import('../nodes/market/LodFilterNodeUI').then(module => {
-            this.uiModules['LodFilter'] = module.default;
-            this.uiModules['market/LodFilterNodeUI'] = module.default;
-        });
-        import('../nodes/market/EmaRangeFilterNodeUI').then(module => {
-            this.uiModules['EmaRangeFilter'] = module.default;
-            this.uiModules['market/EmaRangeFilterNodeUI'] = module.default;
-        });
-        import('../nodes/base/StreamingCustomNode').then(module => {
-            this.uiModules['StreamingCustomNode'] = module.default;
-        });
-
-        // Add fallback mappings for old UI module paths referenced by backend
-        import('../nodes/llm/LLMMessagesBuilderNodeUI').then(module => {
-            this.uiModules['llm/LLMMessagesBuilderNodeUI'] = module.default;
-        });
-        import('../nodes/llm/OpenRouterChatNodeUI').then(module => {
-            this.uiModules['llm/OpenRouterChatNodeUI'] = module.default;
-        });
-        import('../nodes/llm/OllamaChatNodeUI').then(module => {
-            this.uiModules['llm/OllamaChatNodeUI'] = module.default;
-        });
-        import('../nodes/io/SaveOutputNodeUI').then(module => {
-            this.uiModules['io/SaveOutputNodeUI'] = module.default;
-        });
-        import('../nodes/llm/SystemPromptLoaderNodeUI').then(module => {
-            this.uiModules['llm/SystemPromptLoaderNodeUI'] = module.default;
-        });
-        import('../nodes/market/OrbFilterNodeUI').then(module => {
-            this.uiModules['market/OrbFilterNodeUI'] = module.default;
-        });
-        import('../nodes/market/AtrXFilterNodeUI').then(module => {
-            this.uiModules['market/AtrXFilterNodeUI'] = module.default;
-        });
-        import('../nodes/market/AtrXIndicatorNodeUI').then(module => {
-            this.uiModules['market/AtrXIndicatorNodeUI'] = module.default;
-        });
-        import('../nodes/market/OHLCVPlotNodeUI').then(module => {
-            this.uiModules['market/OHLCVPlotNodeUI'] = module.default;
-        });
-        import('../nodes/market/PolygonCustomBarsNodeUI').then(module => {
-            this.uiModules['market/PolygonCustomBarsNodeUI'] = module.default;
-        });
-    }
-
-    async loadUIModule(modulePath: string): Promise<any> {
-        if (this.uiModules[modulePath]) {
-            return this.uiModules[modulePath];
+    private validateNodeMetadata(meta: any): void {
+        if (!meta || typeof meta !== 'object') {
+            throw new Error('Invalid node metadata: expected object');
         }
+    }
 
-        // Dynamic loading fallback
+    private async loadUIModuleByPath(modulePath: string): Promise<any> {
+        if (this.uiModules[modulePath]) return this.uiModules[modulePath];
+        const key = resolveGlobKey(modulePath);
+        if (!key) {
+            console.warn(`[UIModuleLoader] No UI module found for path: ${modulePath}`);
+            return BaseCustomNode;
+        }
         try {
-            // Handle different module path formats
-            let importPath = modulePath;
-            if (modulePath.includes('/')) {
-                importPath = `../nodes/${modulePath}`;
-            } else {
-                // Try common locations for standalone module names
-                const possiblePaths = [
-                    `../nodes/base/${modulePath}`,
-                    `../nodes/market/${modulePath}`,
-                    `../nodes/io/${modulePath}`,
-                    `../nodes/llm/${modulePath}`,
-                    `../nodes/${modulePath}`
-                ];
-
-                for (const path of possiblePaths) {
-                    try {
-                        const module = await import(path);
-                        this.uiModules[modulePath] = module.default;
-                        return module.default;
-                    } catch {
-                        // Continue to next path
-                    }
-                }
-                throw new Error('Module not found in any expected location');
+            const factory = UI_GLOB[key];
+            if (!factory) {
+                console.warn(`[UIModuleLoader] No factory for key: ${key}`);
+                return BaseCustomNode;
             }
-
-            const module = await import(importPath);
-            this.uiModules[modulePath] = module.default;
-            return module.default;
+            const mod = await factory();
+            const cls = mod.default || BaseCustomNode;
+            this.uiModules[modulePath] = cls;
+            return cls;
         } catch (error) {
-            console.warn(`Failed to load UI module ${modulePath}:`, error);
+            console.error(`[UIModuleLoader] Failed to load module ${modulePath}:`, error);
             return BaseCustomNode;
         }
     }
 
     async registerNodes(): Promise<NodeRegistry> {
-        const response = await fetch('/nodes');
+        const response = await fetch('/api/v1/nodes');
         if (!response.ok) {
             throw new Error(`Failed to fetch nodes: ${response.statusText}`);
         }
 
         const meta = await response.json();
         this.nodeMetadata = meta.nodes;
+        this.validateNodeMetadata(this.nodeMetadata);
 
         const categorizedNodes: { [key: string]: string[] } = {};
         const allItems: { name: string; category: string; description?: string }[] = [];
 
         for (const name in meta.nodes) {
-            const data = meta.nodes[name];
-            let NodeClass = BaseCustomNode;
+            const data = meta.nodes[name] as { category?: NodeCategory; description?: string };
+            const category = (data.category ?? 'base') as NodeCategory;
 
-            if (data.uiModule) {
-                const uiClass = await this.loadUIModule(data.uiModule);
-                if (uiClass) {
-                    NodeClass = uiClass;
-                } else {
-                    console.warn(`UI module ${data.uiModule} not found`);
-                }
-            }
+            // Construct module path as just the filename: {ClassName}NodeUI
+            const modulePath = `${name}NodeUI`;
+            const NodeClass = await this.loadUIModuleByPath(modulePath);
 
             const serviceRegistry = this.serviceRegistry;
             const CustomClass = class extends NodeClass {
@@ -224,10 +101,10 @@ export class UIModuleLoader {
             const LG = ((globalThis as any).LiteGraph || LiteGraph);
             LG.registerNodeType(name, CustomClass);
 
-            const category = data.category || 'Utilities';
             if (!categorizedNodes[category]) categorizedNodes[category] = [];
             categorizedNodes[category].push(name);
-            allItems.push({ name, category, description: data.description });
+            const description = (data.description ?? '') as string;
+            allItems.push({ name, category, description });
         }
 
         return { allItems, categorizedNodes };
