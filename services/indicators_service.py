@@ -411,23 +411,26 @@ class IndicatorsService:
         else:  # EMA
             atr = true_range.ewm(span=length, adjust=False).mean()
         
-        # Calculate 50-day SMA of price (not EMA of daily average)
-        sma_50 = df[price].rolling(window=ma_length, min_periods=1).mean()
+        # Calculate 50-day RMA of price (Wilder's smoothing) to match ATR smoothing method
+        alpha_ma = 1.0 / ma_length
+        rma_50 = df[price].copy()
+        for i in range(1, len(rma_50)):
+            rma_50.iloc[i] = alpha_ma * df[price].iloc[i] + (1 - alpha_ma) * rma_50.iloc[i-1]
         
         # Get current values
         current_price = df[price].iloc[-1]
-        current_sma_50 = sma_50.iloc[-1]
+        current_rma_50 = rma_50.iloc[-1]
         current_atr = atr.iloc[-1]
         
         # Check for invalid values
-        if current_atr == 0 or current_sma_50 == 0 or np.isnan(current_sma_50) or np.isnan(current_atr):
+        if current_atr == 0 or current_rma_50 == 0 or np.isnan(current_rma_50) or np.isnan(current_atr):
             return np.nan
         
         # Calculate ATR% = ATR / Last Done Price
         atr_percent = current_atr / current_price
         
-        # Calculate % Gain From 50-MA = (Price - SMA50) / SMA50
-        percent_gain_from_50ma = (current_price - current_sma_50) / current_sma_50
+        # Calculate % Gain From 50-MA = (Price - RMA50) / RMA50
+        percent_gain_from_50ma = (current_price - current_rma_50) / current_rma_50
         
         # Calculate ATRX = (% Gain From 50-MA) / ATR%
         if atr_percent == 0:
