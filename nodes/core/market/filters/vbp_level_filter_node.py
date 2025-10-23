@@ -32,6 +32,7 @@ class VBPLevelFilter(BaseIndicatorFilter):
     default_params = {
         "bins": 50,
         "lookback_years": 2,
+        "lookback_years_2": None,  # Optional second lookback period
         "num_levels": 5,
         "max_distance_to_support": 5.0,
         "min_distance_to_resistance": 5.0,
@@ -58,6 +59,16 @@ class VBPLevelFilter(BaseIndicatorFilter):
             "step": 1,
             "label": "Lookback Period (Years)",
             "description": "Number of years to look back for volume data"
+        },
+        {
+            "name": "lookback_years_2",
+            "type": "number",
+            "default": None,
+            "min": 1,
+            "max": 10,
+            "step": 1,
+            "label": "Second Lookback Period (Years)",
+            "description": "Optional second lookback period. If set, combines levels from both periods"
         },
         {
             "name": "num_levels",
@@ -228,7 +239,7 @@ class VBPLevelFilter(BaseIndicatorFilter):
         }
     
     def _calculate_indicator(self, ohlcv_data: List[OHLCVBar]) -> IndicatorResult:
-        """Calculate VBP levels and return IndicatorResult."""
+        """Calculate VBP levels and return IndicatorResult. Supports two lookback periods."""
         if not ohlcv_data:
             return IndicatorResult(
                 indicator_type=IndicatorType.VBP,
@@ -238,100 +249,104 @@ class VBPLevelFilter(BaseIndicatorFilter):
                 error="No OHLCV data"
             )
         
-    def _calculate_indicator(self, ohlcv_data: List[OHLCVBar]) -> IndicatorResult:
-        """Calculate VBP levels and return IndicatorResult."""
-        if not ohlcv_data:
-            return IndicatorResult(
-                indicator_type=IndicatorType.VBP,
-                timestamp=0,
-                values=IndicatorValue(lines={}),
-                params=self.params,
-                error="No OHLCV data"
-            )
+        # Get lookback periods
+        lookback_years_1 = self.params["lookback_years"]
+        lookback_years_2 = self.params.get("lookback_years_2")
         
-        # Filter data based on lookback period
-        lookback_years = self.params["lookback_years"]
-        cutoff_timestamp = ohlcv_data[-1]['timestamp'] - (lookback_years * 365 * 24 * 60 * 60 * 1000)  # Approximate milliseconds
+        # Calculate VBP levels for first period
+        all_levels = []
         
-        filtered_data = [bar for bar in ohlcv_data if bar['timestamp'] >= cutoff_timestamp]
+        cutoff_timestamp_1 = ohlcv_data[-1]['timestamp'] - (lookback_years_1 * 365 * 24 * 60 * 60 * 1000)
+        filtered_data_1 = [bar for bar in ohlcv_data if bar['timestamp'] >= cutoff_timestamp_1]
         
-        if len(filtered_data) < 10:
+        if len(filtered_data_1) < 10:
             return IndicatorResult(
                 indicator_type=IndicatorType.VBP,
                 timestamp=ohlcv_data[-1]['timestamp'],
                 values=IndicatorValue(lines={}),
                 params=self.params,
-                error=f"Insufficient data: need at least 10 bars, got {len(filtered_data)}"
+                error=f"Insufficient data for period 1: need at least 10 bars, got {len(filtered_data_1)}"
             )
         
-    def _calculate_indicator(self, ohlcv_data: List[OHLCVBar]) -> IndicatorResult:
-        """Calculate VBP levels and return IndicatorResult."""
-        if not ohlcv_data:
-            return IndicatorResult(
-                indicator_type=IndicatorType.VBP,
-                timestamp=0,
-                values=IndicatorValue(lines={}),
-                params=self.params,
-                error="No OHLCV data"
-            )
-        
-        # Filter data based on lookback period
-        lookback_years = self.params["lookback_years"]
-        cutoff_timestamp = ohlcv_data[-1]['timestamp'] - (lookback_years * 365 * 24 * 60 * 60 * 1000)  # Approximate milliseconds
-        
-        filtered_data = [bar for bar in ohlcv_data if bar['timestamp'] >= cutoff_timestamp]
-        
-        if len(filtered_data) < 10:
-            return IndicatorResult(
-                indicator_type=IndicatorType.VBP,
-                timestamp=ohlcv_data[-1]['timestamp'],
-                values=IndicatorValue(lines={}),
-                params=self.params,
-                error=f"Insufficient data: need at least 10 bars, got {len(filtered_data)}"
-            )
-        
-        # Aggregate to weekly if we're not already using weekly bars
+        # Aggregate to weekly if needed
         if not self.params.get("use_weekly", False):
-            filtered_data = self._aggregate_to_weekly(filtered_data)
+            filtered_data_1 = self._aggregate_to_weekly(filtered_data_1)
         
-        if len(filtered_data) < 10:
+        if len(filtered_data_1) < 10:
             return IndicatorResult(
                 indicator_type=IndicatorType.VBP,
                 timestamp=ohlcv_data[-1]['timestamp'],
                 values=IndicatorValue(lines={}),
                 params=self.params,
-                error=f"Insufficient data after processing: need at least 10 bars, got {len(filtered_data)}"
+                error=f"Insufficient data after aggregation (period 1): need at least 10 bars, got {len(filtered_data_1)}"
             )
         
-        # Calculate VBP levels
-        vbp_data = self._calculate_vbp_levels(filtered_data)
+        # Calculate VBP levels for first period
+        vbp_data_1 = self._calculate_vbp_levels(filtered_data_1)
+        if "error" not in vbp_data_1:
+            all_levels.extend(vbp_data_1["levels"])
         
-        if "error" in vbp_data:
+        # Calculate VBP levels for second period if specified
+        if lookback_years_2 is not None:
+            cutoff_timestamp_2 = ohlcv_data[-1]['timestamp'] - (lookback_years_2 * 365 * 24 * 60 * 60 * 1000)
+            filtered_data_2 = [bar for bar in ohlcv_data if bar['timestamp'] >= cutoff_timestamp_2]
+            
+            if len(filtered_data_2) >= 10:
+                # Aggregate to weekly if needed
+                if not self.params.get("use_weekly", False):
+                    filtered_data_2 = self._aggregate_to_weekly(filtered_data_2)
+                
+                if len(filtered_data_2) >= 10:
+                    vbp_data_2 = self._calculate_vbp_levels(filtered_data_2)
+                    if "error" not in vbp_data_2:
+                        all_levels.extend(vbp_data_2["levels"])
+        
+        if not all_levels:
             return IndicatorResult(
                 indicator_type=IndicatorType.VBP,
                 timestamp=ohlcv_data[-1]['timestamp'],
                 values=IndicatorValue(lines={}),
                 params=self.params,
-                error=vbp_data["error"]
+                error="No valid levels found"
             )
         
-        # Calculate distances
-        current_price = vbp_data["current_price"]
-        closest_support = vbp_data["lowest_level"]
-        closest_resistance = vbp_data["highest_level"]
+        # Get current price
+        current_price = ohlcv_data[-1]['close']
         
-        # Check if there are any resistance levels above current price
-        all_levels = vbp_data["levels"]
-        resistance_levels = [level for level in all_levels if level["price"] > current_price]
+        # Combine levels and sort by volume
+        all_levels.sort(key=lambda x: x["volume"], reverse=True)
+        
+        # Take top num_levels per period (or combined if two periods)
+        num_levels = self.params["num_levels"]
+        if lookback_years_2 is not None:
+            # If two periods, take top num_levels from combined list
+            combined_levels = all_levels[:num_levels * 2]  # Get top levels from both periods
+        else:
+            combined_levels = all_levels[:num_levels]
+        
+        # Remove duplicates based on price (within small tolerance)
+        unique_levels = []
+        seen_prices = set()
+        for level in combined_levels:
+            price_rounded = round(level["price"], 2)
+            if price_rounded not in seen_prices:
+                unique_levels.append(level)
+                seen_prices.add(price_rounded)
+        
+        # Calculate support/resistance
+        support_levels = [level for level in unique_levels if level["price"] < current_price]
+        resistance_levels = [level for level in unique_levels if level["price"] > current_price]
+        
+        closest_support = max(support_levels, key=lambda x: x["price"])["price"] if support_levels else min([level["price"] for level in unique_levels])
+        closest_resistance = min(resistance_levels, key=lambda x: x["price"])["price"] if resistance_levels else max([level["price"] for level in unique_levels])
+        
         has_resistance_above = len(resistance_levels) > 0
         
         distance_to_support = abs(current_price - closest_support) / current_price * 100 if current_price > 0 else 0
         
-        # If no resistance levels above, set distance to resistance to a very large value
         if has_resistance_above:
             distance_to_resistance = abs(closest_resistance - current_price) / current_price * 100 if current_price > 0 else 0
         else:
-            # No resistance levels above - set to infinity to indicate "above all levels"
             distance_to_resistance = float('inf')
         
         return IndicatorResult(
@@ -343,8 +358,7 @@ class VBPLevelFilter(BaseIndicatorFilter):
                 "closest_resistance": closest_resistance,
                 "distance_to_support": distance_to_support,
                 "distance_to_resistance": distance_to_resistance,
-                "num_levels": len(vbp_data["levels"]),
-                "price_range": vbp_data["price_range"],
+                "num_levels": len(unique_levels),
                 "has_resistance_above": has_resistance_above
             }),
             params=self.params
