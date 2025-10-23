@@ -74,6 +74,9 @@ class AtrXFilter(BaseIndicatorFilter):
             price=self.params.get("price", "Close"),
         )
         
+        # Debug logging for specific symbols
+        logger.info(f"ATRX calculated: value={atrx_value:.4f}, length={self.params.get('length', 14)}, ma_length={self.params.get('ma_length', 50)}, smoothing={self.params.get('smoothing', 'RMA')}, price={self.params.get('price', 'Close')}")
+        
         # Handle NaN results (e.g., zero volatility cases)
         if pd.isna(atrx_value):
             return IndicatorResult(
@@ -93,15 +96,20 @@ class AtrXFilter(BaseIndicatorFilter):
 
     def _should_pass_filter(self, indicator_result: IndicatorResult) -> bool:
         if indicator_result.error:
+            logger.info(f"ATRX filter FAILED: {indicator_result.error}")
             return False
         value = indicator_result.values.single
         upper = self.params.get("upper_threshold", 6.0)
         lower = self.params.get("lower_threshold", -4.0)
         condition = self.params.get("filter_condition", "outside")
         if condition == "outside":
-            return value >= upper or value <= lower
+            passed = value >= upper or value <= lower
+            logger.info(f"ATRX filter ({condition}): value={value:.4f}, upper={upper:.2f}, lower={lower:.2f}, PASSED={passed}")
+            return passed
         else:  # "inside"
-            return lower <= value <= upper
+            passed = lower <= value <= upper
+            logger.info(f"ATRX filter ({condition}): value={value:.4f}, upper={upper:.2f}, lower={lower:.2f}, PASSED={passed}")
+            return passed
 
     async def _execute_impl(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
         # Delegate to BaseIndicatorFilterNode to leverage per-symbol error handling and progress reporting
