@@ -4,6 +4,35 @@
 
 The VBP Level Filter is a technical indicator filter that identifies significant support and resistance levels based on volume profile analysis. It filters assets based on their current price's proximity to these volume-based price levels.
 
+## Installation
+
+The VBP Level Filter is part of the Fig Nodes platform. Ensure you have:
+- Python 3.11 or later
+- Fig Nodes installed and configured
+- Polygon API key configured in your environment
+
+## Node Information
+
+### Node Class
+```python
+VBPLevelFilter
+```
+
+### Location
+- **Backend**: `nodes/core/market/filters/vbp_level_filter_node.py`
+- **Frontend UI**: `ui/static/nodes/market/VBPLevelFilterNodeUI.ts`
+
+### Inputs
+- `ohlcv_bundle`: Dictionary mapping `AssetSymbol` to list of `OHLCVBar` objects
+
+### Outputs
+- `filtered_ohlcv_bundle`: Dictionary containing only symbols that passed the filter
+
+### Base Class
+```python
+from nodes.core.market.filters.base.base_indicator_filter_node import BaseIndicatorFilter
+```
+
 ## What is Volume Profile?
 
 Volume Profile (VBP) analyzes the distribution of trading volume across different price levels over a historical period. By identifying price levels where significant trading activity occurred, we can determine areas of:
@@ -135,9 +164,115 @@ If no resistance levels are found above the current price, the filter treats thi
 - **Volume Weighted Average Price (VWAP)**: Another volume-based analysis tool
 - **Point of Control (POC)**: The price level with highest volume in VBP
 
+## Usage Examples
+
+### Basic Usage in a Graph
+
+```python
+from nodes.core.market.filters.vbp_level_filter_node import VBPLevelFilter
+from core.types_registry import AssetSymbol, AssetClass
+
+# Create filter instance
+vbp_filter = VBPLevelFilter(
+    id=1,
+    params={
+        "bins": 50,
+        "lookback_years": 2,
+        "num_levels": 5,
+        "max_distance_to_support": 5.0,
+        "min_distance_to_resistance": 5.0,
+        "use_weekly": True
+    }
+)
+
+# Process OHLCV bundle
+results = await vbp_filter.execute({
+    "ohlcv_bundle": {
+        AssetSymbol("AAPL", AssetClass.STOCKS): ohlcv_data
+    }
+})
+
+# Access filtered symbols
+filtered_symbols = results["filtered_ohlcv_bundle"]
+```
+
+### Integration with Other Filters
+
+The VBP Level Filter works well in combination with other filters:
+
+```python
+# Typical workflow:
+# 1. Fetch universe of stocks
+# 2. Get OHLCV data (PolygonBatchCustomBars)
+# 3. Apply ATRX filter (volatility filter)
+# 4. Apply VBP Level Filter (support/resistance filter)
+# 5. Apply SMA filter (trend filter)
+# 6. Extract symbols
+
+workflow = [
+    PolygonUniverseNode(id=1),
+    PolygonBatchCustomBarsNode(id=2),
+    AtrXFilterNode(id=3, params={"filter_condition": "inside", "upper_threshold": 6.0, "lower_threshold": 0}),
+    VBPLevelFilterNode(id=4, params={"use_weekly": True, "lookback_years": 2}),
+    SMAFilterNode(id=5, params={"period": 200, "prior_days": 1}),
+    ExtractSymbolsNode(id=6)
+]
+```
+
+### Custom Implementation
+
+If you want to extend the VBP Level Filter:
+
+```python
+from nodes.core.market.filters.vbp_level_filter_node import VBPLevelFilter
+
+class CustomVBPFilter(VBPLevelFilter):
+    def _should_pass_filter(self, indicator_result):
+        # Override filter logic with custom conditions
+        result = super()._should_pass_filter(indicator_result)
+        
+        # Add additional custom logic
+        if indicator_result.values.lines.get("num_levels", 0) < 3:
+            return False  # Require at least 3 significant levels
+        
+        return result
+```
+
+## API Reference
+
+### Methods
+
+#### `_calculate_indicator(ohlcv_data: List[OHLCVBar]) -> IndicatorResult`
+Calculates the volume profile levels and distances.
+
+**Returns:**
+- `IndicatorResult` with:
+  - `current_price`: Current closing price
+  - `closest_support`: Nearest support level
+  - `closest_resistance`: Nearest resistance level
+  - `distance_to_support`: Percentage distance to support
+  - `distance_to_resistance`: Percentage distance to resistance
+  - `num_levels`: Number of significant levels found
+  - `has_resistance_above`: Boolean indicating if any resistance exists above price
+
+#### `_should_pass_filter(indicator_result: IndicatorResult) -> bool`
+Determines if the asset passes the filter based on distance thresholds.
+
+**Returns:**
+- `True` if within max distance to support AND at least min distance to resistance (or above all levels)
+- `False` otherwise
+
+#### `_fetch_weekly_bars(symbol: AssetSymbol, api_key: str) -> List[OHLCVBar]`
+Fetches weekly bars directly from Polygon API when `use_weekly=True`.
+
+#### `_aggregate_to_weekly(ohlcv_data: List[OHLCVBar]) -> List[OHLCVBar]`
+Aggregates daily bars to weekly bars for analysis.
+
+#### `_calculate_vbp_levels(ohlcv_data: List[OHLCVBar]) -> Dict[str, Any]`
+Calculates volume profile levels using histogram binning.
+
 ## References
 
 - Volume Profile is a widely used tool in professional trading
 - Popularized by market profile analysis and market microstructure research
 - Commonly found in platforms like TradingView, Bloomberg, and Interactive Brokers
-
