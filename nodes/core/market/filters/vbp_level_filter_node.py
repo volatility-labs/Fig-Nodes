@@ -154,6 +154,8 @@ class VBPLevelFilter(BaseIndicatorFilter):
         """
         Calculate Volume Profile levels from OHLCV data.
         
+        Uses the same logic as the standalone script: bins volume by closing price.
+        
         Returns a dict with:
         - levels: List of significant price levels with their volume
         - current_price: Current price
@@ -179,53 +181,31 @@ class VBPLevelFilter(BaseIndicatorFilter):
         price_min = df['low'].min()
         price_max = df['high'].max()
         
-        # Create bins
+        # Create bins - same logic as standalone script
         bins = self.params["bins"]
-        bin_edges = np.linspace(price_min, price_max, bins + 1)
+        price_range = price_max - price_min
+        bin_size = price_range / bins
         
-        # Distribute volume across price bins
-        volume_profile = np.zeros(bins)
+        # Calculate volume_usd (volume * close) for each bar
+        df['volume_usd'] = df['volume'] * df['close']
         
-        for _, row in df.iterrows():
-            high = row['high']
-            low = row['low']
-            volume = row['volume']
-            
-            if high == low:
-                # Single price level, add all volume to that bin
-                bin_idx = np.digitize(high, bin_edges) - 1
-                bin_idx = np.clip(bin_idx, 0, bins - 1)
-                volume_profile[bin_idx] += volume
-            else:
-                # Distribute volume across price range
-                price_range = high - low
-                for i in range(bins):
-                    bin_low = bin_edges[i]
-                    bin_high = bin_edges[i + 1]
-                    
-                    # Calculate overlap between bar and bin
-                    overlap_low = max(low, bin_low)
-                    overlap_high = min(high, bin_high)
-                    
-                    if overlap_low < overlap_high:
-                        overlap_pct = (overlap_high - overlap_low) / price_range
-                        volume_profile[i] += volume * overlap_pct
+        # Bin by close price (same as standalone script)
+        df['price_bin'] = ((df['close'] - price_min) / bin_size).astype(int) * bin_size + price_min
         
-        # Calculate bin centers
-        bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
+        # Group by price bin and sum volume_usd
+        volume_profile = df.groupby('price_bin')['volume_usd'].sum().sort_index()
         
         # Find significant levels (top volume bins)
         num_levels = self.params["num_levels"]
-        top_indices = np.argsort(volume_profile)[-num_levels:]
+        significant_levels = volume_profile.nlargest(num_levels)
         
         # Create level list sorted by volume
         levels = []
-        for idx in top_indices:
-            if volume_profile[idx] > 0:
-                levels.append({
-                    "price": float(bin_centers[idx]),
-                    "volume": float(volume_profile[idx])
-                })
+        for price, volume in significant_levels.items():
+            levels.append({
+                "price": float(price),
+                "volume": float(volume)
+            })
         
         # Sort by volume descending
         levels.sort(key=lambda x: x["volume"], reverse=True)
