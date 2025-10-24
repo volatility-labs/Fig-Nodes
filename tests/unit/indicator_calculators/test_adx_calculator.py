@@ -1,12 +1,11 @@
 import numpy as np
-import pandas as pd
 import pytest
 
 from services.indicator_calculators.adx_calculator import calculate_adx, calculate_wilder_ma
 
 
 @pytest.fixture
-def sample_ohlcv_data() -> pd.DataFrame:
+def sample_ohlcv_data() -> dict[str, list[float]]:
     """Create realistic OHLCV data for testing ADX."""
     np.random.seed(42)
 
@@ -15,12 +14,15 @@ def sample_ohlcv_data() -> pd.DataFrame:
     high_prices = close_prices + np.random.uniform(0.5, 3, 50)
     low_prices = close_prices - np.random.uniform(0.5, 3, 50)
 
-    df = pd.DataFrame({"high": high_prices, "low": low_prices, "close": close_prices})
-    return df
+    return {
+        "highs": high_prices.tolist(),
+        "lows": low_prices.tolist(),
+        "closes": close_prices.tolist(),
+    }
 
 
 @pytest.fixture
-def trending_upward_data() -> pd.DataFrame:
+def trending_upward_data() -> dict[str, list[float]]:
     """Create data with strong upward trend for higher ADX."""
     # Strong upward trend
     base_prices = np.linspace(100, 150, 50)
@@ -28,12 +30,15 @@ def trending_upward_data() -> pd.DataFrame:
     low_prices = base_prices - np.random.uniform(1, 3, 50)
     close_prices = base_prices + np.random.normal(0, 0.5, 50)
 
-    df = pd.DataFrame({"high": high_prices, "low": low_prices, "close": close_prices})
-    return df
+    return {
+        "highs": high_prices.tolist(),
+        "lows": low_prices.tolist(),
+        "closes": close_prices.tolist(),
+    }
 
 
 @pytest.fixture
-def sideways_data() -> pd.DataFrame:
+def sideways_data() -> dict[str, list[float]]:
     """Create data with sideways movement for lower ADX."""
     # Sideways movement
     base_price = 100
@@ -41,8 +46,11 @@ def sideways_data() -> pd.DataFrame:
     low_prices = base_price - np.random.uniform(0.5, 2, 50)
     close_prices = base_price + np.random.normal(0, 1, 50)
 
-    df = pd.DataFrame({"high": high_prices, "low": low_prices, "close": close_prices})
-    return df
+    return {
+        "highs": high_prices.tolist(),
+        "lows": low_prices.tolist(),
+        "closes": close_prices.tolist(),
+    }
 
 
 class TestCalculateWilderMA:
@@ -139,7 +147,12 @@ class TestCalculateADX:
 
     def test_adx_basic_happy_path(self, sample_ohlcv_data):
         """Test basic ADX calculation with valid data."""
-        result = calculate_adx(sample_ohlcv_data, period=14)
+        result = calculate_adx(
+            sample_ohlcv_data["highs"],
+            sample_ohlcv_data["lows"],
+            sample_ohlcv_data["closes"],
+            period=14,
+        )
 
         # Should return dictionary with adx, pdi, ndi as lists
         assert isinstance(result, dict)
@@ -169,8 +182,18 @@ class TestCalculateADX:
 
     def test_adx_with_different_periods(self, sample_ohlcv_data):
         """Test ADX with different periods."""
-        result_14 = calculate_adx(sample_ohlcv_data, period=14)
-        result_20 = calculate_adx(sample_ohlcv_data, period=20)
+        result_14 = calculate_adx(
+            sample_ohlcv_data["highs"],
+            sample_ohlcv_data["lows"],
+            sample_ohlcv_data["closes"],
+            period=14,
+        )
+        result_20 = calculate_adx(
+            sample_ohlcv_data["highs"],
+            sample_ohlcv_data["lows"],
+            sample_ohlcv_data["closes"],
+            period=20,
+        )
 
         # Both should return valid results as lists
         assert isinstance(result_14, dict)
@@ -191,7 +214,12 @@ class TestCalculateADX:
 
     def test_adx_trending_data(self, trending_upward_data):
         """Test ADX with trending data should give higher ADX."""
-        result = calculate_adx(trending_upward_data, period=14)
+        result = calculate_adx(
+            trending_upward_data["highs"],
+            trending_upward_data["lows"],
+            trending_upward_data["closes"],
+            period=14,
+        )
 
         if result["adx"] and len(result["adx"]) > 0:
             last_adx = result["adx"][-1]
@@ -207,7 +235,12 @@ class TestCalculateADX:
 
     def test_adx_sideways_data(self, sideways_data):
         """Test ADX with sideways data should give lower ADX."""
-        result = calculate_adx(sideways_data, period=14)
+        result = calculate_adx(
+            sideways_data["highs"],
+            sideways_data["lows"],
+            sideways_data["closes"],
+            period=14,
+        )
 
         if result["adx"] and len(result["adx"]) > 0:
             last_adx = result["adx"][-1]
@@ -217,35 +250,26 @@ class TestCalculateADX:
                 assert last_adx <= 100
 
     def test_adx_empty_dataframe(self):
-        """Test ADX with empty DataFrame."""
-        df = pd.DataFrame(columns=["high", "low", "close"])
-        result = calculate_adx(df, period=14)
+        """Test ADX with empty data."""
+        result = calculate_adx([], [], [], period=14)
 
         assert result == {"adx": [], "pdi": [], "ndi": []}
 
     def test_adx_insufficient_data(self):
         """Test ADX with insufficient data (< period)."""
-        df = pd.DataFrame(
-            {
-                "high": [105, 106, 107, 108, 109],
-                "low": [95, 96, 97, 98, 99],
-                "close": [100, 101, 102, 103, 104],
-            }
-        )
-        result = calculate_adx(df, period=14)
+        highs = [105, 106, 107, 108, 109]
+        lows = [95, 96, 97, 98, 99]
+        closes = [100, 101, 102, 103, 104]
+        result = calculate_adx(highs, lows, closes, period=14)
 
         assert result == {"adx": [], "pdi": [], "ndi": []}
 
     def test_adx_exactly_period_length(self):
         """Test ADX with exactly period length of data."""
-        df = pd.DataFrame(
-            {
-                "high": [105 + i for i in range(14)],
-                "low": [95 + i for i in range(14)],
-                "close": [100 + i for i in range(14)],
-            }
-        )
-        result = calculate_adx(df, period=14)
+        highs = [105 + i for i in range(14)]
+        lows = [95 + i for i in range(14)]
+        closes = [100 + i for i in range(14)]
+        result = calculate_adx(highs, lows, closes, period=14)
 
         # With exactly period length, we can still calculate PDI and NDI but not ADX
         assert isinstance(result, dict)
@@ -263,14 +287,10 @@ class TestCalculateADX:
 
     def test_adx_period_plus_one(self):
         """Test ADX with period + 1 data points."""
-        df = pd.DataFrame(
-            {
-                "high": [105 + i for i in range(15)],
-                "low": [95 + i for i in range(15)],
-                "close": [100 + i for i in range(15)],
-            }
-        )
-        result = calculate_adx(df, period=14)
+        highs = [105 + i for i in range(15)]
+        lows = [95 + i for i in range(15)]
+        closes = [100 + i for i in range(15)]
+        result = calculate_adx(highs, lows, closes, period=14)
 
         # Should return some values now
         assert isinstance(result, dict)
@@ -279,49 +299,53 @@ class TestCalculateADX:
         assert "ndi" in result
 
     def test_adx_missing_columns(self):
-        """Test ADX with missing required columns."""
-        df = pd.DataFrame(
-            {
-                "high": [105, 106, 107],
-                "low": [95, 96, 97],
-                # Missing 'close' column
-            }
-        )
-        result = calculate_adx(df, period=14)
+        """Test ADX with missing required data."""
+        highs = [105, 106, 107]
+        lows = [95, 96, 97]
+        closes = []  # Empty closes
+        result = calculate_adx(highs, lows, closes, period=14)
 
         assert result == {"adx": [], "pdi": [], "ndi": []}
 
     def test_adx_invalid_period_zero(self, sample_ohlcv_data):
         """Test ADX with zero period."""
-        result = calculate_adx(sample_ohlcv_data, period=0)
+        result = calculate_adx(
+            sample_ohlcv_data["highs"],
+            sample_ohlcv_data["lows"],
+            sample_ohlcv_data["closes"],
+            period=0,
+        )
 
         assert result == {"adx": [], "pdi": [], "ndi": []}
 
     def test_adx_invalid_period_negative(self, sample_ohlcv_data):
         """Test ADX with negative period."""
-        result = calculate_adx(sample_ohlcv_data, period=-5)
+        result = calculate_adx(
+            sample_ohlcv_data["highs"],
+            sample_ohlcv_data["lows"],
+            sample_ohlcv_data["closes"],
+            period=-5,
+        )
 
         assert result == {"adx": [], "pdi": [], "ndi": []}
 
     def test_adx_with_nan_values(self):
-        """Test ADX with NaN values in data."""
-        df = pd.DataFrame(
-            {
-                "high": [105, 106, np.nan, 108, 109, 110],
-                "low": [95, 96, 97, 98, 99, 100],
-                "close": [100, 101, 102, 103, 104, 105],
-            }
-        )
-        result = calculate_adx(df, period=5)
+        """Test ADX with None values in data."""
+        highs = [105, 106, None, 108, 109, 110]
+        lows = [95, 96, 97, 98, 99, 100]
+        closes = [100, 101, 102, 103, 104, 105]
+        result = calculate_adx(highs, lows, closes, period=5)
 
         # Should handle NaN gracefully
         assert isinstance(result, dict)
         assert "adx" in result
 
     def test_adx_all_nan_values(self):
-        """Test ADX with all NaN values."""
-        df = pd.DataFrame({"high": [np.nan] * 20, "low": [np.nan] * 20, "close": [np.nan] * 20})
-        result = calculate_adx(df, period=14)
+        """Test ADX with all None values."""
+        highs = [None] * 20
+        lows = [None] * 20
+        closes = [None] * 20
+        result = calculate_adx(highs, lows, closes, period=14)
 
         # Should return empty lists or lists with None values
         assert isinstance(result["adx"], list)
@@ -330,15 +354,30 @@ class TestCalculateADX:
 
     def test_adx_consistent_results(self, sample_ohlcv_data):
         """Test that ADX gives consistent results for same input."""
-        result1 = calculate_adx(sample_ohlcv_data, period=14)
-        result2 = calculate_adx(sample_ohlcv_data, period=14)
+        result1 = calculate_adx(
+            sample_ohlcv_data["highs"],
+            sample_ohlcv_data["lows"],
+            sample_ohlcv_data["closes"],
+            period=14,
+        )
+        result2 = calculate_adx(
+            sample_ohlcv_data["highs"],
+            sample_ohlcv_data["lows"],
+            sample_ohlcv_data["closes"],
+            period=14,
+        )
 
         # Results should be identical
         assert result1 == result2
 
     def test_adx_pdi_ndi_relationship(self, sample_ohlcv_data):
         """Test that PDI and NDI are non-negative."""
-        result = calculate_adx(sample_ohlcv_data, period=14)
+        result = calculate_adx(
+            sample_ohlcv_data["highs"],
+            sample_ohlcv_data["lows"],
+            sample_ohlcv_data["closes"],
+            period=14,
+        )
 
         if result["pdi"] and len(result["pdi"]) > 0:
             last_pdi = result["pdi"][-1]
@@ -352,14 +391,10 @@ class TestCalculateADX:
 
     def test_adx_extreme_values(self):
         """Test ADX with extreme price values."""
-        df = pd.DataFrame(
-            {
-                "high": [1000000.0 + i for i in range(20)],
-                "low": [999990.0 + i for i in range(20)],
-                "close": [999995.0 + i for i in range(20)],
-            }
-        )
-        result = calculate_adx(df, period=14)
+        highs = [1000000.0 + i for i in range(20)]
+        lows = [999990.0 + i for i in range(20)]
+        closes = [999995.0 + i for i in range(20)]
+        result = calculate_adx(highs, lows, closes, period=14)
 
         # Should handle large values without error
         assert isinstance(result, dict)
@@ -370,7 +405,12 @@ class TestCalculateADX:
 
     def test_adx_period_one(self, sample_ohlcv_data):
         """Test ADX with period of 1."""
-        result = calculate_adx(sample_ohlcv_data, period=1)
+        result = calculate_adx(
+            sample_ohlcv_data["highs"],
+            sample_ohlcv_data["lows"],
+            sample_ohlcv_data["closes"],
+            period=1,
+        )
 
         # Should return valid results
         assert isinstance(result, dict)
@@ -384,15 +424,16 @@ class TestADXEdgeCases:
 
     def test_adx_single_row(self):
         """Test ADX with single row of data."""
-        df = pd.DataFrame({"high": [105], "low": [95], "close": [100]})
-        result = calculate_adx(df, period=14)
+        result = calculate_adx([105], [95], [100], period=14)
 
         assert result == {"adx": [], "pdi": [], "ndi": []}
 
     def test_adx_no_price_movement(self):
         """Test ADX with no price movement."""
-        df = pd.DataFrame({"high": [100.0] * 20, "low": [100.0] * 20, "close": [100.0] * 20})
-        result = calculate_adx(df, period=14)
+        highs = [100.0] * 20
+        lows = [100.0] * 20
+        closes = [100.0] * 20
+        result = calculate_adx(highs, lows, closes, period=14)
 
         # With no movement, ADX should still calculate
         assert isinstance(result, dict)
@@ -402,35 +443,33 @@ class TestADXEdgeCases:
                 assert last_adx >= 0
 
     def test_adx_only_high_low_columns(self):
-        """Test ADX with only high and low columns."""
-        df = pd.DataFrame(
-            {"high": [105 + i for i in range(20)], "low": [95 + i for i in range(20)]}
-        )
-        result = calculate_adx(df, period=14)
+        """Test ADX with only high and low data."""
+        highs = [105 + i for i in range(20)]
+        lows = [95 + i for i in range(20)]
+        closes = []  # Empty closes
+        result = calculate_adx(highs, lows, closes, period=14)
 
         assert result == {"adx": [], "pdi": [], "ndi": []}
 
     def test_adx_case_sensitive_columns(self):
-        """Test ADX is case sensitive for column names."""
-        df = pd.DataFrame(
-            {
-                "High": [105 + i for i in range(20)],
-                "Low": [95 + i for i in range(20)],
-                "Close": [100 + i for i in range(20)],
-            }
-        )
-        result = calculate_adx(df, period=14)
+        """Test ADX with valid data."""
+        highs = [105 + i for i in range(20)]
+        lows = [95 + i for i in range(20)]
+        closes = [100 + i for i in range(20)]
+        result = calculate_adx(highs, lows, closes, period=14)
 
-        # Should fail because columns are case-sensitive
-        assert result == {"adx": [], "pdi": [], "ndi": []}
+        # Should work fine
+        assert isinstance(result, dict)
+        assert "adx" in result
 
     def test_adx_extra_columns(self, sample_ohlcv_data):
-        """Test ADX with extra columns doesn't affect calculation."""
-        df = sample_ohlcv_data.copy()
-        df["volume"] = [1000] * len(df)
-        df["open"] = [100] * len(df)
-
-        result = calculate_adx(df, period=14)
+        """Test ADX with valid data."""
+        result = calculate_adx(
+            sample_ohlcv_data["highs"],
+            sample_ohlcv_data["lows"],
+            sample_ohlcv_data["closes"],
+            period=14,
+        )
 
         # Should work fine with extra columns
         assert isinstance(result, dict)

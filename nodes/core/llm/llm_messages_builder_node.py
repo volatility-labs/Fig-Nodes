@@ -1,15 +1,15 @@
-from typing import Dict, Any, List
+from typing import Any, TypeGuard
 
-from nodes.base.base_node import Base
 from core.types_registry import LLMChatMessage, NodeCategory, get_type
+from nodes.base.base_node import Base
 
 
 class LLMMessagesBuilder(Base):
     """
-    Builds a well-formed LLMChatMessageList by merging multiple input lists.
+    Builds a well-formed LLMChatMessageList by merging multiple input messages.
 
     Inputs:
-    - message_i: LLMChatMessageList (optional, up to 10) – message lists to append in order
+    - message_i: LLMChatMessage (optional, up to 10) – individual messages or lists to append in order
 
     Output:
     - messages: LLMChatMessageList – merged, ordered, filtered
@@ -17,12 +17,11 @@ class LLMMessagesBuilder(Base):
 
     # Update inputs:
     inputs = {
-        **{f"message_{i}": get_type("LLMChatMessageList") for i in range(10)},
+        **{f"message_{i}": get_type("LLMChatMessage") | None for i in range(10)},
     }
-    optional_inputs = [f"message_{i}" for i in range(10)]
 
     outputs = {
-        "messages": get_type("LLMChatMessageList"),
+        "messages": get_type("LLMChatMessageList") | None,
     }
 
     default_params = {
@@ -35,12 +34,25 @@ class LLMMessagesBuilder(Base):
 
     CATEGORY = NodeCategory.LLM
 
-    async def _execute_impl(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
-        merged: List[LLMChatMessage] = []
+    def _is_llm_chat_message(self, msg: Any) -> TypeGuard[LLMChatMessage]:
+        """Type guard to validate LLMChatMessage structure."""
+        return (
+            isinstance(msg, dict)
+            and "role" in msg
+            and "content" in msg
+            and isinstance(msg["role"], str)
+            and msg["role"] in ("system", "user", "assistant", "tool")
+        )
+
+    async def _execute_impl(self, inputs: dict[str, Any]) -> dict[str, Any]:
+        merged: list[LLMChatMessage] = []
         for i in range(10):
-            msg_list = inputs.get(f"message_{i}")
-            if msg_list:
-                merged.extend(msg_list)
+            msg = inputs.get(f"message_{i}")
+            if msg:
+                if self._is_llm_chat_message(msg):
+                    merged.append(msg)
+                else:
+                    raise TypeError(f"Expected LLMChatMessage, got {type(msg)}")
 
         # Apply filtering based on params
         messages = merged
@@ -48,5 +60,3 @@ class LLMMessagesBuilder(Base):
             messages = [m for m in messages if m and str(m.get("content") or "").strip()]
 
         return {"messages": messages}
-
-

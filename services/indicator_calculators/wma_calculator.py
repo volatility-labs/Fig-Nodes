@@ -34,7 +34,9 @@ def calculate_wma(values: Sequence[float | None], period: int) -> dict[str, Any]
             continue
 
         # Calculate weighted sum (all values are guaranteed to be float at this point)
-        weighted_sum = sum(val * (idx + 1) for idx, val in enumerate(window))  # type: ignore
-        results.append(weighted_sum / divisor)  # type: ignore
+        # Type narrowing: after the None check, window contains only floats
+        window_floats: list[float] = [v for v in window if v is not None]
+        weighted_sum = sum(val * (idx + 1) for idx, val in enumerate(window_floats))
+        results.append(weighted_sum / divisor)
 
     return {"wma": results}

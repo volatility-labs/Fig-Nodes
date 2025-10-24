@@ -1,11 +1,12 @@
-from typing import Dict, Any
-from core.types_registry import get_type
+from typing import Any
+
+from core.types_registry import AssetClass, AssetSymbol, InstrumentType, get_type
 from nodes.base.base_node import Base
-from core.types_registry import AssetSymbol, AssetClass, InstrumentType
 
 
 class AssetSymbolInput(Base):
     """Node to create a single AssetSymbol from user parameters."""
+
     inputs = {}
     outputs = {"symbol": get_type("AssetSymbol")}
     default_params = {
@@ -16,17 +17,27 @@ class AssetSymbolInput(Base):
     }
     params_meta = [
         {"name": "ticker", "type": "text", "default": ""},
-        {"name": "asset_class", "type": "combo", "default": AssetClass.CRYPTO.name, "options": [e.name for e in AssetClass]},
+        {
+            "name": "asset_class",
+            "type": "combo",
+            "default": AssetClass.CRYPTO.name,
+            "options": [e.name for e in AssetClass],
+        },
         {"name": "quote_currency", "type": "text", "default": "USDT"},
-        {"name": "instrument_type", "type": "combo", "default": InstrumentType.PERPETUAL.name, "options": [e.name for e in InstrumentType]},
+        {
+            "name": "instrument_type",
+            "type": "combo",
+            "default": InstrumentType.PERPETUAL.name,
+            "options": [e.name for e in InstrumentType],
+        },
     ]
 
-    async def _execute_impl(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
+    async def _execute_impl(self, inputs: dict[str, Any]) -> dict[str, Any]:
         # Coerce params to enums and normalized cases
         ticker_value = str(self.params.get("ticker") or "").upper()
         asset_class_param = self.params.get("asset_class", AssetClass.CRYPTO.name)
         instrument_type_param = self.params.get("instrument_type", InstrumentType.SPOT.name)
-        quote_currency_value = (self.params.get("quote_currency") or None)
+        quote_currency_value = self.params.get("quote_currency") or None
         if quote_currency_value:
             quote_currency_value = str(quote_currency_value).upper()
 
@@ -55,5 +66,3 @@ class AssetSymbolInput(Base):
             instrument_type=instrument_type_value,
         )
         return {"symbol": symbol}
-
-

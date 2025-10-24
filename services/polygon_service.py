@@ -1,10 +1,13 @@
-from typing import List, Dict, Any
-import httpx
-from datetime import datetime, timedelta
-from core.types_registry import AssetSymbol, OHLCVBar
 import asyncio
+from datetime import datetime, timedelta
+from typing import Any
 
-async def fetch_bars(symbol: AssetSymbol, api_key: str, params: Dict[str, Any]) -> List[OHLCVBar]:
+import httpx
+
+from core.types_registry import AssetSymbol, OHLCVBar
+
+
+async def fetch_bars(symbol: AssetSymbol, api_key: str, params: dict[str, Any]) -> list[OHLCVBar]:
     print(f"STOP_TRACE: fetch_bars started for {symbol}")
     multiplier = params.get("multiplier", 1)
     timespan = params.get("timespan", "day")
@@ -55,9 +58,11 @@ async def fetch_bars(symbol: AssetSymbol, api_key: str, params: Dict[str, Any]) 
             if data.get("status") not in ["OK", "DELAYED"]:
                 raise ValueError(f"Polygon API error: {data.get('error', 'Unknown error')}")
             results = data.get("results", [])
-            bars = []
+            bars: list[OHLCVBar] = []
             for result in results:
-                bar = {
+                if not isinstance(result, dict):
+                    continue
+                bar: OHLCVBar = {
                     "timestamp": result["t"],
                     "open": result["o"],
                     "high": result["h"],
@@ -65,12 +70,7 @@ async def fetch_bars(symbol: AssetSymbol, api_key: str, params: Dict[str, Any]) 
                     "close": result["c"],
                     "volume": result["v"],
                 }
-                if "vw" in result:
-                    bar["vw"] = result["vw"]
-                if "n" in result:
-                    bar["n"] = result["n"]
-                if "otc" in result:
-                    bar["otc"] = result["otc"]
+
                 bars.append(bar)
             return bars
     except asyncio.CancelledError:

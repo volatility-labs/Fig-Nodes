@@ -1,12 +1,7 @@
 import asyncio
 import logging
 import math
-import time
-from datetime import datetime, timedelta
 from typing import Any
-
-import pandas as pd
-import pytz
 
 from core.api_key_vault import APIKeyVault
 from core.types_registry import (
@@ -14,43 +9,16 @@ from core.types_registry import (
     IndicatorResult,
     IndicatorType,
     IndicatorValue,
+    NodeOutputs,
     OHLCVBar,
     get_type,
 )
 from nodes.core.market.filters.base.base_indicator_filter_node import BaseIndicatorFilter
+from services.indicator_calculators.orb_calculator import calculate_orb
 from services.polygon_service import fetch_bars
+from services.rate_limiter import RateLimiter
 
 logger = logging.getLogger(__name__)
-
-
-class RateLimiter:
-    """Simple rate limiter to stay under Polygon's recommended 100 requests/second."""
-
-    def __init__(self, max_per_second: int = 100):
-        self.max_per_second = max_per_second
-        self.requests = []
-        self.lock = asyncio.Lock()
-
-    async def acquire(self):
-        """Wait if necessary to stay under the rate limit."""
-        async with self.lock:
-            now = time.time()
-
-            # Remove requests older than 1 second
-            self.requests = [req_time for req_time in self.requests if now - req_time < 1.0]
-
-            # If we're at the limit, wait until we can make another request
-            if len(self.requests) >= self.max_per_second:
-                oldest_request = min(self.requests)
-                sleep_time = 1.0 - (now - oldest_request)
-                if sleep_time > 0:
-                    await asyncio.sleep(sleep_time)
-                    # Refresh the list after sleeping
-                    now = time.time()
-                    self.requests = [req_time for req_time in self.requests if now - req_time < 1.0]
-
-            # Record this request
-            self.requests.append(now)
 
 
 class OrbFilter(BaseIndicatorFilter):
@@ -83,18 +51,10 @@ class OrbFilter(BaseIndicatorFilter):
         {"name": "avg_period", "type": "number", "default": 14, "min": 1, "step": 1},
     ]
 
-    def __init__(self, id: int, params: dict[str, Any] = None):
+    def __init__(self, id: int, params: dict[str, Any]):
         super().__init__(id, params)
-        self.workers: list[asyncio.Task] = []
-        # Conservative cap to avoid event loop thrashing and ensure predictable batching in tests
+        self.workers: list[asyncio.Task[NodeOutputs]] = []
         self._max_safe_concurrency = 5
-
-    def validate_inputs(self, inputs: dict[str, Any]) -> bool:
-        if "ohlcv_bundle" in inputs and isinstance(inputs["ohlcv_bundle"], dict):
-            inputs["ohlcv_bundle"] = {
-                k: v if v is not None else [] for k, v in inputs["ohlcv_bundle"].items()
-            }
-        return super().validate_inputs(inputs)
 
     def force_stop(self):
         if self._is_stopped:
@@ -106,43 +66,38 @@ class OrbFilter(BaseIndicatorFilter):
         self.workers.clear()
 
     def _validate_indicator_params(self):
-        if self.params["or_minutes"] <= 0:
+        or_minutes = self.params["or_minutes"]
+        rel_vol_threshold = self.params["rel_vol_threshold"]
+        avg_period = self.params["avg_period"]
+
+        if not isinstance(or_minutes, (int, float)) or or_minutes <= 0:
             raise ValueError("Opening range minutes must be positive")
-        if self.params["rel_vol_threshold"] < 0:
+        if not isinstance(rel_vol_threshold, (int, float)) or rel_vol_threshold < 0:
             raise ValueError("Relative volume threshold cannot be negative")
-        if self.params["avg_period"] <= 0:
+        if not isinstance(avg_period, (int, float)) or avg_period <= 0:
             raise ValueError("Average period must be positive")
 
-    def _get_target_date_for_orb(self, symbol: AssetSymbol, today_date, df) -> datetime.date:
-        """
-        Determine the target date for ORB calculation based on asset class.
-
-        For stocks: Use last trading day if today has no data
-        For crypto: Use UTC midnight of prior day
-        """
-        if symbol.asset_class.name == "CRYPTO":
-            # For crypto, use UTC midnight of prior day
-            utc_now = datetime.now(pytz.timezone("UTC"))
-            prior_day_utc = utc_now.date() - timedelta(days=1)
-            return prior_day_utc
-        else:
-            # For stocks, check if today has data, otherwise use last trading day
-            available_dates = sorted(df["date"].unique())
-            if today_date in available_dates:
-                return today_date
-            else:
-                # Use the most recent trading day
-                return available_dates[-1] if available_dates else today_date
-
     async def _calculate_orb_indicator(self, symbol: AssetSymbol, api_key: str) -> IndicatorResult:
-        avg_period = self.params["avg_period"]
-        or_minutes = self.params["or_minutes"]
+        avg_period_raw = self.params["avg_period"]
+        or_minutes_raw = self.params["or_minutes"]
+
+        # Type guard: ensure avg_period is a number
+        if not isinstance(avg_period_raw, (int, float)):
+            raise ValueError(f"avg_period must be a number, got {type(avg_period_raw)}")
+
+        avg_period = int(avg_period_raw)
+
+        # Type guard: ensure or_minutes is a number
+        if not isinstance(or_minutes_raw, (int, float)):
+            raise ValueError(f"or_minutes must be a number, got {type(or_minutes_raw)}")
+
+        or_minutes = int(or_minutes_raw)
 
         # Fetch 1-min bars for last avg_period +1 days
         fetch_params = {
             "multiplier": 1,
             "timespan": "minute",
-            "lookback_period": f"{int(avg_period) + 1} days",
+            "lookback_period": f"{avg_period + 1} days",
             "adjusted": True,
             "sort": "asc",
             "limit": 50000,
@@ -159,98 +114,35 @@ class OrbFilter(BaseIndicatorFilter):
                 error="No bars fetched",
             )
 
-        # Convert to df
-        df = pd.DataFrame(bars)
-        df["timestamp"] = (
-            pd.to_datetime(df["timestamp"], unit="ms")
-            .dt.tz_localize("UTC")
-            .dt.tz_convert("US/Eastern")
-        )
+        # Use the calculator to calculate ORB indicators
+        result = calculate_orb(bars, symbol, or_minutes, avg_period)
 
-        # Group by date
-        df["date"] = df["timestamp"].dt.date
-        daily_groups = df.groupby("date")
-
-        or_volumes = {}
-        today_direction = None
-        today_date = datetime.now(pytz.timezone("US/Eastern")).date()
-
-        # Determine target date based on asset class
-        target_date = self._get_target_date_for_orb(symbol, today_date, df)
-
-        for date, group in daily_groups:
-            # Determine opening range time based on asset class
-            if symbol.asset_class.name == "CRYPTO":
-                # For crypto, use UTC midnight (00:00:00) as opening range
-                open_time = (
-                    datetime.combine(date, datetime.strptime("00:00", "%H:%M").time())
-                    .replace(tzinfo=pytz.timezone("UTC"))
-                    .astimezone(pytz.timezone("US/Eastern"))
-                )
-            else:
-                # For stocks, use 9:30 AM Eastern as opening range
-                open_time = datetime.combine(
-                    date, datetime.strptime("09:30", "%H:%M").time()
-                ).replace(tzinfo=pytz.timezone("US/Eastern"))
-
-            close_time = open_time + timedelta(minutes=or_minutes)
-
-            or_bars = group[(group["timestamp"] >= open_time) & (group["timestamp"] < close_time)]
-
-            if or_bars.empty:
-                continue
-
-            or_high = or_bars["high"].max()
-            or_low = or_bars["low"].min()
-            or_volume = or_bars["volume"].sum()
-            or_open = or_bars.iloc[0]["open"]
-            or_close = or_bars.iloc[-1]["close"]
-
-            direction = (
-                "bullish" if or_close > or_open else "bearish" if or_close < or_open else "doji"
-            )
-
-            or_volumes[date] = or_volume
-
-            # Save direction for target date (today or last trading day)
-            if date == target_date:
-                today_direction = direction
-
-        # Get sorted dates
-        sorted_dates = sorted(or_volumes.keys())
-        if len(sorted_dates) < 2:
+        if result.get("error"):
             return IndicatorResult(
                 indicator_type=IndicatorType.ORB,
                 timestamp=0,
                 values=IndicatorValue(),
                 params=self.params,
-                error="Insufficient days",
+                error=result["error"],
             )
 
-        # Use target date for volume calculation
-        target_volume_date = target_date if target_date in or_volumes else sorted_dates[-1]
-        past_volumes = (
-            [or_volumes[d] for d in sorted_dates[-avg_period - 1 : -1]]
-            if len(sorted_dates) > avg_period
-            else [or_volumes[d] for d in sorted_dates[:-1]]
-        )
+        rel_vol_raw = result.get("rel_vol")
+        direction = result.get("direction", "doji")
 
-        if not past_volumes:
-            avg_vol = 0
-        else:
-            avg_vol = sum(past_volumes) / len(past_volumes)
+        # Type guard: ensure rel_vol is a number
+        if not isinstance(rel_vol_raw, (int, float)):
+            raise ValueError(f"rel_vol must be a number, got {type(rel_vol_raw)}")
 
-        current_vol = or_volumes.get(target_volume_date, 0)
-        rel_vol = (current_vol / avg_vol * 100) if avg_vol > 0 else 0
+        rel_vol = float(rel_vol_raw)
 
-        if today_direction is None:
-            today_direction = "doji"
+        # Get the latest timestamp from bars for the result
+        latest_timestamp = bars[-1]["timestamp"] if bars else 0
 
-        values = IndicatorValue(lines={"rel_vol": rel_vol}, series=[{"direction": today_direction}])
+        values = IndicatorValue(lines={"rel_vol": rel_vol}, series=[{"direction": direction}])
 
         return IndicatorResult(
             indicator_type=IndicatorType.ORB,
-            timestamp=int(df["timestamp"].iloc[-1].timestamp() * 1000),
+            timestamp=latest_timestamp,
             values=values,
             params=self.params,
         )
@@ -272,7 +164,11 @@ class OrbFilter(BaseIndicatorFilter):
         if direction == "doji":
             return False
 
-        if rel_vol < self.params["rel_vol_threshold"]:
+        rel_vol_threshold = self.params.get("rel_vol_threshold", 0.0)
+        if not isinstance(rel_vol_threshold, (int, float)):
+            raise ValueError(f"rel_vol_threshold must be a number, got {type(rel_vol_threshold)}")
+
+        if rel_vol < float(rel_vol_threshold):
             return False
 
         param_dir = self.params["direction"]
@@ -280,7 +176,7 @@ class OrbFilter(BaseIndicatorFilter):
             return True
         return direction == param_dir
 
-    async def _execute_impl(self, inputs: dict[str, Any]) -> dict[str, Any]:
+    async def _execute_impl(self, inputs: dict[str, Any]) -> NodeOutputs:
         self.api_key = APIKeyVault().get("POLYGON_API_KEY")
         if not self.api_key:
             raise ValueError("Polygon API key not found in vault")
@@ -290,15 +186,23 @@ class OrbFilter(BaseIndicatorFilter):
         if not ohlcv_bundle:
             return {"filtered_ohlcv_bundle": {}}
 
-        max_concurrent = self.params.get("max_concurrent", 10)
-        rate_limit = self.params.get("rate_limit_per_second", 95)
+        max_concurrent_raw = self.params.get("max_concurrent", 10)
+        if not isinstance(max_concurrent_raw, int):
+            raise ValueError(f"max_concurrent must be an int, got {type(max_concurrent_raw)}")
+        max_concurrent: int = max_concurrent_raw
+
+        rate_limit_raw = self.params.get("rate_limit_per_second", 95)
+        if not isinstance(rate_limit_raw, int):
+            raise ValueError(f"rate_limit_per_second must be an int, got {type(rate_limit_raw)}")
+        rate_limit: int = rate_limit_raw
+
         filtered_bundle = {}
         rate_limiter = RateLimiter(max_per_second=rate_limit)
         total_symbols = len(ohlcv_bundle)
         completed_count = 0
 
         # Use a bounded worker pool to avoid creating one task per symbol
-        queue: asyncio.Queue = asyncio.Queue()
+        queue: asyncio.Queue[tuple[AssetSymbol, list[OHLCVBar]]] = asyncio.Queue()
         for symbol, ohlcv_data in ohlcv_bundle.items():
             if ohlcv_data:  # Only process symbols with data
                 queue.put_nowait((symbol, ohlcv_data))
@@ -341,7 +245,7 @@ class OrbFilter(BaseIndicatorFilter):
                         # Calculate ORB indicator with error handling
                         try:
                             indicator_result = await self._calculate_orb_indicator(
-                                symbol, self.api_key
+                                symbol, self.api_key or ""
                             )
                             if self._should_pass_filter(indicator_result):
                                 filtered_bundle[symbol] = ohlcv_data

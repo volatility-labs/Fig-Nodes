@@ -91,7 +91,7 @@ export class APIKeyManager {
     }
 
     private async fetchCurrentKeys(): Promise<{ [key: string]: string }> {
-        const response = await fetch('/api_keys');
+        const response = await fetch('/api/v1/api_keys');
         if (!response.ok) {
             throw new Error(`Failed to fetch API keys: ${response.status} ${response.statusText}`);
         }
@@ -336,7 +336,7 @@ export class APIKeyManager {
             btn.addEventListener('click', (e) => {
                 const keyToRemove = (e.target as HTMLElement).dataset.key;
                 if (keyToRemove && confirm(`Remove ${keyToRemove}? This will delete it from .env.`)) {
-                    fetch('/api_keys', {
+                    fetch('/api/v1/api_keys', {
                         method: 'DELETE',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ key_name: keyToRemove })
