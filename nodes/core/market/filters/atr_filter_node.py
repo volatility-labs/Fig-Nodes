@@ -1,12 +1,13 @@
-
 import logging
+
 import pandas as pd
-from typing import Dict, Any, List
-from ta.volatility import AverageTrueRange
+
+from core.types_registry import IndicatorResult, IndicatorType, IndicatorValue, OHLCVBar
 from nodes.core.market.filters.base.base_indicator_filter_node import BaseIndicatorFilter
-from core.types_registry import OHLCVBar, IndicatorResult, IndicatorType, IndicatorValue
+from services.indicator_calculators.atr_calculator import calculate_atr
 
 logger = logging.getLogger(__name__)
+
 
 class ATRFilter(BaseIndicatorFilter):
     """
@@ -29,7 +30,7 @@ class ATRFilter(BaseIndicatorFilter):
         if self.params["window"] <= 0:
             raise ValueError("Window must be positive")
 
-    def _calculate_indicator(self, ohlcv_data: List[OHLCVBar]) -> IndicatorResult:
+    def _calculate_indicator(self, ohlcv_data: list[OHLCVBar]) -> IndicatorResult:
         """Calculate ATR and return as IndicatorResult."""
         if not ohlcv_data:
             return IndicatorResult(
@@ -37,40 +38,53 @@ class ATRFilter(BaseIndicatorFilter):
                 timestamp=0,
                 values=IndicatorValue(single=0.0),
                 params=self.params,
-                error="No data"
+                error="No data",
             )
 
         df = pd.DataFrame(ohlcv_data)
         if len(df) < self.params["window"]:
             return IndicatorResult(
                 indicator_type=IndicatorType.ATR,
-                timestamp=int(df['timestamp'].iloc[-1]),
+                timestamp=int(df["timestamp"].iloc[-1]),
                 values=IndicatorValue(single=0.0),
                 params=self.params,
-                error="Insufficient data"
+                error="Insufficient data",
             )
 
-        atr_indicator = AverageTrueRange(
-            high=df['high'],
-            low=df['low'],
-            close=df['close'],
-            window=self.params["window"]
-        )
-        atr_series = atr_indicator.average_true_range()
-        latest_atr = atr_series.iloc[-1] if not atr_series.empty else 0.0
+        # Extract lists for the calculator
+        highs = df["high"].tolist()
+        lows = df["low"].tolist()
+        closes = df["close"].tolist()
 
-        values = IndicatorValue(single=latest_atr) if not pd.isna(latest_atr) else IndicatorValue(single=0.0)
+        # Use the calculator - returns full time series
+        result = calculate_atr(highs, lows, closes, length=int(self.params["window"]))
+        atr_series = result.get("atr", [])
+
+        # Get the last value from the series
+        if atr_series and len(atr_series) > 0:
+            latest_atr = atr_series[-1]
+        else:
+            latest_atr = None
+
+        if latest_atr is None:
+            latest_atr = 0.0
+
+        values = (
+            IndicatorValue(single=latest_atr)
+            if not pd.isna(latest_atr)
+            else IndicatorValue(single=0.0)
+        )
 
         return IndicatorResult(
             indicator_type=IndicatorType.ATR,
-            timestamp=int(df['timestamp'].iloc[-1]),
+            timestamp=int(df["timestamp"].iloc[-1]),
             values=values,
-            params=self.params
+            params=self.params,
         )
 
     def _should_pass_filter(self, indicator_result: IndicatorResult) -> bool:
         """Pass filter if ATR is above minimum threshold."""
-        if indicator_result.error or not hasattr(indicator_result.values, 'single'):
+        if indicator_result.error or not hasattr(indicator_result.values, "single"):
             return False
 
         latest_atr = indicator_result.values.single

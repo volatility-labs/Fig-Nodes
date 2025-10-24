@@ -1,10 +1,10 @@
-
-import pandas as pd
 import numpy as np
-from typing import List
+import pandas as pd
 from ta.trend import EMAIndicator
+
+from core.types_registry import IndicatorResult, IndicatorType, IndicatorValue, OHLCVBar
 from nodes.core.market.filters.base.base_indicator_filter_node import BaseIndicatorFilter
-from core.types_registry import IndicatorResult, IndicatorType, OHLCVBar, IndicatorValue
+
 
 class EmaRangeFilter(BaseIndicatorFilter):
     """
@@ -27,45 +27,47 @@ class EmaRangeFilter(BaseIndicatorFilter):
         if self.params["divisor"] <= 0:
             raise ValueError("Divisor must be positive")
 
-    def _calculate_indicator(self, ohlcv_data: List[OHLCVBar]) -> IndicatorResult:
+    def _calculate_indicator(self, ohlcv_data: list[OHLCVBar]) -> IndicatorResult:
         if not ohlcv_data:
             return IndicatorResult(
                 indicator_type=IndicatorType.EMA_RANGE,
                 values=IndicatorValue(lines={"ema_range": np.nan, "close": np.nan}),
                 params=self.params,
-                error="No data"
+                error="No data",
             )
 
         df = pd.DataFrame(ohlcv_data)
         if len(df) < self.params["timeperiod"]:
             return IndicatorResult(
                 indicator_type=IndicatorType.EMA_RANGE,
-                timestamp=int(df['timestamp'].iloc[-1]) if 'timestamp' in df else 0,
-                values=IndicatorValue(lines={"ema_range": np.nan, "close": df['close'].iloc[-1]}),
+                timestamp=int(df["timestamp"].iloc[-1]) if "timestamp" in df else 0,
+                values=IndicatorValue(lines={"ema_range": np.nan, "close": df["close"].iloc[-1]}),
                 params=self.params,
-                error="Insufficient data"
+                error="Insufficient data",
             )
 
-        price_range = df['high'] - df['low']
+        price_range = df["high"] - df["low"]
         ema_indicator = EMAIndicator(price_range, window=self.params["timeperiod"])
         ema_series = ema_indicator.ema_indicator()
         latest_ema = ema_series.iloc[-1] if not ema_series.empty else np.nan
-        latest_close = df['close'].iloc[-1]
+        latest_close = df["close"].iloc[-1]
 
-        values = IndicatorValue(lines={
-            "ema_range": latest_ema if not pd.isna(latest_ema) else np.nan,
-            "close": latest_close
-        })
+        values = IndicatorValue(
+            lines={
+                "ema_range": latest_ema if not pd.isna(latest_ema) else np.nan,
+                "close": latest_close,
+            }
+        )
 
         return IndicatorResult(
             indicator_type=IndicatorType.EMA_RANGE,
-            timestamp=int(df['timestamp'].iloc[-1]) if 'timestamp' in df else 0,
+            timestamp=int(df["timestamp"].iloc[-1]) if "timestamp" in df else 0,
             values=values,
-            params=self.params
+            params=self.params,
         )
 
     def _should_pass_filter(self, indicator_result: IndicatorResult) -> bool:
-        if indicator_result.error or not hasattr(indicator_result.values, 'lines'):
+        if indicator_result.error or not hasattr(indicator_result.values, "lines"):
             return False
 
         values = indicator_result.values.lines

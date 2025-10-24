@@ -609,6 +609,7 @@ dependencies = [
     { name = "numpy" },
     { name = "ollama" },
     { name = "pandas" },
+    { name = "pandas-stubs" },
     { name = "pydantic" },
     { name = "python-dotenv" },
     { name = "requests" },
@@ -637,6 +638,7 @@ requires-dist = [
     { name = "numpy", specifier = "==1.26.4" },
     { name = "ollama", specifier = "==0.5.3" },
     { name = "pandas", specifier = "==2.3.1" },
+    { name = "pandas-stubs", specifier = ">=2.0.0" },
     { name = "pydantic", specifier = "==2.11.7" },
     { name = "python-dotenv", specifier = "==1.1.1" },
     { name = "requests", specifier = "==2.32.4" },
@@ -1064,6 +1066,19 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/85/86/1fa345fc17caf5d7780d2699985c03dbe186c68fee00b526813939062bb0/pandas-2.3.1-cp313-cp313t-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:2f4d6feeba91744872a600e6edbbd5b033005b431d5ae8379abee5bcfa479fab", size = 11883998, upload-time = "2025-07-07T19:19:34.267Z" },
     { url = "https://files.pythonhosted.org/packages/81/aa/e58541a49b5e6310d89474333e994ee57fea97c8aaa8fc7f00b873059bbf/pandas-2.3.1-cp313-cp313t-musllinux_1_2_aarch64.whl", hash = "sha256:fe37e757f462d31a9cd7580236a82f353f5713a80e059a29753cf938c6775d96", size = 12704705, upload-time = "2025-07-07T19:19:36.856Z" },
     { url = "https://files.pythonhosted.org/packages/d5/f9/07086f5b0f2a19872554abeea7658200824f5835c58a106fa8f2ae96a46c/pandas-2.3.1-cp313-cp313t-musllinux_1_2_x86_64.whl", hash = "sha256:5db9637dbc24b631ff3707269ae4559bce4b7fd75c1c4d7e13f40edc42df4444", size = 13189044, upload-time = "2025-07-07T19:19:39.999Z" },
+]
+
+[[package]]
+name = "pandas-stubs"
+version = "2.3.2.250926"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+    { name = "types-pytz" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/1b/3b/32be58a125db39d0b5f62cc93795f32b5bb2915bd5c4a46f0e35171985e2/pandas_stubs-2.3.2.250926.tar.gz", hash = "sha256:c64b9932760ceefb96a3222b953e6a251321a9832a28548be6506df473a66406", size = 102147, upload-time = "2025-09-26T19:50:39.522Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/40/96/1e4a035eaf4dce9610aac6e43026d0c6baa05773daf6d21e635a4fe19e21/pandas_stubs-2.3.2.250926-py3-none-any.whl", hash = "sha256:81121818453dcfe00f45c852f4dceee043640b813830f6e7bd084a4ef7ff7270", size = 159995, upload-time = "2025-09-26T19:50:38.241Z" },
 ]
 
 [[package]]
@@ -1699,6 +1714,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/8a/0b/d80dfa675bf592f636d1ea0b835eab4ec8df6e9415d8cfd766df54456123/toolz-1.0.0.tar.gz", hash = "sha256:2c86e3d9a04798ac556793bced838816296a2f085017664e4995cb40a1047a02", size = 66790, upload-time = "2024-10-04T16:17:04.001Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/03/98/eb27cc78ad3af8e302c9d8ff4977f5026676e130d28dd7578132a457170c/toolz-1.0.0-py3-none-any.whl", hash = "sha256:292c8f1c4e7516bf9086f8850935c799a874039c8bcf959d47b600e4c44a6236", size = 56383, upload-time = "2024-10-04T16:17:01.533Z" },
+]
+
+[[package]]
+name = "types-pytz"
+version = "2025.2.0.20250809"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/07/e2/c774f754de26848f53f05defff5bb21dd9375a059d1ba5b5ea943cf8206e/types_pytz-2025.2.0.20250809.tar.gz", hash = "sha256:222e32e6a29bb28871f8834e8785e3801f2dc4441c715cd2082b271eecbe21e5", size = 10876, upload-time = "2025-08-09T03:14:17.453Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/db/d0/91c24fe54e565f2344d7a6821e6c6bb099841ef09007ea6321a0bac0f808/types_pytz-2025.2.0.20250809-py3-none-any.whl", hash = "sha256:4f55ed1b43e925cf851a756fe1707e0f5deeb1976e15bf844bcaa025e8fbd0db", size = 10095, upload-time = "2025-08-09T03:14:16.674Z" },
 ]
 
 [[package]]

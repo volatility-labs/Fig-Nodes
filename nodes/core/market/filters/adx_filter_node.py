@@ -1,8 +1,8 @@
 import pandas as pd
-from ta.trend import ADXIndicator
 
 from core.types_registry import IndicatorResult, IndicatorType, IndicatorValue, OHLCVBar
 from nodes.core.market.filters.base.base_indicator_filter_node import BaseIndicatorFilter
+from services.indicator_calculators.adx_calculator import calculate_adx
 
 
 class ADXFilter(BaseIndicatorFilter):
@@ -54,11 +54,19 @@ class ADXFilter(BaseIndicatorFilter):
                 error="Insufficient data",
             )
 
-        adx_indicator = ADXIndicator(
-            high=df["high"], low=df["low"], close=df["close"], window=self.params["timeperiod"]
-        )
-        adx_series = adx_indicator.adx()
-        latest_adx = adx_series.iloc[-1] if not adx_series.empty else 0.0
+        # Use the calculator - returns full time series
+        timeperiod = int(self.params["timeperiod"])
+        result = calculate_adx(df, period=timeperiod)
+        adx_series = result.get("adx", [])
+
+        # Get the last value from the series
+        if adx_series and len(adx_series) > 0:
+            latest_adx = adx_series[-1]
+        else:
+            latest_adx = None
+
+        if latest_adx is None:
+            latest_adx = 0.0
 
         values = (
             IndicatorValue(single=latest_adx)

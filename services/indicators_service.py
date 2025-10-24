@@ -1,57 +1,66 @@
 import logging
-import pandas as pd
+from typing import Any
+
 import numpy as np
+import pandas as pd
 from scipy.stats import linregress
-from typing import Dict, Optional, Any, Tuple
+
+from services.indicator_calculators.adx_calculator import calculate_adx
+from services.indicator_calculators.atr_calculator import calculate_atr
 
 logger = logging.getLogger(__name__)
+
 
 class IndicatorsService:
     def __init__(self):
         pass
 
-    def compute_indicators(self, df: pd.DataFrame, timeframe: str) -> Dict[str, Any]:
+    def compute_indicators(self, df: pd.DataFrame, timeframe: str) -> dict[str, Any]:
         if df.empty or len(df) < 14:
-            logger.warning(f'Insufficient data for indicators on {timeframe}.')
+            logger.warning(f"Insufficient data for indicators on {timeframe}.")
             return {}
         # EVWMA
-        evwma = self.calculate_evwma(df['Close'], df['Volume'], length=325)
+        evwma = self.calculate_evwma(df["Close"], df["Volume"], length=325)
         # EIS
         eis_bullish = self.is_impulse_bullish(df)
         eis_bearish = self.is_impulse_bearish(df)
         # ADX
-        adx = self.calculate_custom_adx(df)
+        adx = self._calculate_adx_direct(df)
         # TLB
         tlb = self.calculate_three_line_break(df)
         # VBP
         vbp = self.calculate_volume_profile(df)
         # Hurst
-        hurst = self.calculate_hurst_exponent(df['Close'])
+        hurst = self.calculate_hurst_exponent(df["Close"])
         # Acceleration
-        acceleration = self.roc_slope(df['Close'])
+        acceleration = self.roc_slope(df["Close"])
         # Volume Ratio
         ha_df = self.calculate_heiken_ashi(df)
         volume_ratio = self.calculate_volume_metrics(df, ha_df, 325)
         # Support/Resistance
-        current_price = df['Close'].iloc[-1]
-        resistance, res_pct, res_tf = self.get_next_significant_level(df, current_price, 'above', timeframe)
-        support, sup_pct, sup_tf = self.get_next_significant_level(df, current_price, 'below', timeframe)
+        current_price = df["Close"].iloc[-1]
+        resistance, res_pct, res_tf = self.get_next_significant_level(
+            df, current_price, "above", timeframe
+        )
+        support, sup_pct, sup_tf = self.get_next_significant_level(
+            df, current_price, "below", timeframe
+        )
         return {
-            'evwma': evwma,
-            'eis_bullish': eis_bullish,
-            'eis_bearish': eis_bearish,
-            'adx': adx,
-            'tlb': tlb,
-            'vbp': vbp,
-            'hurst': hurst,
-            'acceleration': acceleration,
-            'volume_ratio': volume_ratio,
-            'resistance': resistance,
-            'res_pct': res_pct,
-            'res_tf': res_tf,
-            'support': support,
-            'sup_pct': sup_pct,
-            'sup_tf': sup_tf
+            "evwma": evwma,
+            "eis_bullish": eis_bullish,
+            "eis_bearish": eis_bearish,
+            "adx": adx,
+            "tlb": tlb,
+            "vbp": vbp,
+            "hurst": hurst,
+            "acceleration": acceleration,
+            "volume_ratio": volume_ratio,
+            "resistance": resistance,
+            "res_pct": res_pct,
+            "res_tf": res_tf,
+            "support": support,
+            "sup_pct": sup_pct,
+            "sup_tf": sup_tf,
         }
 
     def calculate_evwma(self, price: pd.Series, volume: pd.Series, length: int) -> float:
@@ -79,7 +88,9 @@ class IndicatorsService:
         ev[0] = price[0]
         for i in range(1, len(price)):
             if nbfs[i] != 0:
-                ev[i] = ev[i-1] * ((nbfs[i] - volume[i]) / nbfs[i]) + price[i] * (volume[i] / nbfs[i])
+                ev[i] = ev[i - 1] * ((nbfs[i] - volume[i]) / nbfs[i]) + price[i] * (
+                    volume[i] / nbfs[i]
+                )
             else:
                 ev[i] = price[i]
         return ev
@@ -123,38 +134,38 @@ class IndicatorsService:
         if df.empty:
             return pd.DataFrame()
         ha_df = pd.DataFrame(index=df.index)
-        ha_df['HA_Close'] = (df['Open'] + df['High'] + df['Low'] + df['Close']) / 4
-        ha_df['HA_Open'] = df['Open'].copy()
+        ha_df["HA_Close"] = (df["Open"] + df["High"] + df["Low"] + df["Close"]) / 4
+        ha_df["HA_Open"] = df["Open"].copy()
         for i in range(1, len(df)):
-            ha_df.loc[ha_df.index[i], 'HA_Open'] = (
-                ha_df.loc[ha_df.index[i-1], 'HA_Open'] + ha_df.loc[ha_df.index[i-1], 'HA_Close']
+            ha_df.loc[ha_df.index[i], "HA_Open"] = (
+                ha_df.loc[ha_df.index[i - 1], "HA_Open"] + ha_df.loc[ha_df.index[i - 1], "HA_Close"]
             ) / 2
-        ha_df['HA_High'] = df[['High', 'Open', 'Close']].max(axis=1)
-        ha_df['HA_Low'] = df[['Low', 'Open', 'Close']].min(axis=1)
-        ha_df['Volume'] = df['Volume']
+        ha_df["HA_High"] = df[["High", "Open", "Close"]].max(axis=1)
+        ha_df["HA_Low"] = df[["Low", "Open", "Close"]].min(axis=1)
+        ha_df["Volume"] = df["Volume"]
         return ha_df
 
-    def compute_up_down_volume(self, df_ha: pd.DataFrame) -> Tuple[pd.Series, pd.Series]:
+    def compute_up_down_volume(self, df_ha: pd.DataFrame) -> tuple[pd.Series, pd.Series]:
         if df_ha.empty:
             return pd.Series(), pd.Series()
         up_vol = pd.Series(0.0, index=df_ha.index)
         dn_vol = pd.Series(0.0, index=df_ha.index)
         for i in range(len(df_ha)):
             if i == 0:
-                if df_ha['HA_Close'].iloc[i] > df_ha['HA_Open'].iloc[i]:
-                    up_vol.iloc[i] = df_ha['Volume'].iloc[i]
-                elif df_ha['HA_Close'].iloc[i] < df_ha['HA_Open'].iloc[i]:
-                    dn_vol.iloc[i] = df_ha['Volume'].iloc[i]
+                if df_ha["HA_Close"].iloc[i] > df_ha["HA_Open"].iloc[i]:
+                    up_vol.iloc[i] = df_ha["Volume"].iloc[i]
+                elif df_ha["HA_Close"].iloc[i] < df_ha["HA_Open"].iloc[i]:
+                    dn_vol.iloc[i] = df_ha["Volume"].iloc[i]
             else:
-                if df_ha['HA_Close'].iloc[i] > df_ha['HA_Open'].iloc[i]:
-                    up_vol.iloc[i] = df_ha['Volume'].iloc[i]
-                    dn_vol.iloc[i] = dn_vol.iloc[i-1]
-                elif df_ha['HA_Close'].iloc[i] < df_ha['HA_Open'].iloc[i]:
-                    dn_vol.iloc[i] = df_ha['Volume'].iloc[i]
-                    up_vol.iloc[i] = up_vol.iloc[i-1]
+                if df_ha["HA_Close"].iloc[i] > df_ha["HA_Open"].iloc[i]:
+                    up_vol.iloc[i] = df_ha["Volume"].iloc[i]
+                    dn_vol.iloc[i] = dn_vol.iloc[i - 1]
+                elif df_ha["HA_Close"].iloc[i] < df_ha["HA_Open"].iloc[i]:
+                    dn_vol.iloc[i] = df_ha["Volume"].iloc[i]
+                    up_vol.iloc[i] = up_vol.iloc[i - 1]
                 else:
-                    up_vol.iloc[i] = up_vol.iloc[i-1]
-                    dn_vol.iloc[i] = dn_vol.iloc[i-1]
+                    up_vol.iloc[i] = up_vol.iloc[i - 1]
+                    dn_vol.iloc[i] = dn_vol.iloc[i - 1]
         return up_vol, dn_vol
 
     def rolling_sma(self, series: pd.Series, window: int) -> pd.Series:
@@ -162,29 +173,33 @@ class IndicatorsService:
             return pd.Series()
         return series.rolling(window=min(window, len(series)), min_periods=1).mean()
 
-    def calculate_volume_metrics(self, df: pd.DataFrame, ha_df: pd.DataFrame, rolling_length: int) -> float:
+    def calculate_volume_metrics(
+        self, df: pd.DataFrame, ha_df: pd.DataFrame, rolling_length: int
+    ) -> float:
         if df.empty or ha_df.empty:
             return 1.0
         df_vol = df.copy()
         full_up_vol, full_dn_vol = self.compute_up_down_volume(ha_df)
-        df_vol["UpVolume"] = full_up_vol.reindex(df.index, method='ffill')
-        df_vol["DownVolume"] = full_dn_vol.reindex(df.index, method='ffill')
+        df_vol["UpVolume"] = full_up_vol.reindex(df.index, method="ffill")
+        df_vol["DownVolume"] = full_dn_vol.reindex(df.index, method="ffill")
         df_vol["UpVolAvg"] = self.rolling_sma(df_vol["UpVolume"], rolling_length)
         df_vol["DownVolAvg"] = self.rolling_sma(df_vol["DownVolume"], rolling_length)
         df_vol["VolumeRatio"] = df_vol["UpVolAvg"] / df_vol["DownVolAvg"].replace(0, np.nan)
         return df_vol["VolumeRatio"].iloc[-1] if not df_vol["VolumeRatio"].isna().all() else 1.0
 
-    def get_next_significant_level(self, df: pd.DataFrame, current_price: float, direction: str, timeframe: str) -> Tuple[Optional[float], Optional[float], Optional[str]]:
+    def get_next_significant_level(
+        self, df: pd.DataFrame, current_price: float, direction: str, timeframe: str
+    ) -> tuple[float | None, float | None, str | None]:
         vbp = self.calculate_volume_profile(df)
         if vbp.empty:
             return None, None, None
         significant_levels = vbp.nlargest(5).index.tolist()
-        if direction == 'above':
+        if direction == "above":
             above = [l for l in significant_levels if l > current_price]
             if not above:
                 return None, None, None
             level = min(above)
-        elif direction == 'below':
+        elif direction == "below":
             below = [l for l in significant_levels if l < current_price]
             if not below:
                 return None, None, None
@@ -220,65 +235,50 @@ class IndicatorsService:
         elder_bears = (ema_13 < ema_13.shift(1)) & (macd_hist < macd_hist.shift(1))
         return bool(elder_bears.iloc[-1])
 
-    def calculate_custom_adx(self, df: pd.DataFrame, di_len: int = 14, sig_len: int = 14) -> float:
-        if df.empty or len(df) < max(di_len, sig_len):
+    def _calculate_adx_direct(self, df: pd.DataFrame, di_len: int = 14) -> float:
+        """Helper method to calculate ADX using the calculator directly."""
+        if df.empty or len(df) < di_len:
             return np.nan
-        required_columns = ['High', 'Low', 'Close']
+        required_columns = ["High", "Low", "Close"]
         missing_columns = [col for col in required_columns if col not in df.columns]
         if missing_columns:
             return np.nan
+
+        # Prepare dataframe with lowercase column names for the calculator
         df_adx = df[required_columns].copy()
-        for col in required_columns:
-            df_adx[col] = pd.to_numeric(df_adx[col], errors='coerce')
+        df_adx.columns = [col.lower() for col in df_adx.columns]
+
+        # Convert to numeric and drop NaN rows
+        for col in df_adx.columns:
+            df_adx[col] = pd.to_numeric(df_adx[col], errors="coerce")
         df_adx = df_adx.dropna()
-        if len(df_adx) < max(di_len, sig_len):
+
+        if len(df_adx) < di_len:
             return np.nan
-        high = df_adx['High']
-        low = df_adx['Low']
-        close = df_adx['Close']
-        up = high.diff()
-        down = -low.diff()
-        plus_dm = pd.Series(0.0, index=df_adx.index)
-        minus_dm = pd.Series(0.0, index=df_adx.index)
-        for i in range(1, len(df_adx)):
-            if up.iloc[i] > down.iloc[i] and up.iloc[i] > 0:
-                plus_dm.iloc[i] = up.iloc[i]
-            if down.iloc[i] > up.iloc[i] and down.iloc[i] > 0:
-                minus_dm.iloc[i] = down.iloc[i]
-        tr = pd.DataFrame({
-            'hl': high - low,
-            'h_pc': (high - close.shift()).abs(),
-            'l_pc': (low - close.shift()).abs()
-        }).max(axis=1)
-        def rma(series, length):
-            alpha = 1 / length
-            rma_series = series.copy()
-            for i in range(1, len(series)):
-                rma_series.iloc[i] = alpha * series.iloc[i] + (1 - alpha) * rma_series.iloc[i-1]
-            return rma_series
-        tr_smooth = rma(tr, di_len)
-        plus_dm_smooth = rma(plus_dm, di_len)
-        minus_dm_smooth = rma(minus_dm, di_len)
-        plus_di = 100 * plus_dm_smooth / tr_smooth
-        minus_di = 100 * minus_dm_smooth / tr_smooth
-        sum_di = plus_di + minus_di
-        dx = 100 * (plus_di - minus_di).abs() / sum_di.replace(0, 1)
-        adx = rma(dx, sig_len)
-        return adx.iloc[-1]
+
+        # Use the calculator - returns full time series
+        result = calculate_adx(df_adx, period=di_len)
+        adx_series = result.get("adx", [])
+
+        # Return the last value from the series (or NaN if empty)
+        if adx_series and len(adx_series) > 0:
+            last_value = adx_series[-1]
+            return last_value if last_value is not None else np.nan
+        return np.nan
 
     def calculate_three_line_break(self, df: pd.DataFrame, num_lines: int = 3) -> pd.DataFrame:
         tlb_lines = []
-        prices = df['Close'].values
+        prices = df["Close"].values
         dates = df.index
         if len(prices) < 2:
             return pd.DataFrame()
-        direction = 'up' if prices[1] > prices[0] else 'down'
+        direction = "up" if prices[1] > prices[0] else "down"
         current_line = {
-            'start_date': dates[0],
-            'end_date': dates[1],
-            'open': prices[0],
-            'close': prices[1],
-            'direction': direction,
+            "start_date": dates[0],
+            "end_date": dates[1],
+            "open": prices[0],
+            "close": prices[1],
+            "direction": direction,
         }
         tlb_lines.append(current_line)
         lines_close = [prices[1]]
@@ -287,23 +287,33 @@ class IndicatorsService:
             current_price = prices[i]
             current_date = dates[i]
             last_line = tlb_lines[-1]
-            last_line['end_date'] = current_date
+            last_line["end_date"] = current_date
             if len(tlb_lines) >= num_lines:
                 last_n_lines = tlb_lines[-num_lines:]
-                max_value = max(max([line['close'] for line in last_n_lines]), max([line['open'] for line in last_n_lines]))
-                min_value = min(min([line['close'] for line in last_n_lines]), min([line['open'] for line in last_n_lines]))
+                max_value = max(
+                    max([line["close"] for line in last_n_lines]),
+                    max([line["open"] for line in last_n_lines]),
+                )
+                min_value = min(
+                    min([line["close"] for line in last_n_lines]),
+                    min([line["open"] for line in last_n_lines]),
+                )
             else:
                 max_value = max(max(lines_close), max(lines_open))
                 min_value = min(min(lines_close), min(lines_open))
-            if last_line['direction'] == 'up':
+            if last_line["direction"] == "up":
                 if current_price > max_value:
-                    new_open = last_line['close'] if last_line['close'] > last_line['open'] else last_line['open']
+                    new_open = (
+                        last_line["close"]
+                        if last_line["close"] > last_line["open"]
+                        else last_line["open"]
+                    )
                     new_line = {
-                        'start_date': current_date,
-                        'end_date': current_date,
-                        'open': new_open,
-                        'close': current_price,
-                        'direction': 'up',
+                        "start_date": current_date,
+                        "end_date": current_date,
+                        "open": new_open,
+                        "close": current_price,
+                        "direction": "up",
                     }
                     tlb_lines.append(new_line)
                     lines_close.append(current_price)
@@ -312,13 +322,17 @@ class IndicatorsService:
                         lines_close.pop(0)
                         lines_open.pop(0)
                 elif current_price < min_value and len(tlb_lines) >= num_lines:
-                    new_open = last_line['open'] if last_line['close'] > last_line['open'] else last_line['close']
+                    new_open = (
+                        last_line["open"]
+                        if last_line["close"] > last_line["open"]
+                        else last_line["close"]
+                    )
                     new_line = {
-                        'start_date': current_date,
-                        'end_date': current_date,
-                        'open': new_open,
-                        'close': current_price,
-                        'direction': 'down',
+                        "start_date": current_date,
+                        "end_date": current_date,
+                        "open": new_open,
+                        "close": current_price,
+                        "direction": "down",
                     }
                     tlb_lines.append(new_line)
                     lines_close.append(current_price)
@@ -328,13 +342,17 @@ class IndicatorsService:
                         lines_open.pop(0)
             else:
                 if current_price < min_value:
-                    new_open = last_line['close'] if last_line['close'] < last_line['open'] else last_line['open']
+                    new_open = (
+                        last_line["close"]
+                        if last_line["close"] < last_line["open"]
+                        else last_line["open"]
+                    )
                     new_line = {
-                        'start_date': current_date,
-                        'end_date': current_date,
-                        'open': new_open,
-                        'close': current_price,
-                        'direction': 'down',
+                        "start_date": current_date,
+                        "end_date": current_date,
+                        "open": new_open,
+                        "close": current_price,
+                        "direction": "down",
                     }
                     tlb_lines.append(new_line)
                     lines_close.append(current_price)
@@ -343,13 +361,17 @@ class IndicatorsService:
                         lines_close.pop(0)
                         lines_open.pop(0)
                 elif current_price > max_value and len(tlb_lines) >= num_lines:
-                    new_open = last_line['open'] if last_line['close'] < last_line['open'] else last_line['close']
+                    new_open = (
+                        last_line["open"]
+                        if last_line["close"] < last_line["open"]
+                        else last_line["close"]
+                    )
                     new_line = {
-                        'start_date': current_date,
-                        'end_date': current_date,
-                        'open': new_open,
-                        'close': current_price,
-                        'direction': 'up',
+                        "start_date": current_date,
+                        "end_date": current_date,
+                        "open": new_open,
+                        "close": current_price,
+                        "direction": "up",
                     }
                     tlb_lines.append(new_line)
                     lines_close.append(current_price)
@@ -363,16 +385,25 @@ class IndicatorsService:
         if df.empty:
             return pd.Series()
         df = df.copy()
-        df['volume_usd'] = df['Volume'] * df['Close']
-        price_range = df['High'].max() - df['Low'].min()
+        df["volume_usd"] = df["Volume"] * df["Close"]
+        price_range = df["High"].max() - df["Low"].min()
         if price_range == 0:
             return pd.Series()
         bin_size = price_range / bins
-        df['price_bin'] = ((df['Close'] - df['Low'].min()) / bin_size).astype(int) * bin_size + df['Low'].min()
-        volume_profile = df.groupby('price_bin')['volume_usd'].sum().sort_index()
+        df["price_bin"] = ((df["Close"] - df["Low"].min()) / bin_size).astype(int) * bin_size + df[
+            "Low"
+        ].min()
+        volume_profile = df.groupby("price_bin")["volume_usd"].sum().sort_index()
         return volume_profile
 
-    def calculate_atrx(self, df: pd.DataFrame, length: int = 14, ma_length: int = 50, smoothing: str = 'RMA', price: str = 'Close') -> float:
+    def calculate_atrx(
+        self,
+        df: pd.DataFrame,
+        length: int = 14,
+        ma_length: int = 50,
+        smoothing: str = "RMA",
+        price: str = "Close",
+    ) -> float:
         """
         Calculate ATRX indicator following TradingView methodology:
         A = ATR% = ATR / Last Done Price
@@ -384,61 +415,80 @@ class IndicatorsService:
         """
         if df.empty or len(df) < max(length, ma_length):
             return np.nan
-        
-        # Validate smoothing parameter
-        valid_smoothing_methods = ['RMA', 'EMA', 'SMA']
-        if smoothing not in valid_smoothing_methods:
-            raise ValueError(f"Invalid smoothing method '{smoothing}'. Must be one of: {valid_smoothing_methods}")
-        
+
+        # Validate smoothing parameter (only RMA supported by calculator)
+        if smoothing != "RMA":
+            raise ValueError(
+                f"Invalid smoothing method '{smoothing}'. Only 'RMA' (Wilder's smoothing) is supported."
+            )
+
         # Validate price parameter
         if price not in df.columns:
             return np.nan
-        
-        # Calculate proper True Range (max of High-Low, |High-PrevClose|, |Low-PrevClose|)
-        high_low = df['High'] - df['Low']
-        high_close = abs(df['High'] - df['Close'].shift(1))
-        low_close = abs(df['Low'] - df['Close'].shift(1))
-        true_range = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
-        
-        # Calculate ATR using RMA (Wilder's smoothing)
-        if smoothing == 'RMA':
-            alpha = 1.0 / length
-            atr = true_range.copy()
-            for i in range(1, len(atr)):
-                atr.iloc[i] = alpha * true_range.iloc[i] + (1 - alpha) * atr.iloc[i-1]
-        elif smoothing == 'SMA':
-            atr = true_range.rolling(window=length, min_periods=1).mean()
-        else:  # EMA
-            atr = true_range.ewm(span=length, adjust=False).mean()
-        
+
+        # Calculate ATR using the calculator
+        # Prepare dataframe with lowercase column names for the calculator
+        df_atr = df[["High", "Low", "Close"]].copy()
+        df_atr.columns = [col.lower() for col in df_atr.columns]
+
+        # Convert to numeric and drop NaN rows
+        for col in df_atr.columns:
+            df_atr[col] = pd.to_numeric(df_atr[col], errors="coerce")
+        df_atr = df_atr.dropna()
+
+        if len(df_atr) < length:
+            return np.nan
+
+        # Extract lists for the calculator
+        highs = df_atr["high"].tolist()
+        lows = df_atr["low"].tolist()
+        closes = df_atr["close"].tolist()
+
+        # Use the calculator for ATR (only supports RMA/Wilder's smoothing)
+        atr_result = calculate_atr(highs, lows, closes, length)
+        atr_list = atr_result.get("atr", [])
+
+        if not atr_list or len(atr_list) == 0:
+            return np.nan
+
+        # Convert to pandas Series for compatibility
+        atr = pd.Series(
+            atr_list, index=df_atr.index if len(df_atr) == len(atr_list) else range(len(atr_list))
+        )
+
         # Calculate 50-day SMA of price (not EMA of daily average)
         sma_50 = df[price].rolling(window=ma_length, min_periods=1).mean()
-        
+
         # Get current values
         current_price = df[price].iloc[-1]
         current_sma_50 = sma_50.iloc[-1]
         current_atr = atr.iloc[-1]
-        
+
         # Check for invalid values
-        if current_atr == 0 or current_sma_50 == 0 or np.isnan(current_sma_50) or np.isnan(current_atr):
+        if (
+            current_atr == 0
+            or current_sma_50 == 0
+            or np.isnan(current_sma_50)
+            or np.isnan(current_atr)
+        ):
             return np.nan
-        
+
         # Calculate ATR% = ATR / Last Done Price
         atr_percent = current_atr / current_price
-        
+
         # Calculate % Gain From 50-MA = (Price - SMA50) / SMA50
         percent_gain_from_50ma = (current_price - current_sma_50) / current_sma_50
-        
+
         # Calculate ATRX = (% Gain From 50-MA) / ATR%
         if atr_percent == 0:
             return np.nan
-            
-        atrx = percent_gain_from_50ma / atr_percent
-        return atrx 
 
-    def calculate_sma(self, df: pd.DataFrame, period: int, price: str = 'Close') -> float:
+        atrx = percent_gain_from_50ma / atr_percent
+        return atrx
+
+    def calculate_sma(self, df: pd.DataFrame, period: int, price: str = "Close") -> float:
         if df.empty or len(df) < period:
             return np.nan
         if price not in df.columns:
             return np.nan
-        return df[price].rolling(window=period).mean().iloc[-1] 
+        return df[price].rolling(window=period).mean().iloc[-1]

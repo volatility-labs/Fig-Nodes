@@ -83,3 +83,4 @@ testing_artifacts/
 __pycache__
 output/*.json
 internal-docs/
+calculations/

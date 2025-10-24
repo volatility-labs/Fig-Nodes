@@ -1,7 +1,8 @@
 import logging
-from typing import Dict, Any, List
+from typing import Any
+
+from core.types_registry import AssetSymbol, IndicatorResult, NodeCategory, OHLCVBar, get_type
 from nodes.core.market.filters.base.base_filter_node import BaseFilter
-from core.types_registry import get_type, AssetSymbol, OHLCVBar, IndicatorResult
 from services.indicators_service import IndicatorsService
 
 logger = logging.getLogger(__name__)
@@ -14,11 +15,13 @@ class BaseIndicatorFilter(BaseFilter):
     Input: OHLCV bundle (Dict[AssetSymbol, List[OHLCVBar]])
     Output: Filtered OHLCV bundle (Dict[AssetSymbol, List[OHLCVBar]])
     """
-    outputs = {
-        "filtered_ohlcv_bundle": get_type("OHLCVBundle"),  # Changed to registry type
-    }
 
-    def __init__(self, id: int, params: Dict[str, Any]):  # Explicit constructor for consistency
+    outputs = {
+        "filtered_ohlcv_bundle": get_type("OHLCVBundle"),
+    }
+    CATEGORY = NodeCategory.MARKET
+
+    def __init__(self, id: int, params: dict[str, Any]):  # Explicit constructor for consistency
         super().__init__(id, params)
         self.indicators_service = IndicatorsService()
         self._validate_indicator_params()
@@ -27,18 +30,22 @@ class BaseIndicatorFilter(BaseFilter):
         """Override in subclasses to validate indicator-specific parameters."""
         pass
 
-    def _calculate_indicator(self, ohlcv_data: List[OHLCVBar]) -> IndicatorResult:
+    def _calculate_indicator(self, ohlcv_data: list[OHLCVBar]) -> IndicatorResult:
         """Calculate the indicator using IndicatorsService and return IndicatorResult.
         Must be implemented by subclasses to specify IndicatorType and mapping."""
-        raise NotImplementedError("Subclasses must implement _calculate_indicator with IndicatorResult")
+        raise NotImplementedError(
+            "Subclasses must implement _calculate_indicator with IndicatorResult"
+        )
 
     def _should_pass_filter(self, indicator_result: IndicatorResult) -> bool:
         """Determine if the asset should pass based on IndicatorResult.
         Must be implemented by subclasses."""
-        raise NotImplementedError("Subclasses must implement _should_pass_filter with IndicatorResult")
+        raise NotImplementedError(
+            "Subclasses must implement _should_pass_filter with IndicatorResult"
+        )
 
-    async def _execute_impl(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
-        ohlcv_bundle: Dict[AssetSymbol, List[OHLCVBar]] = inputs.get("ohlcv_bundle", {})
+    async def _execute_impl(self, inputs: dict[str, Any]) -> dict[str, Any]:
+        ohlcv_bundle: dict[AssetSymbol, list[OHLCVBar]] = inputs.get("ohlcv_bundle", {})
 
         if not ohlcv_bundle:
             return {"filtered_ohlcv_bundle": {}}
