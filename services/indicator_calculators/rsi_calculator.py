@@ -1,16 +1,14 @@
+from collections.abc import Sequence
 from typing import Any
 
-import pandas as pd
 
-
-def calculate_rsi(data: pd.DataFrame, length: int = 14, source: str = "close") -> dict[str, Any]:
+def calculate_rsi(values: Sequence[float | None], length: int = 14) -> dict[str, Any]:
     """
     Calculate RSI (Relative Strength Index) indicator.
 
     Args:
-        data: DataFrame with OHLCV data
+        values: List of values to calculate RSI on (can contain None values)
         length: Period for RSI calculation (default: 14)
-        source: Source column to use for calculation (default: "close")
 
     Returns:
         Dictionary with 'rsi' as a list of calculated values for each row,
@@ -18,13 +16,7 @@ def calculate_rsi(data: pd.DataFrame, length: int = 14, source: str = "close") -
         Each list contains the calculated values for corresponding rows in the input data.
     """
     if length <= 0:
-        return {"rsi": [None] * len(data)}
-
-    # Required column
-    if source not in data.columns:
-        return {"rsi": [None] * len(data)}
-
-    source_col: list[float] = data[source].tolist()
+        return {"rsi": [None] * len(values)}
 
     results: list[float | None] = []
     avg_gain = 0.0
@@ -32,22 +24,22 @@ def calculate_rsi(data: pd.DataFrame, length: int = 14, source: str = "close") -
     consecutive_valid = 0
     init_calculated = False
 
-    for i in range(len(data)):
+    for i in range(len(values)):
         if i == 0:
             results.append(None)
-            current_val = source_col[i]
-            consecutive_valid = 1 if not pd.isna(current_val) else 0
+            current_val = values[i]
+            consecutive_valid = 1 if current_val is not None else 0
             continue
 
-        current = source_col[i]
-        prev = source_col[i - 1]
+        current = values[i]
+        prev = values[i - 1]
 
-        if pd.isna(current) or pd.isna(prev):
+        if current is None or prev is None:
             results.append(None)
             avg_gain = 0.0
             avg_loss = 0.0
             init_calculated = False
-            consecutive_valid = 1 if not pd.isna(current) else 0
+            consecutive_valid = 1 if current is not None else 0
             continue
 
         consecutive_valid += 1

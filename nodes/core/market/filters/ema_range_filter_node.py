@@ -1,9 +1,8 @@
 import numpy as np
-import pandas as pd
-from ta.trend import EMAIndicator
 
 from core.types_registry import IndicatorResult, IndicatorType, IndicatorValue, OHLCVBar
 from nodes.core.market.filters.base.base_indicator_filter_node import BaseIndicatorFilter
+from services.indicator_calculators.ema_calculator import calculate_ema
 
 
 class EmaRangeFilter(BaseIndicatorFilter):
@@ -22,9 +21,11 @@ class EmaRangeFilter(BaseIndicatorFilter):
     ]
 
     def _validate_indicator_params(self):
-        if self.params["timeperiod"] < 1:
+        timeperiod = self.params.get("timeperiod", 10)
+        divisor = self.params.get("divisor", 100.0)
+        if not isinstance(timeperiod, (int, float)) or timeperiod < 1:
             raise ValueError("Time period must be at least 1")
-        if self.params["divisor"] <= 0:
+        if not isinstance(divisor, (int, float)) or divisor <= 0:
             raise ValueError("Divisor must be positive")
 
     def _calculate_indicator(self, ohlcv_data: list[OHLCVBar]) -> IndicatorResult:
@@ -36,32 +37,43 @@ class EmaRangeFilter(BaseIndicatorFilter):
                 error="No data",
             )
 
-        df = pd.DataFrame(ohlcv_data)
-        if len(df) < self.params["timeperiod"]:
+        timeperiod_value = self.params.get("timeperiod", 10)
+        if not isinstance(timeperiod_value, (int, float)):
+            timeperiod_value = 10
+        timeperiod = int(timeperiod_value)
+        if len(ohlcv_data) < timeperiod:
             return IndicatorResult(
                 indicator_type=IndicatorType.EMA_RANGE,
-                timestamp=int(df["timestamp"].iloc[-1]) if "timestamp" in df else 0,
-                values=IndicatorValue(lines={"ema_range": np.nan, "close": df["close"].iloc[-1]}),
+                timestamp=ohlcv_data[-1]["timestamp"],
+                values=IndicatorValue(
+                    lines={"ema_range": np.nan, "close": ohlcv_data[-1]["close"]}
+                ),
                 params=self.params,
                 error="Insufficient data",
             )
 
-        price_range = df["high"] - df["low"]
-        ema_indicator = EMAIndicator(price_range, window=self.params["timeperiod"])
-        ema_series = ema_indicator.ema_indicator()
-        latest_ema = ema_series.iloc[-1] if not ema_series.empty else np.nan
-        latest_close = df["close"].iloc[-1]
+        # Calculate price range
+        highs = [bar["high"] for bar in ohlcv_data]
+        lows = [bar["low"] for bar in ohlcv_data]
+        closes = [bar["close"] for bar in ohlcv_data]
+        price_range = [high - low for high, low in zip(highs, lows)]
+
+        # Calculate EMA using the calculator
+        ema_result = calculate_ema(price_range, period=timeperiod)
+        ema_values = ema_result.get("ema", [])
+        latest_ema = ema_values[-1] if ema_values else np.nan
+        latest_close = closes[-1]
 
         values = IndicatorValue(
             lines={
-                "ema_range": latest_ema if not pd.isna(latest_ema) else np.nan,
+                "ema_range": latest_ema if latest_ema is not None else np.nan,
                 "close": latest_close,
             }
         )
 
         return IndicatorResult(
             indicator_type=IndicatorType.EMA_RANGE,
-            timestamp=int(df["timestamp"].iloc[-1]) if "timestamp" in df else 0,
+            timestamp=ohlcv_data[-1]["timestamp"],
             values=values,
             params=self.params,
         )
@@ -76,7 +88,11 @@ class EmaRangeFilter(BaseIndicatorFilter):
 
         ema_range = values["ema_range"]
         close = values["close"]
-        if pd.isna(ema_range) or pd.isna(close):
+        if np.isnan(ema_range) or np.isnan(close):
             return False
 
-        return ema_range > close / self.params["divisor"]
+        divisor = self.params.get("divisor", 100.0)
+        if not isinstance(divisor, (int, float)):
+            divisor = 100.0
+
+        return ema_range > close / divisor

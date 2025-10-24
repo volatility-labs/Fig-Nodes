@@ -1,11 +1,15 @@
 import logging
-import pandas as pd
+from typing import Any, cast
+
 import numpy as np
-from typing import Dict, Any, List
+import pandas as pd
+
+from core.types_registry import IndicatorResult, IndicatorType, IndicatorValue, get_type
 from nodes.core.market.indicators.base.base_indicator_node import BaseIndicator
-from core.types_registry import get_type, IndicatorResult, IndicatorType, IndicatorValue
+from services.indicator_calculators.atrx_calculator import calculate_atrx
 
 logger = logging.getLogger(__name__)
+
 
 class AtrXIndicator(BaseIndicator):
     """
@@ -13,78 +17,95 @@ class AtrXIndicator(BaseIndicator):
     A = ATR% = ATR / Last Done Price
     B = % Gain From 50-MA = (Price - SMA50) / SMA50
     ATRX = B / A = (% Gain From 50-MA) / ATR%
-    
-    Following TradingView methodology for consistent results.
+
+    Reference:
+        https://www.tradingview.com/script/oimVgV7e-ATR-multiple-from-50-MA/
     """
+
     inputs = {"ohlcv": get_type("OHLCV")}
-    outputs = {"results": List[IndicatorResult]}
+    outputs = {"results": list[IndicatorResult]}
     default_params = {
         "length": 14,  # ATR period
         "ma_length": 50,  # SMA period for trend calculation
     }
     params_meta = [
         {"name": "length", "type": "integer", "default": 14, "description": "ATR period"},
-        {"name": "ma_length", "type": "integer", "default": 50, "description": "SMA period for trend calculation"},
+        {
+            "name": "ma_length",
+            "type": "integer",
+            "default": 50,
+            "description": "SMA period for trend calculation",
+        },
     ]
 
-
-    def _map_to_indicator_value(self, ind_type: IndicatorType, raw: Dict[str, Any]) -> IndicatorValue:
+    def _map_to_indicator_value(
+        self, ind_type: IndicatorType, raw: dict[str, Any]
+    ) -> IndicatorValue:
         """
         Satisfy BaseIndicatorNode's abstract contract. ATRX node uses its own
         _execute_impl path and does not rely on base mapping.
         """
         return IndicatorValue(single=float("nan"))
 
-    async def _execute_impl(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
-        ohlcv: List[Dict[str, float]] = inputs.get("ohlcv", [])
+    async def _execute_impl(self, inputs: dict[str, Any]) -> dict[str, Any]:
+        ohlcv: list[dict[str, float]] = inputs.get("ohlcv", [])
         if not ohlcv:
             logger.warning("Empty OHLCV data provided to ATRX indicator")
             return {"results": []}
-        
+
         try:
-            df_data = [
+            # Check for minimum data requirements first
+            length_value = int(cast(int, self.params.get("length", 14)))
+            ma_length_value = int(cast(int, self.params.get("ma_length", 50)))
+            min_required = max(length_value, ma_length_value)
+            if len(ohlcv) < min_required:
+                logger.warning(
+                    f"Insufficient data for ATRX calculation: {len(ohlcv)} bars, need {min_required}"
+                )
+                return {"results": []}
+
+            # Extract lists directly from OHLCV data
+            high_prices = [bar["high"] for bar in ohlcv]
+            low_prices = [bar["low"] for bar in ohlcv]
+            close_prices = [bar["close"] for bar in ohlcv]
+
+            # Create minimal DataFrame for calculator API
+            df_calc = pd.DataFrame(
                 {
-                    "timestamp": pd.to_datetime(bar["timestamp"], unit="ms"),
-                    "Open": bar["open"],
-                    "High": bar["high"],
-                    "Low": bar["low"],
-                    "Close": bar["close"],
-                    "Volume": bar["volume"],
+                    "high": high_prices,
+                    "low": low_prices,
+                    "close": close_prices,
                 }
-                for bar in ohlcv
-            ]
-            df = pd.DataFrame(df_data).set_index("timestamp")
-            
-            if df.empty:
-                logger.warning("Empty DataFrame created from OHLCV data")
-                return {"results": []}
-            
-            # Check for minimum data requirements
-            min_required = max(self.params.get("length", 14), self.params.get("ma_length", 50))
-            if len(df) < min_required:
-                logger.warning(f"Insufficient data for ATRX calculation: {len(df)} bars, need {min_required}")
-                return {"results": []}
-            
-            atrx_value = self.indicators_service.calculate_atrx(
-                df,
-                length=self.params.get("length", 14),
-                ma_length=self.params.get("ma_length", 50),
-                smoothing="RMA",  # Use RMA (Wilder's smoothing) for ATR as per TradingView methodology
-                price="Close",    # Fixed to Close as per TradingView methodology
             )
-            
+
+            # Call calculator directly
+            atrx_result = calculate_atrx(
+                df_calc,
+                length=length_value,
+                ma_length=ma_length_value,
+                source="close",
+            )
+            atrx_values = atrx_result.get("atrx", [])
+
+            if not atrx_values:
+                logger.warning("ATRX calculation returned empty results")
+                return {"results": []}
+
+            # Get the last value
+            atrx_value = atrx_values[-1]
+
             # Filter out NaN results (e.g., zero volatility cases)
-            if np.isnan(atrx_value):
+            if atrx_value is None or np.isnan(atrx_value):
                 logger.warning("ATRX calculation resulted in NaN (likely zero volatility)")
                 return {"results": []}
-            
+
             result = IndicatorResult(
                 indicator_type=IndicatorType.ATRX,
-                timestamp=int(df.index[-1].timestamp() * 1000),
+                timestamp=int(ohlcv[-1]["timestamp"]),
                 values=IndicatorValue(single=atrx_value),
             )
             return {"results": [result]}
-            
+
         except Exception as e:
             logger.error(f"Error calculating ATRX indicator: {e}")
             return {"results": []}

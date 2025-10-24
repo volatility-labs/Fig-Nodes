@@ -1,9 +1,8 @@
+from collections.abc import Sequence
 from typing import Any
 
-import pandas as pd
 
-
-def calculate_wilder_ma(arr: list[float | None], period: int) -> list[float | None]:
+def calculate_wilder_ma(arr: Sequence[float | None], period: int) -> list[float | None]:
     """
     Calculate Wilder's Moving Average (exponential moving average with alpha = 1/period).
 
@@ -56,12 +55,19 @@ def calculate_wilder_ma(arr: list[float | None], period: int) -> list[float | No
     return ma
 
 
-def calculate_adx(data: pd.DataFrame, period: int = 14) -> dict[str, Any]:
+def calculate_adx(
+    highs: Sequence[float | None],
+    lows: Sequence[float | None],
+    closes: Sequence[float | None],
+    period: int = 14,
+) -> dict[str, Any]:
     """
     Calculate ADX (Average Directional Index) indicator.
 
     Args:
-        data: DataFrame with columns 'high', 'low', 'close'
+        highs: List of high prices (can contain None values)
+        lows: List of low prices (can contain None values)
+        closes: List of close prices (can contain None values)
         period: Period for ADX calculation (default: 14)
 
     Returns:
@@ -69,37 +75,32 @@ def calculate_adx(data: pd.DataFrame, period: int = 14) -> dict[str, Any]:
         matching the TypeScript implementation that returns full time series.
         Each list contains the calculated values for corresponding rows in the input data.
     """
-    if data.empty or len(data) < period or period <= 0:
+    data_length = len(highs)
+    if data_length == 0 or data_length < period or period <= 0:
         return {"adx": [], "pdi": [], "ndi": []}
 
-    # Required columns
-    required_cols = ["high", "low", "close"]
-    if not all(col in data.columns for col in required_cols):
+    if len(lows) != data_length or len(closes) != data_length:
         return {"adx": [], "pdi": [], "ndi": []}
-
-    high_col: list[float] = data["high"].tolist()
-    low_col: list[float] = data["low"].tolist()
-    close_col: list[float] = data["close"].tolist()
 
     # Calculate True Range
     tr: list[float | None] = []
     pdm: list[float | None] = []
     ndm: list[float | None] = []
 
-    for i in range(len(data)):
-        current_high = high_col[i]
-        current_low = low_col[i]
+    for i in range(data_length):
+        current_high = highs[i]
+        current_low = lows[i]
 
-        if pd.isna(current_high) or pd.isna(current_low):
+        if current_high is None or current_low is None:
             tr.append(None)
             pdm.append(None)
             ndm.append(None)
             continue
 
         # Previous values
-        prev_high = high_col[i - 1] if i > 0 else None
-        prev_low = low_col[i - 1] if i > 0 else None
-        prev_close = close_col[i - 1] if i > 0 else None
+        prev_high = highs[i - 1] if i > 0 else None
+        prev_low = lows[i - 1] if i > 0 else None
+        prev_close = closes[i - 1] if i > 0 else None
 
         # True Range calculation
         hl_range = current_high - current_low
@@ -116,13 +117,7 @@ def calculate_adx(data: pd.DataFrame, period: int = 14) -> dict[str, Any]:
         tr.append(tr_val)
 
         # Directional Movement
-        if (
-            i > 0
-            and prev_high is not None
-            and prev_low is not None
-            and not pd.isna(prev_high)
-            and not pd.isna(prev_low)
-        ):
+        if i > 0 and prev_high is not None and prev_low is not None:
             up_move = current_high - prev_high
             down_move = prev_low - current_low
             pdm.append(up_move if (up_move > down_move and up_move > 0) else 0.0)
@@ -141,7 +136,7 @@ def calculate_adx(data: pd.DataFrame, period: int = 14) -> dict[str, Any]:
     ndi: list[float | None] = []
     dx: list[float | None] = []
 
-    for i in range(len(data)):
+    for i in range(data_length):
         s_tr = smoothed_tr[i]
         s_pdm = smoothed_pdm[i]
         s_ndm = smoothed_ndm[i]

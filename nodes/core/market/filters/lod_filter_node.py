@@ -1,10 +1,11 @@
 import logging
 import math
-from typing import List
+
+from core.types_registry import IndicatorResult, IndicatorType, IndicatorValue, OHLCVBar
 from nodes.core.market.filters.base.base_indicator_filter_node import BaseIndicatorFilter
-from core.types_registry import OHLCVBar, IndicatorResult, IndicatorType, IndicatorValue
 
 logger = logging.getLogger(__name__)
+
 
 class LodFilter(BaseIndicatorFilter):
     """
@@ -28,7 +29,7 @@ class LodFilter(BaseIndicatorFilter):
 
     default_params = {
         "min_lod_distance": 3.16,  # Minimum LoD distance percentage threshold
-        "atr_window": 14,          # ATR calculation window
+        "atr_window": 14,  # ATR calculation window
     }
 
     params_meta = [
@@ -41,7 +42,7 @@ class LodFilter(BaseIndicatorFilter):
             "precision": 2,
             "label": "Min LoD Distance %",
             "unit": "%",
-            "description": "Minimum Low of Day distance as percentage of ATR (e.g., 3.16 = 3.16% of ATR)"
+            "description": "Minimum Low of Day distance as percentage of ATR (e.g., 3.16 = 3.16% of ATR)",
         },
         {
             "name": "atr_window",
@@ -50,7 +51,7 @@ class LodFilter(BaseIndicatorFilter):
             "min": 1,
             "step": 1,
             "label": "ATR Window",
-            "description": "Period for ATR calculation"
+            "description": "Period for ATR calculation",
         },
     ]
 
@@ -60,7 +61,7 @@ class LodFilter(BaseIndicatorFilter):
         if self.params["atr_window"] <= 0:
             raise ValueError("ATR window must be positive")
 
-    def _calculate_indicator(self, ohlcv_data: List[OHLCVBar]) -> IndicatorResult:
+    def _calculate_indicator(self, ohlcv_data: list[OHLCVBar]) -> IndicatorResult:
         """Calculate LoD Distance and return as IndicatorResult."""
         if not ohlcv_data:
             return IndicatorResult(
@@ -68,56 +69,56 @@ class LodFilter(BaseIndicatorFilter):
                 timestamp=0,
                 values=IndicatorValue(lines={"lod_distance_pct": 0.0}),
                 params=self.params,
-                error="No data"
+                error="No data",
             )
-        timestamp_value: int = ohlcv_data[-1]['timestamp']
-        
+        timestamp_value: int = ohlcv_data[-1]["timestamp"]
+
         if len(ohlcv_data) < self.params["atr_window"]:
             return IndicatorResult(
                 indicator_type=IndicatorType.LOD,
                 timestamp=timestamp_value,
                 values=IndicatorValue(lines={"lod_distance_pct": 0.0}),
                 params=self.params,
-                error="Insufficient data for ATR calculation"
+                error="Insufficient data for ATR calculation",
             )
 
         # Calculate ATR for the LoD distance calculation using Wilder's smoothing (RMA)
-        true_ranges: List[float] = []
+        true_ranges: list[float] = []
         for i in range(len(ohlcv_data)):
             if i == 0:
                 # First bar: true range is just high - low
-                true_range: float = ohlcv_data[i]['high'] - ohlcv_data[i]['low']
+                true_range: float = ohlcv_data[i]["high"] - ohlcv_data[i]["low"]
             else:
                 # Subsequent bars: max of (high-low, |high-prev_close|, |low-prev_close|)
-                high_low: float = ohlcv_data[i]['high'] - ohlcv_data[i]['low']
-                high_close: float = abs(ohlcv_data[i]['high'] - ohlcv_data[i-1]['close'])
-                low_close: float = abs(ohlcv_data[i]['low'] - ohlcv_data[i-1]['close'])
+                high_low: float = ohlcv_data[i]["high"] - ohlcv_data[i]["low"]
+                high_close: float = abs(ohlcv_data[i]["high"] - ohlcv_data[i - 1]["close"])
+                low_close: float = abs(ohlcv_data[i]["low"] - ohlcv_data[i - 1]["close"])
                 true_range: float = max(high_low, high_close, low_close)
             true_ranges.append(true_range)
-        
+
         # Wilder's smoothing (RMA) - matches TradingView implementation
         alpha = 1.0 / self.params["atr_window"]
         atr_values = [true_ranges[0]]  # First ATR value is just the first true range
-        
+
         for i in range(1, len(true_ranges)):
-            atr_value = alpha * true_ranges[i] + (1 - alpha) * atr_values[i-1]
+            atr_value = alpha * true_ranges[i] + (1 - alpha) * atr_values[i - 1]
             atr_values.append(atr_value)
-        
+
         latest_atr = atr_values[-1] if atr_values else 0.0
 
         if latest_atr <= 0:
             return IndicatorResult(
                 indicator_type=IndicatorType.LOD,
-                timestamp=ohlcv_data[-1]['timestamp'],
+                timestamp=ohlcv_data[-1]["timestamp"],
                 values=IndicatorValue(lines={"lod_distance_pct": 0.0}),
                 params=self.params,
-                error="Invalid ATR calculation"
+                error="Invalid ATR calculation",
             )
 
         # Get current (latest) price and low of the day
         latest_bar = ohlcv_data[-1]
-        current_price = latest_bar['close']
-        low_of_day = latest_bar['low']
+        current_price = latest_bar["close"]
+        low_of_day = latest_bar["low"]
 
         # Calculate LoD Distance as percentage of ATR
         # LoD Distance % = ((current_price - low_of_day) / ATR) * 100
@@ -128,14 +129,16 @@ class LodFilter(BaseIndicatorFilter):
 
         return IndicatorResult(
             indicator_type=IndicatorType.LOD,
-            timestamp=latest_bar['timestamp'],
-            values=IndicatorValue(lines={
-                "lod_distance_pct": lod_distance_pct,
-                "current_price": current_price,
-                "low_of_day": low_of_day,
-                "atr": latest_atr
-            }),
-            params=self.params
+            timestamp=latest_bar["timestamp"],
+            values=IndicatorValue(
+                lines={
+                    "lod_distance_pct": lod_distance_pct,
+                    "current_price": current_price,
+                    "low_of_day": low_of_day,
+                    "atr": latest_atr,
+                }
+            ),
+            params=self.params,
         )
 
     def _should_pass_filter(self, indicator_result: IndicatorResult) -> bool:
@@ -146,10 +149,10 @@ class LodFilter(BaseIndicatorFilter):
         lines = indicator_result.values.lines
         if "lod_distance_pct" not in lines:
             return False
-        
+
         lod_distance_pct = lines["lod_distance_pct"]
 
         if not math.isfinite(lod_distance_pct):
             return False
-        
+
         return lod_distance_pct >= self.params["min_lod_distance"]

@@ -1,6 +1,7 @@
-import pytest
-import pandas as pd
 import numpy as np
+import pandas as pd
+import pytest
+
 from services.indicators_service import IndicatorsService
 
 
@@ -12,7 +13,7 @@ def indicators_service():
 @pytest.fixture
 def sample_ohlcv_data():
     """Create realistic OHLCV data for testing."""
-    dates = pd.date_range('2023-01-01', periods=50, freq='D')
+    dates = pd.date_range("2023-01-01", periods=50, freq="D")
     np.random.seed(42)
     close_prices = 100 + np.cumsum(np.random.normal(0, 1, 50))
     high_prices = close_prices + np.random.uniform(0, 5, 50)
@@ -20,15 +21,17 @@ def sample_ohlcv_data():
     open_prices = close_prices + np.random.normal(0, 1, 50)
     volumes = np.random.uniform(10000, 100000, 50)
 
-    df = pd.DataFrame({
-        'timestamp': dates,
-        'Open': open_prices,
-        'High': high_prices,
-        'Low': low_prices,
-        'Close': close_prices,
-        'Volume': volumes
-    })
-    df.set_index('timestamp', inplace=True)
+    df = pd.DataFrame(
+        {
+            "timestamp": dates,
+            "Open": open_prices,
+            "High": high_prices,
+            "Low": low_prices,
+            "Close": close_prices,
+            "Volume": volumes,
+        }
+    )
+    df.set_index("timestamp", inplace=True)
     return df
 
 
@@ -37,46 +40,60 @@ class TestIndicatorsService:
 
     def test_compute_indicators_with_sufficient_data(self, indicators_service, sample_ohlcv_data):
         """Test computing indicators with sufficient data."""
-        result = indicators_service.compute_indicators(sample_ohlcv_data, '1d')
+        result = indicators_service.compute_indicators(sample_ohlcv_data, "1d")
 
         # Check that all expected indicators are present
         expected_keys = {
-            'evwma', 'eis_bullish', 'eis_bearish', 'adx', 'tlb', 'vbp', 'hurst',
-            'acceleration', 'volume_ratio', 'resistance', 'res_pct',
-            'res_tf', 'support', 'sup_pct', 'sup_tf'
+            "evwma",
+            "eis_bullish",
+            "eis_bearish",
+            "adx",
+            "tlb",
+            "vbp",
+            "hurst",
+            "acceleration",
+            "volume_ratio",
+            "resistance",
+            "res_pct",
+            "res_tf",
+            "support",
+            "sup_pct",
+            "sup_tf",
         }
         assert set(result.keys()) == expected_keys
 
         # Check types
-        assert isinstance(result['eis_bullish'], bool)
-        assert isinstance(result['eis_bearish'], bool)
-        assert isinstance(result['adx'], (float, np.floating))
-        assert isinstance(result['hurst'], (float, np.floating))
-        assert isinstance(result['acceleration'], (float, np.floating))
-        assert isinstance(result['volume_ratio'], (float, np.floating))
+        assert isinstance(result["eis_bullish"], bool)
+        assert isinstance(result["eis_bearish"], bool)
+        assert isinstance(result["adx"], (float, np.floating))
+        assert isinstance(result["hurst"], (float, np.floating))
+        assert isinstance(result["acceleration"], (float, np.floating))
+        assert isinstance(result["volume_ratio"], (float, np.floating))
 
     def test_compute_indicators_insufficient_data(self, indicators_service):
         """Test computing indicators with insufficient data."""
         # Create DataFrame with only 5 data points
-        dates = pd.date_range('2023-01-01', periods=5, freq='D')
-        df = pd.DataFrame({
-            'timestamp': dates,
-            'Open': [100, 101, 102, 103, 104],
-            'High': [105, 106, 107, 108, 109],
-            'Low': [95, 96, 97, 98, 99],
-            'Close': [102, 103, 104, 105, 106],
-            'Volume': [10000, 11000, 12000, 13000, 14000]
-        })
-        df.set_index('timestamp', inplace=True)
+        dates = pd.date_range("2023-01-01", periods=5, freq="D")
+        df = pd.DataFrame(
+            {
+                "timestamp": dates,
+                "Open": [100, 101, 102, 103, 104],
+                "High": [105, 106, 107, 108, 109],
+                "Low": [95, 96, 97, 98, 99],
+                "Close": [102, 103, 104, 105, 106],
+                "Volume": [10000, 11000, 12000, 13000, 14000],
+            }
+        )
+        df.set_index("timestamp", inplace=True)
 
-        result = indicators_service.compute_indicators(df, '1d')
+        result = indicators_service.compute_indicators(df, "1d")
 
         # Should return empty dict for insufficient data
         assert result == {}
 
     def test_calculate_hurst_exponent_sufficient_data(self, indicators_service, sample_ohlcv_data):
         """Test Hurst exponent calculation with sufficient data."""
-        close_series = sample_ohlcv_data['Close']
+        close_series = sample_ohlcv_data["Close"]
         hurst = indicators_service.calculate_hurst_exponent(close_series)
 
         # Should return a valid float, not NaN
@@ -118,16 +135,18 @@ class TestIndicatorsService:
     def test_calculate_adx_insufficient_data(self, indicators_service):
         """Test ADX calculation with insufficient data."""
         # Create DataFrame with insufficient data
-        dates = pd.date_range('2023-01-01', periods=10, freq='D')
-        df = pd.DataFrame({
-            'timestamp': dates,
-            'Open': range(10),
-            'High': range(10, 20),
-            'Low': range(5, 15),
-            'Close': range(8, 18),
-            'Volume': range(1000, 1010)
-        })
-        df.set_index('timestamp', inplace=True)
+        dates = pd.date_range("2023-01-01", periods=10, freq="D")
+        df = pd.DataFrame(
+            {
+                "timestamp": dates,
+                "Open": range(10),
+                "High": range(10, 20),
+                "Low": range(5, 15),
+                "Close": range(8, 18),
+                "Volume": range(1000, 1010),
+            }
+        )
+        df.set_index("timestamp", inplace=True)
 
         adx = indicators_service.calculate_custom_adx(df)
 
@@ -148,16 +167,18 @@ class TestIndicatorsService:
     def test_is_impulse_insufficient_data(self, indicators_service):
         """Test EIS calculation with insufficient data."""
         # Create DataFrame with insufficient data
-        dates = pd.date_range('2023-01-01', periods=10, freq='D')
-        df = pd.DataFrame({
-            'timestamp': dates,
-            'Open': range(10),
-            'High': range(10, 20),
-            'Low': range(5, 15),
-            'Close': range(8, 18),
-            'Volume': range(1000, 1010)
-        })
-        df.set_index('timestamp', inplace=True)
+        dates = pd.date_range("2023-01-01", periods=10, freq="D")
+        df = pd.DataFrame(
+            {
+                "timestamp": dates,
+                "Open": range(10),
+                "High": range(10, 20),
+                "Low": range(5, 15),
+                "Close": range(8, 18),
+                "Volume": range(1000, 1010),
+            }
+        )
+        df.set_index("timestamp", inplace=True)
 
         bullish = indicators_service.is_impulse_bullish(df)
         bearish = indicators_service.is_impulse_bearish(df)
@@ -167,7 +188,7 @@ class TestIndicatorsService:
 
     def test_roc_slope_sufficient_data(self, indicators_service, sample_ohlcv_data):
         """Test ROC slope (acceleration) calculation."""
-        acceleration = indicators_service.roc_slope(sample_ohlcv_data['Close'])
+        acceleration = indicators_service.roc_slope(sample_ohlcv_data["Close"])
 
         assert isinstance(acceleration, (float, np.floating))
         # Can be negative for declining momentum
@@ -199,11 +220,11 @@ class TestIndicatorsService:
         ha_df = indicators_service.calculate_heiken_ashi(sample_ohlcv_data)
 
         assert not ha_df.empty
-        assert 'HA_Open' in ha_df.columns
-        assert 'HA_High' in ha_df.columns
-        assert 'HA_Low' in ha_df.columns
-        assert 'HA_Close' in ha_df.columns
-        assert 'Volume' in ha_df.columns
+        assert "HA_Open" in ha_df.columns
+        assert "HA_High" in ha_df.columns
+        assert "HA_Low" in ha_df.columns
+        assert "HA_Close" in ha_df.columns
+        assert "Volume" in ha_df.columns
 
     def test_calculate_heiken_ashi_empty_data(self, indicators_service):
         """Test Heiken Ashi calculation with empty data."""
@@ -213,7 +234,9 @@ class TestIndicatorsService:
 
     def test_calculate_evwma_sufficient_data(self, indicators_service, sample_ohlcv_data):
         """Test EVWMA calculation."""
-        evwma = indicators_service.calculate_evwma(sample_ohlcv_data['Close'], sample_ohlcv_data['Volume'], 325)
+        evwma = indicators_service.calculate_evwma(
+            sample_ohlcv_data["Close"], sample_ohlcv_data["Volume"], 325
+        )
 
         assert isinstance(evwma, (float, np.floating))
         assert not np.isnan(evwma)
@@ -249,54 +272,65 @@ class TestIndicatorsService:
     def test_get_next_significant_level(self, indicators_service, sample_ohlcv_data):
         """Test significant level calculation."""
         level, pct, tf = indicators_service.get_next_significant_level(
-            sample_ohlcv_data, sample_ohlcv_data['Close'].iloc[-1], 'above', '1d'
+            sample_ohlcv_data, sample_ohlcv_data["Close"].iloc[-1], "above", "1d"
         )
 
         # Results depend on volume profile, but should be consistent types
         if level is not None:
             assert isinstance(level, (float, np.floating))
             assert isinstance(pct, (float, np.floating))
-            assert tf == '1d'
+            assert tf == "1d"
         else:
             assert pct is None
             assert tf is None
 
-    def test_calculate_atrx_happy_path(self, indicators_service, sample_ohlcv_data):
+    def test_calculate_atrx_happy_path(self, sample_ohlcv_data):
         """Test ATRX calculation with sufficient data."""
-        atrx = indicators_service.calculate_atrx(sample_ohlcv_data)
+        from services.indicator_calculators.atrx_calculator import calculate_atrx
+
+        # Prepare dataframe with lowercase column names
+        df_calc = sample_ohlcv_data[["High", "Low", "Close"]].copy()
+        df_calc.columns = [col.lower() for col in df_calc.columns]
+
+        result_dict = calculate_atrx(df_calc)
+        atrx = result_dict["atrx"][-1]
+
         assert isinstance(atrx, float)
         assert not np.isnan(atrx)
 
-    def test_calculate_atrx_insufficient_data(self, indicators_service):
+    def test_calculate_atrx_insufficient_data(self):
         """Test ATRX with insufficient data."""
-        short_df = pd.DataFrame({
-            'High': [100, 101],
-            'Low': [99, 100],
-            'Close': [99.5, 100.5]
-        })
-        atrx = indicators_service.calculate_atrx(short_df)
-        assert np.isnan(atrx)
+        from services.indicator_calculators.atrx_calculator import calculate_atrx
 
-    def test_calculate_atrx_zero_atr(self, indicators_service):
+        short_df = pd.DataFrame({"high": [100, 101], "low": [99, 100], "close": [99.5, 100.5]})
+        result_dict = calculate_atrx(short_df)
+        atrx = result_dict["atrx"][-1]
+        assert atrx is None or np.isnan(atrx)
+
+    def test_calculate_atrx_zero_atr(self):
         """Test ATRX when ATR is zero."""
+        from services.indicator_calculators.atrx_calculator import calculate_atrx
+
         # Create data where TR is zero
-        constant_df = pd.DataFrame({
-            'High': [100] * 60,
-            'Low': [100] * 60,
-            'Close': [100] * 60
-        })
-        atrx = indicators_service.calculate_atrx(constant_df)
-        assert np.isnan(atrx)
+        constant_df = pd.DataFrame({"high": [100] * 60, "low": [100] * 60, "close": [100] * 60})
+        result_dict = calculate_atrx(constant_df)
+        atrx = result_dict["atrx"][-1]
+        assert atrx is None or np.isnan(atrx)
 
-    def test_calculate_atrx_invalid_smoothing(self, indicators_service, sample_ohlcv_data):
-        """Test ATRX with invalid smoothing."""
-        with pytest.raises(ValueError):
-            indicators_service.calculate_atrx(sample_ohlcv_data, smoothing='INVALID')
-
-    def test_calculate_atrx_different_price(self, indicators_service, sample_ohlcv_data):
+    def test_calculate_atrx_different_price(self, sample_ohlcv_data):
         """Test ATRX using different price field."""
-        atrx_close = indicators_service.calculate_atrx(sample_ohlcv_data, price='Close')
-        atrx_open = indicators_service.calculate_atrx(sample_ohlcv_data, price='Open')
+        from services.indicator_calculators.atrx_calculator import calculate_atrx
+
+        # Prepare dataframe with lowercase column names
+        df_calc = sample_ohlcv_data[["High", "Low", "Close", "Open"]].copy()
+        df_calc.columns = [col.lower() for col in df_calc.columns]
+
+        result_dict_close = calculate_atrx(df_calc, source="close")
+        result_dict_open = calculate_atrx(df_calc, source="open")
+
+        atrx_close = result_dict_close["atrx"][-1]
+        atrx_open = result_dict_open["atrx"][-1]
+
         assert atrx_close != atrx_open  # Should differ unless prices are identical
 
     def test_calculate_sma_happy_path(self, indicators_service, sample_ohlcv_data):
@@ -306,15 +340,13 @@ class TestIndicatorsService:
         assert isinstance(sma, float)
         assert not np.isnan(sma)
         # Verify against manual calculation
-        expected = sample_ohlcv_data['Close'].tail(period).mean()
+        expected = sample_ohlcv_data["Close"].tail(period).mean()
         assert abs(sma - expected) < 1e-6
 
     def test_calculate_sma_insufficient_data(self, indicators_service):
         """Test SMA with insufficient data."""
         period = 10
-        short_df = pd.DataFrame({
-            'Close': [100] * 5
-        })
+        short_df = pd.DataFrame({"Close": [100] * 5})
         sma = indicators_service.calculate_sma(short_df, period)
         assert np.isnan(sma)
 
@@ -328,5 +360,5 @@ class TestIndicatorsService:
     def test_calculate_sma_invalid_price_column(self, indicators_service, sample_ohlcv_data):
         """Test SMA with invalid price column."""
         period = 10
-        sma = indicators_service.calculate_sma(sample_ohlcv_data, period, price='Invalid')
+        sma = indicators_service.calculate_sma(sample_ohlcv_data, period, price="Invalid")
         assert np.isnan(sma)

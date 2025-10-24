@@ -1,5 +1,3 @@
-import pandas as pd
-
 from core.types_registry import IndicatorResult, IndicatorType, IndicatorValue, OHLCVBar
 from nodes.core.market.filters.base.base_indicator_filter_node import BaseIndicatorFilter
 from services.indicator_calculators.adx_calculator import calculate_adx
@@ -28,9 +26,11 @@ class ADXFilter(BaseIndicatorFilter):
     ]
 
     def _validate_indicator_params(self):
-        if self.params["min_adx"] < 0:
+        min_adx = self.params.get("min_adx", 25.0)
+        timeperiod = self.params.get("timeperiod", 14)
+        if not isinstance(min_adx, (int, float)) or min_adx < 0:
             raise ValueError("Minimum ADX cannot be negative")
-        if self.params["timeperiod"] <= 0:
+        if not isinstance(timeperiod, (int, float)) or timeperiod <= 0:
             raise ValueError("Time period must be positive")
 
     def _calculate_indicator(self, ohlcv_data: list[OHLCVBar]) -> IndicatorResult:
@@ -44,19 +44,26 @@ class ADXFilter(BaseIndicatorFilter):
                 error="No data",
             )
 
-        df = pd.DataFrame(ohlcv_data)
-        if len(df) < self.params["timeperiod"]:
+        timeperiod_value = self.params.get("timeperiod", 14)
+        if not isinstance(timeperiod_value, (int, float)):
+            timeperiod_value = 14
+        timeperiod = int(timeperiod_value)
+        if len(ohlcv_data) < timeperiod:
             return IndicatorResult(
                 indicator_type=IndicatorType.ADX,
-                timestamp=int(df["timestamp"].iloc[-1]),
+                timestamp=ohlcv_data[-1]["timestamp"],
                 values=IndicatorValue(single=0.0),
                 params=self.params,
                 error="Insufficient data",
             )
 
+        # Extract lists for the calculator
+        highs = [bar["high"] for bar in ohlcv_data]
+        lows = [bar["low"] for bar in ohlcv_data]
+        closes = [bar["close"] for bar in ohlcv_data]
+
         # Use the calculator - returns full time series
-        timeperiod = int(self.params["timeperiod"])
-        result = calculate_adx(df, period=timeperiod)
+        result = calculate_adx(highs, lows, closes, period=timeperiod)
         adx_series = result.get("adx", [])
 
         # Get the last value from the series
@@ -68,16 +75,10 @@ class ADXFilter(BaseIndicatorFilter):
         if latest_adx is None:
             latest_adx = 0.0
 
-        values = (
-            IndicatorValue(single=latest_adx)
-            if not pd.isna(latest_adx)
-            else IndicatorValue(single=0.0)
-        )
-
         return IndicatorResult(
             indicator_type=IndicatorType.ADX,
-            timestamp=int(df["timestamp"].iloc[-1]),
-            values=values,
+            timestamp=ohlcv_data[-1]["timestamp"],
+            values=IndicatorValue(single=latest_adx),
             params=self.params,
         )
 
@@ -87,7 +88,8 @@ class ADXFilter(BaseIndicatorFilter):
             return False
 
         latest_adx = indicator_result.values.single
-        if pd.isna(latest_adx):
-            return False
+        min_adx = self.params.get("min_adx", 25.0)
+        if not isinstance(min_adx, (int, float)):
+            min_adx = 25.0
 
-        return latest_adx >= self.params["min_adx"]
+        return latest_adx >= min_adx

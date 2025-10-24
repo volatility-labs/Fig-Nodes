@@ -5,8 +5,7 @@ import numpy as np
 import pandas as pd
 from scipy.stats import linregress
 
-from services.indicator_calculators.adx_calculator import calculate_adx
-from services.indicator_calculators.atr_calculator import calculate_atr
+from services.indicator_calculators.ema_calculator import calculate_ema
 
 logger = logging.getLogger(__name__)
 
@@ -19,13 +18,10 @@ class IndicatorsService:
         if df.empty or len(df) < 14:
             logger.warning(f"Insufficient data for indicators on {timeframe}.")
             return {}
-        # EVWMA
-        evwma = self.calculate_evwma(df["Close"], df["Volume"], length=325)
+
         # EIS
         eis_bullish = self.is_impulse_bullish(df)
         eis_bearish = self.is_impulse_bearish(df)
-        # ADX
-        adx = self._calculate_adx_direct(df)
         # TLB
         tlb = self.calculate_three_line_break(df)
         # VBP
@@ -63,38 +59,6 @@ class IndicatorsService:
             "sup_tf": sup_tf,
         }
 
-    def calculate_evwma(self, price: pd.Series, volume: pd.Series, length: int) -> float:
-        if price.empty or volume.empty:
-            return np.nan
-        nbfs = self.calculate_nbfs(volume, length)
-        evwma_values = self.calc_evwma(price.values, volume.values, nbfs)
-        if len(evwma_values) == 0:
-            return np.nan
-        return evwma_values[-1]
-
-    def calculate_nbfs(self, volume: pd.Series, length: int, use_cum: bool = False) -> np.ndarray:
-        if volume.empty:
-            return np.array([])
-        if use_cum:
-            return volume.cumsum().values
-        roll = volume.rolling(window=min(length, len(volume)), min_periods=1).sum()
-        return roll.fillna(0).values
-
-    @staticmethod
-    def calc_evwma(price, volume, nbfs):
-        if price.size == 0 or volume.size == 0:
-            return np.array([])
-        ev = np.zeros_like(price, dtype=float)
-        ev[0] = price[0]
-        for i in range(1, len(price)):
-            if nbfs[i] != 0:
-                ev[i] = ev[i - 1] * ((nbfs[i] - volume[i]) / nbfs[i]) + price[i] * (
-                    volume[i] / nbfs[i]
-                )
-            else:
-                ev[i] = price[i]
-        return ev
-
     def calculate_hurst_exponent(self, price_series: pd.Series, lags_range=None) -> float:
         if price_series is None or price_series.empty:
             return np.nan
@@ -129,21 +93,6 @@ class IndicatorsService:
             return 0
         slope, _, _, _, _ = linregress(x, roc)
         return slope
-
-    def calculate_heiken_ashi(self, df: pd.DataFrame) -> pd.DataFrame:
-        if df.empty:
-            return pd.DataFrame()
-        ha_df = pd.DataFrame(index=df.index)
-        ha_df["HA_Close"] = (df["Open"] + df["High"] + df["Low"] + df["Close"]) / 4
-        ha_df["HA_Open"] = df["Open"].copy()
-        for i in range(1, len(df)):
-            ha_df.loc[ha_df.index[i], "HA_Open"] = (
-                ha_df.loc[ha_df.index[i - 1], "HA_Open"] + ha_df.loc[ha_df.index[i - 1], "HA_Close"]
-            ) / 2
-        ha_df["HA_High"] = df[["High", "Open", "Close"]].max(axis=1)
-        ha_df["HA_Low"] = df[["Low", "Open", "Close"]].min(axis=1)
-        ha_df["Volume"] = df["Volume"]
-        return ha_df
 
     def compute_up_down_volume(self, df_ha: pd.DataFrame) -> tuple[pd.Series, pd.Series]:
         if df_ha.empty:
@@ -212,12 +161,41 @@ class IndicatorsService:
     def is_impulse_bullish(self, df: pd.DataFrame) -> bool:
         if df.empty or len(df) < 27:
             return False
-        close = df["Close"]
-        ema_13 = close.ewm(span=13, adjust=False).mean()
-        macd_fast = close.ewm(span=12, adjust=False).mean()
-        macd_slow = close.ewm(span=26, adjust=False).mean()
+        # Prepare dataframe with lowercase column names for the calculator
+        df_ema = df[["Close"]].copy()
+        df_ema.columns = [col.lower() for col in df_ema.columns]
+
+        # Convert to numeric and drop NaN rows
+        for col in df_ema.columns:
+            df_ema[col] = pd.to_numeric(df_ema[col], errors="coerce")
+        df_ema = df_ema.dropna()
+
+        if len(df_ema) < 27:
+            return False
+
+        # Use calculators for EMA calculations
+        ema_13_result = calculate_ema(df_ema, period=13, source="close")
+        ema_13_values = ema_13_result.get("ema", [])
+        ema_13 = pd.Series(ema_13_values, index=df_ema.index[: len(ema_13_values)])
+
+        macd_fast_result = calculate_ema(df_ema, period=12, source="close")
+        macd_fast_values = macd_fast_result.get("ema", [])
+        macd_fast = pd.Series(macd_fast_values, index=df_ema.index[: len(macd_fast_values)])
+
+        macd_slow_result = calculate_ema(df_ema, period=26, source="close")
+        macd_slow_values = macd_slow_result.get("ema", [])
+        macd_slow = pd.Series(macd_slow_values, index=df_ema.index[: len(macd_slow_values)])
+
         macd_line = macd_fast - macd_slow
-        macd_signal = macd_line.ewm(span=9, adjust=False).mean()
+
+        macd_signal_result = calculate_ema(
+            pd.DataFrame({"macd": macd_line.values}), period=9, source="macd"
+        )
+        macd_signal_values = macd_signal_result.get("ema", [])
+        macd_signal = pd.Series(
+            macd_signal_values, index=macd_line.index[: len(macd_signal_values)]
+        )
+
         macd_hist = macd_line - macd_signal
         elder_bulls = (ema_13 > ema_13.shift(1)) & (macd_hist > macd_hist.shift(1))
         return bool(elder_bulls.iloc[-1])
@@ -225,161 +203,44 @@ class IndicatorsService:
     def is_impulse_bearish(self, df: pd.DataFrame) -> bool:
         if df.empty or len(df) < 27:
             return False
-        close = df["Close"]
-        ema_13 = close.ewm(span=13, adjust=False).mean()
-        macd_fast = close.ewm(span=12, adjust=False).mean()
-        macd_slow = close.ewm(span=26, adjust=False).mean()
+        # Prepare dataframe with lowercase column names for the calculator
+        df_ema = df[["Close"]].copy()
+        df_ema.columns = [col.lower() for col in df_ema.columns]
+
+        # Convert to numeric and drop NaN rows
+        for col in df_ema.columns:
+            df_ema[col] = pd.to_numeric(df_ema[col], errors="coerce")
+        df_ema = df_ema.dropna()
+
+        if len(df_ema) < 27:
+            return False
+
+        # Use calculators for EMA calculations
+        ema_13_result = calculate_ema(df_ema, period=13, source="close")
+        ema_13_values = ema_13_result.get("ema", [])
+        ema_13 = pd.Series(ema_13_values, index=df_ema.index[: len(ema_13_values)])
+
+        macd_fast_result = calculate_ema(df_ema, period=12, source="close")
+        macd_fast_values = macd_fast_result.get("ema", [])
+        macd_fast = pd.Series(macd_fast_values, index=df_ema.index[: len(macd_fast_values)])
+
+        macd_slow_result = calculate_ema(df_ema, period=26, source="close")
+        macd_slow_values = macd_slow_result.get("ema", [])
+        macd_slow = pd.Series(macd_slow_values, index=df_ema.index[: len(macd_slow_values)])
+
         macd_line = macd_fast - macd_slow
-        macd_signal = macd_line.ewm(span=9, adjust=False).mean()
+
+        macd_signal_result = calculate_ema(
+            pd.DataFrame({"macd": macd_line.values}), period=9, source="macd"
+        )
+        macd_signal_values = macd_signal_result.get("ema", [])
+        macd_signal = pd.Series(
+            macd_signal_values, index=macd_line.index[: len(macd_signal_values)]
+        )
+
         macd_hist = macd_line - macd_signal
         elder_bears = (ema_13 < ema_13.shift(1)) & (macd_hist < macd_hist.shift(1))
         return bool(elder_bears.iloc[-1])
-
-    def _calculate_adx_direct(self, df: pd.DataFrame, di_len: int = 14) -> float:
-        """Helper method to calculate ADX using the calculator directly."""
-        if df.empty or len(df) < di_len:
-            return np.nan
-        required_columns = ["High", "Low", "Close"]
-        missing_columns = [col for col in required_columns if col not in df.columns]
-        if missing_columns:
-            return np.nan
-
-        # Prepare dataframe with lowercase column names for the calculator
-        df_adx = df[required_columns].copy()
-        df_adx.columns = [col.lower() for col in df_adx.columns]
-
-        # Convert to numeric and drop NaN rows
-        for col in df_adx.columns:
-            df_adx[col] = pd.to_numeric(df_adx[col], errors="coerce")
-        df_adx = df_adx.dropna()
-
-        if len(df_adx) < di_len:
-            return np.nan
-
-        # Use the calculator - returns full time series
-        result = calculate_adx(df_adx, period=di_len)
-        adx_series = result.get("adx", [])
-
-        # Return the last value from the series (or NaN if empty)
-        if adx_series and len(adx_series) > 0:
-            last_value = adx_series[-1]
-            return last_value if last_value is not None else np.nan
-        return np.nan
-
-    def calculate_three_line_break(self, df: pd.DataFrame, num_lines: int = 3) -> pd.DataFrame:
-        tlb_lines = []
-        prices = df["Close"].values
-        dates = df.index
-        if len(prices) < 2:
-            return pd.DataFrame()
-        direction = "up" if prices[1] > prices[0] else "down"
-        current_line = {
-            "start_date": dates[0],
-            "end_date": dates[1],
-            "open": prices[0],
-            "close": prices[1],
-            "direction": direction,
-        }
-        tlb_lines.append(current_line)
-        lines_close = [prices[1]]
-        lines_open = [prices[0]]
-        for i in range(2, len(prices)):
-            current_price = prices[i]
-            current_date = dates[i]
-            last_line = tlb_lines[-1]
-            last_line["end_date"] = current_date
-            if len(tlb_lines) >= num_lines:
-                last_n_lines = tlb_lines[-num_lines:]
-                max_value = max(
-                    max([line["close"] for line in last_n_lines]),
-                    max([line["open"] for line in last_n_lines]),
-                )
-                min_value = min(
-                    min([line["close"] for line in last_n_lines]),
-                    min([line["open"] for line in last_n_lines]),
-                )
-            else:
-                max_value = max(max(lines_close), max(lines_open))
-                min_value = min(min(lines_close), min(lines_open))
-            if last_line["direction"] == "up":
-                if current_price > max_value:
-                    new_open = (
-                        last_line["close"]
-                        if last_line["close"] > last_line["open"]
-                        else last_line["open"]
-                    )
-                    new_line = {
-                        "start_date": current_date,
-                        "end_date": current_date,
-                        "open": new_open,
-                        "close": current_price,
-                        "direction": "up",
-                    }
-                    tlb_lines.append(new_line)
-                    lines_close.append(current_price)
-                    lines_open.append(new_open)
-                    if len(lines_close) > num_lines:
-                        lines_close.pop(0)
-                        lines_open.pop(0)
-                elif current_price < min_value and len(tlb_lines) >= num_lines:
-                    new_open = (
-                        last_line["open"]
-                        if last_line["close"] > last_line["open"]
-                        else last_line["close"]
-                    )
-                    new_line = {
-                        "start_date": current_date,
-                        "end_date": current_date,
-                        "open": new_open,
-                        "close": current_price,
-                        "direction": "down",
-                    }
-                    tlb_lines.append(new_line)
-                    lines_close.append(current_price)
-                    lines_open.append(new_open)
-                    if len(lines_close) > num_lines:
-                        lines_close.pop(0)
-                        lines_open.pop(0)
-            else:
-                if current_price < min_value:
-                    new_open = (
-                        last_line["close"]
-                        if last_line["close"] < last_line["open"]
-                        else last_line["open"]
-                    )
-                    new_line = {
-                        "start_date": current_date,
-                        "end_date": current_date,
-                        "open": new_open,
-                        "close": current_price,
-                        "direction": "down",
-                    }
-                    tlb_lines.append(new_line)
-                    lines_close.append(current_price)
-                    lines_open.append(new_open)
-                    if len(lines_close) > num_lines:
-                        lines_close.pop(0)
-                        lines_open.pop(0)
-                elif current_price > max_value and len(tlb_lines) >= num_lines:
-                    new_open = (
-                        last_line["open"]
-                        if last_line["close"] < last_line["open"]
-                        else last_line["close"]
-                    )
-                    new_line = {
-                        "start_date": current_date,
-                        "end_date": current_date,
-                        "open": new_open,
-                        "close": current_price,
-                        "direction": "up",
-                    }
-                    tlb_lines.append(new_line)
-                    lines_close.append(current_price)
-                    lines_open.append(new_open)
-                    if len(lines_close) > num_lines:
-                        lines_close.pop(0)
-                        lines_open.pop(0)
-        return pd.DataFrame(tlb_lines)
 
     def calculate_volume_profile(self, df: pd.DataFrame, bins: int = 100) -> pd.Series:
         if df.empty:
@@ -395,100 +256,3 @@ class IndicatorsService:
         ].min()
         volume_profile = df.groupby("price_bin")["volume_usd"].sum().sort_index()
         return volume_profile
-
-    def calculate_atrx(
-        self,
-        df: pd.DataFrame,
-        length: int = 14,
-        ma_length: int = 50,
-        smoothing: str = "RMA",
-        price: str = "Close",
-    ) -> float:
-        """
-        Calculate ATRX indicator following TradingView methodology:
-        A = ATR% = ATR / Last Done Price
-        B = % Gain From 50-MA = (Price - SMA50) / SMA50 * 100
-        ATRX = B / A = (% Gain From 50-MA) / ATR%
-
-        Reference:
-        https://www.tradingview.com/script/oimVgV7e-ATR-multiple-from-50-MA/
-        """
-        if df.empty or len(df) < max(length, ma_length):
-            return np.nan
-
-        # Validate smoothing parameter (only RMA supported by calculator)
-        if smoothing != "RMA":
-            raise ValueError(
-                f"Invalid smoothing method '{smoothing}'. Only 'RMA' (Wilder's smoothing) is supported."
-            )
-
-        # Validate price parameter
-        if price not in df.columns:
-            return np.nan
-
-        # Calculate ATR using the calculator
-        # Prepare dataframe with lowercase column names for the calculator
-        df_atr = df[["High", "Low", "Close"]].copy()
-        df_atr.columns = [col.lower() for col in df_atr.columns]
-
-        # Convert to numeric and drop NaN rows
-        for col in df_atr.columns:
-            df_atr[col] = pd.to_numeric(df_atr[col], errors="coerce")
-        df_atr = df_atr.dropna()
-
-        if len(df_atr) < length:
-            return np.nan
-
-        # Extract lists for the calculator
-        highs = df_atr["high"].tolist()
-        lows = df_atr["low"].tolist()
-        closes = df_atr["close"].tolist()
-
-        # Use the calculator for ATR (only supports RMA/Wilder's smoothing)
-        atr_result = calculate_atr(highs, lows, closes, length)
-        atr_list = atr_result.get("atr", [])
-
-        if not atr_list or len(atr_list) == 0:
-            return np.nan
-
-        # Convert to pandas Series for compatibility
-        atr = pd.Series(
-            atr_list, index=df_atr.index if len(df_atr) == len(atr_list) else range(len(atr_list))
-        )
-
-        # Calculate 50-day SMA of price (not EMA of daily average)
-        sma_50 = df[price].rolling(window=ma_length, min_periods=1).mean()
-
-        # Get current values
-        current_price = df[price].iloc[-1]
-        current_sma_50 = sma_50.iloc[-1]
-        current_atr = atr.iloc[-1]
-
-        # Check for invalid values
-        if (
-            current_atr == 0
-            or current_sma_50 == 0
-            or np.isnan(current_sma_50)
-            or np.isnan(current_atr)
-        ):
-            return np.nan
-
-        # Calculate ATR% = ATR / Last Done Price
-        atr_percent = current_atr / current_price
-
-        # Calculate % Gain From 50-MA = (Price - SMA50) / SMA50
-        percent_gain_from_50ma = (current_price - current_sma_50) / current_sma_50
-
-        # Calculate ATRX = (% Gain From 50-MA) / ATR%
-        if atr_percent == 0:
-            return np.nan
-
-        atrx = percent_gain_from_50ma / atr_percent
-        return atrx
-
-    def calculate_sma(self, df: pd.DataFrame, period: int, price: str = "Close") -> float:
-        if df.empty or len(df) < period:
-            return np.nan
-        if price not in df.columns:
-            return np.nan
-        return df[price].rolling(window=period).mean().iloc[-1]

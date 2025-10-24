@@ -1,3 +1,4 @@
+from collections.abc import Sequence
 from typing import Any
 
 from .utils import calculate_wilder_ma
@@ -30,7 +31,10 @@ def calculate_tr(high: float | None, low: float | None, prev_close: float | None
 
 
 def calculate_atr(
-    highs: list[float | None], lows: list[float | None], closes: list[float | None], length: int
+    highs: Sequence[float | None],
+    lows: Sequence[float | None],
+    closes: Sequence[float | None],
+    length: int,
 ) -> dict[str, Any]:
     """
     Calculate ATR (Average True Range) indicator.

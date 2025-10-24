@@ -1,8 +1,6 @@
 import logging
 from typing import Any
 
-import pandas as pd
-
 from core.types_registry import (
     IndicatorResult,
     IndicatorType,
@@ -11,6 +9,7 @@ from core.types_registry import (
     get_type,
 )
 from nodes.core.market.filters.base.base_indicator_filter_node import BaseIndicatorFilter
+from services.indicator_calculators.atrx_calculator import calculate_atrx
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +34,7 @@ class AtrXFilter(BaseIndicatorFilter):
     params_meta = [
         {"name": "length", "type": "integer", "default": 14},
         {"name": "smoothing", "type": "combo", "default": "RMA", "options": ["RMA", "EMA", "SMA"]},
-        {"name": "price", "type": "string", "default": "Close"},
+        {"name": "price", "type": "text", "default": "Close"},
         {"name": "ma_length", "type": "integer", "default": 50},
         {"name": "upper_threshold", "type": "float", "default": 6.0},
         {"name": "lower_threshold", "type": "float", "default": -4.0},
@@ -56,22 +55,16 @@ class AtrXFilter(BaseIndicatorFilter):
                 params=self.params,
                 error="No data",
             )
-        df_data = [
-            {
-                "timestamp": pd.to_datetime(bar["timestamp"], unit="ms"),
-                "Open": bar["open"],
-                "High": bar["high"],
-                "Low": bar["low"],
-                "Close": bar["close"],
-                "Volume": bar["volume"],
-            }
-            for bar in ohlcv_data
-        ]
-        df = pd.DataFrame(df_data).set_index("timestamp")
 
-        # Check for minimum data requirements
-        min_required = max(self.params.get("length", 14), self.params.get("ma_length", 50))
-        if len(df) < min_required:
+        # Check minimum data requirements first
+        length_param = self.params.get("length", 14)
+        ma_length_param = self.params.get("ma_length", 50)
+
+        length_value = int(length_param) if isinstance(length_param, (int, float)) else 14
+        ma_length_value = int(ma_length_param) if isinstance(ma_length_param, (int, float)) else 50
+
+        min_required = max(length_value, ma_length_value)
+        if len(ohlcv_data) < min_required:
             return IndicatorResult(
                 indicator_type=IndicatorType.ATRX,
                 timestamp=ohlcv_data[-1]["timestamp"],
@@ -80,22 +73,73 @@ class AtrXFilter(BaseIndicatorFilter):
                 error="Insufficient data",
             )
 
-        atrx_value = self.indicators_service.calculate_atrx(
-            df,
-            length=self.params.get("length", 14),
-            ma_length=self.params.get("ma_length", 50),
-            smoothing=self.params.get("smoothing", "RMA"),
-            price=self.params.get("price", "Close"),
-        )
-
-        # Handle NaN results (e.g., zero volatility cases)
-        if pd.isna(atrx_value):
+        # Validate smoothing parameter (only RMA supported by calculator)
+        smoothing = self.params.get("smoothing", "RMA")
+        if smoothing != "RMA":
             return IndicatorResult(
                 indicator_type=IndicatorType.ATRX,
                 timestamp=ohlcv_data[-1]["timestamp"],
                 values=IndicatorValue(single=0.0),
                 params=self.params,
-                error="ATRX calculation resulted in NaN",
+                error=f"Invalid smoothing method '{smoothing}'. Only 'RMA' is supported.",
+            )
+
+        # Extract lists directly from OHLCV data
+        high_prices = [bar["high"] for bar in ohlcv_data]
+        low_prices = [bar["low"] for bar in ohlcv_data]
+        close_prices = [bar["close"] for bar in ohlcv_data]
+
+        # Map price column name
+        price_col: str = str(self.params.get("price", "Close"))
+        price_map = {
+            "Open": [bar["open"] for bar in ohlcv_data],
+            "High": high_prices,
+            "Low": low_prices,
+            "Close": close_prices,
+        }
+
+        if price_col not in price_map:
+            return IndicatorResult(
+                indicator_type=IndicatorType.ATRX,
+                timestamp=ohlcv_data[-1]["timestamp"],
+                values=IndicatorValue(single=0.0),
+                params=self.params,
+                error=f"Invalid price column '{price_col}'",
+            )
+
+        source_prices = price_map[price_col]
+
+        # Call calculator with lists
+        atrx_result = calculate_atrx(
+            highs=high_prices,
+            lows=low_prices,
+            closes=close_prices,
+            prices=source_prices,
+            length=length_value,
+            ma_length=ma_length_value,
+        )
+        atrx_values = atrx_result.get("atrx", [])
+
+        if not atrx_values:
+            return IndicatorResult(
+                indicator_type=IndicatorType.ATRX,
+                timestamp=ohlcv_data[-1]["timestamp"],
+                values=IndicatorValue(single=0.0),
+                params=self.params,
+                error="ATRX calculation returned empty results",
+            )
+
+        # Get last value
+        atrx_value = atrx_values[-1]
+
+        # Handle None
+        if atrx_value is None:
+            return IndicatorResult(
+                indicator_type=IndicatorType.ATRX,
+                timestamp=ohlcv_data[-1]["timestamp"],
+                values=IndicatorValue(single=0.0),
+                params=self.params,
+                error="ATRX calculation resulted in None",
             )
 
         return IndicatorResult(
@@ -108,10 +152,23 @@ class AtrXFilter(BaseIndicatorFilter):
     def _should_pass_filter(self, indicator_result: IndicatorResult) -> bool:
         if indicator_result.error:
             return False
-        value = indicator_result.values.single
-        upper = self.params.get("upper_threshold", 6.0)
-        lower = self.params.get("lower_threshold", -4.0)
-        condition = self.params.get("filter_condition", "outside")
+        value = float(indicator_result.values.single)
+
+        upper_threshold = self.params.get("upper_threshold", 6.0)
+        if not isinstance(upper_threshold, (int, float)):
+            upper_threshold = 6.0
+        upper = float(upper_threshold)
+
+        lower_threshold = self.params.get("lower_threshold", -4.0)
+        if not isinstance(lower_threshold, (int, float)):
+            lower_threshold = -4.0
+        lower = float(lower_threshold)
+
+        filter_condition = self.params.get("filter_condition", "outside")
+        if not isinstance(filter_condition, str):
+            filter_condition = "outside"
+        condition = str(filter_condition)
+
         if condition == "outside":
             return value >= upper or value <= lower
         else:  # "inside"
