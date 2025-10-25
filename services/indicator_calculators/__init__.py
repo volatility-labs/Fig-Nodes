@@ -16,6 +16,7 @@ from .utils import (
     rolling_max,
     rolling_min,
 )
+from .vbp_calculator import calculate_vbp
 from .wma_calculator import calculate_wma
 
 __all__ = [
@@ -32,6 +33,7 @@ __all__ = [
     "calculate_rolling_std_dev",
     "calculate_rolling_sum_strict",
     "calculate_sma",
+    "calculate_vbp",
     "calculate_wilder_ma",
     "calculate_wma",
     "rolling_calculation",

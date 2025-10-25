@@ -65,53 +65,69 @@ class GraphExecutor:
     # Execute the graph
     async def execute(self) -> ExecutionResults:
         results: dict[int, dict[str, Any]] = {}
-        sorted_indices = _rx_topo(self.dag)
-        executed_nodes: set[int] = set()
+        levels = _rx_levels(self.dag)
 
-        for node_idx in sorted_indices:
-            node_id = self._idx_to_id[node_idx]
+        for level in levels:
             if self._stopped:
                 break
-            if node_id in executed_nodes:
-                continue
-            if self.dag.in_degree(node_idx) == 0 and self.dag.out_degree(node_idx) == 0:
-                continue
-            node = self.nodes[node_id]
-            inputs = self._get_node_inputs(node_id, results)
 
-            merged_inputs = {
-                **{
-                    k: v
-                    for k, v in node.params.items()
-                    if k in node.inputs and k not in inputs and v is not None
-                },
-                **inputs,
-            }
+            tasks: list[asyncio.Task[tuple[int, dict[str, Any]]]] = []
+            for node_idx in level:
+                node_id = self._idx_to_id[node_idx]
+                if self.dag.in_degree(node_idx) == 0 and self.dag.out_degree(node_idx) == 0:
+                    continue
 
-            try:
-                outputs = await node.execute(merged_inputs)
-            except NodeExecutionError as e:
-                if hasattr(e, "original_exc") and e.original_exc:
-                    print(
-                        f"ERROR_TRACE: Original exception: {type(e.original_exc).__name__}: {str(e.original_exc)}"
-                    )
-                logger.error(f"Node {node_id} failed: {str(e)}")
-                results[node_id] = {"error": str(e)}
-                continue
-            except asyncio.CancelledError:
-                print("STOP_TRACE: Caught CancelledError in node.execute await in GraphExecutor")
-                self.force_stop()
-                raise
-            except Exception as e:
-                print(
-                    f"ERROR_TRACE: Unexpected exception in node {node_id}: {type(e).__name__}: {str(e)}"
+                node = self.nodes[node_id]
+                inputs = self._get_node_inputs(node_id, results)
+
+                merged_inputs = {
+                    **{
+                        k: v
+                        for k, v in node.params.items()
+                        if k in node.inputs and k not in inputs and v is not None
+                    },
+                    **inputs,
+                }
+
+                task = asyncio.create_task(
+                    self._execute_node_with_error_handling(node_id, node, merged_inputs)
                 )
-                logger.error(f"Unexpected error in node {node_id}: {str(e)}", exc_info=True)
-                results[node_id] = {"error": f"Unexpected error: {str(e)}"}
-                continue
-            results[node_id] = outputs
+                tasks.append(task)
+
+            if tasks:
+                level_results = await asyncio.gather(*tasks, return_exceptions=True)
+                for level_result in level_results:
+                    if isinstance(level_result, Exception):
+                        logger.error(f"Task failed with exception: {level_result}", exc_info=True)
+                    elif isinstance(level_result, tuple):
+                        node_id, output = level_result
+                        results[node_id] = output
 
         return results
+
+    async def _execute_node_with_error_handling(
+        self, node_id: int, node: Base, merged_inputs: dict[str, Any]
+    ) -> tuple[int, dict[str, Any]]:
+        try:
+            outputs = await node.execute(merged_inputs)
+            return node_id, outputs
+        except NodeExecutionError as e:
+            if hasattr(e, "original_exc") and e.original_exc:
+                print(
+                    f"ERROR_TRACE: Original exception: {type(e.original_exc).__name__}: {str(e.original_exc)}"
+                )
+            logger.error(f"Node {node_id} failed: {str(e)}")
+            return node_id, {"error": str(e)}
+        except asyncio.CancelledError:
+            print("STOP_TRACE: Caught CancelledError in node.execute await in GraphExecutor")
+            self.force_stop()
+            raise
+        except Exception as e:
+            print(
+                f"ERROR_TRACE: Unexpected exception in node {node_id}: {type(e).__name__}: {str(e)}"
+            )
+            logger.error(f"Unexpected error in node {node_id}: {str(e)}", exc_info=True)
+            return node_id, {"error": f"Unexpected error: {str(e)}"}
 
     def force_stop(self):
         """Single entrypoint to immediately kill all execution. Idempotent."""
@@ -174,8 +190,13 @@ class GraphExecutor:
 
 
 # ---- rustworkx helper shims with precise typing to satisfy the type checker ----
-def _rx_topo(dag: Any) -> list[int]:
+# Kept for backwards compatibility/reference
+def _rx_topo(dag: Any) -> list[int]:  # noqa: ARG001
     return list(rx.topological_sort(dag))
+
+
+def _rx_levels(dag: Any) -> Any:
+    return list(rx.topological_generations(dag))
 
 
 def _rx_is_dag(dag: Any) -> bool:

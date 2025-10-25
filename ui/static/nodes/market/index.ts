@@ -12,3 +12,4 @@ export { default as ATRIndicatorNodeUI } from './ATRIndicatorNodeUI';
 export { default as ATRFilterNodeUI } from './ATRFilterNodeUI';
 export { default as EmaRangeFilterNodeUI } from './EmaRangeFilterNodeUI';
 export { default as OrbFilterNodeUI } from './OrbFilterNodeUI';
+export { default as VBPLevelFilterNodeUI } from './VBPLevelFilterNodeUI';
