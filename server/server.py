@@ -176,7 +176,7 @@ async def _handle_stop_message(
             type="stopped", message="Stop completed (idempotent)"
         )
         await websocket.send_json(stopped_msg.model_dump())
-        return True, None
+        return False, None  # Don't close - keep connection alive
 
     # Cancel the job
     queue = _get_execution_queue(app)
@@ -188,7 +188,7 @@ async def _handle_stop_message(
         type="stopped", message="Execution stopped and cleaned up"
     )
     await websocket.send_json(stopped_msg.model_dump())
-    return True, None
+    return False, None  # Don't close - keep connection alive
 
 
 async def _cleanup_job(job: ExecutionJob | None):
@@ -239,12 +239,7 @@ async def execute_endpoint(websocket: WebSocket):
                 job = await _handle_graph_message(websocket, message)
 
             elif message.type == "stop":
-                should_close, _ = await _handle_stop_message(
-                    websocket, job, is_cancelling, cancel_done_event
-                )
-                if should_close:
-                    await websocket.close()
-                    return
+                await _handle_stop_message(websocket, job, is_cancelling, cancel_done_event)
                 is_cancelling = True
 
     except WebSocketDisconnect as e:

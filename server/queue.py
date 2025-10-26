@@ -240,10 +240,5 @@ async def execution_worker(queue: ExecutionQueue, node_registry: NodeRegistry):
             monitor_task.cancel()
             await asyncio.gather(monitor_task, return_exceptions=True)
 
-            try:
-                if websocket.client_state not in (WebSocketState.DISCONNECTED,):
-                    await websocket.close()
-            except Exception:
-                pass
             job.done_event.set()
             await queue.mark_done(job)

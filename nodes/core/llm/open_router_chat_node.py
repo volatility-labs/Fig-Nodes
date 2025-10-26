@@ -3,7 +3,7 @@ import json
 import random
 from typing import Any, Literal, NotRequired, TypedDict, cast
 
-import httpx
+import aiohttp
 from pydantic import BaseModel
 
 from core.api_key_vault import APIKeyVault
@@ -214,6 +214,22 @@ class OpenRouterChat(Base):
         # Maintain seed state for increment mode
         self._seed_state: int | None = None
         self.vault = APIKeyVault()
+        self._session: aiohttp.ClientSession | None = None
+
+    def force_stop(self):
+        """Override to close aiohttp session and cancel inflight requests immediately."""
+        super().force_stop()  # Call base implementation
+        if self._session and not self._session.closed:
+            print(f"STOP_TRACE: Closing aiohttp session for node {self.id}")
+            # Schedule session close in event loop
+            asyncio.create_task(self._session.close())
+
+    async def _get_session(self) -> aiohttp.ClientSession:
+        """Get or create aiohttp session."""
+        if self._session is None or self._session.closed:
+            timeout = aiohttp.ClientTimeout(total=60)
+            self._session = aiohttp.ClientSession(timeout=timeout)
+        return self._session
 
     @staticmethod
     def _build_messages(
@@ -408,20 +424,33 @@ class OpenRouterChat(Base):
                 **web_search_options,
             }
 
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.post(
+            # Check for cancellation before HTTP call
+            if self._is_stopped:
+                raise asyncio.CancelledError("Node stopped before HTTP request")
+
+            session = await self._get_session()
+            try:
+                async with session.post(
                     "https://openrouter.ai/api/v1/chat/completions",
                     headers={
                         "Authorization": f"Bearer {api_key}",
                         "Content-Type": "application/json",
                     },
                     json=request_body,
-                )
-                response.raise_for_status()
-                resp_data_raw = response.json()
+                ) as response:
+                    # Check for cancellation after request starts
+                    if self._is_stopped:
+                        raise asyncio.CancelledError("Node stopped during HTTP request")
 
-                # Validate and parse response using Pydantic
-                resp_data_model = OpenRouterChatResponseModel.model_validate(resp_data_raw)
+                    response.raise_for_status()
+                    resp_data_raw = await response.json()
+
+                    # Validate and parse response using Pydantic
+                    resp_data_model = OpenRouterChatResponseModel.model_validate(resp_data_raw)
+            except asyncio.CancelledError:
+                print(f"STOP_TRACE: HTTP request cancelled in tool execution for node {self.id}")
+                raise
+
             # Extract message and tool calls
             if not resp_data_model.choices:
                 break
@@ -600,20 +629,32 @@ class OpenRouterChat(Base):
             **web_search_options,
         }
 
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            response = await client.post(
+        # Check for cancellation before HTTP call
+        if self._is_stopped:
+            raise asyncio.CancelledError("Node stopped before HTTP request")
+
+        session = await self._get_session()
+        try:
+            async with session.post(
                 "https://openrouter.ai/api/v1/chat/completions",
                 headers={
                     "Authorization": f"Bearer {api_key}",
                     "Content-Type": "application/json",
                 },
                 json=request_body,
-            )
-            response.raise_for_status()
-            resp_data_raw = response.json()
+            ) as response:
+                # Check for cancellation after request starts
+                if self._is_stopped:
+                    raise asyncio.CancelledError("Node stopped during HTTP request")
 
-            # Validate and parse response using Pydantic
-            resp_data_model = OpenRouterChatResponseModel.model_validate(resp_data_raw)
+                response.raise_for_status()
+                resp_data_raw = await response.json()
+
+                # Validate and parse response using Pydantic
+                resp_data_model = OpenRouterChatResponseModel.model_validate(resp_data_raw)
+        except asyncio.CancelledError:
+            print(f"STOP_TRACE: HTTP request cancelled in main execution for node {self.id}")
+            raise
 
         final_message: dict[str, Any] = (
             resp_data_model.choices[0].message.model_dump()
@@ -644,29 +685,33 @@ class OpenRouterChat(Base):
         generation_id: str | None = resp_data_model.id
         if generation_id and api_key:
             try:
-                async with httpx.AsyncClient(timeout=10.0) as client:
-                    gen_response = await client.get(
+                # Check for cancellation before generation stats call
+                if self._is_stopped:
+                    pass  # Skip generation stats if stopped
+                else:
+                    session = await self._get_session()
+                    async with session.get(
                         f"https://openrouter.ai/api/v1/generation?id={generation_id}",
                         headers={
                             "Authorization": f"Bearer {api_key}",
                         },
-                    )
-                    gen_response.raise_for_status()
-                    gen_data: OpenRouterGenerationResponse = gen_response.json()
-                    if gen_data.get("data"):
-                        gen_metrics = gen_data["data"]
-                        # Merge additional metrics like cost, native tokens, etc.
-                        for key in [
-                            "total_cost",
-                            "native_tokens_prompt",
-                            "native_tokens_completion",
-                            "latency",
-                            "generation_time",
-                        ]:
-                            if key in gen_metrics:
-                                metrics[key] = gen_metrics[key]
-            except Exception:
-                # Silently ignore generation API failures
+                    ) as gen_response:
+                        gen_response.raise_for_status()
+                        gen_data: OpenRouterGenerationResponse = await gen_response.json()
+                        if gen_data.get("data"):
+                            gen_metrics = gen_data["data"]
+                            # Merge additional metrics like cost, native tokens, etc.
+                            for key in [
+                                "total_cost",
+                                "native_tokens_prompt",
+                                "native_tokens_completion",
+                                "latency",
+                                "generation_time",
+                            ]:
+                                if key in gen_metrics:
+                                    metrics[key] = gen_metrics[key]
+            except (Exception, asyncio.CancelledError):
+                # Silently ignore generation API failures and cancellations
                 pass
 
         return {

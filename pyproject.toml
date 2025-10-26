@@ -22,6 +22,7 @@ dependencies = [
   "uvicorn==0.35.0",
   "networkx==3.5",
   "httpx==0.27.2",
+  "aiohttp==3.10.11",
   "ollama==0.5.3",
   "ta==0.11.0",
   "matplotlib==3.9.2",

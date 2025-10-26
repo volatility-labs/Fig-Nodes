@@ -33,6 +33,7 @@ class GraphExecutor:
         self._is_force_stopped: bool = False  # For idempotency
         self._progress_callback: ProgressCallback | None = None
         self.vault = APIKeyVault()
+        self._active_tasks: list[asyncio.Task] = []  # Track active tasks for cancellation
         self._build_graph()
 
     def _build_graph(self):
@@ -66,42 +67,65 @@ class GraphExecutor:
     async def execute(self) -> ExecutionResults:
         results: dict[int, dict[str, Any]] = {}
         levels = _rx_levels(self.dag)
+        self._active_tasks.clear()  # Clear at start
 
-        for level in levels:
-            if self._stopped:
-                break
+        try:
+            for level in levels:
+                if self._stopped:
+                    break
 
-            tasks: list[asyncio.Task[tuple[int, dict[str, Any]]]] = []
-            for node_idx in level:
-                node_id = self._idx_to_id[node_idx]
-                if self.dag.in_degree(node_idx) == 0 and self.dag.out_degree(node_idx) == 0:
-                    continue
+                tasks: list[asyncio.Task[tuple[int, dict[str, Any]]]] = []
+                for node_idx in level:
+                    node_id = self._idx_to_id[node_idx]
+                    if self.dag.in_degree(node_idx) == 0 and self.dag.out_degree(node_idx) == 0:
+                        continue
 
-                node = self.nodes[node_id]
-                inputs = self._get_node_inputs(node_id, results)
+                    node = self.nodes[node_id]
+                    inputs = self._get_node_inputs(node_id, results)
 
-                merged_inputs = {
-                    **{
-                        k: v
-                        for k, v in node.params.items()
-                        if k in node.inputs and k not in inputs and v is not None
-                    },
-                    **inputs,
-                }
+                    merged_inputs = {
+                        **{
+                            k: v
+                            for k, v in node.params.items()
+                            if k in node.inputs and k not in inputs and v is not None
+                        },
+                        **inputs,
+                    }
 
-                task = asyncio.create_task(
-                    self._execute_node_with_error_handling(node_id, node, merged_inputs)
-                )
-                tasks.append(task)
+                    task = asyncio.create_task(
+                        self._execute_node_with_error_handling(node_id, node, merged_inputs)
+                    )
+                    tasks.append(task)
+                    self._active_tasks.append(task)  # Track task
 
-            if tasks:
-                level_results = await asyncio.gather(*tasks, return_exceptions=True)
-                for level_result in level_results:
-                    if isinstance(level_result, Exception):
-                        logger.error(f"Task failed with exception: {level_result}", exc_info=True)
-                    elif isinstance(level_result, tuple):
-                        node_id, output = level_result
-                        results[node_id] = output
+                if tasks:
+                    # Check for stop before gathering
+                    if self._stopped:
+                        self._cancel_all_tasks(tasks)
+                        break
+
+                    level_results = await asyncio.gather(*tasks, return_exceptions=True)
+
+                    # Check for stop after gathering
+                    if self._stopped:
+                        break
+
+                    for level_result in level_results:
+                        if isinstance(level_result, Exception):
+                            if isinstance(level_result, asyncio.CancelledError):
+                                continue  # Task was cancelled, skip it
+                            logger.error(
+                                f"Task failed with exception: {level_result}", exc_info=True
+                            )
+                        elif isinstance(level_result, tuple):
+                            node_id, output = level_result
+                            results[node_id] = output
+        finally:
+            # Always cancel remaining tasks on exit
+            if self._active_tasks:
+                self._cancel_all_tasks(self._active_tasks)
+                # Wait for cancellation to propagate
+                await asyncio.gather(*self._active_tasks, return_exceptions=True)
 
         return results
 
@@ -129,17 +153,24 @@ class GraphExecutor:
             logger.error(f"Unexpected error in node {node_id}: {str(e)}", exc_info=True)
             return node_id, {"error": f"Unexpected error: {str(e)}"}
 
+    def _cancel_all_tasks(self, tasks: list[asyncio.Task]):
+        """Cancel all active tasks immediately."""
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+
     def force_stop(self):
         """Single entrypoint to immediately kill all execution. Idempotent."""
-        print(
-            f"STOP_TRACE: GraphExecutor.force_stop called, already stopped: {self._is_force_stopped}"
-        )
         if self._is_force_stopped:
             return  # Idempotent
         self._is_force_stopped = True
         self._stopped = True
 
-        # Immediately force stop all nodes
+        # Cancel all active tasks FIRST
+        print(f"STOP_TRACE: Cancelling {len(self._active_tasks)} active tasks")
+        self._cancel_all_tasks(self._active_tasks)
+
+        # Then force stop all nodes
         for node_id, node in self.nodes.items():
             print(f"STOP_TRACE: Calling force_stop on node {node_id} ({type(node).__name__})")
             node.force_stop()
