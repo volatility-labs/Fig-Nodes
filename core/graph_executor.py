@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from enum import Enum
 from typing import Any
 
 import rustworkx as rx
@@ -19,6 +20,13 @@ NodeId = int
 ExecutionResults = dict[NodeId, dict[str, Any]]
 
 
+class _GraphExecutionState(Enum):
+    IDLE = "idle"
+    RUNNING = "running"
+    STOPPING = "stopping"
+    STOPPED = "stopped"
+
+
 class GraphExecutor:
     def __init__(self, graph: SerialisableGraph, node_registry: dict[str, type[Base]]):
         self.graph = graph
@@ -29,11 +37,13 @@ class GraphExecutor:
         self.dag: rx.PyDiGraph = rx.PyDiGraph()
         self._id_to_idx: dict[int, int] = {}
         self._idx_to_id: dict[int, int] = {}
-        self._stopped: bool = False
-        self._is_force_stopped: bool = False  # For idempotency
+        self._state: _GraphExecutionState = _GraphExecutionState.IDLE
+        self._cancellation_reason: str | None = None
         self._progress_callback: ProgressCallback | None = None
         self.vault = APIKeyVault()
-        self._active_tasks: list[asyncio.Task] = []  # Track active tasks for cancellation
+        self._active_tasks: list[
+            asyncio.Task[tuple[int, dict[str, Any]]]
+        ] = []  # Track active tasks for cancellation
         self._build_graph()
 
     def _build_graph(self):
@@ -55,7 +65,7 @@ class GraphExecutor:
             self._idx_to_id[idx] = node_id
 
         for link in self.graph.get("links", []) or []:
-            s_link: SerialisedLink = link  # TypedDict with required keys
+            s_link: SerialisedLink = link
             from_id = s_link["origin_id"]
             to_id = s_link["target_id"]
             self.dag.add_edge(self._id_to_idx[from_id], self._id_to_idx[to_id], None)
@@ -63,71 +73,95 @@ class GraphExecutor:
         if not _rx_is_dag(self.dag):
             raise ValueError("Graph contains cycles")
 
-    # Execute the graph
+    # ============================================================================
+    # Execution Flow
+    # ============================================================================
+
     async def execute(self) -> ExecutionResults:
         results: dict[int, dict[str, Any]] = {}
         levels = _rx_levels(self.dag)
-        self._active_tasks.clear()  # Clear at start
+        self._active_tasks.clear()
+        self._state = _GraphExecutionState.RUNNING
 
         try:
-            for level in levels:
-                if self._stopped:
-                    break
-
-                tasks: list[asyncio.Task[tuple[int, dict[str, Any]]]] = []
-                for node_idx in level:
-                    node_id = self._idx_to_id[node_idx]
-                    if self.dag.in_degree(node_idx) == 0 and self.dag.out_degree(node_idx) == 0:
-                        continue
-
-                    node = self.nodes[node_id]
-                    inputs = self._get_node_inputs(node_id, results)
-
-                    merged_inputs = {
-                        **{
-                            k: v
-                            for k, v in node.params.items()
-                            if k in node.inputs and k not in inputs and v is not None
-                        },
-                        **inputs,
-                    }
-
-                    task = asyncio.create_task(
-                        self._execute_node_with_error_handling(node_id, node, merged_inputs)
-                    )
-                    tasks.append(task)
-                    self._active_tasks.append(task)  # Track task
-
-                if tasks:
-                    # Check for stop before gathering
-                    if self._stopped:
-                        self._cancel_all_tasks(tasks)
-                        break
-
-                    level_results = await asyncio.gather(*tasks, return_exceptions=True)
-
-                    # Check for stop after gathering
-                    if self._stopped:
-                        break
-
-                    for level_result in level_results:
-                        if isinstance(level_result, Exception):
-                            if isinstance(level_result, asyncio.CancelledError):
-                                continue  # Task was cancelled, skip it
-                            logger.error(
-                                f"Task failed with exception: {level_result}", exc_info=True
-                            )
-                        elif isinstance(level_result, tuple):
-                            node_id, output = level_result
-                            results[node_id] = output
+            await self._execute_levels(levels, results)
+        except Exception as e:
+            logger.error(f"Execution failed: {e}", exc_info=True)
         finally:
-            # Always cancel remaining tasks on exit
-            if self._active_tasks:
-                self._cancel_all_tasks(self._active_tasks)
-                # Wait for cancellation to propagate
-                await asyncio.gather(*self._active_tasks, return_exceptions=True)
+            await self._cleanup_execution()
 
         return results
+
+    async def _execute_levels(
+        self, levels: list[list[int]], results: dict[int, dict[str, Any]]
+    ) -> None:
+        """Execute all levels of the graph."""
+        for level in levels:
+            if self._should_stop():
+                break
+
+            tasks: list[asyncio.Task[tuple[int, dict[str, Any]]]] = []
+            for node_idx in level:
+                node_id = self._idx_to_id[node_idx]
+                if self.dag.in_degree(node_idx) == 0 and self.dag.out_degree(node_idx) == 0:
+                    continue
+
+                node = self.nodes[node_id]
+                inputs = self._get_node_inputs(node_id, results)
+
+                merged_inputs = {
+                    **{
+                        k: v
+                        for k, v in node.params.items()
+                        if k in node.inputs and k not in inputs and v is not None
+                    },
+                    **inputs,
+                }
+
+                task = asyncio.create_task(
+                    self._execute_node_with_error_handling(node_id, node, merged_inputs)
+                )
+                tasks.append(task)
+                self._active_tasks.append(task)
+
+            if tasks:
+                if self._should_stop():
+                    self._cancel_all_tasks(tasks)
+                    break
+
+                level_results = await asyncio.gather(*tasks, return_exceptions=True)
+
+                if self._should_stop():
+                    break
+
+                self._process_level_results(level_results, results)
+
+    def _process_level_results(
+        self, level_results: list[Any], results: dict[int, dict[str, Any]]
+    ) -> None:
+        """Process results from a level execution."""
+        for level_result in level_results:
+            if isinstance(level_result, Exception):
+                if isinstance(level_result, asyncio.CancelledError):
+                    continue
+                logger.error(f"Task failed with exception: {level_result}", exc_info=True)
+            elif isinstance(level_result, tuple):
+                node_id, output = level_result  # type: ignore[assignment]
+                if isinstance(node_id, int) and isinstance(output, dict):
+                    results[node_id] = output
+
+    async def _cleanup_execution(self) -> None:
+        """Clean up execution state and cancel remaining tasks."""
+        if self._active_tasks:
+            self._cancel_all_tasks(self._active_tasks)
+            await asyncio.gather(*self._active_tasks, return_exceptions=True)
+
+        if self._should_stop():
+            self._state = _GraphExecutionState.STOPPED
+
+    # ============================================================================
+    # Node Execution Utilities
+    # ============================================================================
 
     async def _execute_node_with_error_handling(
         self, node_id: int, node: Base, merged_inputs: dict[str, Any]
@@ -152,34 +186,6 @@ class GraphExecutor:
             )
             logger.error(f"Unexpected error in node {node_id}: {str(e)}", exc_info=True)
             return node_id, {"error": f"Unexpected error: {str(e)}"}
-
-    def _cancel_all_tasks(self, tasks: list[asyncio.Task]):
-        """Cancel all active tasks immediately."""
-        for task in tasks:
-            if not task.done():
-                task.cancel()
-
-    def force_stop(self):
-        """Single entrypoint to immediately kill all execution. Idempotent."""
-        if self._is_force_stopped:
-            return  # Idempotent
-        self._is_force_stopped = True
-        self._stopped = True
-
-        # Cancel all active tasks FIRST
-        print(f"STOP_TRACE: Cancelling {len(self._active_tasks)} active tasks")
-        self._cancel_all_tasks(self._active_tasks)
-
-        # Then force stop all nodes
-        for node_id, node in self.nodes.items():
-            print(f"STOP_TRACE: Calling force_stop on node {node_id} ({type(node).__name__})")
-            node.force_stop()
-
-        print("STOP_TRACE: Force stop completed in GraphExecutor")
-
-    async def stop(self):
-        print("STOP_TRACE: GraphExecutor.stop called")
-        self.force_stop()
 
     def _get_node_inputs(self, node_id: int, results: dict[int, dict[str, Any]]) -> dict[str, Any]:
         inputs: dict[str, Any] = {}
@@ -213,6 +219,84 @@ class GraphExecutor:
                 inputs[input_key] = value
         return inputs
 
+    # ============================================================================
+    # Task Management
+    # ============================================================================
+
+    def _cancel_all_tasks(self, tasks: list[asyncio.Task[tuple[int, dict[str, Any]]]]):
+        """Cancel all active tasks immediately."""
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+
+    # ============================================================================
+    # Stop/Cancellation
+    # ============================================================================
+
+    def force_stop(self, reason: str = "user"):
+        """Single entrypoint to immediately kill all execution. Idempotent."""
+        if (
+            self.state == _GraphExecutionState.STOPPING
+            or self.state == _GraphExecutionState.STOPPED
+        ):
+            return
+
+        self._state = _GraphExecutionState.STOPPING
+        self._cancellation_reason = reason
+
+        # Cancel all active tasks FIRST
+        print(f"STOP_TRACE: Cancelling {len(self._active_tasks)} active tasks")
+        self._cancel_all_tasks(self._active_tasks)
+
+        # Then force stop all nodes
+        for node_id, node in self.nodes.items():
+            print(f"STOP_TRACE: Calling force_stop on node {node_id} ({type(node).__name__})")
+            node.force_stop()
+
+        print("STOP_TRACE: Force stop completed in GraphExecutor")
+        self._state = _GraphExecutionState.STOPPED
+
+    async def stop(self, reason: str = "user"):
+        print("STOP_TRACE: GraphExecutor.stop called")
+        self.force_stop(reason=reason)
+
+    # ============================================================================
+    # State Management
+    # ============================================================================
+
+    @property
+    def state(self) -> _GraphExecutionState:
+        """Read-only property that prevents type narrowing."""
+        return self._state
+
+    @property
+    def is_running(self) -> bool:
+        """Check if executor is currently running."""
+        return self._state == _GraphExecutionState.RUNNING
+
+    @property
+    def is_stopping(self) -> bool:
+        """Check if executor is currently stopping."""
+        return self._state == _GraphExecutionState.STOPPING
+
+    @property
+    def is_stopped(self) -> bool:
+        """Check if executor has stopped."""
+        return self._state == _GraphExecutionState.STOPPED
+
+    @property
+    def cancellation_reason(self) -> str | None:
+        """Get the reason for cancellation, if any."""
+        return self._cancellation_reason
+
+    def _should_stop(self) -> bool:
+        """Check if execution should stop. Prevents type narrowing."""
+        return self.state == _GraphExecutionState.STOPPING
+
+    # ============================================================================
+    # Configuration
+    # ============================================================================
+
     def set_progress_callback(self, callback: ProgressCallback) -> None:
         """Set a progress callback function."""
         self._progress_callback = callback
@@ -221,11 +305,6 @@ class GraphExecutor:
 
 
 # ---- rustworkx helper shims with precise typing to satisfy the type checker ----
-# Kept for backwards compatibility/reference
-def _rx_topo(dag: Any) -> list[int]:  # noqa: ARG001
-    return list(rx.topological_sort(dag))
-
-
 def _rx_levels(dag: Any) -> Any:
     return list(rx.topological_generations(dag))
 

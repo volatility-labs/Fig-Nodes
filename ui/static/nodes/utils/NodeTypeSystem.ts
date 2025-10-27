@@ -2,32 +2,26 @@
 export class NodeTypeSystem {
     static parseType(typeInfo: unknown): string | number {
         if (!typeInfo) {
-            console.log(`[NodeTypeSystem] parseType: null/undefined -> 0 (Any)`);
             return 0; // LiteGraph wildcard for "accept any"
         }
         const typeInfoObj = typeInfo as Record<string, unknown>;
         const baseName = typeof typeInfoObj.base === 'string' ? typeInfoObj.base : String(typeInfoObj.base);
-        console.log(`[NodeTypeSystem] parseType: typeInfo=`, typeInfo, `baseName="${baseName}"`);
         
         if (baseName === 'Any' || baseName === 'typing.Any' || baseName.toLowerCase() === 'any') {
-            console.log(`[NodeTypeSystem] parseType: Any -> 0`);
             return 0; // LiteGraph wildcard
         }
         if (baseName === 'union' && typeInfoObj.subtypes) {
             const subs = (typeInfoObj.subtypes as unknown[]).map((st) => this.parseType(st)).join(' | ');
-            console.log(`[NodeTypeSystem] parseType: union -> "${subs}"`);
             return subs;
         }
         const type = baseName;
         if (typeInfoObj.subtype) {
             const sub = this.parseType(typeInfoObj.subtype);
             const result = `${type}<${sub}>`;
-            console.log(`[NodeTypeSystem] parseType: ${type} with subtype -> "${result}"`);
             return result;
         } else if (typeInfoObj.subtypes && Array.isArray(typeInfoObj.subtypes) && typeInfoObj.subtypes.length > 0) {
             const subs = (typeInfoObj.subtypes as unknown[]).map((st) => this.parseType(st)).join(', ');
             const result = `${type}<${subs}>`;
-            console.log(`[NodeTypeSystem] parseType: ${type} with subtypes -> "${result}"`);
             return result;
         } else if (typeInfoObj.key_type && typeInfoObj.value_type) {
             const key = this.parseType(typeInfoObj.key_type);

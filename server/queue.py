@@ -8,15 +8,17 @@ from starlette.websockets import WebSocketState
 from core.graph_executor import GraphExecutor
 from core.node_registry import NodeRegistry
 from core.serialization import serialize_results
-from core.types_registry import ProgressEvent, SerialisableGraph
+from core.types_registry import ExecutionResult, ProgressEvent, SerialisableGraph
 
 from .api.websocket_schemas import (
+    ExecutionState,
     ServerToClientDataMessage,
     ServerToClientErrorMessage,
     ServerToClientMessage,
     ServerToClientProgressMessage,
     ServerToClientQueuePositionMessage,
     ServerToClientStatusMessage,
+    ServerToClientStoppedMessage,
 )
 
 
@@ -105,7 +107,7 @@ class ExecutionQueue:
             if job.websocket.client_state == WebSocketState.CONNECTED:
                 try:
                     queue_msg = ServerToClientQueuePositionMessage(
-                        type="queue_position", position=pos
+                        type="queue_position", position=pos, job_id=job.id
                     )
                     await job.websocket.send_json(queue_msg.model_dump())
                 except Exception:
@@ -141,37 +143,46 @@ async def _monitor_cancel(
     executor: GraphExecutor,
     execution_task: asyncio.Task[Any] | None = None,
 ):
-    cancel_wait_task = asyncio.create_task(job.cancel_event.wait())
+    """Monitor for cancellation or disconnect. Returns reason if stopped."""
 
-    async def _wait_disconnect():
+    async def wait_for_cancel():
+        await job.cancel_event.wait()
+        return "user"
+
+    async def wait_for_disconnect():
         while websocket.client_state not in (WebSocketState.DISCONNECTED,):
             await asyncio.sleep(0.05)
-        return True
+        return "disconnect"
 
-    disconnect_wait_task = asyncio.create_task(_wait_disconnect())
+    tasks: set[asyncio.Task[str]] = {
+        asyncio.create_task(wait_for_cancel()),
+        asyncio.create_task(wait_for_disconnect()),
+    }
 
-    tasks: set[asyncio.Task[Any]] = set()
-    tasks.add(cancel_wait_task)
-    tasks.add(disconnect_wait_task)
+    if execution_task:
 
-    if execution_task is not None:
-        tasks.add(execution_task)
+        async def wait_for_completion():
+            await execution_task
+            return "completed"
+
+        tasks.add(asyncio.create_task(wait_for_completion()))
 
     done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
 
-    if cancel_wait_task in done:
-        if execution_task:
-            execution_task.cancel()
-        await executor.stop()
-    elif disconnect_wait_task in done:
-        if execution_task:
-            execution_task.cancel()
-        await executor.stop()
-    elif execution_task and execution_task in done:
-        print("STOP_TRACE: execution_task completed normally")
+    # Get result from first completed task
+    reason = await done.pop()
 
+    # Cancel execution if it wasn't already done
+    if reason in ("user", "disconnect"):
+        if execution_task and not execution_task.done():
+            execution_task.cancel()
+        await executor.stop(reason=reason)
+
+    # Cancel remaining monitor tasks
     for t in pending:
         t.cancel()
+
+    return reason
 
 
 async def execution_worker(queue: ExecutionQueue, node_registry: NodeRegistry):
@@ -188,7 +199,18 @@ async def execution_worker(queue: ExecutionQueue, node_registry: NodeRegistry):
             await queue.mark_done(job)
             continue
 
-        def progress_callback(event: ProgressEvent) -> None:
+        # Capture job.id for use in callback
+        job_id = job.id
+
+        def guarded_progress_callback(event: ProgressEvent) -> None:
+            # Don't send progress if executor is stopped or stopping
+            if executor and (executor.is_stopped or executor.is_stopping):
+                return
+
+            # Don't send if websocket disconnected
+            if websocket.client_state == WebSocketState.DISCONNECTED:
+                return
+
             # Construct Pydantic progress payload
             kwargs: dict[str, Any] = {}
 
@@ -207,13 +229,17 @@ async def execution_worker(queue: ExecutionQueue, node_registry: NodeRegistry):
             if "meta" in event:
                 kwargs["meta"] = event["meta"]
 
+            # Send progress message to UI via websocket
+            kwargs["job_id"] = job_id
             progress_msg = ServerToClientProgressMessage(**kwargs)
             _ws_send_async(websocket, progress_msg)
 
         executor = GraphExecutor(job.graph_data, node_registry)
-        executor.set_progress_callback(progress_callback)
+        executor.set_progress_callback(guarded_progress_callback)
 
-        status_msg = ServerToClientStatusMessage(type="status", message="Executing batch")
+        status_msg = ServerToClientStatusMessage(
+            type="status", state=ExecutionState.RUNNING, message="Executing batch", job_id=job.id
+        )
         await _ws_send_sync(websocket, status_msg)
 
         execution_task = asyncio.create_task(executor.execute())
@@ -221,24 +247,63 @@ async def execution_worker(queue: ExecutionQueue, node_registry: NodeRegistry):
             _monitor_cancel(job, websocket, executor, execution_task)
         )
 
+        result: ExecutionResult = ExecutionResult.error_result("Unexpected error")
         try:
             results = await execution_task
-            if websocket.client_state == WebSocketState.CONNECTED:
-                data_msg = ServerToClientDataMessage(
-                    type="data", results=serialize_results(results)
-                )
-                await _ws_send_sync(websocket, data_msg)
-                status_msg = ServerToClientStatusMessage(type="status", message="Batch finished")
-                await _ws_send_sync(websocket, status_msg)
+
+            # Check if we were cancelled during execution
+            if executor.is_stopped:
+                result = ExecutionResult.cancelled(by=executor.cancellation_reason or "unknown")
+            else:
+                result = ExecutionResult.success(results)
+
+        except asyncio.CancelledError:
+            # Task was cancelled - this is expected
+            result = ExecutionResult.cancelled(by=executor.cancellation_reason or "unknown")
         except Exception as e:
-            if websocket.client_state == WebSocketState.CONNECTED:
-                error_msg = ServerToClientErrorMessage(
-                    type="error", message=str(e), code=None, missing_keys=None
-                )
-                await _ws_send_sync(websocket, error_msg)
+            result = ExecutionResult.error_result(str(e))
+
         finally:
-            monitor_task.cancel()
+            # Wait for monitor_task properly
+            if not monitor_task.done():
+                monitor_task.cancel()
             await asyncio.gather(monitor_task, return_exceptions=True)
+
+            # Send appropriate message based on result
+            if websocket.client_state == WebSocketState.CONNECTED:
+                if result.is_success and result.results is not None:
+                    data_msg = ServerToClientDataMessage(
+                        type="data",
+                        results=serialize_results(result.results),
+                        stream=False,
+                        job_id=job.id,
+                    )
+                    await _ws_send_sync(websocket, data_msg)
+                    status_msg = ServerToClientStatusMessage(
+                        type="status",
+                        state=ExecutionState.FINISHED,
+                        message="Batch finished",
+                        job_id=job.id,
+                    )
+                    await _ws_send_sync(websocket, status_msg)
+
+                elif result.is_cancelled:
+                    stopped_msg = ServerToClientStoppedMessage(
+                        type="stopped",
+                        message=f"Execution stopped: {result.cancelled_by}",
+                        job_id=job.id,
+                    )
+                    await _ws_send_sync(websocket, stopped_msg)
+
+                else:  # ERROR
+                    error_msg = ServerToClientErrorMessage(
+                        type="error",
+                        message=result.error or "Unknown error",
+                        code=None,
+                        missing_keys=None,
+                        job_id=job.id,
+                    )
+                    await _ws_send_sync(websocket, error_msg)
 
             job.done_event.set()
             await queue.mark_done(job)

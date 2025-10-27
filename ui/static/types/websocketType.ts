@@ -3,13 +3,23 @@
 // NOTE: These types are manually maintained for now. In the future, consider generating them
 // from the OpenAPI spec using: npm run generate-types
 //
-// The corresponding Pydantic schemas are defined in ui/api/websocket_schemas.py
+// The corresponding Pydantic schemas are defined in server/api/websocket_schemas.py
 
 import type { SerialisableGraph } from '@comfyorg/litegraph/dist/types/serialisation';
 import type { ExecutionResults } from './resultTypes';
 
-// Progress state enum (matches backend ProgressState)
-export type WebSocketProgressState = 'start' | 'update' | 'done' | 'error' | 'stopped';
+// ============================================================================
+// SHARED ENUMS
+// ============================================================================
+
+export enum ExecutionState {
+    QUEUED = "queued",
+    RUNNING = "running",
+    STREAMING = "streaming",
+    FINISHED = "finished",
+    ERROR = "error",
+    CANCELLED = "cancelled"
+}
 
 // ============================================================================
 // CLIENT → SERVER MESSAGES
@@ -32,7 +42,9 @@ export type ClientToServerMessage = ClientToServerGraphMessage | ClientToServerS
 
 export interface ServerToClientStatusMessage {
     type: 'status';
+    state: ExecutionState;
     message: string;
+    job_id: number;
 }
 
 export interface ServerToClientErrorMessage {
@@ -40,17 +52,20 @@ export interface ServerToClientErrorMessage {
     message: string;
     code?: 'MISSING_API_KEYS';
     missing_keys?: string[];
+    job_id?: number;
 }
 
 export interface ServerToClientStoppedMessage {
     type: 'stopped';
     message: string;
+    job_id?: number;
 }
 
 export interface ServerToClientDataMessage {
     type: 'data';
     results: ExecutionResults;
-    stream?: boolean;
+    stream: boolean;
+    job_id: number;
 }
 
 export interface ServerToClientProgressMessage {
@@ -58,13 +73,14 @@ export interface ServerToClientProgressMessage {
     node_id?: number;
     progress?: number;
     text?: string;
-    state?: string;
     meta?: Record<string, unknown>;
+    job_id: number;
 }
 
 export interface ServerToClientQueuePositionMessage {
     type: 'queue_position';
     position: number;
+    job_id: number;
 }
 
 export type ServerToClientMessage =

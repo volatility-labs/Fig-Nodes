@@ -4,6 +4,7 @@ import { LinkModeManager } from './LinkModeManager';
 import { FileManager } from './FileManager';
 import { APIKeyManager } from './APIKeyManager';
 import { AppState } from './AppState';
+import { ExecutionStatusService } from './ExecutionStatusService';
 
 export interface ServiceMap {
     graph: LGraph;
@@ -13,6 +14,7 @@ export interface ServiceMap {
     fileManager: FileManager;
     apiKeyManager: APIKeyManager;
     appState: AppState;
+    statusService: ExecutionStatusService;
 }
 
 export type ServiceName = keyof ServiceMap;

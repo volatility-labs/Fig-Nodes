@@ -54,6 +54,44 @@ class ProgressState(str, Enum):
     STOPPED = "stopped"
 
 
+class ExecutionOutcome(str, Enum):
+    """Outcome of graph execution."""
+
+    SUCCESS = "success"
+    CANCELLED = "cancelled"
+    ERROR = "error"
+
+
+@dataclass(frozen=True)
+class ExecutionResult:
+    """Immutable result of graph execution."""
+
+    outcome: ExecutionOutcome
+    results: dict[int, dict[str, Any]] | None = None
+    error: str | None = None
+    cancelled_by: str | None = None  # "user" | "disconnect" | "monitor"
+
+    @property
+    def is_success(self) -> bool:
+        return self.outcome == ExecutionOutcome.SUCCESS
+
+    @property
+    def is_cancelled(self) -> bool:
+        return self.outcome == ExecutionOutcome.CANCELLED
+
+    @classmethod
+    def success(cls, results: dict[int, dict[str, Any]]) -> "ExecutionResult":
+        return cls(outcome=ExecutionOutcome.SUCCESS, results=results)
+
+    @classmethod
+    def cancelled(cls, by: str = "user") -> "ExecutionResult":
+        return cls(outcome=ExecutionOutcome.CANCELLED, cancelled_by=by)
+
+    @classmethod
+    def error_result(cls, error_msg: str) -> "ExecutionResult":
+        return cls(outcome=ExecutionOutcome.ERROR, error=error_msg)
+
+
 # Structured dict types with fixed fields
 class LLMToolFunction(TypedDict, total=False):
     name: str
@@ -411,4 +449,6 @@ __all__ = [
     "ProgressState",
     "ProgressEvent",
     "ProgressCallback",
+    "ExecutionOutcome",
+    "ExecutionResult",
 ]

@@ -1,26 +1,5 @@
 import { LGraph, LGraphCanvas, LiteGraph } from '@comfyorg/litegraph';
 import { setupWebSocket } from '../websocket';
-export function updateStatus(status: 'connected' | 'disconnected' | 'loading' | 'executing', message?: string) {
-    const indicator = document.getElementById('status-indicator');
-    if (indicator) {
-        indicator.className = `status-indicator ${status}`;
-        const label = message || status.charAt(0).toUpperCase() + status.slice(1);
-        indicator.setAttribute('title', label);
-        indicator.setAttribute('aria-label', label);
-        if (indicator.firstChild) {
-            indicator.textContent = '';
-        }
-    }
-
-    const progressRoot = document.getElementById('top-progress');
-    const progressText = document.getElementById('top-progress-text');
-    if (progressText) {
-        progressText.textContent = message || status.charAt(0).toUpperCase() + status.slice(1);
-    }
-    if (progressRoot) {
-        progressRoot.style.display = 'block';
-    }
-}
 import { AppState } from './AppState';
 import { APIKeyManager } from './APIKeyManager';
 import { DialogManager } from './DialogManager';
@@ -28,7 +7,15 @@ import { LinkModeManager } from './LinkModeManager';
 import { FileManager } from './FileManager';
 import { UIModuleLoader } from './UIModuleLoader';
 import { ServiceRegistry } from './ServiceRegistry';
+import { registerExecutionStatusService } from './ExecutionStatusService';
 
+export function updateStatus(status: 'connected' | 'disconnected' | 'loading' | 'executing', message?: string) {
+    const sr: ServiceRegistry | undefined = (window as any).serviceRegistry;
+    const statusService = sr?.get?.('statusService') as any;
+    if (statusService && typeof statusService.setConnection === 'function') {
+        statusService.setConnection(status, message);
+    }
+}
 
 export interface EditorInstance {
     graph: LGraph;
@@ -56,7 +43,8 @@ export class EditorInitializer {
 
     async createEditor(container: HTMLElement): Promise<EditorInstance> {
         try {
-            updateStatus('loading', 'Initializing...');
+            const statusService = registerExecutionStatusService(this.serviceRegistry);
+            statusService.setConnection('loading', 'Initializing...');
 
             const graph = new LGraph();
             const canvasElement = container.querySelector('#litegraph-canvas') as HTMLCanvasElement;
@@ -155,7 +143,7 @@ export class EditorInitializer {
             linkModeManager.loadFromPreferences();
             linkModeManager.applyLinkMode(linkModeManager.getCurrentLinkMode());
 
-            updateStatus('connected', 'Ready');
+            statusService.setConnection('connected', 'Ready');
 
             return {
                 graph,
@@ -167,7 +155,10 @@ export class EditorInitializer {
                 serviceRegistry: this.serviceRegistry
             };
         } catch (error) {
-            updateStatus('disconnected', 'Initialization failed');
+            const statusService = this.serviceRegistry.get('statusService') as any;
+            if (statusService && typeof statusService.setConnection === 'function') {
+                statusService.setConnection('disconnected', 'Initialization failed');
+            }
             throw error;
         }
     }

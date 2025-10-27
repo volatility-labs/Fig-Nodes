@@ -6,17 +6,6 @@ export default class LLMMessagesBuilderNodeUI extends BaseCustomNode {
         this.size = [340, 160];
         this.color = '#243447';
         this.bgcolor = '#0e1621';
-
-        // Do not render long result text; show short summary instead
-
-        // Convenience buttons
-        this.addWidget('button', 'Clear', '', () => {
-            this.displayText = '';
-            this.setDirtyCanvas(true, true);
-        }, {});
-        this.addWidget('button', 'Copy Summary', '', () => {
-            if (this.displayText) navigator.clipboard.writeText(this.displayText);
-        }, {});
     }
 
     updateDisplay(result: any) {
