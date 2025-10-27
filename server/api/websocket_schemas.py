@@ -17,7 +17,6 @@ class ExecutionState(str, Enum):
 
     QUEUED = "queued"
     RUNNING = "running"
-    STREAMING = "streaming"
     FINISHED = "finished"
     ERROR = "error"
     CANCELLED = "cancelled"
@@ -41,8 +40,17 @@ class ClientToServerStopMessage(BaseModel):
     type: Literal["stop"] = "stop"
 
 
+class ClientToServerConnectMessage(BaseModel):
+    """Initial connection message to establish session."""
+
+    type: Literal["connect"] = "connect"
+    session_id: str | None = Field(None, description="Existing session ID for reconnection")
+
+
 # Union type for client messages
-ClientToServerMessage = ClientToServerGraphMessage | ClientToServerStopMessage
+ClientToServerMessage = (
+    ClientToServerGraphMessage | ClientToServerStopMessage | ClientToServerConnectMessage
+)
 
 
 # ============================================================================
@@ -82,7 +90,6 @@ class ServerToClientDataMessage(BaseModel):
 
     type: Literal["data"] = "data"
     results: dict[str, dict[str, Any]] = Field(..., description="Execution results")
-    stream: bool = Field(default=False, description="Whether this is a streaming update")
     job_id: int = Field(..., description="Job ID for this data")
 
 
@@ -105,6 +112,13 @@ class ServerToClientQueuePositionMessage(BaseModel):
     job_id: int = Field(..., description="Job ID for queue position")
 
 
+class ServerToClientSessionMessage(BaseModel):
+    """Session establishment message."""
+
+    type: Literal["session"] = "session"
+    session_id: str = Field(..., description="Session ID for this connection")
+
+
 # Union type for server messages
 ServerToClientMessage = (
     ServerToClientStatusMessage
@@ -113,4 +127,5 @@ ServerToClientMessage = (
     | ServerToClientDataMessage
     | ServerToClientProgressMessage
     | ServerToClientQueuePositionMessage
+    | ServerToClientSessionMessage
 )

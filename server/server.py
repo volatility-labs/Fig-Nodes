@@ -24,8 +24,10 @@ from uvicorn import run  # type: ignore[import-untyped]
 
 from core.api_key_vault import APIKeyVault
 from core.node_registry import NODE_REGISTRY
+from server.api.session_manager import ConnectionRegistry, establish_session
 from server.api.v1.routes import router as api_v1_router
 from server.api.websocket_schemas import (
+    ClientToServerConnectMessage,
     ClientToServerGraphMessage,
     ClientToServerStopMessage,
     ServerToClientErrorMessage,
@@ -45,9 +47,11 @@ async def lifespan(app: FastAPI):
     # Initialize single queue and worker for the entire server
     queue = ExecutionQueue()
     worker_task = asyncio.create_task(execution_worker(queue, NODE_REGISTRY))
+    connection_registry = ConnectionRegistry()
 
     app.state.execution_queue = queue
     app.state.execution_worker = worker_task
+    app.state.connection_registry = connection_registry
 
     yield
 
@@ -115,26 +119,46 @@ def _get_execution_queue(app: FastAPI) -> ExecutionQueue:
     return app.state.execution_queue
 
 
+def _get_connection_registry(app: FastAPI) -> ConnectionRegistry:
+    """Get the connection registry from the application state.
+
+    Args:
+        app: The FastAPI application instance containing the connection registry.
+
+    Returns:
+        ConnectionRegistry: The connection registry for the server.
+    """
+    return app.state.connection_registry
+
+
 async def _parse_client_message(
     raw_data: dict[str, Any],
-) -> ClientToServerGraphMessage | ClientToServerStopMessage:
+) -> ClientToServerGraphMessage | ClientToServerStopMessage | ClientToServerConnectMessage:
     """Parse and validate client WebSocket message.
 
     Args:
         raw_data: Raw JSON data from client.
 
     Returns:
-        Parsed message (graph or stop).
+        Parsed message (connect, graph, or stop).
 
     Raises:
         ValidationError: If message format is invalid.
     """
-    # Try graph message first
+    # Try connect message first
+    try:
+        return ClientToServerConnectMessage.model_validate(raw_data)
+    except ValidationError:
+        pass
+
+    # Try graph message
     try:
         return ClientToServerGraphMessage.model_validate(raw_data)
     except ValidationError:
-        # Try stop message
-        return ClientToServerStopMessage.model_validate(raw_data)
+        pass
+
+    # Try stop message
+    return ClientToServerStopMessage.model_validate(raw_data)
 
 
 async def _send_error_message(
@@ -283,13 +307,45 @@ def serve_style():
 async def execute_endpoint(websocket: WebSocket):
     """WebSocket endpoint for graph execution.
 
-    Accepts two message types:
+    Session Management:
+    - First message must be "connect" with optional session_id
+    - Server generates new session_id if not provided
+    - Session persists across reconnections until browser close
+
+    Message types:
+    - "connect": Establish session (first message only)
     - "graph": Start execution with graph_data
     - "stop": Stop current execution
 
-    Returns various message types including status, error, data, progress, and stopped.
+    Returns various message types including session, status, error, data, progress, and stopped.
     """
     await websocket.accept()
+
+    # Wait for connect message to establish session
+    try:
+        raw_data = await websocket.receive_json()
+        message = await _parse_client_message(raw_data)
+
+        if message.type != "connect":
+            await _send_error_message(websocket, message="First message must be 'connect'")
+            return
+
+        connect_msg: ClientToServerConnectMessage = message  # type: ignore
+        registry = _get_connection_registry(app)
+
+        # Establish session (handles validation, old connection cleanup, registration)
+        session_id = await establish_session(websocket, registry, connect_msg)
+
+    except ValidationError as e:
+        await _send_error_message(
+            websocket, message=f"Invalid connect message: {e.errors()[0]['msg']}"
+        )
+        return
+    except Exception as e:
+        print(f"ERROR_TRACE: Failed to establish session: {type(e).__name__}: {str(e)}")
+        return
+
+    # Now handle normal messages
     job = None
     is_cancelling = False
     cancel_done_event = asyncio.Event()
@@ -310,13 +366,19 @@ async def execute_endpoint(websocket: WebSocket):
             # Handle message based on type
             if message.type == "graph":
                 job = await _handle_graph_message(websocket, message)
+                registry.set_job(session_id, job)
 
             elif message.type == "stop":
                 await _handle_stop_message(websocket, job, is_cancelling, cancel_done_event)
                 is_cancelling = True
+                registry.set_job(session_id, None)
 
     except WebSocketDisconnect as e:
-        print(f"Client disconnected: code={e.code}, reason={e.reason or 'none'}")
+        print(
+            f"Client disconnected: code={e.code}, reason={e.reason or 'none'}, session={session_id}"
+        )
+        # Clean up session on disconnect (pass websocket to prevent race conditions)
+        registry.unregister(session_id, websocket)
 
     except Exception as e:
         print(f"ERROR_TRACE: Exception in execute_endpoint: {type(e).__name__}: {str(e)}")
@@ -330,6 +392,9 @@ async def execute_endpoint(websocket: WebSocket):
                 print(
                     f"ERROR_TRACE: Failed to send error message: {type(send_error).__name__}: {str(send_error)}"
                 )
+
+        # Clean up session on error (pass websocket to prevent race conditions)
+        registry.unregister(session_id, websocket)
 
 
 # ============================================================================

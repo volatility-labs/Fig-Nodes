@@ -191,7 +191,10 @@ export class NodeRenderer {
 
     setProgress(progress: number, text?: string) {
         this.node.progress = Math.max(-1, Math.min(100, progress));
-        this.node.progressText = text || '';
+        // Only update progressText if text is explicitly provided and non-empty
+        if (text !== undefined && text !== '') {
+            this.node.progressText = text;
+        }
         this.node.setDirtyCanvas(true, true);
     }
 

@@ -275,7 +275,6 @@ async def execution_worker(queue: ExecutionQueue, node_registry: NodeRegistry):
                     data_msg = ServerToClientDataMessage(
                         type="data",
                         results=serialize_results(result.results),
-                        stream=False,
                         job_id=job.id,
                     )
                     await _ws_send_sync(websocket, data_msg)

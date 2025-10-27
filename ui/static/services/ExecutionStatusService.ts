@@ -9,7 +9,6 @@ function mapExecutionStateToConnectionStatus(state: ExecutionState): ConnectionS
         case ExecutionState.QUEUED:
             return 'loading';
         case ExecutionState.RUNNING:
-        case ExecutionState.STREAMING:
             return 'executing';
         case ExecutionState.FINISHED:
         case ExecutionState.CANCELLED:
@@ -103,7 +102,7 @@ export class ExecutionStatusService {
         if (backendState === ExecutionState.FINISHED) {
             st.progress = 100;
             st.determinate = true;
-        } else if (backendState === ExecutionState.RUNNING || backendState === ExecutionState.STREAMING) {
+        } else if (backendState === ExecutionState.RUNNING) {
             st.progress = null;
             st.determinate = false;
         } else {
@@ -129,7 +128,7 @@ export class ExecutionStatusService {
         if (/finished/i.test(message)) {
             st.status = 'connected';
             this.currentState = 'connected';
-        } else if (/executing|starting|stream/i.test(message)) {
+        } else if (/executing|starting/i.test(message)) {
             st.status = 'executing';
             this.currentState = 'executing';
         }

@@ -3,6 +3,7 @@
         "core",
         "nodes",
         "services",
+        "server",
         "ui",
         "tests"
     ],

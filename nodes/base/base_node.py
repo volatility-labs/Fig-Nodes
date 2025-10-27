@@ -154,8 +154,8 @@ class Base(ABC):
     def _clamp_progress(self, value: float) -> float:
         if value < 0.0:
             return 0.0
-        if value > 1.0:
-            return 1.0
+        if value > 100.0:
+            return 100.0
         return value
 
     def _emit_progress(
@@ -191,7 +191,7 @@ class Base(ABC):
         if self._is_stopped:
             return  # Idempotent
         self._is_stopped = True
-        self._emit_progress(ProgressState.STOPPED, 1.0, "stopped")
+        self._emit_progress(ProgressState.STOPPED, 100.0, "stopped")
 
     async def execute(self, inputs: dict[str, Any]) -> dict[str, Any]:
         """Template method for execution with uniform error handling and progress lifecycle."""
@@ -202,10 +202,10 @@ class Base(ABC):
         try:
             result = await self._execute_impl(inputs)
             self._validate_outputs(result)
-            self._emit_progress(ProgressState.DONE, 1.0, "done")
+            self._emit_progress(ProgressState.DONE, 100.0, "")
             return result
         except Exception as e:
-            self._emit_progress(ProgressState.ERROR, 1.0, f"error: {type(e).__name__}: {str(e)}")
+            self._emit_progress(ProgressState.ERROR, 100.0, f"error: {type(e).__name__}: {str(e)}")
             raise NodeExecutionError(self.id, "Execution failed", original_exc=e) from e
 
     @abstractmethod

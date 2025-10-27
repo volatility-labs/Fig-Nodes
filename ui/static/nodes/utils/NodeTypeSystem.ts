@@ -1,4 +1,3 @@
-
 export class NodeTypeSystem {
     static parseType(typeInfo: unknown): string | number {
         if (!typeInfo) {
@@ -27,57 +26,42 @@ export class NodeTypeSystem {
             const key = this.parseType(typeInfoObj.key_type);
             const val = this.parseType(typeInfoObj.value_type);
             const result = `dict<${key}, ${val}>`;
-            console.log(`[NodeTypeSystem] parseType: dict -> "${result}"`);
             return result;
         }
-        console.log(`[NodeTypeSystem] parseType: simple type -> "${type}"`);
         return type;
     }
 
     static validateConnection(inputType: string | number, outputType: string | number): boolean {
-        console.log(`[NodeTypeSystem] validateConnection: input="${inputType}", output="${outputType}"`);
-        
         // Handle exact match first (includes same union types)
         if (inputType === outputType) {
-            console.log(`[NodeTypeSystem] Exact match: true`);
             return true;
         }
         
         if (typeof inputType === 'string' && inputType.includes(' | ')) {
             if (outputType === 0) {
-                console.log(`[NodeTypeSystem] Any output to union input: true`);
                 return true; // Any can connect to union
             }
             const allowed = inputType.split(' | ').map(t => t.trim());
-            console.log(`[NodeTypeSystem] Union input, allowed types:`, allowed);
             if (typeof outputType === 'string' && allowed.includes(outputType)) {
-                console.log(`[NodeTypeSystem] Output matches union subtype: true`);
                 return true;
             }
-            console.log(`[NodeTypeSystem] Output does not match union subtype: false`);
             return false;
         }
         
         // Handle case where output is union but input is not
         if (typeof outputType === 'string' && outputType.includes(' | ')) {
             if (inputType === 0) {
-                console.log(`[NodeTypeSystem] Any input to union output: true`);
                 return true; // Any can connect to union
             }
             const allowed = outputType.split(' | ').map(t => t.trim());
-            console.log(`[NodeTypeSystem] Union output, allowed types:`, allowed);
             if (typeof inputType === 'string' && allowed.includes(inputType)) {
-                console.log(`[NodeTypeSystem] Input matches union subtype: true`);
                 return true;
             }
-            console.log(`[NodeTypeSystem] Input does not match union subtype: false`);
             return false;
         }
         
         // Default: allow if types match or any (0)
-        const result = inputType === 0 || outputType === 0 || inputType === outputType;
-        console.log(`[NodeTypeSystem] Default check: ${result}`);
-        return result;
+        return inputType === 0 || outputType === 0 || inputType === outputType;
     }
 
     static getDefaultValue(param: string): unknown {

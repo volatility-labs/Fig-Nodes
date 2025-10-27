@@ -9,7 +9,7 @@
  * 1. ServerToClientStatusMessage
  *    - type: "status"
  *    - message: string (status text)
- *    Examples: "Executing batch", "Batch finished", "Stream starting"
+ *    Examples: "Executing batch", "Batch finished"
  * 
  * 2. ServerToClientErrorMessage
  *    - type: "error"
@@ -25,7 +25,6 @@
  * 4. ServerToClientDataMessage
  *    - type: "data"
  *    - results: ExecutionResults (node results keyed by node ID)
- *    - stream?: boolean (optional flag indicating streaming update)
  * 
  * 5. ServerToClientProgressMessage
  *    - type: "progress"
@@ -64,6 +63,7 @@ import {
     isDataMessage,
     isProgressMessage,
     isQueuePositionMessage,
+    isSessionMessage,
     type ServerToClientStatusMessage,
     type ServerToClientQueuePositionMessage
 } from './types/websocketType';
@@ -74,6 +74,7 @@ import type { ConnectionStatus } from './services/ExecutionStatusService';
 // State
 let ws: WebSocket | null = null;
 let stopPromiseResolver: (() => void) | null = null;
+let sessionId: string | null = localStorage.getItem('session_id');
 
 function getStatusService(): ExecutionStatusService | null {
     const sr: ServiceRegistry | undefined = (window as any).serviceRegistry;
@@ -220,7 +221,7 @@ function handleDataMessage(data: any, graph: LGraph) {
     const statusService = getStatusService();
     
     if (Object.keys(data.results).length === 0) {
-        statusService?.setProgress(null, undefined, 'Streaming...');
+        statusService?.setProgress(null, undefined, 'Running...');
         return;
     }
 
@@ -235,23 +236,21 @@ function handleDataMessage(data: any, graph: LGraph) {
         if (allowRender && typeof updateMethod === 'function') {
             updateMethod.call(node, results[nodeId]);
         }
-
-        if (typeof node.pulseHighlight === 'function') {
-            try { node.pulseHighlight(); } catch { }
-        }
     }
 
-    if (data.stream) {
-        statusService?.setProgress(null, undefined, 'Streaming...');
-    } else {
-        statusService?.setProgress(null, undefined, 'Running...');
-    }
+    statusService?.setProgress(null, undefined, 'Running...');
 }
 
 function handleProgressMessage(data: any, graph: LGraph) {
     const node: any = graph.getNodeById(data.node_id as number);
     if (node && typeof node.setProgress === 'function') {
-        node.setProgress(data.progress ?? 0, data.text ?? '');
+        const progress = data.progress ?? 0;
+        // Only pass text if it's explicitly provided and non-empty
+        if (data.text !== undefined && data.text !== '') {
+            node.setProgress(progress, data.text);
+        } else {
+            node.setProgress(progress);
+        }
     }
 }
 
@@ -352,14 +351,29 @@ export function setupWebSocket(graph: LGraph, _canvas: LGraphCanvas, apiKeyManag
             ws = new WebSocket(wsUrl);
 
             ws.onopen = () => {
-                const statusService = getStatusService();
-                statusService?.setConnection('executing', 'Executing...');
-                const message: ClientToServerMessage = { type: 'graph', graph_data: graphData };
-                ws?.send(JSON.stringify(message));
+                // Send connect message first to establish session
+                const connectMessage: ClientToServerMessage = sessionId 
+                    ? { type: 'connect', session_id: sessionId }
+                    : { type: 'connect' };
+                ws?.send(JSON.stringify(connectMessage));
             };
 
             ws.onmessage = (event) => {
                 const data: ServerToClientMessage = JSON.parse(event.data);
+
+                // Handle session message
+                if (isSessionMessage(data)) {
+                    sessionId = data.session_id;
+                    localStorage.setItem('session_id', sessionId);
+                    console.log('Session established:', sessionId);
+                    
+                    // Now send the graph execution message
+                    const statusService = getStatusService();
+                    statusService?.setConnection('executing', 'Executing...');
+                    const message: ClientToServerMessage = { type: 'graph', graph_data: graphData };
+                    ws?.send(JSON.stringify(message));
+                    return;
+                }
 
                 if (isErrorMessage(data)) {
                     handleErrorMessage(data, apiKeyManager);
@@ -392,7 +406,7 @@ export function setupWebSocket(graph: LGraph, _canvas: LGraphCanvas, apiKeyManag
                 forceCleanup();
             };
         } else {
-            // Reuse existing connection
+            // Reuse existing connection - send graph execution directly
             const statusService = getStatusService();
             statusService?.setConnection('executing', 'Executing...');
             const message: ClientToServerMessage = { type: 'graph', graph_data: graphData };

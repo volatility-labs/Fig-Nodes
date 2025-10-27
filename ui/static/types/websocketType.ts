@@ -15,7 +15,6 @@ import type { ExecutionResults } from './resultTypes';
 export enum ExecutionState {
     QUEUED = "queued",
     RUNNING = "running",
-    STREAMING = "streaming",
     FINISHED = "finished",
     ERROR = "error",
     CANCELLED = "cancelled"
@@ -34,7 +33,12 @@ export interface ClientToServerStopMessage {
     type: 'stop';
 }
 
-export type ClientToServerMessage = ClientToServerGraphMessage | ClientToServerStopMessage;
+export interface ClientToServerConnectMessage {
+    type: 'connect';
+    session_id?: string;
+}
+
+export type ClientToServerMessage = ClientToServerGraphMessage | ClientToServerStopMessage | ClientToServerConnectMessage;
 
 // ============================================================================
 // SERVER → CLIENT MESSAGES
@@ -64,7 +68,6 @@ export interface ServerToClientStoppedMessage {
 export interface ServerToClientDataMessage {
     type: 'data';
     results: ExecutionResults;
-    stream: boolean;
     job_id: number;
 }
 
@@ -83,13 +86,19 @@ export interface ServerToClientQueuePositionMessage {
     job_id: number;
 }
 
+export interface ServerToClientSessionMessage {
+    type: 'session';
+    session_id: string;
+}
+
 export type ServerToClientMessage =
     | ServerToClientStatusMessage
     | ServerToClientErrorMessage
     | ServerToClientStoppedMessage
     | ServerToClientDataMessage
     | ServerToClientProgressMessage
-    | ServerToClientQueuePositionMessage;
+    | ServerToClientQueuePositionMessage
+    | ServerToClientSessionMessage;
 
 // ============================================================================
 // TYPE GUARDS
@@ -117,5 +126,9 @@ export function isProgressMessage(msg: ServerToClientMessage): msg is ServerToCl
 
 export function isQueuePositionMessage(msg: ServerToClientMessage): msg is ServerToClientQueuePositionMessage {
     return msg.type === 'queue_position';
+}
+
+export function isSessionMessage(msg: ServerToClientMessage): msg is ServerToClientSessionMessage {
+    return msg.type === 'session';
 }
 
