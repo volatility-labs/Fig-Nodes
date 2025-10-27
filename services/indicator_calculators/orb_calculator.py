@@ -12,6 +12,7 @@ def calculate_orb(
     symbol: AssetSymbol,
     or_minutes: int = 5,
     avg_period: int = 14,
+    now_func: Any = None,
 ) -> dict[str, Any]:
     """
     Calculate ORB (Opening Range Breakout) indicator including relative volume and direction.
@@ -25,6 +26,7 @@ def calculate_orb(
         symbol: Asset symbol (used to determine opening range time based on asset class)
         or_minutes: Opening range period in minutes (default: 5)
         avg_period: Period for calculating average volume (default: 14 days)
+        now_func: Optional function to use instead of datetime.now for testing
 
     Returns:
         Dictionary with 'rel_vol' (relative volume as percentage) and 'direction' (bullish/bearish/doji)
@@ -66,7 +68,9 @@ def calculate_orb(
     # Calculate opening range volumes and directions for each day
     or_volumes: dict[date, float] = {}
     or_directions: dict[date, str] = {}
-    today_date = datetime.now(pytz.timezone("US/Eastern")).date()
+    if now_func is None:
+        now_func = datetime.now
+    today_date = now_func(pytz.timezone("US/Eastern")).date()
 
     for date_key, day_bars in daily_groups.items():
         # Determine opening range time based on asset class
@@ -85,11 +89,10 @@ def calculate_orb(
 
         close_time = open_time + timedelta(minutes=or_minutes)
 
-        # Filter bars within opening range
         or_bars = [bar for bar in day_bars if open_time <= bar["timestamp"] < close_time]
 
-        if not or_bars:
-            continue
+        if len(or_bars) != or_minutes:
+            continue  # Skip incomplete opening ranges
 
         # Calculate opening range metrics
         or_volume = sum(bar["volume"] for bar in or_bars)
@@ -109,7 +112,7 @@ def calculate_orb(
 
     # Calculate relative volume
     sorted_dates = sorted(or_volumes.keys())
-    if len(sorted_dates) < 2:
+    if len(sorted_dates) < 1:
         return {"rel_vol": None, "direction": None, "error": "Insufficient days"}
 
     # Determine target date (today or last trading day)
@@ -127,19 +130,17 @@ def calculate_orb(
     # Calculate average volume from past periods (excluding target date)
     target_volume_date = target_date if target_date in or_volumes else sorted_dates[-1]
 
-    # Get past volumes for averaging
     if len(sorted_dates) > avg_period:
         past_volumes = [or_volumes[d] for d in sorted_dates[-avg_period - 1 : -1]]
     else:
         past_volumes = [or_volumes[d] for d in sorted_dates[:-1]]
 
-    if not past_volumes:
-        avg_vol = 0.0
-    else:
-        avg_vol = sum(past_volumes) / len(past_volumes)
+    avg_vol = sum(past_volumes) / len(past_volumes) if past_volumes else 0.0
 
     current_vol = or_volumes.get(target_volume_date, 0.0)
-    rel_vol = (current_vol / avg_vol * 100) if avg_vol > 0 else 0.0
+    rel_vol = (
+        (current_vol / avg_vol * 100) if avg_vol > 0 else (float("inf") if current_vol > 0 else 0.0)
+    )
 
     # Get direction for target date
     direction = or_directions.get(target_date, "doji")

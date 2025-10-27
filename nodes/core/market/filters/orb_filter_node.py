@@ -1,6 +1,9 @@
 import asyncio
 import logging
 import math
+import pandas as pd
+from datetime import date, datetime, timedelta
+import pytz
 from typing import Any
 
 from core.api_key_vault import APIKeyVault
@@ -12,6 +15,7 @@ from core.types_registry import (
     NodeOutputs,
     OHLCVBar,
     get_type,
+    AssetClass,
 )
 from nodes.core.market.filters.base.base_indicator_filter_node import BaseIndicatorFilter
 from services.indicator_calculators.orb_calculator import calculate_orb
@@ -176,9 +180,19 @@ class OrbFilter(BaseIndicatorFilter):
             return True
         return direction == param_dir
 
+    def _get_target_date_for_orb(self, symbol: AssetSymbol, today_date: date, df: pd.DataFrame) -> date:
+        if symbol.asset_class == AssetClass.CRYPTO:
+            utc_now = datetime.now(pytz.timezone('UTC'))
+            return utc_now.date() - timedelta(days=1)
+        sorted_dates = sorted(set(df['date']))
+        if today_date in sorted_dates:
+            return today_date
+        else:
+            return max(sorted_dates) if sorted_dates else today_date
+
     async def _execute_impl(self, inputs: dict[str, Any]) -> NodeOutputs:
         self.api_key = APIKeyVault().get("POLYGON_API_KEY")
-        if not self.api_key:
+        if not self.api_key or not self.api_key.strip():
             raise ValueError("Polygon API key not found in vault")
 
         ohlcv_bundle: dict[AssetSymbol, list[OHLCVBar]] = inputs.get("ohlcv_bundle", {})
