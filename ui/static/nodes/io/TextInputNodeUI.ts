@@ -4,6 +4,7 @@ import { LiteGraph } from '@comfyorg/litegraph';
 export default class TextInputNodeUI extends BaseCustomNode {
     private textareaEl: HTMLTextAreaElement | null = null;
     private lastCanvasRef: any = null;
+    private positionUpdateId: number | null = null;
 
     constructor(title: string, data: any, serviceRegistry: any) {
         super(title, data, serviceRegistry);
@@ -24,7 +25,13 @@ export default class TextInputNodeUI extends BaseCustomNode {
     // Lifecycle: called by LiteGraph when node is added to graph
     onAdded() { this.ensureTextarea(); }
 
-    onRemoved() { this.detachTextarea(); }
+    onRemoved() {
+        this.detachTextarea();
+        if (this.positionUpdateId) {
+            cancelAnimationFrame(this.positionUpdateId);
+            this.positionUpdateId = null;
+        }
+    }
 
     onDeselected() {
         // Keep editor visible even when not selected
@@ -42,7 +49,6 @@ export default class TextInputNodeUI extends BaseCustomNode {
             this.hideTextarea();
             return;
         }
-        this.ensureTextarea();
 
         const padding = 8;
         const x = padding;
@@ -59,10 +65,21 @@ export default class TextInputNodeUI extends BaseCustomNode {
         ctx.lineWidth = 1;
         ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
 
-        this.positionTextarea(x, y, w, h);
+        // Schedule position update instead of doing it synchronously
+        this.schedulePositionUpdate(x, y, w, h);
     }
 
     // Do not override mouse handling; textarea will capture events itself
+
+    private schedulePositionUpdate(x: number, y: number, w: number, h: number) {
+        if (this.positionUpdateId !== null) return;
+        
+        this.positionUpdateId = requestAnimationFrame(() => {
+            this.positionUpdateId = null;
+            this.ensureTextarea();
+            this.positionTextarea(x, y, w, h);
+        });
+    }
 
     private ensureTextarea() {
         const graph = this.graph;
@@ -91,7 +108,7 @@ export default class TextInputNodeUI extends BaseCustomNode {
             parent.appendChild(ta);
             this.textareaEl = ta;
         }
-        this.syncTextarea();
+        // Don't call syncTextarea() here - let schedulePositionUpdate handle positioning
     }
 
     private detachTextarea() {
@@ -136,9 +153,12 @@ export default class TextInputNodeUI extends BaseCustomNode {
         const offx = Array.isArray(offset) ? offset[0] : 0;
         const offy = Array.isArray(offset) ? offset[1] : 0;
 
+        // Snapshot position to avoid race conditions
+        const nodePos = [...this.pos] as [number, number];
+
         // Convert canvas coordinates to screen coordinates: (pos + offset) * scale
-        const canvasX = (this.pos[0] + localX + offx) * scale;
-        const canvasY = (this.pos[1] + localY + offy) * scale;
+        const canvasX = (nodePos[0] + localX + offx) * scale;
+        const canvasY = (nodePos[1] + localY + offy) * scale;
         const canvasW = localW * scale;
         const canvasH = localH * scale;
 

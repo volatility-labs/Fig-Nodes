@@ -8,7 +8,7 @@ from nodes.base.base_node import Base
 
 class TextToLLMMessage(Base):
     """
-    Adapter node: wraps generic input data into an LLMChatMessage and LLMChatMessageList.
+    Adapter node: wraps generic input data into an LLMChatMessage.
 
     Can handle various input types including strings, numbers, dictionaries, lists,
     and structured data like OHLCV bars from Polygon API.
@@ -22,7 +22,6 @@ class TextToLLMMessage(Base):
 
     Outputs:
     - message: LLMChatMessage
-    - messages: LLMChatMessageList (single-element list)
     """
 
     inputs = {
@@ -31,7 +30,6 @@ class TextToLLMMessage(Base):
 
     outputs = {
         "message": get_type("LLMChatMessage"),
-        "messages": get_type("LLMChatMessageList"),
     }
 
     default_params = {
@@ -270,5 +268,4 @@ class TextToLLMMessage(Base):
         msg = {"role": role, "content": content}
         return {
             "message": msg,
-            "messages": [msg],
         }

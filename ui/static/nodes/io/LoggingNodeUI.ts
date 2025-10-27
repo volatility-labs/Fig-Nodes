@@ -21,6 +21,7 @@ export default class LoggingNodeUI extends BaseCustomNode {
     private copyFeedbackTimeout: number | null = null;
     private displayTextarea: HTMLTextAreaElement | null = null;
     private lastCanvasRef: any = null;
+    private positionUpdateId: number | null = null;
 
     constructor(title: string, data: any, serviceRegistry: any) {
         super(title, data, serviceRegistry);
@@ -226,7 +227,6 @@ export default class LoggingNodeUI extends BaseCustomNode {
             this.hideDisplayTextarea();
             return;
         }
-        this.ensureDisplayTextarea();
 
         const padding = 8;
         const x = padding;
@@ -244,7 +244,18 @@ export default class LoggingNodeUI extends BaseCustomNode {
         ctx.lineWidth = 1;
         ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
 
-        this.positionDisplayTextarea(x, y, w, h);
+        // Schedule position update instead of doing it synchronously
+        this.schedulePositionUpdate(x, y, w, h);
+    }
+
+    private schedulePositionUpdate(x: number, y: number, w: number, h: number) {
+        if (this.positionUpdateId !== null) return;
+        
+        this.positionUpdateId = requestAnimationFrame(() => {
+            this.positionUpdateId = null;
+            this.ensureDisplayTextarea();
+            this.positionDisplayTextarea(x, y, w, h);
+        });
     }
 
     private ensureDisplayTextarea() {
@@ -267,7 +278,7 @@ export default class LoggingNodeUI extends BaseCustomNode {
             parent.appendChild(ta);
             this.displayTextarea = ta;
         }
-        this.syncDisplayTextarea();
+        // Don't call syncDisplayTextarea() here - let schedulePositionUpdate handle positioning
     }
 
     private detachDisplayTextarea() {
@@ -315,9 +326,12 @@ export default class LoggingNodeUI extends BaseCustomNode {
         const offx = Array.isArray(offset) ? offset[0] : 0;
         const offy = Array.isArray(offset) ? offset[1] : 0;
 
+        // Snapshot position to avoid race conditions
+        const nodePos = [...this.pos] as [number, number];
+
         // Convert canvas coordinates to screen coordinates: (pos + offset) * scale
-        const canvasX = (this.pos[0] + localX + offx) * scale;
-        const canvasY = (this.pos[1] + localY + offy) * scale;
+        const canvasX = (nodePos[0] + localX + offx) * scale;
+        const canvasY = (nodePos[1] + localY + offy) * scale;
         const canvasW = localW * scale;
         const canvasH = localH * scale;
 
@@ -360,6 +374,10 @@ export default class LoggingNodeUI extends BaseCustomNode {
         if (this.copyFeedbackTimeout) {
             clearTimeout(this.copyFeedbackTimeout);
             this.copyFeedbackTimeout = null;
+        }
+        if (this.positionUpdateId) {
+            cancelAnimationFrame(this.positionUpdateId);
+            this.positionUpdateId = null;
         }
         super.onRemoved?.();
     }
