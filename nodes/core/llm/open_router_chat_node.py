@@ -227,7 +227,7 @@ class OpenRouterChat(Base):
     async def _get_session(self) -> aiohttp.ClientSession:
         """Get or create aiohttp session."""
         if self._session is None or self._session.closed:
-            timeout = aiohttp.ClientTimeout(total=60)
+            timeout = aiohttp.ClientTimeout(total=120)
             self._session = aiohttp.ClientSession(timeout=timeout)
         return self._session
 

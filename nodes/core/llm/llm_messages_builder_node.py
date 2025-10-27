@@ -24,13 +24,9 @@ class LLMMessagesBuilder(Base):
         "messages": get_type("LLMChatMessageList") | None,
     }
 
-    default_params = {
-        "drop_empty": True,
-    }
+    default_params = {}
 
-    params_meta = [
-        {"name": "drop_empty", "type": "combo", "default": True, "options": [True, False]},
-    ]
+    params_meta = []
 
     CATEGORY = NodeCategory.LLM
 
@@ -54,9 +50,7 @@ class LLMMessagesBuilder(Base):
                 else:
                     raise TypeError(f"Expected LLMChatMessage, got {type(msg)}")
 
-        # Apply filtering based on params
-        messages = merged
-        if self.params.get("drop_empty", True):
-            messages = [m for m in messages if m and str(m.get("content") or "").strip()]
+        # Always drop empty messages
+        messages = [m for m in merged if m and str(m.get("content") or "").strip()]
 
         return {"messages": messages}
