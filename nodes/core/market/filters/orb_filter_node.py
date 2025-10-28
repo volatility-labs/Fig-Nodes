@@ -77,11 +77,11 @@ class OrbFilter(BaseIndicatorFilter):
         rel_vol_threshold = self.params["rel_vol_threshold"]
         avg_period = self.params["avg_period"]
 
-        if not isinstance(or_minutes, (int, float)) or or_minutes <= 0:
+        if not isinstance(or_minutes, int | float) or or_minutes <= 0:
             raise ValueError("Opening range minutes must be positive")
-        if not isinstance(rel_vol_threshold, (int, float)) or rel_vol_threshold < 0:
+        if not isinstance(rel_vol_threshold, int | float) or rel_vol_threshold < 0:
             raise ValueError("Relative volume threshold cannot be negative")
-        if not isinstance(avg_period, (int, float)) or avg_period <= 0:
+        if not isinstance(avg_period, int | float) or avg_period <= 0:
             raise ValueError("Average period must be positive")
 
     async def _calculate_orb_indicator(self, symbol: AssetSymbol, api_key: str) -> IndicatorResult:
@@ -89,20 +89,20 @@ class OrbFilter(BaseIndicatorFilter):
         or_minutes_raw = self.params["or_minutes"]
 
         # Type guard: ensure avg_period is a number
-        if not isinstance(avg_period_raw, (int, float)):
+        if not isinstance(avg_period_raw, int | float):
             raise ValueError(f"avg_period must be a number, got {type(avg_period_raw)}")
 
         avg_period = int(avg_period_raw)
 
         # Type guard: ensure or_minutes is a number
-        if not isinstance(or_minutes_raw, (int, float)):
+        if not isinstance(or_minutes_raw, int | float):
             raise ValueError(f"or_minutes must be a number, got {type(or_minutes_raw)}")
 
         or_minutes = int(or_minutes_raw)
 
-        # Fetch 1-min bars for last avg_period +1 days
+        # Fetch 5-min bars for last avg_period +1 days
         fetch_params = {
-            "multiplier": 1,
+            "multiplier": 5,
             "timespan": "minute",
             "lookback_period": f"{avg_period + 1} days",
             "adjusted": True,
@@ -137,7 +137,7 @@ class OrbFilter(BaseIndicatorFilter):
         direction = result.get("direction", "doji")
 
         # Type guard: ensure rel_vol is a number
-        if not isinstance(rel_vol_raw, (int, float)):
+        if not isinstance(rel_vol_raw, int | float):
             raise ValueError(f"rel_vol must be a number, got {type(rel_vol_raw)}")
 
         rel_vol = float(rel_vol_raw)
@@ -172,7 +172,7 @@ class OrbFilter(BaseIndicatorFilter):
             return False
 
         rel_vol_threshold = self.params.get("rel_vol_threshold", 0.0)
-        if not isinstance(rel_vol_threshold, (int, float)):
+        if not isinstance(rel_vol_threshold, int | float):
             raise ValueError(f"rel_vol_threshold must be a number, got {type(rel_vol_threshold)}")
 
         if rel_vol < float(rel_vol_threshold):

@@ -179,6 +179,7 @@ class TestOrbFilter:
         mock_vault.return_value.get.return_value = "fake_api_key"
 
         # Mock bars data for multiple days to avoid insufficient days
+        # Using 5-minute bars instead of 1-minute bars
         today = datetime.now(pytz.timezone("US/Eastern")).date()
         mock_bars: list[dict[str, Any]] = []
         for day_offset in range(15):  # Enough for avg_period=14
@@ -189,18 +190,17 @@ class TestOrbFilter:
             open_time_utc = open_time_eastern.astimezone(pytz.utc)
             day_start = int(open_time_utc.timestamp() * 1000)
             is_last_day = day_offset == 14
-            # Add 5 minutes of bars for complete opening range (or_minutes=5)
-            for minute in range(5):
-                mock_bars.append(
-                    {
-                        "timestamp": day_start + (minute * 60000),
-                        "open": 100.0 + day_offset * 0.1 + minute * 0.05,
-                        "high": 105.0 + day_offset * 0.1 + minute * 0.05,
-                        "low": 95.0 + day_offset * 0.1 + minute * 0.05,
-                        "close": 102.0 + day_offset * 0.1 + minute * 0.05,
-                        "volume": 50000 if is_last_day else 30000,  # Higher volume on last day
-                    }
-                )
+            # Add single 5-minute bar for opening range
+            mock_bars.append(
+                {
+                    "timestamp": day_start,
+                    "open": 100.0 + day_offset * 0.1,
+                    "high": 105.0 + day_offset * 0.1,
+                    "low": 95.0 + day_offset * 0.1,
+                    "close": 102.0 + day_offset * 0.1,
+                    "volume": 50000 if is_last_day else 30000,  # Higher volume on last day
+                }
+            )
         mock_fetch_bars.return_value = mock_bars
 
         result: IndicatorResult = await orb_node._calculate_orb_indicator(
@@ -922,18 +922,17 @@ class TestOrbFilterAssetClassLogic:
             ).replace(tzinfo=pytz.timezone("US/Eastern"))
             est_open_time_ms = int(est_open_time.timestamp() * 1000)
 
-            # Add 5 minutes of bars for opening range
-            for minute in range(5):
-                mock_bars.append(
-                    {
-                        "timestamp": est_open_time_ms + (minute * 60000),
-                        "open": 100.0 + day_offset * 0.1,
-                        "high": 105.0 + day_offset * 0.1,
-                        "low": 95.0 + day_offset * 0.1,
-                        "close": 102.0 + day_offset * 0.1,
-                        "volume": 50000 if day_offset == 14 else 30000,  # Higher volume on last day
-                    }
-                )
+            # Add single 5-minute bar for opening range
+            mock_bars.append(
+                {
+                    "timestamp": est_open_time_ms,
+                    "open": 100.0 + day_offset * 0.1,
+                    "high": 105.0 + day_offset * 0.1,
+                    "low": 95.0 + day_offset * 0.1,
+                    "close": 102.0 + day_offset * 0.1,
+                    "volume": 50000 if day_offset == 14 else 30000,  # Higher volume on last day
+                }
+            )
 
         mock_fetch_bars.return_value = mock_bars
 
@@ -955,7 +954,7 @@ class TestOrbFilterAssetClassLogic:
                 return now_eastern
             return now_eastern.astimezone(tz)
 
-        # Mock bars: Partial today (only 3 min), complete prior day
+        # Mock bars: Using 5-minute bars
         today_start_ms = int(
             datetime(2023, 10, 1, 9, 30, tzinfo=pytz.timezone("US/Eastern")).timestamp() * 1000
         )
@@ -967,112 +966,32 @@ class TestOrbFilterAssetClassLogic:
         )
 
         mock_bars = [
-            # Prior2 day: 5 bars (complete OR, bullish for avg)
+            # Prior2 day: Single 5-minute bar (bullish OR)
             {
                 "timestamp": prior2_start_ms,
                 "open": 100,
                 "high": 105,
                 "low": 95,
-                "close": 101,
-                "volume": 1000,
-            },
-            {
-                "timestamp": prior2_start_ms + 60000,
-                "open": 101,
-                "high": 106,
-                "low": 96,
-                "close": 102,
-                "volume": 1000,
-            },
-            {
-                "timestamp": prior2_start_ms + 120000,
-                "open": 102,
-                "high": 107,
-                "low": 97,
                 "close": 103,
-                "volume": 1000,
+                "volume": 5000,
             },
-            {
-                "timestamp": prior2_start_ms + 180000,
-                "open": 103,
-                "high": 108,
-                "low": 98,
-                "close": 104,
-                "volume": 1000,
-            },
-            {
-                "timestamp": prior2_start_ms + 240000,
-                "open": 104,
-                "high": 109,
-                "low": 99,
-                "close": 105,
-                "volume": 1000,
-            },
-            # Prior day: 5 bars (complete OR, bearish)
+            # Prior day: Single 5-minute bar (bearish OR)
             {
                 "timestamp": prior_start_ms,
                 "open": 105,
                 "high": 105.5,
                 "low": 103.5,
                 "close": 104,
-                "volume": 1000,
+                "volume": 5000,
             },
-            {
-                "timestamp": prior_start_ms + 60000,
-                "open": 104,
-                "high": 104.5,
-                "low": 102.5,
-                "close": 103,
-                "volume": 1000,
-            },
-            {
-                "timestamp": prior_start_ms + 120000,
-                "open": 103,
-                "high": 103.5,
-                "low": 101.5,
-                "close": 102,
-                "volume": 1000,
-            },
-            {
-                "timestamp": prior_start_ms + 180000,
-                "open": 102,
-                "high": 102.5,
-                "low": 100.5,
-                "close": 101,
-                "volume": 1000,
-            },
-            {
-                "timestamp": prior_start_ms + 240000,
-                "open": 101,
-                "high": 101.5,
-                "low": 99.5,
-                "close": 100,
-                "volume": 1000,
-            },
-            # Today: Only 3 bars (partial OR, would be bullish if used)
+            # Today: Single 5-minute bar (bullish OR)
             {
                 "timestamp": today_start_ms,
                 "open": 110,
                 "high": 115,
                 "low": 109,
-                "close": 111,
-                "volume": 2000,
-            },
-            {
-                "timestamp": today_start_ms + 60000,
-                "open": 111,
-                "high": 116,
-                "low": 110,
-                "close": 112,
-                "volume": 2000,
-            },
-            {
-                "timestamp": today_start_ms + 120000,
-                "open": 112,
-                "high": 117,
-                "low": 111,
                 "close": 113,
-                "volume": 2000,
+                "volume": 10000,
             },
         ]
 
@@ -1106,7 +1025,7 @@ class TestOrbFilterAssetClassLogic:
                 return now_eastern
             return now_eastern.astimezone(tz)
 
-        # Mock bars: Complete today (5 min OR)
+        # Mock bars: Complete today (single 5-minute bar)
         today_start_ms = int(
             datetime(2023, 10, 1, 9, 30, tzinfo=pytz.timezone("US/Eastern")).timestamp() * 1000
         )
@@ -1117,40 +1036,8 @@ class TestOrbFilterAssetClassLogic:
                 "open": 100,
                 "high": 105,
                 "low": 95,
-                "close": 101,
-                "volume": 1000,
-            },
-            {
-                "timestamp": today_start_ms + 60000,
-                "open": 101,
-                "high": 106,
-                "low": 96,
-                "close": 102,
-                "volume": 1000,
-            },
-            {
-                "timestamp": today_start_ms + 120000,
-                "open": 102,
-                "high": 107,
-                "low": 97,
                 "close": 103,
-                "volume": 1000,
-            },
-            {
-                "timestamp": today_start_ms + 180000,
-                "open": 103,
-                "high": 108,
-                "low": 98,
-                "close": 104,
-                "volume": 1000,
-            },
-            {
-                "timestamp": today_start_ms + 240000,
-                "open": 104,
-                "high": 109,
-                "low": 99,
-                "close": 105,
-                "volume": 1000,
+                "volume": 5000,
             },
         ]
 

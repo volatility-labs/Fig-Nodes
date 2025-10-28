@@ -240,14 +240,17 @@ async def execution_worker(queue: ExecutionQueue, node_registry: NodeRegistry):
         execution_task: asyncio.Task[Any] | None = None
         monitor_task: asyncio.Task[Any] | None = None
         result: ExecutionResult = ExecutionResult.error_result("Unexpected error")
-        
+
         try:
             # Create executor inside try block to catch initialization errors
             executor = GraphExecutor(job.graph_data, node_registry)
             executor.set_progress_callback(guarded_progress_callback)
 
             status_msg = ServerToClientStatusMessage(
-                type="status", state=ExecutionState.RUNNING, message="Executing batch", job_id=job.id
+                type="status",
+                state=ExecutionState.RUNNING,
+                message="Executing batch",
+                job_id=job.id,
             )
             await _ws_send_sync(websocket, status_msg)
 

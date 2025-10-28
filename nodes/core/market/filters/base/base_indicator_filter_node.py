@@ -4,7 +4,6 @@ from typing import Any
 
 from core.types_registry import AssetSymbol, IndicatorResult, NodeCategory, OHLCVBar, get_type
 from nodes.core.market.filters.base.base_filter_node import BaseFilter
-from services.indicators_service import IndicatorsService
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +23,6 @@ class BaseIndicatorFilter(BaseFilter):
 
     def __init__(self, id: int, params: dict[str, Any], graph_context: dict[str, Any] | None = None):  # Explicit constructor for consistency
         super().__init__(id, params, graph_context)
-        self.indicators_service = IndicatorsService()
         self._validate_indicator_params()
 
     def _validate_indicator_params(self):
@@ -61,7 +59,7 @@ class BaseIndicatorFilter(BaseFilter):
         super().validate_inputs(inputs)
 
     def _calculate_indicator(self, ohlcv_data: list[OHLCVBar]) -> IndicatorResult:
-        """Calculate the indicator using IndicatorsService and return IndicatorResult.
+        """Calculate the indicator and return IndicatorResult.
         Must be implemented by subclasses to specify IndicatorType and mapping."""
         raise NotImplementedError(
             "Subclasses must implement _calculate_indicator with IndicatorResult"

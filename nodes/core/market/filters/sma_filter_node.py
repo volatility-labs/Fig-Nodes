@@ -1,6 +1,8 @@
 import logging
+from datetime import datetime, timedelta
 
 import numpy as np
+import pytz
 
 from core.types_registry import IndicatorResult, IndicatorType, IndicatorValue, OHLCVBar
 from nodes.core.market.filters.base.base_indicator_filter_node import BaseIndicatorFilter
@@ -49,7 +51,12 @@ class SMAFilter(BaseIndicatorFilter):
             )
 
         last_ts: int = ohlcv_data[-1]["timestamp"]
-        cutoff_ts: int = last_ts - (self.prior_days * 86400000)  # prior_days in ms
+        
+        # Use calendar-aware date calculation instead of hardcoded milliseconds
+        # Convert UTC timestamp to datetime, subtract days, convert back to milliseconds
+        last_dt = datetime.fromtimestamp(last_ts / 1000, tz=pytz.UTC)
+        cutoff_dt = last_dt - timedelta(days=self.prior_days)
+        cutoff_ts: int = int(cutoff_dt.timestamp() * 1000)
 
         # Filter previous data manually by timestamp
         previous_data: list[OHLCVBar] = [bar for bar in ohlcv_data if bar["timestamp"] < cutoff_ts]

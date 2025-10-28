@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import math
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 import pytz
@@ -275,9 +275,15 @@ class VBPLevelFilter(BaseIndicatorFilter):
         # Calculate VBP levels for first period
         all_levels: list[dict[str, Any]] = []
 
-        cutoff_timestamp_1 = ohlcv_data[-1]["timestamp"] - (
-            lookback_years_1 * 365 * 24 * 60 * 60 * 1000
-        )
+        # Use calendar-aware year calculation instead of hardcoded milliseconds
+        # Convert UTC timestamp to datetime, subtract years, convert back to milliseconds
+        last_ts = ohlcv_data[-1]["timestamp"]
+        last_dt = datetime.fromtimestamp(last_ts / 1000, tz=pytz.UTC)
+        cutoff_dt_1 = last_dt - timedelta(
+            days=lookback_years_1 * 365.25
+        )  # 365.25 accounts for leap years
+        cutoff_timestamp_1 = int(cutoff_dt_1.timestamp() * 1000)
+
         filtered_data_1 = [bar for bar in ohlcv_data if bar["timestamp"] >= cutoff_timestamp_1]
 
         if len(filtered_data_1) < 10:
@@ -337,9 +343,13 @@ class VBPLevelFilter(BaseIndicatorFilter):
                 )
 
             lookback_years_2 = int(lookback_years_2_raw)
-            cutoff_timestamp_2 = ohlcv_data[-1]["timestamp"] - (
-                lookback_years_2 * 365 * 24 * 60 * 60 * 1000
-            )
+
+            # Use calendar-aware year calculation for second period
+            cutoff_dt_2 = last_dt - timedelta(
+                days=lookback_years_2 * 365.25
+            )  # 365.25 accounts for leap years
+            cutoff_timestamp_2 = int(cutoff_dt_2.timestamp() * 1000)
+
             filtered_data_2 = [bar for bar in ohlcv_data if bar["timestamp"] >= cutoff_timestamp_2]
 
             if len(filtered_data_2) >= 10:

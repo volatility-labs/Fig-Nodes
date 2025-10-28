@@ -54,6 +54,6 @@ class ATRIndicator(BaseIndicator):
     def _map_to_indicator_value(
         self, ind_type: IndicatorType, raw: dict[str, Any]
     ) -> IndicatorValue:
-        # This node computes ATR locally and does not use IndicatorsService mappings.
-        # Implementing to satisfy BaseIndicatorNode's abstract method.
+        # This node computes ATR locally using calculator functions.
+        # Implementing to satisfy BaseIndicator's abstract method.
         raise ValueError(f"Unsupported indicator type for ATRIndicatorNode: {ind_type.name}")

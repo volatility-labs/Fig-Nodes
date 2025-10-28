@@ -1,12 +1,9 @@
 import logging
 from abc import ABC, abstractmethod
-from typing import Any, abstractmethod
-
-import pandas as pd
+from typing import Any
 
 from core.types_registry import IndicatorResult, IndicatorType, IndicatorValue, get_type
 from nodes.base.base_node import Base
-from services.indicators_service import IndicatorsService
 
 logger = logging.getLogger(__name__)
 
@@ -20,16 +17,14 @@ class BaseIndicator(Base, ABC):
     inputs = {"ohlcv": get_type("OHLCV")}
     outputs = {"results": list[IndicatorResult]}
     default_params = {
-        "indicators": [IndicatorType.MACD, IndicatorType.RSI, IndicatorType.ADX],
         "timeframe": "1d",
     }
     params_meta = [
         {
             "name": "indicators",
             "type": "combo",
-            "default": [IndicatorType.MACD, IndicatorType.RSI, IndicatorType.ADX],
+            "default": [IndicatorType.MACD.name, IndicatorType.RSI.name, IndicatorType.ADX.name],
             "options": [e.name for e in IndicatorType],
-            "multiple": True,
         },
         {
             "name": "timeframe",
@@ -39,58 +34,20 @@ class BaseIndicator(Base, ABC):
         },
     ]
 
-    def __init__(self, id: int, params: dict[str, Any] | None = None, graph_context: dict[str, Any] | None = None):
+    def __init__(
+        self,
+        id: int,
+        params: dict[str, Any] | None = None,
+        graph_context: dict[str, Any] | None = None,
+    ):
         super().__init__(id, params or {}, graph_context)
-        self.indicators_service = IndicatorsService()
-
-    async def _execute_impl(self, inputs: dict[str, Any]) -> dict[str, list[IndicatorResult]]:
-        bars: list[dict[str, Any]] = inputs.get("ohlcv", [])
-        if not bars:
-            logger.warning("No OHLCV data provided for indicator computation.")
-            return {"results": []}
-
-        # Convert bars to DataFrame
-        df_data = [
-            {
-                "timestamp": pd.to_datetime(bar["timestamp"], unit="ms"),
-                "Open": bar["open"],
-                "High": bar["high"],
-                "Low": bar["low"],
-                "Close": bar["close"],
-                "Volume": bar["volume"],
-            }
-            for bar in bars
-        ]
-        df = pd.DataFrame(df_data).set_index("timestamp")
-
-        if df.empty or len(df) < 14:
-            logger.warning("Insufficient data for indicators (need at least 14 bars).")
-            return {"results": []}
-
-        # Compute indicators using service
-        raw_indicators = self.indicators_service.compute_indicators(
-            df, self.params.get("timeframe", "1d")
-        )
-
-        results: list[IndicatorResult] = []
-        for ind_type in self.params.get("indicators", []):
-            values = self._map_to_indicator_value(ind_type, raw_indicators)
-            result = IndicatorResult(
-                indicator_type=ind_type,
-                timestamp=int(df.index[-1].timestamp() * 1000),  # Unix ms
-                values=values,
-                params=self.params,
-            )
-            results.append(result)
-
-        return {"results": [r.to_dict() for r in results]}
 
     @abstractmethod
     def _map_to_indicator_value(
         self, ind_type: IndicatorType, raw: dict[str, Any]
     ) -> IndicatorValue:
         """
-        Maps raw indicator values from IndicatorsService to IndicatorValue format.
+        Maps raw indicator values to IndicatorValue format.
         Handles heterogeneous outputs per indicator type.
         Subclasses must implement this for specific mappings.
         """

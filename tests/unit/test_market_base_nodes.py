@@ -1,13 +1,11 @@
 
 import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
 import pandas as pd
 from typing import Dict, Any, List
 from nodes.core.market.filters.base.base_filter_node import BaseFilter
 from nodes.core.market.indicators.base.base_indicator_node import BaseIndicator
 from nodes.core.market.filters.base.base_indicator_filter_node import BaseIndicatorFilter
 from core.types_registry import AssetSymbol, AssetClass, OHLCVBar, IndicatorResult, IndicatorType, IndicatorValue, NodeExecutionError
-from services.indicators_service import IndicatorsService
 
 # Fixtures
 @pytest.fixture
@@ -81,45 +79,18 @@ class TestBaseIndicator:
         def _map_to_indicator_value(self, ind_type: IndicatorType, raw: Dict[str, Any]) -> IndicatorValue:
             return IndicatorValue(single=raw.get(ind_type.name, 0.0))
 
+        async def _execute_impl(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
+            return {"results": []}
+
     @pytest.fixture
     def indicator_node(self):
         return self.ConcreteIndicator(id=1, params={"indicators": [IndicatorType.ADX], "timeframe": "1d"})
-
-    @pytest.mark.asyncio
-    async def test_execute_happy_path(self, indicator_node):
-        bars = [
-            {"timestamp": i, "open": 100, "high": 110, "low": 90, "close": 105, "volume": 1000} for i in range(20)
-        ]
-        inputs = {"ohlcv": bars}
-        with patch.object(IndicatorsService, "compute_indicators", return_value={"ADX": 25.0}):
-            result = await indicator_node.execute(inputs)
-            assert "results" in result
-            assert len(result["results"]) == 1
-            ind_result = result["results"][0]
-            assert ind_result["indicator_type"] == IndicatorType.ADX
-            assert ind_result["values"]["single"] == 25.0
 
     @pytest.mark.asyncio
     async def test_execute_empty_bars(self, indicator_node):
         inputs = {"ohlcv": []}
         result = await indicator_node.execute(inputs)
         assert result["results"] == []
-
-    @pytest.mark.asyncio
-    async def test_execute_insufficient_data(self, indicator_node):
-        bars = [{"timestamp": 1, "open": 100, "high": 110, "low": 90, "close": 105, "volume": 1000}]  # <14 bars
-        inputs = {"ohlcv": bars}
-        with patch.object(IndicatorsService, "compute_indicators", return_value={}):
-            result = await indicator_node.execute(inputs)
-            assert result["results"] == []
-
-    @pytest.mark.asyncio
-    async def test_execute_computation_error(self, indicator_node):
-        bars = [{"timestamp": i, "open": 100, "high": 110, "low": 90, "close": 105, "volume": 1000} for i in range(20)]
-        inputs = {"ohlcv": bars}
-        with patch.object(IndicatorsService, "compute_indicators", side_effect=ValueError("Computation error")):
-            with pytest.raises(NodeExecutionError):
-                await indicator_node.execute(inputs)
 
 
 # Tests for BaseIndicatorFilterNode

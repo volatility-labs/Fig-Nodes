@@ -27,6 +27,7 @@ dependencies = [
   "ta==0.11.0",
   "matplotlib==3.9.2",
   "rustworkx>=0.17.1",
+  "pytz>=2025.2",
 ]
 
 [dependency-groups]
