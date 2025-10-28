@@ -61,7 +61,8 @@ export class NodeTypeSystem {
         }
         
         // Default: allow if types match or any (0)
-        return inputType === 0 || outputType === 0 || inputType === outputType;
+        const result = inputType === 0 || outputType === 0 || inputType === outputType;
+        return result;
     }
 
     static getDefaultValue(param: string): unknown {

@@ -56,6 +56,8 @@ class VBPLevelFilter(BaseIndicatorFilter):
         "use_weekly": False,
         "max_concurrent": 10,
         "rate_limit_per_second": 95,
+        "use_dollar_weighted": False,
+        "use_close_only": False,
     }
 
     params_meta = [
@@ -129,11 +131,27 @@ class VBPLevelFilter(BaseIndicatorFilter):
             "label": "Use Weekly Bars",
             "description": "If true, fetch weekly bars from Polygon. If false, aggregate daily bars to weekly",
         },
+        {
+            "name": "use_dollar_weighted",
+            "type": "combo",
+            "default": False,
+            "options": [True, False],
+            "label": "Use Dollar Weighted Volume",
+            "description": "If true, use dollar-weighted volume (volume * close) instead of raw volume",
+        },
+        {
+            "name": "use_close_only",
+            "type": "combo",
+            "default": False,
+            "options": [True, False],
+            "label": "Use Close Price Only",
+            "description": "If true, bin by close price only. If false, use HLC average (typical price)",
+        },
     ]
 
     def __init__(self, id: int, params: dict[str, Any]):
         super().__init__(id, params)
-        self.workers: list[asyncio.Task[NodeOutputs]] = []
+        self.workers: list[asyncio.Task[None]] = []
         self._max_safe_concurrency = 5
 
     def force_stop(self):
@@ -150,17 +168,17 @@ class VBPLevelFilter(BaseIndicatorFilter):
         lookback_years_raw = self.params.get("lookback_years", 2)
         num_levels_raw = self.params.get("num_levels", 5)
 
-        if not isinstance(bins_raw, (int, float)) or bins_raw < 10:
+        if not isinstance(bins_raw, int | float) or bins_raw < 10:
             raise ValueError("Number of bins must be at least 10")
-        if not isinstance(lookback_years_raw, (int, float)) or lookback_years_raw < 1:
+        if not isinstance(lookback_years_raw, int | float) or lookback_years_raw < 1:
             raise ValueError("Lookback period must be at least 1 year")
-        if not isinstance(num_levels_raw, (int, float)) or num_levels_raw < 1:
+        if not isinstance(num_levels_raw, int | float) or num_levels_raw < 1:
             raise ValueError("Number of levels must be at least 1")
 
     async def _fetch_weekly_bars(self, symbol: AssetSymbol, api_key: str) -> list[OHLCVBar]:
         """Fetch weekly bars directly from Polygon API."""
         lookback_years_raw = self.params.get("lookback_years", 2)
-        if not isinstance(lookback_years_raw, (int, float)):
+        if not isinstance(lookback_years_raw, int | float):
             raise ValueError(f"lookback_years must be a number, got {type(lookback_years_raw)}")
 
         lookback_years = int(lookback_years_raw)
@@ -225,7 +243,7 @@ class VBPLevelFilter(BaseIndicatorFilter):
         # Sort by volume descending
         def volume_key(x: dict[str, Any]) -> float:
             vol = x.get("volume", 0.0)
-            return float(vol) if isinstance(vol, (int, float)) else 0.0
+            return float(vol) if isinstance(vol, int | float) else 0.0
 
         sorted_bins = sorted(histogram, key=volume_key, reverse=True)
 
@@ -247,7 +265,7 @@ class VBPLevelFilter(BaseIndicatorFilter):
         lookback_years_1_raw = self.params.get("lookback_years", 2)
         lookback_years_2_raw = self.params.get("lookback_years_2")
 
-        if not isinstance(lookback_years_1_raw, (int, float)):
+        if not isinstance(lookback_years_1_raw, int | float):
             raise ValueError(f"lookback_years must be a number, got {type(lookback_years_1_raw)}")
 
         lookback_years_1 = int(lookback_years_1_raw)
@@ -284,16 +302,23 @@ class VBPLevelFilter(BaseIndicatorFilter):
 
         # Use the existing calculate_vbp function
         bins_raw = self.params.get("bins", 50)
-        if not isinstance(bins_raw, (int, float)):
+        if not isinstance(bins_raw, (int | float)):
             raise ValueError(f"bins must be a number, got {type(bins_raw)}")
         bins = int(bins_raw)
 
-        vbp_result_1 = calculate_vbp(filtered_data_1, bins)
+        use_dollar_weighted_raw = self.params.get("use_dollar_weighted", False)
+        use_close_only_raw = self.params.get("use_close_only", False)
+        use_dollar_weighted = (
+            bool(use_dollar_weighted_raw) if use_dollar_weighted_raw is not None else False
+        )
+        use_close_only = bool(use_close_only_raw) if use_close_only_raw is not None else False
+
+        vbp_result_1 = calculate_vbp(filtered_data_1, bins, use_dollar_weighted, use_close_only)
 
         if vbp_result_1.get("pointOfControl") is not None:
             # Extract significant levels from histogram
             num_levels_raw = self.params.get("num_levels", 5)
-            if not isinstance(num_levels_raw, (int, float)):
+            if not isinstance(num_levels_raw, int | float):
                 raise ValueError(f"num_levels must be a number, got {type(num_levels_raw)}")
             num_levels_1 = int(num_levels_raw)
 
@@ -304,7 +329,7 @@ class VBPLevelFilter(BaseIndicatorFilter):
 
         # Calculate VBP levels for second period if specified
         if lookback_years_2_raw is not None:
-            if not isinstance(lookback_years_2_raw, (int, float)):
+            if not isinstance(lookback_years_2_raw, (int | float)):
                 raise ValueError(
                     f"lookback_years_2 must be a number, got {type(lookback_years_2_raw)}"
                 )
@@ -321,12 +346,14 @@ class VBPLevelFilter(BaseIndicatorFilter):
                     filtered_data_2 = self._aggregate_to_weekly(filtered_data_2)
 
                 if len(filtered_data_2) >= 10:
-                    vbp_result_2 = calculate_vbp(filtered_data_2, bins)
+                    vbp_result_2 = calculate_vbp(
+                        filtered_data_2, bins, use_dollar_weighted, use_close_only
+                    )
 
                     if vbp_result_2.get("pointOfControl") is not None:
                         # Extract significant levels from histogram
                         num_levels_raw = self.params.get("num_levels", 5)
-                        if not isinstance(num_levels_raw, (int, float)):
+                        if not isinstance(num_levels_raw, (int | float)):
                             raise ValueError(
                                 f"num_levels must be a number, got {type(num_levels_raw)}"
                             )
@@ -352,13 +379,13 @@ class VBPLevelFilter(BaseIndicatorFilter):
         # Combine levels and sort by volume
         def volume_sort_key(x: dict[str, Any]) -> float:
             vol = x.get("volume", 0.0)
-            return float(vol) if isinstance(vol, (int, float)) else 0.0
+            return float(vol) if isinstance(vol, (int | float)) else 0.0
 
         all_levels.sort(key=volume_sort_key, reverse=True)
 
         # Take top num_levels per period (or combined if two periods)
         num_levels_raw = self.params.get("num_levels", 5)
-        if not isinstance(num_levels_raw, (int, float)):
+        if not isinstance(num_levels_raw, (int | float)):
             raise ValueError(f"num_levels must be a number, got {type(num_levels_raw)}")
         num_levels = int(num_levels_raw)
 
@@ -373,7 +400,7 @@ class VBPLevelFilter(BaseIndicatorFilter):
         seen_prices: set[float] = set()
         for level in combined_levels:
             price_level = level.get("priceLevel", 0.0)
-            if not isinstance(price_level, (int, float)):
+            if not isinstance(price_level, (int | float)):
                 continue
             price_rounded = round(float(price_level), 2)
             if price_rounded not in seen_prices:
@@ -383,7 +410,7 @@ class VBPLevelFilter(BaseIndicatorFilter):
         # Calculate support/resistance
         def get_price_level(level: dict[str, Any]) -> float:
             pl = level.get("priceLevel", 0.0)
-            return float(pl) if isinstance(pl, (int, float)) else 0.0
+            return float(pl) if isinstance(pl, (int | float)) else 0.0
 
         support_levels = [
             level for level in unique_levels if get_price_level(level) < current_price
@@ -474,11 +501,11 @@ class VBPLevelFilter(BaseIndicatorFilter):
         max_distance_support_raw = self.params.get("max_distance_to_support", 5.0)
         min_distance_resistance_raw = self.params.get("min_distance_to_resistance", 5.0)
 
-        if not isinstance(max_distance_support_raw, (int, float)):
+        if not isinstance(max_distance_support_raw, (int | float)):
             raise ValueError(
                 f"max_distance_to_support must be a number, got {type(max_distance_support_raw)}"
             )
-        if not isinstance(min_distance_resistance_raw, (int, float)):
+        if not isinstance(min_distance_resistance_raw, (int | float)):
             raise ValueError(
                 f"min_distance_to_resistance must be a number, got {type(min_distance_resistance_raw)}"
             )
@@ -620,10 +647,9 @@ class VBPLevelFilter(BaseIndicatorFilter):
 
             # Enforce conservative concurrency
             effective_concurrency = min(max_concurrent, self._max_safe_concurrency)
-            self.workers = [
-                asyncio.create_task(worker(i))
-                for i in range(min(effective_concurrency, total_symbols))
-            ]
+            self.workers.clear()
+            for i in range(min(effective_concurrency, total_symbols)):
+                self.workers.append(asyncio.create_task(worker(i)))
 
             if self.workers:
                 results = await asyncio.gather(*self.workers, return_exceptions=True)

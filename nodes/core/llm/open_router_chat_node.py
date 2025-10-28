@@ -102,7 +102,7 @@ class OpenRouterChatResponseModel(BaseModel):
 class OpenRouterChat(Base):
     inputs = {
         "messages": get_type("LLMChatMessageList") | None,
-        "prompt": str,
+        "prompt": str | None,
         "system": str | get_type("LLMChatMessage") | None,
         "tools": str | get_type("LLMToolSpecList") | None,
     }
@@ -273,7 +273,7 @@ class OpenRouterChat(Base):
         seed_raw = self.params.get("seed")
         effective_seed: int | None = None
         base_seed = (
-            int(seed_raw) if seed_raw is not None and isinstance(seed_raw, (int, float, str)) else 0
+            int(seed_raw) if seed_raw is not None and isinstance(seed_raw, int | float | str) else 0
         )
 
         if seed_mode == "random":
@@ -385,13 +385,13 @@ class OpenRouterChat(Base):
         max_iters_raw = self.params.get("max_tool_iters", 2)
         max_iters = (
             int(max_iters_raw)
-            if max_iters_raw is not None and isinstance(max_iters_raw, (int, float, str))
+            if max_iters_raw is not None and isinstance(max_iters_raw, int | float | str)
             else 2
         )
         timeout_s_raw = self.params.get("tool_timeout_s", 10)
         timeout_s = (
             int(timeout_s_raw)
-            if timeout_s_raw is not None and isinstance(timeout_s_raw, (int, float, str))
+            if timeout_s_raw is not None and isinstance(timeout_s_raw, int | float | str)
             else 10
         )
 
@@ -401,8 +401,8 @@ class OpenRouterChat(Base):
         thinking_history: list[dict[str, Any]] = []
         error_count = 0
 
-        # Execute up to max_iters + 1 rounds
-        for _round in range(max(0, max_iters) + 1):
+        # Execute up to max_iters rounds
+        for _round in range(max(0, max_iters)):
             # Get API key
             api_key = self.vault.get("OPENROUTER_API_KEY")
             if not api_key:
@@ -414,11 +414,19 @@ class OpenRouterChat(Base):
             model_with_web_search = self._get_model_with_web_search(base_model)
 
             # Call LLM to get tool calls
+            # Normalize tool_choice for consistency
+            tool_choice_param = self.params.get("tool_choice", "auto")
+            tool_choice_normalized = (
+                str(tool_choice_param).strip().lower()
+                if isinstance(tool_choice_param, str)
+                else "auto"
+            )
+
             request_body = {
                 "model": model_with_web_search,
                 "messages": messages,
                 "tools": tools,
-                "tool_choice": self.params.get("tool_choice") if tools else None,
+                "tool_choice": tool_choice_normalized if tools else None,
                 "stream": False,
                 **options,
                 **web_search_options,
@@ -455,6 +463,12 @@ class OpenRouterChat(Base):
             if not resp_data_model.choices:
                 break
             first_choice = resp_data_model.choices[0]
+            finish_reason = first_choice.finish_reason
+
+            # Handle error finish_reason
+            if finish_reason == "error":
+                break
+
             if first_choice.message:
                 message: dict[str, Any] = first_choice.message.model_dump()
             else:
@@ -464,13 +478,26 @@ class OpenRouterChat(Base):
                 tool_calls_raw if isinstance(tool_calls_raw, list) else None
             )
 
-            # No tool calls means we're done
-            if not tool_calls:
+            # Check if we should continue: execute tools if they exist, regardless of finish_reason
+            # (presence of tool_calls is the primary indicator per OpenRouter API)
+            if tool_calls and len(tool_calls) > 0:
+                # Continue iteration - execute tools
+                pass
+            else:
+                # Agent has completed (stop, length, content_filter, or no tool_calls)
                 break
+
+            # Check for cancellation before tool execution
+            if self._is_stopped:
+                raise asyncio.CancelledError("Node stopped before tool execution")
 
             # Execute all tools in parallel
             tasks = [self._execute_single_tool(call, timeout_s) for call in tool_calls]
             results = await asyncio.gather(*tasks, return_exceptions=True)
+
+            # Check for cancellation after tool execution
+            if self._is_stopped:
+                raise asyncio.CancelledError("Node stopped during tool execution")
 
             # Process results and append to messages
             round_errors = 0
@@ -592,10 +619,14 @@ class OpenRouterChat(Base):
                 "tool_history": [],
                 "thinking_history": [],
             }
-
+        # Gather the options from the node inputs and prepare the generation options
         options = self._prepare_generation_options()
 
-        tool_choice = str(self.params.get("tool_choice", "auto")).strip().lower()
+        # Normalize tool_choice - only supports string values in our implementation
+        tool_choice_raw = self.params.get("tool_choice", "auto")
+        tool_choice = (
+            str(tool_choice_raw).strip().lower() if isinstance(tool_choice_raw, str) else "auto"
+        )
 
         tool_rounds_info: dict[str, Any] = {"tool_history": [], "thinking_history": []}
 
@@ -656,9 +687,22 @@ class OpenRouterChat(Base):
             print(f"STOP_TRACE: HTTP request cancelled in main execution for node {self.id}")
             raise
 
+        # Extract finish_reason from response
+        first_choice = resp_data_model.choices[0] if resp_data_model.choices else None
+        finish_reason = first_choice.finish_reason if first_choice else None
+
+        # Handle error finish_reason
+        if finish_reason == "error":
+            return {
+                "message": {"role": "assistant", "content": "API returned error"},
+                "metrics": {"error": "finish_reason: error"},
+                "tool_history": tool_rounds_info.get("tool_history", []),
+                "thinking_history": tool_rounds_info.get("thinking_history", []),
+            }
+
         final_message: dict[str, Any] = (
-            resp_data_model.choices[0].message.model_dump()
-            if resp_data_model.choices
+            first_choice.message.model_dump()
+            if first_choice and first_choice.message
             else {"role": "assistant", "content": ""}
         )
         self._ensure_assistant_role_inplace(final_message)
@@ -679,7 +723,12 @@ class OpenRouterChat(Base):
             "total_tokens": usage_dict.get("total_tokens", 0),
             "temperature": options.get("temperature"),
             "seed": options.get("seed"),
+            "finish_reason": finish_reason,
         }
+
+        # Include native_finish_reason if available
+        if first_choice and first_choice.native_finish_reason:
+            metrics["native_finish_reason"] = first_choice.native_finish_reason
 
         # Query detailed generation stats if available
         generation_id: str | None = resp_data_model.id

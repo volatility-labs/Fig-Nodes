@@ -12,6 +12,7 @@ def calculate_atrx(
     prices: Sequence[float | None],
     length: int = 14,
     ma_length: int = 50,
+    smoothing: str = "RMA",
 ) -> dict[str, Any]:
     """
     Calculate ATRX indicator following TradingView methodology:
@@ -26,6 +27,7 @@ def calculate_atrx(
         prices: List of prices to use for calculation (can contain None values)
         length: Period for ATR calculation (default: 14)
         ma_length: Period for SMA calculation (default: 50)
+        smoothing: Smoothing method for ATR - "RMA" (default), "SMA", or "EMA"
 
     Returns:
         Dictionary with 'atrx' as a list of calculated values for each row,
@@ -42,8 +44,8 @@ def calculate_atrx(
     if len(lows) != data_length or len(closes) != data_length or len(prices) != data_length:
         return {"atrx": [None] * data_length}
 
-    # Calculate ATR
-    atr_result = calculate_atr(highs, lows, closes, length)
+    # Calculate ATR with specified smoothing
+    atr_result = calculate_atr(highs, lows, closes, length, smoothing=smoothing)
     atr_values = atr_result.get("atr", [])
 
     if not atr_values or len(atr_values) == 0:

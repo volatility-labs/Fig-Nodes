@@ -80,6 +80,11 @@ export class NodeRenderer {
     }
 
     drawProgressBar(ctx: CanvasRenderingContext2D) {
+        const nodeWithFlags = this.node as { flags?: { collapsed?: boolean }; size: [number, number] };
+        if (nodeWithFlags.flags?.collapsed) {
+            return;
+        }
+        
         if (this.node.progress >= 0) {
             const barHeight = 5;
             const barY = 2;

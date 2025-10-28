@@ -439,3 +439,99 @@ class TestCalculateATR:
         # Valid values should be positive
         valid_values = [v for v in result["atr"] if v is not None]
         assert all(v > 0 for v in valid_values)
+
+    def test_atr_with_sma_smoothing(self, sample_ohlcv_data):
+        """Test ATR with SMA smoothing."""
+        result = calculate_atr(
+            sample_ohlcv_data["highs"],
+            sample_ohlcv_data["lows"],
+            sample_ohlcv_data["closes"],
+            length=14,
+            smoothing="SMA",
+        )
+
+        # Should return valid results
+        assert isinstance(result, dict)
+        assert "atr" in result
+        assert len(result["atr"]) == len(sample_ohlcv_data["highs"])
+
+        # Check that values are valid
+        valid_values = [v for v in result["atr"] if v is not None]
+        assert len(valid_values) > 0
+        assert all(v >= 0 for v in valid_values)
+
+    def test_atr_with_ema_smoothing(self, sample_ohlcv_data):
+        """Test ATR with EMA smoothing."""
+        result = calculate_atr(
+            sample_ohlcv_data["highs"],
+            sample_ohlcv_data["lows"],
+            sample_ohlcv_data["closes"],
+            length=14,
+            smoothing="EMA",
+        )
+
+        # Should return valid results
+        assert isinstance(result, dict)
+        assert "atr" in result
+        assert len(result["atr"]) == len(sample_ohlcv_data["highs"])
+
+        # Check that values are valid
+        valid_values = [v for v in result["atr"] if v is not None]
+        assert len(valid_values) > 0
+        assert all(v >= 0 for v in valid_values)
+
+    def test_atr_smoothing_comparison(self, sample_ohlcv_data):
+        """Test that different smoothing methods produce different results."""
+        result_rma = calculate_atr(
+            sample_ohlcv_data["highs"],
+            sample_ohlcv_data["lows"],
+            sample_ohlcv_data["closes"],
+            length=14,
+            smoothing="RMA",
+        )
+        result_sma = calculate_atr(
+            sample_ohlcv_data["highs"],
+            sample_ohlcv_data["lows"],
+            sample_ohlcv_data["closes"],
+            length=14,
+            smoothing="SMA",
+        )
+        result_ema = calculate_atr(
+            sample_ohlcv_data["highs"],
+            sample_ohlcv_data["lows"],
+            sample_ohlcv_data["closes"],
+            length=14,
+            smoothing="EMA",
+        )
+
+        # All should return valid results
+        assert len(result_rma["atr"]) == len(result_sma["atr"])
+        assert len(result_sma["atr"]) == len(result_ema["atr"])
+
+        # Last values should all be non-None and positive
+        rma_last = result_rma["atr"][-1]
+        sma_last = result_sma["atr"][-1]
+        ema_last = result_ema["atr"][-1]
+
+        assert rma_last is not None and rma_last > 0
+        assert sma_last is not None and sma_last > 0
+        assert ema_last is not None and ema_last > 0
+
+    def test_atr_default_smoothing_is_rma(self, sample_ohlcv_data):
+        """Test that default smoothing is RMA."""
+        result_default = calculate_atr(
+            sample_ohlcv_data["highs"],
+            sample_ohlcv_data["lows"],
+            sample_ohlcv_data["closes"],
+            length=14,
+        )
+        result_rma = calculate_atr(
+            sample_ohlcv_data["highs"],
+            sample_ohlcv_data["lows"],
+            sample_ohlcv_data["closes"],
+            length=14,
+            smoothing="RMA",
+        )
+
+        # Should produce identical results
+        assert result_default == result_rma

@@ -3,14 +3,9 @@ import BaseCustomNode from '../base/BaseCustomNode';
 export default class ExtractSymbolsNodeUI extends BaseCustomNode {
     constructor(title: string, data: any, serviceRegistry: any) {
         super(title, data, serviceRegistry);
-        this.size = [300, 120];
+        this.size = [200, 90];
         this.color = '#2c5530';  // Green theme for market data
         this.bgcolor = '#1a3320';
-
-        // Add convenience button for copying symbols
-        this.addWidget('button', 'Copy Symbols', '', () => {
-            this.copySymbols();
-        }, {});
     }
 
     updateDisplay(result: any) {
@@ -33,21 +28,5 @@ export default class ExtractSymbolsNodeUI extends BaseCustomNode {
             this.displayText = 'No symbols extracted';
         }
         this.setDirtyCanvas(true, true);
-    }
-
-    copySymbols() {
-        const symbols = (this.result as { symbols?: string[] })?.symbols;
-        if (!symbols || !Array.isArray(symbols) || symbols.length === 0) {
-            navigator.clipboard.writeText('No symbols to copy');
-            return;
-        }
-
-        // Format symbols for copying
-        const symbolStrings = symbols.map((s: any) =>
-            typeof s === 'string' ? s : (s.ticker || JSON.stringify(s))
-        );
-
-        const text = `Extracted Symbols (${symbols.length}):\n${symbolStrings.join('\n')}`;
-        navigator.clipboard.writeText(text);
     }
 }

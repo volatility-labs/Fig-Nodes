@@ -60,8 +60,8 @@ class AtrXFilter(BaseIndicatorFilter):
         length_param = self.params.get("length", 14)
         ma_length_param = self.params.get("ma_length", 50)
 
-        length_value = int(length_param) if isinstance(length_param, (int, float)) else 14
-        ma_length_value = int(ma_length_param) if isinstance(ma_length_param, (int, float)) else 50
+        length_value = int(length_param) if isinstance(length_param, int | float) else 14
+        ma_length_value = int(ma_length_param) if isinstance(ma_length_param, int | float) else 50
 
         min_required = max(length_value, ma_length_value)
         if len(ohlcv_data) < min_required:
@@ -73,15 +73,15 @@ class AtrXFilter(BaseIndicatorFilter):
                 error="Insufficient data",
             )
 
-        # Validate smoothing parameter (only RMA supported by calculator)
+        # Get smoothing parameter
         smoothing = self.params.get("smoothing", "RMA")
-        if smoothing != "RMA":
+        if smoothing not in ["RMA", "SMA", "EMA"]:
             return IndicatorResult(
                 indicator_type=IndicatorType.ATRX,
                 timestamp=ohlcv_data[-1]["timestamp"],
                 values=IndicatorValue(single=0.0),
                 params=self.params,
-                error=f"Invalid smoothing method '{smoothing}'. Only 'RMA' is supported.",
+                error=f"Invalid smoothing method '{smoothing}'. Must be 'RMA', 'SMA', or 'EMA'.",
             )
 
         # Extract lists directly from OHLCV data
@@ -109,7 +109,8 @@ class AtrXFilter(BaseIndicatorFilter):
 
         source_prices = price_map[price_col]
 
-        # Call calculator with lists
+        # Call calculator with lists and smoothing parameter
+        smoothing_str = str(smoothing) if isinstance(smoothing, str) else "RMA"
         atrx_result = calculate_atrx(
             highs=high_prices,
             lows=low_prices,
@@ -117,6 +118,7 @@ class AtrXFilter(BaseIndicatorFilter):
             prices=source_prices,
             length=length_value,
             ma_length=ma_length_value,
+            smoothing=smoothing_str,
         )
         atrx_values = atrx_result.get("atrx", [])
 
@@ -155,12 +157,12 @@ class AtrXFilter(BaseIndicatorFilter):
         value = float(indicator_result.values.single)
 
         upper_threshold = self.params.get("upper_threshold", 6.0)
-        if not isinstance(upper_threshold, (int, float)):
+        if not isinstance(upper_threshold, int | float):
             upper_threshold = 6.0
         upper = float(upper_threshold)
 
         lower_threshold = self.params.get("lower_threshold", -4.0)
-        if not isinstance(lower_threshold, (int, float)):
+        if not isinstance(lower_threshold, int | float):
             lower_threshold = -4.0
         lower = float(lower_threshold)
 

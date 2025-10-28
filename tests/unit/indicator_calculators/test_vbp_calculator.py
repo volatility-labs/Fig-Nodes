@@ -214,6 +214,68 @@ class TestCalculateVBP:
 
         assert histogram_volume == pytest.approx(input_volume, abs=0.01)
 
+    def test_vbp_with_dollar_weighted_volume(self, sample_bars):
+        """Test VBP with dollar-weighted volume."""
+        result_weighted = calculate_vbp(sample_bars, number_of_bins=10, use_dollar_weighted=True)
+        result_raw = calculate_vbp(sample_bars, number_of_bins=10, use_dollar_weighted=False)
+
+        # Dollar-weighted should produce different volume totals
+        weighted_volume = sum(bin["volume"] for bin in result_weighted["histogram"])
+        raw_volume = sum(bin["volume"] for bin in result_raw["histogram"])
+
+        # Dollar-weighted volume should be larger than raw volume
+        assert weighted_volume > raw_volume
+
+        # Both should have valid POC
+        assert result_weighted["pointOfControl"] is not None
+        assert result_raw["pointOfControl"] is not None
+
+    def test_vbp_with_close_only_binning(self, sample_bars):
+        """Test VBP with close-only binning vs HLC average."""
+        result_close = calculate_vbp(sample_bars, number_of_bins=10, use_close_only=True)
+        result_hlc = calculate_vbp(sample_bars, number_of_bins=10, use_close_only=False)
+
+        # Results might differ, but both should be valid
+        assert result_close["pointOfControl"] is not None
+        assert result_hlc["pointOfControl"] is not None
+
+        # Both should have same number of bins
+        assert len(result_close["histogram"]) == len(result_hlc["histogram"])
+
+    def test_vbp_dollar_weighted_total_volume(self, sample_bars):
+        """Test that dollar-weighted volume matches expected calculation."""
+        result = calculate_vbp(sample_bars, number_of_bins=10, use_dollar_weighted=True)
+
+        histogram_volume = sum(bin["volume"] for bin in result["histogram"])
+        # Expected volume is sum of (volume * close) for each bar
+        expected_volume = sum(bar["volume"] * bar["close"] for bar in sample_bars)
+
+        assert histogram_volume == pytest.approx(expected_volume, abs=0.01)
+
+    def test_vbp_combinations_of_parameters(self, sample_bars):
+        """Test VBP with different combinations of parameters."""
+        # Test all 4 combinations
+        combinations = [
+            (False, False),  # Raw volume, HLC average
+            (False, True),  # Raw volume, close only
+            (True, False),  # Dollar weighted, HLC average
+            (True, True),  # Dollar weighted, close only
+        ]
+
+        for use_dollar_weighted, use_close_only in combinations:
+            result = calculate_vbp(
+                sample_bars,
+                number_of_bins=10,
+                use_dollar_weighted=use_dollar_weighted,
+                use_close_only=use_close_only,
+            )
+
+            # All combinations should produce valid results
+            assert result["pointOfControl"] is not None
+            assert len(result["histogram"]) == 10
+            assert result["valueAreaHigh"] is not None
+            assert result["valueAreaLow"] is not None
+
     def test_vbp_single_price_range(self):
         """Test VBP when all prices are the same."""
         bars: list[OHLCVBar] = [

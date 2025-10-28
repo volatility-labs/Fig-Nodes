@@ -1,29 +1,49 @@
-from typing import Dict, Any
 import json
 import logging
+from typing import Any, TypeGuard
+
+from core.types_utils import detect_type, infer_data_type
 from nodes.base.base_node import Base
-from core.types_registry import AssetSymbol
-from typing import Any
+
+
+def _is_dict_with_key(value: Any, key: str) -> TypeGuard[dict[str, Any]]:
+    """Type guard to check if value is a dict with the specified key."""
+    return isinstance(value, dict) and key in value
+
+
+def _is_string(value: Any) -> TypeGuard[str]:
+    """Type guard to check if value is a string."""
+    return isinstance(value, str)
+
+
+def _is_list_of_dicts(value: Any) -> TypeGuard[list[dict[str, Any]]]:
+    """Type guard to check if value is a list of dicts."""
+    return isinstance(value, list) and all(isinstance(item, dict) for item in value)
 
 
 class Logging(Base):
-    def __init__(self, id: int, params: Dict[str, Any]):
+    def __init__(self, id: int, params: dict[str, Any]):
         super().__init__(id, params)
         self.last_content_length = 0
         self.logger = logging.getLogger(f"LoggingNode-{self.id}")
 
     inputs = {"input": Any}
     outputs = {"output": str}
-    
+
     # Allow UI to select how to display/parse the output text
     default_params = {
         "format": "auto",  # one of: auto | plain | json | markdown
     }
     params_meta = [
-        {"name": "format", "type": "combo", "default": "auto", "options": ["auto", "plain", "json", "markdown"]},
+        {
+            "name": "format",
+            "type": "combo",
+            "default": "auto",
+            "options": ["auto", "plain", "json", "markdown"],
+        },
     ]
 
-    async def _safe_print(self, message: str, end: str = '\n', flush: bool = False):
+    async def _safe_print(self, message: str, end: str = "\n", flush: bool = False):
         """Non-blocking print that uses logging instead of stdout to avoid BlockingIOError."""
         try:
             # Use logging instead of print to avoid blocking on stdout
@@ -32,51 +52,69 @@ class Logging(Base):
             # Fallback to logging at root level if node-specific logger fails
             logging.getLogger().info(f"LoggingNode {self.id}: {message.rstrip()}")
 
-    async def _execute_impl(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
+    async def _execute_impl(self, inputs: dict[str, Any]) -> dict[str, Any]:
         value = inputs.get("input")
-        selected_format = (self.params.get("format") or "auto").strip()
-        
+        selected_format = str(self.params.get("format") or "auto").strip()
+
+        # Use type detection utilities
+        detected_type = detect_type(value)
+        semantic_type = infer_data_type(value)
+
         # Handle LLMChatMessage - extract only the content
-        if isinstance(value, dict) and "role" in value and "content" in value:
-            # This is an LLMChatMessage - extract only the content
+        if detected_type == "LLMChatMessage" and _is_dict_with_key(value, "content"):
             content = value["content"]
-            if isinstance(content, str):
+            if _is_string(content):
                 text = content
                 await self._safe_print(f"LoggingNode {self.id}: {text}")
             else:
                 # Handle non-string content (e.g., tool calls)
                 text = str(content)
                 await self._safe_print(f"LoggingNode {self.id}: {text}")
-        elif isinstance(value, dict) and "message" in value and isinstance(value["message"], dict) and value["message"].get("role") == "assistant" and isinstance(value["message"].get("content"), str):
-            content = value["message"]["content"]
-            is_partial = not value.get("done", False)
-            delta = content[self.last_content_length:]
-            
-            if delta:
-                await self._safe_print(delta, end='', flush=True)
-            
-            if not is_partial:
-                await self._safe_print("")  # Newline for final
-                if "thinking" in value["message"] and isinstance(value["message"]["thinking"], str):
-                    await self._safe_print("Thinking:", value["message"]["thinking"])
-                self.last_content_length = 0
+        elif isinstance(value, dict) and "message" in value and isinstance(value["message"], dict):
+            # Streaming message format
+            message_dict: dict[str, Any] = value["message"]
+            if (
+                isinstance(message_dict.get("role"), str)
+                and message_dict["role"] == "assistant"
+                and isinstance(message_dict.get("content"), str)
+            ):
+                content: str = message_dict["content"]
+                done_value: Any = value.get("done")
+                is_partial = done_value is not True
+                delta = content[self.last_content_length :]
+
+                if delta:
+                    await self._safe_print(delta, end="", flush=True)
+
+                if not is_partial:
+                    await self._safe_print("")  # Newline for final
+                    if "thinking" in message_dict and isinstance(message_dict["thinking"], str):
+                        await self._safe_print("Thinking:", message_dict["thinking"])
+                    self.last_content_length = 0
+                else:
+                    self.last_content_length = len(content)
+
+                text = content  # Full current text for output/UI
             else:
-                self.last_content_length = len(content)
-            
-            text = content  # Full current text for output/UI
-        elif isinstance(value, list) and value and all(isinstance(x, AssetSymbol) for x in value):
+                text = str(value)
+                await self._safe_print(f"LoggingNode {self.id}: {text}")
+        elif semantic_type == "AssetSymbolList" and isinstance(value, list):
             text = ", ".join(str(sym) for sym in value)
             await self._safe_print(text)
-        elif isinstance(value, list) and value and all(isinstance(x, dict) and 'timestamp' in x and 'open' in x and 'high' in x and 'low' in x and 'close' in x for x in value):
+        elif semantic_type == "OHLCV" and _is_list_of_dicts(value):
             # OHLCV data preview
             preview_count = min(10, len(value))
             text = f"OHLCV data ({len(value)} bars):\n"
             for i, bar in enumerate(value[:preview_count]):
-                text += f"Bar {i+1}: {bar['timestamp']} O:{bar['open']} H:{bar['high']} L:{bar['low']} C:{bar['close']} V:{bar['volume']}\n"
+                if all(
+                    key in bar for key in {"timestamp", "open", "high", "low", "close", "volume"}
+                ):
+                    text += f"Bar {i + 1}: {bar['timestamp']} O:{bar['open']} H:{bar['high']} L:{bar['low']} C:{bar['close']} V:{bar['volume']}\n"
             if len(value) > preview_count:
                 text += f"... and {len(value) - preview_count} more bars"
             # Only print in debug mode to reduce log verbosity
             import os
+
             if os.getenv("DEBUG_LOGGING") == "1":
                 await self._safe_print(f"LoggingNode {self.id}: {text}")
         else:
@@ -98,10 +136,15 @@ class Logging(Base):
             else:
                 # Prefer message.content if present to keep logging concise
                 try:
-                    if isinstance(value, dict) and isinstance(value.get("message"), dict):
-                        inner = value.get("message")
-                        if isinstance(inner.get("content"), str):
-                            text = inner.get("content")
+                    if (
+                        isinstance(value, dict)
+                        and "message" in value
+                        and isinstance(value["message"], dict)
+                    ):
+                        inner: dict[str, Any] = value["message"]
+                        content_value = inner.get("content")
+                        if isinstance(content_value, str):
+                            text = content_value
                         else:
                             text = str(value)
                     else:
@@ -109,7 +152,5 @@ class Logging(Base):
                 except Exception:
                     text = str(value)
             await self._safe_print(f"LoggingNode {self.id}: {text}")
-        
+
         return {"output": text}
-
-

@@ -1,13 +1,15 @@
 import asyncio
 import logging
 import math
-import pandas as pd
 from datetime import date, datetime, timedelta
-import pytz
 from typing import Any
+
+import pandas as pd
+import pytz
 
 from core.api_key_vault import APIKeyVault
 from core.types_registry import (
+    AssetClass,
     AssetSymbol,
     IndicatorResult,
     IndicatorType,
@@ -15,7 +17,6 @@ from core.types_registry import (
     NodeOutputs,
     OHLCVBar,
     get_type,
-    AssetClass,
 )
 from nodes.core.market.filters.base.base_indicator_filter_node import BaseIndicatorFilter
 from services.indicator_calculators.orb_calculator import calculate_orb
@@ -180,11 +181,13 @@ class OrbFilter(BaseIndicatorFilter):
             return True
         return direction == param_dir
 
-    def _get_target_date_for_orb(self, symbol: AssetSymbol, today_date: date, df: pd.DataFrame) -> date:
+    def _get_target_date_for_orb(
+        self, symbol: AssetSymbol, today_date: date, df: pd.DataFrame
+    ) -> date:
         if symbol.asset_class == AssetClass.CRYPTO:
-            utc_now = datetime.now(pytz.timezone('UTC'))
+            utc_now = datetime.now(pytz.timezone("UTC"))
             return utc_now.date() - timedelta(days=1)
-        sorted_dates = sorted(set(df['date']))
+        sorted_dates = sorted(set(df["date"]))
         if today_date in sorted_dates:
             return today_date
         else:

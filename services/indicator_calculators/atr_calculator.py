@@ -1,6 +1,8 @@
 from collections.abc import Sequence
 from typing import Any
 
+from .ema_calculator import calculate_ema
+from .sma_calculator import calculate_sma
 from .utils import calculate_wilder_ma
 
 
@@ -35,6 +37,7 @@ def calculate_atr(
     lows: Sequence[float | None],
     closes: Sequence[float | None],
     length: int,
+    smoothing: str = "RMA",
 ) -> dict[str, Any]:
     """
     Calculate ATR (Average True Range) indicator.
@@ -44,6 +47,7 @@ def calculate_atr(
         lows: List of low prices (can contain None values)
         closes: List of close prices (can contain None values)
         length: Period for ATR calculation
+        smoothing: Smoothing method - "RMA" (default), "SMA", or "EMA"
 
     Returns:
         Dictionary with 'atr' as a list of calculated values for each row,
@@ -68,8 +72,15 @@ def calculate_atr(
         tr_val = calculate_tr(current_high, current_low, prev_close)
         tr_values.append(tr_val)
 
-    # Calculate ATR using Wilder's MA
-    atr_values = calculate_wilder_ma(tr_values, length)
+    # Calculate ATR using selected smoothing method
+    if smoothing == "SMA":
+        sma_result = calculate_sma(tr_values, period=length)
+        atr_values = sma_result.get("sma", [])
+    elif smoothing == "EMA":
+        ema_result = calculate_ema(tr_values, period=length)
+        atr_values = ema_result.get("ema", [])
+    else:  # Default to RMA
+        atr_values = calculate_wilder_ma(tr_values, length)
 
     # Return full time series matching TypeScript implementation
     return {"atr": atr_values}

@@ -367,9 +367,14 @@ async def execute_endpoint(websocket: WebSocket):
             if message.type == "graph":
                 job = await _handle_graph_message(websocket, message)
                 registry.set_job(session_id, job)
+                # Reset cancellation state for new job
+                is_cancelling = False
+                cancel_done_event = asyncio.Event()
 
             elif message.type == "stop":
-                await _handle_stop_message(websocket, job, is_cancelling, cancel_done_event)
+                # Get current job from registry for reliability
+                current_job = registry.get_job(session_id)
+                await _handle_stop_message(websocket, current_job, is_cancelling, cancel_done_event)
                 is_cancelling = True
                 registry.set_job(session_id, None)
 

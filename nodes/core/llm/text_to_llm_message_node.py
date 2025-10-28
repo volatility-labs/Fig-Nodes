@@ -76,7 +76,7 @@ class TextToLLMMessage(Base):
     def _format_ohlcv_bar(self, bar: dict[str, Any]) -> str:
         """Format a single OHLCVBar."""
         timestamp = bar.get("timestamp", "N/A")
-        if isinstance(timestamp, (int, float)) and timestamp > 1e10:
+        if isinstance(timestamp, int | float) and timestamp > 1e10:
             dt = datetime.fromtimestamp(timestamp / 1000)
             timestamp = dt.strftime("%Y-%m-%d %H:%M:%S")
         return (
@@ -133,7 +133,7 @@ class TextToLLMMessage(Base):
         # For other dicts, show first few key-value pairs
         pairs: list[str] = []
         for key, value in list(item.items())[:3]:  # First 3 items
-            if isinstance(value, (str, int, float)) and len(str(value)) < 50:
+            if isinstance(value, str | int | float) and len(str(value)) < 50:
                 pairs.append(f"{key}={value}")
             else:
                 pairs.append(f"{key}=({type(value).__name__})")
@@ -151,7 +151,7 @@ class TextToLLMMessage(Base):
         if isinstance(data, str):
             return data
 
-        if isinstance(data, (int, float, bool)):
+        if isinstance(data, int | float | bool):
             return str(data)
 
         # JSON and compact formats don't need type-specific handling
