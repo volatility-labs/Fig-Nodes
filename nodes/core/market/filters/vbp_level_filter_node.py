@@ -149,8 +149,10 @@ class VBPLevelFilter(BaseIndicatorFilter):
         },
     ]
 
-    def __init__(self, id: int, params: dict[str, Any]):
-        super().__init__(id, params)
+    def __init__(
+        self, id: int, params: dict[str, Any], graph_context: dict[str, Any] | None = None
+    ):
+        super().__init__(id, params, graph_context)
         self.workers: list[asyncio.Task[None]] = []
         self._max_safe_concurrency = 5
 

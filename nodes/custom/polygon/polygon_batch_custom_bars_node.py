@@ -69,8 +69,8 @@ class PolygonBatchCustomBars(Base):
         # Internal execution controls are not exposed to UI
     ]
 
-    def __init__(self, id: int, params: dict[str, Any] = None):  # Changed from *args, **kwargs
-        super().__init__(id, params)
+    def __init__(self, id: int, params: dict[str, Any], graph_context: dict[str, Any] | None = None):
+        super().__init__(id, params, graph_context)
         self.workers: list[asyncio.Task] = []
         # Conservative cap to avoid event loop thrashing and ensure predictable batching in tests
         self._max_safe_concurrency = 5

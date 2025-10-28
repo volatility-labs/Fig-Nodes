@@ -7,13 +7,8 @@ Modules:
 - types_utils: Helpers to serialize/describe Python typing information
 """
 
-from core import graph_executor, node_registry, types_registry, types_utils
+# No explicit imports to avoid circular dependencies
+# Import these modules directly (e.g., from core.graph_executor import GraphExecutor)
+# instead of from core import graph_executor
 
-__all__ = [
-    "graph_executor",
-    "node_registry",
-    "types_registry",
-    "types_utils",
-]
-
-
+__all__ = []

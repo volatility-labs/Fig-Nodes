@@ -30,13 +30,14 @@ class Base(ABC):
     required_keys: list[str] = []
     CATEGORY: NodeCategory = NodeCategory.BASE
 
-    def __init__(self, id: int, params: dict[str, Any]):
+    def __init__(self, id: int, params: dict[str, Any], graph_context: dict[str, Any] | None = None):
         self.id = id
         self.params = {**self.default_params, **(params or {})}
         self.inputs = dict(getattr(self, "inputs", {}))
         self.outputs = dict(getattr(self, "outputs", {}))
         self._progress_callback: ProgressCallback | None = None
         self._is_stopped = False
+        self.graph_context = graph_context or {}
 
     @staticmethod
     def _normalize_to_list(value: Any) -> list[Any]:

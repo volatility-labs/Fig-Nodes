@@ -46,6 +46,15 @@ class GraphExecutor:
         ] = []  # Track active tasks for cancellation
         self._build_graph()
 
+    def _build_graph_context(self, node_id: int) -> dict[str, Any]:
+        """Build graph context for a node."""
+        return {
+            "graph_id": self.graph.get("id"),
+            "nodes": self.graph.get("nodes", []),
+            "links": self.graph.get("links", []),
+            "current_node_id": node_id,
+        }
+
     def _build_graph(self):
         for node_data in self.graph.get("nodes", []) or []:
             node_id = node_data["id"]
@@ -53,7 +62,11 @@ class GraphExecutor:
             if node_type not in self.node_registry:
                 raise ValueError(f"Unknown node type: {node_type}")
             properties = node_data.get("properties", {})
-            self.nodes[node_id] = self.node_registry[node_type](node_id, properties)
+
+            # Build graph context for nodes to consume when executing
+            graph_context = self._build_graph_context(node_id)
+
+            self.nodes[node_id] = self.node_registry[node_type](node_id, properties, graph_context)
             input_list = [inp.get("name", "") for inp in node_data.get("inputs", [])]
             if input_list:
                 self.input_names[node_id] = input_list

@@ -22,8 +22,10 @@ def _is_list_of_dicts(value: Any) -> TypeGuard[list[dict[str, Any]]]:
 
 
 class Logging(Base):
-    def __init__(self, id: int, params: dict[str, Any]):
-        super().__init__(id, params)
+    def __init__(
+        self, id: int, params: dict[str, Any], graph_context: dict[str, Any] | None = None
+    ):
+        super().__init__(id, params, graph_context)
         self.last_content_length = 0
         self.logger = logging.getLogger(f"LoggingNode-{self.id}")
 

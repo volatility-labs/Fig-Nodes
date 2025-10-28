@@ -92,8 +92,8 @@ class OllamaChat(Base):
     ]
 
 
-    def __init__(self, id: int, params: Dict[str, Any] = None):
-        super().__init__(id, params)
+    def __init__(self, id: int, params: Dict[str, Any] | None = None, graph_context: dict[str, Any] | None = None):
+        super().__init__(id, params or {}, graph_context)
         self._cancel_event = asyncio.Event()
         # Mark optional inputs at runtime for validation layer
         self.optional_inputs = ["tools", "tool", "messages", "prompt", "system"]

@@ -56,8 +56,10 @@ class OrbFilter(BaseIndicatorFilter):
         {"name": "avg_period", "type": "number", "default": 14, "min": 1, "step": 1},
     ]
 
-    def __init__(self, id: int, params: dict[str, Any]):
-        super().__init__(id, params)
+    def __init__(
+        self, id: int, params: dict[str, Any], graph_context: dict[str, Any] | None = None
+    ):
+        super().__init__(id, params, graph_context)
         self.workers: list[asyncio.Task[NodeOutputs]] = []
         self._max_safe_concurrency = 5
 

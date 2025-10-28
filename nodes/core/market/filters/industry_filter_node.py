@@ -39,8 +39,8 @@ class IndustryFilter(BaseFilter):
         },
     ]
 
-    def __init__(self, id: int, params: dict[str, Any] | None = None):  # Changed from node_id: str
-        super().__init__(id, params or {})
+    def __init__(self, id: int, params: dict[str, Any] | None = None, graph_context: dict[str, Any] | None = None):  # Changed from node_id: str
+        super().__init__(id, params or {}, graph_context)
         allowed_industries_param = self.params.get("allowed_industries", [])
         if isinstance(allowed_industries_param, list):
             self.allowed_industries = [str(ind).lower() for ind in allowed_industries_param]

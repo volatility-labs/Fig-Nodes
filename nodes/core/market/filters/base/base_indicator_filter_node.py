@@ -22,8 +22,8 @@ class BaseIndicatorFilter(BaseFilter):
     }
     CATEGORY = NodeCategory.MARKET
 
-    def __init__(self, id: int, params: dict[str, Any]):  # Explicit constructor for consistency
-        super().__init__(id, params)
+    def __init__(self, id: int, params: dict[str, Any], graph_context: dict[str, Any] | None = None):  # Explicit constructor for consistency
+        super().__init__(id, params, graph_context)
         self.indicators_service = IndicatorsService()
         self._validate_indicator_params()
 

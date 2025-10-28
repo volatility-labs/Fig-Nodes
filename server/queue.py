@@ -1,9 +1,12 @@
 import asyncio
+import logging
 from enum import Enum
 from typing import Any
 
 from fastapi import WebSocket
 from starlette.websockets import WebSocketState
+
+logger = logging.getLogger(__name__)
 
 from core.graph_executor import GraphExecutor
 from core.node_registry import NodeRegistry
@@ -234,21 +237,25 @@ async def execution_worker(queue: ExecutionQueue, node_registry: NodeRegistry):
             progress_msg = ServerToClientProgressMessage(**kwargs)
             _ws_send_async(websocket, progress_msg)
 
-        executor = GraphExecutor(job.graph_data, node_registry)
-        executor.set_progress_callback(guarded_progress_callback)
-
-        status_msg = ServerToClientStatusMessage(
-            type="status", state=ExecutionState.RUNNING, message="Executing batch", job_id=job.id
-        )
-        await _ws_send_sync(websocket, status_msg)
-
-        execution_task = asyncio.create_task(executor.execute())
-        monitor_task = asyncio.create_task(
-            _monitor_cancel(job, websocket, executor, execution_task)
-        )
-
+        execution_task: asyncio.Task[Any] | None = None
+        monitor_task: asyncio.Task[Any] | None = None
         result: ExecutionResult = ExecutionResult.error_result("Unexpected error")
+        
         try:
+            # Create executor inside try block to catch initialization errors
+            executor = GraphExecutor(job.graph_data, node_registry)
+            executor.set_progress_callback(guarded_progress_callback)
+
+            status_msg = ServerToClientStatusMessage(
+                type="status", state=ExecutionState.RUNNING, message="Executing batch", job_id=job.id
+            )
+            await _ws_send_sync(websocket, status_msg)
+
+            execution_task = asyncio.create_task(executor.execute())
+            monitor_task = asyncio.create_task(
+                _monitor_cancel(job, websocket, executor, execution_task)
+            )
+
             results = await execution_task
 
             # Check if we were cancelled during execution
@@ -259,15 +266,20 @@ async def execution_worker(queue: ExecutionQueue, node_registry: NodeRegistry):
 
         except asyncio.CancelledError:
             # Task was cancelled - this is expected
-            result = ExecutionResult.cancelled(by=executor.cancellation_reason or "unknown")
+            cancellation_reason = "unknown"
+            if executor and executor.cancellation_reason:
+                cancellation_reason = executor.cancellation_reason
+            result = ExecutionResult.cancelled(by=cancellation_reason)
         except Exception as e:
+            logger.error(f"Error executing job {job.id}: {e}", exc_info=True)
             result = ExecutionResult.error_result(str(e))
 
         finally:
             # Wait for monitor_task properly
-            if not monitor_task.done():
+            if monitor_task and not monitor_task.done():
                 monitor_task.cancel()
-            await asyncio.gather(monitor_task, return_exceptions=True)
+            if monitor_task:
+                await asyncio.gather(monitor_task, return_exceptions=True)
 
             # Send appropriate message based on result
             if websocket.client_state == WebSocketState.CONNECTED:

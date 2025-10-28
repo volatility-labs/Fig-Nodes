@@ -39,8 +39,8 @@ class BaseIndicator(Base, ABC):
         },
     ]
 
-    def __init__(self, id: int, params: dict[str, Any] = None):
-        super().__init__(id, params)
+    def __init__(self, id: int, params: dict[str, Any] | None = None, graph_context: dict[str, Any] | None = None):
+        super().__init__(id, params or {}, graph_context)
         self.indicators_service = IndicatorsService()
 
     async def _execute_impl(self, inputs: dict[str, Any]) -> dict[str, list[IndicatorResult]]:

@@ -208,8 +208,10 @@ class OpenRouterChat(Base):
         },
     ]
 
-    def __init__(self, id: int, params: dict[str, Any]):
-        super().__init__(id, params)
+    def __init__(
+        self, id: int, params: dict[str, Any], graph_context: dict[str, Any] | None = None
+    ):
+        super().__init__(id, params, graph_context)
         self.optional_inputs = ["tools", "tool", "messages", "prompt", "system"]
         # Maintain seed state for increment mode
         self._seed_state: int | None = None
