@@ -6,6 +6,27 @@ from typing import Any
 import pytz
 
 
+def is_us_market_open() -> bool:
+    """
+    Check if US stock market is currently open (9:30 AM ET - 4:00 PM ET, Mon-Fri).
+
+    Returns:
+        True if market is open, False otherwise.
+    """
+    et_tz = pytz.timezone("US/Eastern")
+    now_et = datetime.now(et_tz)
+
+    # Check if it's a weekday (Monday=0, Sunday=6)
+    if now_et.weekday() >= 5:  # Saturday or Sunday
+        return False
+
+    # Check if within market hours (9:30 AM - 4:00 PM ET)
+    market_open = now_et.replace(hour=9, minute=30, second=0, microsecond=0)
+    market_close = now_et.replace(hour=16, minute=0, second=0, microsecond=0)
+
+    return market_open <= now_et <= market_close
+
+
 def et_time_to_utc_timestamp_ms(year: int, month: int, day: int, hour: int, minute: int) -> int:
     """
     Convert Eastern Time to UTC timestamp in milliseconds.
