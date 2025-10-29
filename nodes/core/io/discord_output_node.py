@@ -1,11 +1,10 @@
 import logging
-from datetime import UTC, datetime
 from typing import Any
 
-import aiohttp
+import httpx
 
 from core.api_key_vault import APIKeyVault
-from core.types_registry import AssetSymbol, NodeCategory, OHLCVBar, get_type
+from core.types_registry import AssetSymbol, NodeCategory, get_type
 from nodes.base.base_node import Base
 
 logger = logging.getLogger(__name__)
@@ -13,218 +12,172 @@ logger = logging.getLogger(__name__)
 
 class DiscordOutput(Base):
     """
-    Node to post OHLCV data summaries to a Discord channel via webhook.
+    Sends a list of symbols to Discord via webhook.
 
-    Inputs:
-    - ohlcv_bundle: OHLCVBundle - The OHLCV data to summarize
-    - execution_summary: str (optional) - Optional graph execution summary
+    Input:
+    - symbols: List[AssetSymbol] - The symbols to send to Discord
+
+    Output:
+    - status: str - Success or error message
 
     Parameters:
-    - include_summary: bool - Whether to include execution summary if provided
-    - max_symbols: int - Maximum number of symbols to include in the message
-    - color_success: str - Hex color for embed (default: green)
+    - message_template: str - Template for the Discord message
+    - max_symbols_display: int - Maximum symbols to show (default: 50)
     """
 
-    inputs = {
-        "ohlcv_bundle": get_type("OHLCVBundle"),
-        "execution_summary": str,
-    }
-    outputs = {}  # No outputs - this is a sink node
-
-    CATEGORY = NodeCategory.IO
-    required_keys = ["DISCORD_WEBHOOK_URL"]
+    inputs = {"symbols": get_type("AssetSymbolList")}
+    outputs = {"status": str}
+    required_keys = []  # Optional key
 
     default_params = {
-        "include_summary": True,
-        "max_symbols": 10,
-        "color_success": "0x00ff00",
-        "include_graph_context": True,
+        "message_template": "📊 **Trading Symbols Update**\n\n{symbol_list}\n\n*Total: {count} symbols*",
+        "max_symbols_display": 50,
     }
 
     params_meta = [
-        {"name": "include_summary", "type": "combo", "default": True, "options": [True, False]},
-        {"name": "max_symbols", "type": "number", "default": 10, "min": 1, "max": 50, "step": 1},
-        {"name": "color_success", "type": "text", "default": "0x00ff00"},
         {
-            "name": "include_graph_context",
-            "type": "combo",
-            "default": True,
-            "options": [True, False],
+            "name": "message_template",
+            "type": "text",
+            "default": "📊 **Trading Symbols Update**\n\n{symbol_list}\n\n*Total: {count} symbols*",
+            "label": "Message Template",
+            "description": "Discord message template. Use {symbol_list} and {count} placeholders.",
+        },
+        {
+            "name": "max_symbols_display",
+            "type": "integer",
+            "default": 50,
+            "label": "Max Symbols to Display",
+            "description": "Maximum number of symbols to display in Discord (default: 50)",
         },
     ]
 
-    def __init__(
-        self, id: int, params: dict[str, Any], graph_context: dict[str, Any] | None = None
-    ):
-        super().__init__(id, params, graph_context)
-        self.optional_inputs = ["execution_summary"]
+    CATEGORY = NodeCategory.IO
+    ui_module = "DiscordOutputNodeUI"
+
+    def _format_symbol_list(self, symbols: list[AssetSymbol], max_display: int) -> str:
+        """Format symbols for Discord display."""
+        if not symbols:
+            return "*(No symbols)*"
+
+        # Group symbols by asset class
+        grouped: dict[str, list[str]] = {}
+
+        for symbol in symbols:
+            # Get the enum name (e.g., "STOCKS", "CRYPTO")
+            if hasattr(symbol.asset_class, "name"):
+                asset_class_name = symbol.asset_class.name
+            else:
+                asset_class_name = str(symbol.asset_class)
+
+            if asset_class_name not in grouped:
+                grouped[asset_class_name] = []
+            grouped[asset_class_name].append(symbol.ticker)
+
+        # Build formatted string with better styling
+        formatted_parts: list[str] = []
+
+        # Add emoji based on asset class
+        asset_class_emoji = {
+            "STOCKS": "📈",
+            "CRYPTO": "₿",
+        }
+
+        for asset_class, tickers in sorted(grouped.items()):
+            # Sort tickers alphabetically
+            tickers.sort()
+
+            # Get emoji for this asset class
+            emoji = asset_class_emoji.get(asset_class, "📊")
+
+            # Format asset class name (capitalize first letter, lowercase rest)
+            display_name = asset_class.capitalize()
+
+            # Check if we need to truncate
+            if len(tickers) > max_display:
+                shown_tickers = tickers[:max_display]
+                remaining = len(tickers) - max_display
+                formatted_parts.append(f"{emoji} **{display_name}** ({len(tickers)} total):")
+                formatted_parts.append(", ".join(f"`{t}`" for t in shown_tickers))
+                formatted_parts.append(f"*...and {remaining} more*")
+            else:
+                formatted_parts.append(f"{emoji} **{display_name}** ({len(tickers)}):")
+                formatted_parts.append(", ".join(f"`{t}`" for t in tickers))
+
+            formatted_parts.append("")  # Empty line between groups
+
+        return "\n".join(formatted_parts).strip()
 
     async def _execute_impl(self, inputs: dict[str, Any]) -> dict[str, Any]:
-        ohlcv_bundle = inputs.get("ohlcv_bundle", {})
-        execution_summary = inputs.get("execution_summary", "")
+        """Send symbols to Discord webhook."""
+        symbols: list[AssetSymbol] = inputs.get("symbols", [])
 
-        if not ohlcv_bundle:
-            logger.warning(f"DiscordOutput node {self.id}: No OHLCV bundle provided")
-            return {}
-
-        # Get webhook URL from vault
-        vault = APIKeyVault()
-        webhook_url = vault.get("DISCORD_WEBHOOK_URL")
-        if not webhook_url:
-            raise ValueError("DISCORD_WEBHOOK_URL not found in API key vault")
-
-        # Format the embeds
-        embeds = self._format_ohlcv_embeds(ohlcv_bundle)
-
-        # Add graph context if enabled
-        if self.params.get("include_graph_context", True):
-            graph_context_embed = self._format_graph_context_embed()
-            if graph_context_embed:
-                embeds.insert(0, graph_context_embed)
-
-        # Add execution summary if provided
-        if execution_summary and self.params.get("include_summary", True):
-            summary_embed: dict[str, Any] = {
-                "title": "📊 Execution Summary",
-                "description": execution_summary,
-                "color": 0x3498DB,
-                "timestamp": datetime.now(UTC).isoformat(),
-            }
-            embeds.insert(0, summary_embed)
-
-        # Post to Discord
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    webhook_url,
-                    json={"embeds": embeds},
-                    timeout=aiohttp.ClientTimeout(total=10),
-                ) as response:
-                    response.raise_for_status()
-                    logger.info(f"DiscordOutput node {self.id}: Successfully posted to Discord")
-                    return {}
-        except aiohttp.ClientError as e:
-            logger.error(f"DiscordOutput node {self.id}: HTTP error posting to Discord: {e}")
-            raise
-        except Exception as e:
-            logger.error(f"DiscordOutput node {self.id}: Unexpected error: {e}")
-            raise
-
-    def _format_graph_context_embed(self) -> dict[str, Any] | None:
-        """Format graph context into a Discord embed."""
-        if not hasattr(self, "graph_context") or not self.graph_context:
-            return None
-
-        nodes = self.graph_context.get("nodes", [])
-        links = self.graph_context.get("links", [])
-        current_node_id = self.graph_context.get("current_node_id")
-        graph_id = self.graph_context.get("graph_id", "unknown")
-
-        # Build workflow description
-        workflow_parts: list[str] = []
-        for node in nodes:
-            node_type = node.get("type", "Unknown")
-            node_id = node.get("id", "?")
-            title = node.get("title", node_type)
-            workflow_parts.append(f"- {title} (ID: {node_id})")
-
-        # Count connections
-        upstream_count = sum(1 for link in links if link.get("target_id") == current_node_id)
-        downstream_count = sum(1 for link in links if link.get("origin_id") == current_node_id)
-
-        description = f"""
-**Graph Workflow:**
-{chr(10).join(workflow_parts[:10])}
-{f"{chr(10)}... and {len(workflow_parts) - 10} more nodes" if len(workflow_parts) > 10 else ""}
-
-**Current Position:** DiscordOutput node (ID: {current_node_id})
-**Connections:** {upstream_count} upstream, {downstream_count} downstream
-"""
-
-        return {
-            "title": "🔗 Graph Context",
-            "description": description,
-            "color": 0x7289DA,  # Discord blurple
-            "timestamp": datetime.now(UTC).isoformat(),
-            "footer": {"text": f"Graph ID: {graph_id}"},
-        }
-
-    def _format_ohlcv_embeds(
-        self, bundle: dict[AssetSymbol, list[OHLCVBar]]
-    ) -> list[dict[str, Any]]:
-        """Format OHLCV bundle data into Discord embeds."""
-        embeds: list[dict[str, Any]] = []
-        max_symbols_param = self.params.get("max_symbols", 10)
-        max_symbols = (
-            int(max_symbols_param) if isinstance(max_symbols_param, int | float | str) else 10
+        logger.info(
+            f"DiscordOutput: Starting execution with {len(symbols) if symbols else 0} symbols"
         )
-        color_str = str(self.params.get("color_success", "0x00ff00"))
-        color = int(color_str, 16)
 
-        for symbol, bars in list(bundle.items())[:max_symbols]:
-            if not bars:
-                continue
+        if not symbols:
+            logger.info("DiscordOutput: No symbols provided, skipping Discord notification")
+            self.report_progress(100.0, "No symbols to send")
+            return {"status": "Skipped (no symbols)"}
 
-            latest = bars[-1]
-            summary = self._calculate_summary(bars)
+        # Get Discord webhook URL from vault
+        webhook_url = APIKeyVault().get("DISCORD_WEBHOOK_URL")
+        logger.info(
+            f"DiscordOutput: Retrieved webhook URL from vault: {'Yes' if webhook_url else 'No'}"
+        )
 
-            # Build fields
-            fields: list[dict[str, Any]] = [
-                {"name": "💰 Current Price", "value": f"${latest['close']:.2f}", "inline": True},
-                {"name": "📈 High", "value": f"${latest['high']:.2f}", "inline": True},
-                {"name": "📉 Low", "value": f"${latest['low']:.2f}", "inline": True},
-                {"name": "📊 Volume", "value": f"{latest['volume']:,.0f}", "inline": True},
-                {"name": "🔢 Bars", "value": str(len(bars)), "inline": True},
-            ]
-
-            # Add price change if multiple bars
-            if len(bars) > 1:
-                change = latest["close"] - bars[0]["open"]
-                change_pct = (change / bars[0]["open"]) * 100
-                change_emoji = "📈" if change >= 0 else "📉"
-                fields.append(
-                    {
-                        "name": f"{change_emoji} Change",
-                        "value": f"{change:+.2f} ({change_pct:+.2f}%)",
-                        "inline": True,
-                    }
-                )
-
-            # Add summary stats
-            fields.extend(
-                [
-                    {
-                        "name": "📊 Avg Price",
-                        "value": f"${summary['avg_price']:.2f}",
-                        "inline": True,
-                    },
-                    {"name": "📈 Range High", "value": f"${summary['high']:.2f}", "inline": True},
-                    {"name": "📉 Range Low", "value": f"${summary['low']:.2f}", "inline": True},
-                ]
+        if not webhook_url:
+            logger.warning(
+                "DiscordOutput: DISCORD_WEBHOOK_URL not set, skipping Discord notification"
             )
+            self.report_progress(100.0, "Webhook URL not configured")
+            return {"status": "Skipped (no webhook URL configured)"}
 
-            embed: dict[str, Any] = {
-                "title": f"📊 {symbol}",
-                "color": color,
-                "fields": fields,
-                "timestamp": datetime.fromtimestamp(latest["timestamp"] / 1000).isoformat(),
-            }
+        # Get parameters
+        message_template_raw = self.params.get(
+            "message_template", self.default_params["message_template"]
+        )
+        message_template: str = (
+            str(message_template_raw)
+            if message_template_raw is not None
+            else str(self.default_params["message_template"])
+        )
+        max_display_raw = self.params.get("max_symbols_display", 50)
+        max_display = int(max_display_raw) if isinstance(max_display_raw, int | float | str) else 50
 
-            embeds.append(embed)
+        # Format symbol list
+        symbol_list_formatted = self._format_symbol_list(symbols, max_display)
 
-        return embeds
+        # Build message
+        message_content: str = message_template.format(
+            symbol_list=symbol_list_formatted, count=len(symbols)
+        )
 
-    def _calculate_summary(self, bars: list[OHLCVBar]) -> dict[str, float]:
-        """Calculate summary statistics for OHLCV bars."""
-        if not bars:
-            return {"avg_price": 0.0, "total_volume": 0.0, "high": 0.0, "low": 0.0}
+        # Discord has a 2000 character limit per message
+        if len(message_content) > 2000:
+            # Truncate and add warning
+            message_content = message_content[:1950] + "\n\n*...message truncated (too long)*"
 
-        prices = [b["close"] for b in bars]
-        volumes = [b["volume"] for b in bars]
+        # Send to Discord
+        try:
+            async with httpx.AsyncClient() as client:
+                payload: dict[str, str] = {"content": message_content, "username": "Fig Nodes Bot"}
 
-        return {
-            "avg_price": sum(prices) / len(prices),
-            "total_volume": sum(volumes),
-            "high": max(b["high"] for b in bars),
-            "low": min(b["low"] for b in bars),
-        }
+                response = await client.post(webhook_url, json=payload, timeout=10.0)
+
+                if response.status_code in [200, 204]:
+                    logger.info(
+                        f"DiscordOutput: Successfully sent {len(symbols)} symbols to Discord"
+                    )
+                    return {"status": f"Success: {len(symbols)} symbols sent to Discord"}
+                else:
+                    error_msg = f"Discord API error: {response.status_code}"
+                    logger.error(f"DiscordOutput: {error_msg}")
+                    return {"status": f"Error: {error_msg}"}
+
+        except httpx.TimeoutException:
+            logger.error("DiscordOutput: Request to Discord timed out")
+            return {"status": "Error: Request timed out"}
+        except Exception as e:
+            logger.error(f"DiscordOutput: Failed to send to Discord: {e}")
+            return {"status": f"Error: {str(e)}"}

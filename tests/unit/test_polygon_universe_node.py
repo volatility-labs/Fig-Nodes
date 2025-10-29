@@ -343,3 +343,315 @@ async def test_polygon_zero_volume_filtered_out(mock_client, mock_vault_get, moc
     assert symbols[0].ticker == "ETH"
 
 
+@pytest.mark.asyncio
+@patch("nodes.custom.polygon.polygon_universe_node._is_us_market_open")
+@patch("core.api_key_vault.APIKeyVault.get")
+@patch("httpx.AsyncClient")
+async def test_polygon_exclude_etfs_filters_out_etfs(mock_client, mock_vault_get, mock_market_open):
+    """Test that exclude_etfs=True filters out ETFs and keeps only stocks"""
+    mock_vault_get.return_value = "test_key"
+    mock_market_open.return_value = True
+    node = PolygonUniverse(id=1, params={"market": "stocks", "exclude_etfs": True})
+
+    # Mock snapshot response with one stock and one ETF
+    mock_get = AsyncMock()
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        "tickers": [
+            {"ticker": "AAPL", "todaysChangePerc": 1.0, "day": {"v": 1000, "c": 150}, "prevDay": {"v": 900, "c": 148}},
+            {"ticker": "SPY", "todaysChangePerc": 0.5, "day": {"v": 2000, "c": 400}, "prevDay": {"v": 1900, "c": 398}},
+        ]
+    }
+
+    # Mock ETF check responses
+    async def mock_get_side_effect(*args, **kwargs):
+        url = args[0] if args else kwargs.get("url", "")
+        if "tickers/SPY" in url:
+            # SPY is an ETF
+            etf_response = MagicMock()
+            etf_response.status_code = 200
+            etf_response.json.return_value = {
+                "results": {"ticker": "SPY", "type": "ETF", "market": "stocks"}
+            }
+            return etf_response
+        elif "tickers/AAPL" in url:
+            # AAPL is a stock
+            stock_response = MagicMock()
+            stock_response.status_code = 200
+            stock_response.json.return_value = {
+                "results": {"ticker": "AAPL", "type": "CS", "market": "stocks"}
+            }
+            return stock_response
+        else:
+            # Snapshot endpoint
+            return mock_response
+
+    mock_get.side_effect = mock_get_side_effect
+    mock_client.return_value.__aenter__.return_value.get = mock_get
+
+    node._execute_inputs = {"api_key": "test_key"}
+    symbols = await node._fetch_symbols()
+    tickers = {s.ticker for s in symbols}
+    # Should only have AAPL (stock), not SPY (ETF)
+    assert tickers == {"AAPL"}
+    assert len(symbols) == 1
+
+
+@pytest.mark.asyncio
+@patch("nodes.custom.polygon.polygon_universe_node._is_us_market_open")
+@patch("core.api_key_vault.APIKeyVault.get")
+@patch("httpx.AsyncClient")
+async def test_polygon_exclude_etfs_false_keeps_only_etfs(mock_client, mock_vault_get, mock_market_open):
+    """Test that exclude_etfs=False keeps only ETFs"""
+    mock_vault_get.return_value = "test_key"
+    mock_market_open.return_value = True
+    node = PolygonUniverse(id=1, params={"market": "stocks", "exclude_etfs": False})
+
+    mock_get = AsyncMock()
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        "tickers": [
+            {"ticker": "AAPL", "todaysChangePerc": 1.0, "day": {"v": 1000, "c": 150}, "prevDay": {"v": 900, "c": 148}},
+            {"ticker": "SPY", "todaysChangePerc": 0.5, "day": {"v": 2000, "c": 400}, "prevDay": {"v": 1900, "c": 398}},
+        ]
+    }
+
+    async def mock_get_side_effect(*args, **kwargs):
+        url = args[0] if args else kwargs.get("url", "")
+        if "tickers/SPY" in url:
+            etf_response = MagicMock()
+            etf_response.status_code = 200
+            etf_response.json.return_value = {
+                "results": {"ticker": "SPY", "type": "ETF", "market": "stocks"}
+            }
+            return etf_response
+        elif "tickers/AAPL" in url:
+            stock_response = MagicMock()
+            stock_response.status_code = 200
+            stock_response.json.return_value = {
+                "results": {"ticker": "AAPL", "type": "CS", "market": "stocks"}
+            }
+            return stock_response
+        else:
+            return mock_response
+
+    mock_get.side_effect = mock_get_side_effect
+    mock_client.return_value.__aenter__.return_value.get = mock_get
+
+    node._execute_inputs = {"api_key": "test_key"}
+    symbols = await node._fetch_symbols()
+    tickers = {s.ticker for s in symbols}
+    # Should only have SPY (ETF), not AAPL (stock)
+    assert tickers == {"SPY"}
+    assert len(symbols) == 1
+
+
+@pytest.mark.asyncio
+@patch("nodes.custom.polygon.polygon_universe_node._is_us_market_open")
+@patch("core.api_key_vault.APIKeyVault.get")
+@patch("httpx.AsyncClient")
+async def test_polygon_etf_check_api_error_defaults_to_not_etf(mock_client, mock_vault_get, mock_market_open):
+    """Test that ETF check API errors default to not ETF (conservative approach)"""
+    mock_vault_get.return_value = "test_key"
+    mock_market_open.return_value = True
+    node = PolygonUniverse(id=1, params={"market": "stocks", "exclude_etfs": True})
+
+    mock_get = AsyncMock()
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        "tickers": [
+            {"ticker": "AAPL", "todaysChangePerc": 1.0, "day": {"v": 1000, "c": 150}, "prevDay": {"v": 900, "c": 148}},
+        ]
+    }
+
+    async def mock_get_side_effect(*args, **kwargs):
+        url = args[0] if args else kwargs.get("url", "")
+        if "tickers/AAPL" in url:
+            # Simulate API error
+            error_response = MagicMock()
+            error_response.status_code = 500
+            error_response.raise_for_status.side_effect = Exception("API Error")
+            return error_response
+        else:
+            return mock_response
+
+    mock_get.side_effect = mock_get_side_effect
+    mock_client.return_value.__aenter__.return_value.get = mock_get
+
+    node._execute_inputs = {"api_key": "test_key"}
+    symbols = await node._fetch_symbols()
+    # Should keep AAPL because API error defaults to not ETF
+    assert len(symbols) == 1
+    assert symbols[0].ticker == "AAPL"
+
+
+@pytest.mark.asyncio
+@patch("nodes.custom.polygon.polygon_universe_node._is_us_market_open")
+@patch("core.api_key_vault.APIKeyVault.get")
+@patch("httpx.AsyncClient")
+async def test_polygon_etf_check_not_applied_to_crypto(mock_client, mock_vault_get, mock_market_open):
+    """Test that ETF check is not applied to crypto market"""
+    mock_vault_get.return_value = "test_key"
+    mock_market_open.return_value = True
+    node = PolygonUniverse(id=1, params={"market": "crypto", "exclude_etfs": True})
+
+    mock_get = AsyncMock()
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        "tickers": [
+            {"ticker": "X:BTCUSD", "todaysChangePerc": 1.0, "day": {"v": 1000, "c": 50000}, "prevDay": {"v": 900, "c": 49500}},
+        ]
+    }
+    mock_get.return_value = mock_response
+    mock_client.return_value.__aenter__.return_value.get = mock_get
+
+    node._execute_inputs = {"api_key": "test_key"}
+    symbols = await node._fetch_symbols()
+    # Should have BTC, ETF check should not be called
+    assert len(symbols) == 1
+    assert symbols[0].ticker == "BTC"
+    # Verify ETF endpoint was not called (only snapshot endpoint called)
+    # mock_get should only be called once for the snapshot endpoint
+    assert mock_get.call_count == 1
+
+
+@pytest.mark.asyncio
+@patch("nodes.custom.polygon.polygon_universe_node._is_us_market_open")
+@patch("core.api_key_vault.APIKeyVault.get")
+@patch("httpx.AsyncClient")
+async def test_polygon_etf_check_with_etp_market_type(mock_client, mock_vault_get, mock_market_open):
+    """Test that ETF check correctly identifies ETFs with market='etp'"""
+    mock_vault_get.return_value = "test_key"
+    mock_market_open.return_value = True
+    node = PolygonUniverse(id=1, params={"market": "stocks", "exclude_etfs": True})
+
+    mock_get = AsyncMock()
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        "tickers": [
+            {"ticker": "QQQ", "todaysChangePerc": 0.3, "day": {"v": 1500, "c": 350}, "prevDay": {"v": 1400, "c": 349}},
+        ]
+    }
+
+    async def mock_get_side_effect(*args, **kwargs):
+        url = args[0] if args else kwargs.get("url", "")
+        if "tickers/QQQ" in url:
+            # QQQ has market='etp' which indicates ETF
+            etf_response = MagicMock()
+            etf_response.status_code = 200
+            etf_response.json.return_value = {
+                "results": {"ticker": "QQQ", "type": "ETF", "market": "etp"}
+            }
+            return etf_response
+        else:
+            return mock_response
+
+    mock_get.side_effect = mock_get_side_effect
+    mock_client.return_value.__aenter__.return_value.get = mock_get
+
+    node._execute_inputs = {"api_key": "test_key"}
+    symbols = await node._fetch_symbols()
+    # Should filter out QQQ because it's an ETF (market='etp')
+    assert len(symbols) == 0
+
+
+@pytest.mark.asyncio
+@patch("nodes.custom.polygon.polygon_universe_node._is_us_market_open")
+@patch("core.api_key_vault.APIKeyVault.get")
+@patch("httpx.AsyncClient")
+async def test_polygon_etf_check_multiple_tickers(mock_client, mock_vault_get, mock_market_open):
+    """Test ETF filtering with multiple tickers (mix of ETFs and stocks)"""
+    mock_vault_get.return_value = "test_key"
+    mock_market_open.return_value = True
+    node = PolygonUniverse(id=1, params={"market": "stocks", "exclude_etfs": True})
+
+    mock_get = AsyncMock()
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        "tickers": [
+            {"ticker": "AAPL", "todaysChangePerc": 1.0, "day": {"v": 1000, "c": 150}, "prevDay": {"v": 900, "c": 148}},
+            {"ticker": "MSFT", "todaysChangePerc": 0.8, "day": {"v": 1200, "c": 300}, "prevDay": {"v": 1100, "c": 298}},
+            {"ticker": "SPY", "todaysChangePerc": 0.5, "day": {"v": 2000, "c": 400}, "prevDay": {"v": 1900, "c": 398}},
+            {"ticker": "QQQ", "todaysChangePerc": 0.3, "day": {"v": 1500, "c": 350}, "prevDay": {"v": 1400, "c": 349}},
+        ]
+    }
+
+    async def mock_get_side_effect(*args, **kwargs):
+        url = args[0] if args else kwargs.get("url", "")
+        if "tickers/SPY" in url or "tickers/QQQ" in url:
+            etf_response = MagicMock()
+            etf_response.status_code = 200
+            ticker = "SPY" if "SPY" in url else "QQQ"
+            etf_response.json.return_value = {
+                "results": {"ticker": ticker, "type": "ETF", "market": "stocks"}
+            }
+            return etf_response
+        elif "tickers/AAPL" in url or "tickers/MSFT" in url:
+            stock_response = MagicMock()
+            stock_response.status_code = 200
+            ticker = "AAPL" if "AAPL" in url else "MSFT"
+            stock_response.json.return_value = {
+                "results": {"ticker": ticker, "type": "CS", "market": "stocks"}
+            }
+            return stock_response
+        else:
+            return mock_response
+
+    mock_get.side_effect = mock_get_side_effect
+    mock_client.return_value.__aenter__.return_value.get = mock_get
+
+    node._execute_inputs = {"api_key": "test_key"}
+    symbols = await node._fetch_symbols()
+    tickers = {s.ticker for s in symbols}
+    # Should only have stocks (AAPL, MSFT), not ETFs (SPY, QQQ)
+    assert tickers == {"AAPL", "MSFT"}
+    assert len(symbols) == 2
+
+
+@pytest.mark.asyncio
+@patch("nodes.custom.polygon.polygon_universe_node._is_us_market_open")
+@patch("core.api_key_vault.APIKeyVault.get")
+@patch("httpx.AsyncClient")
+async def test_polygon_etf_check_otc_market(mock_client, mock_vault_get, mock_market_open):
+    """Test that ETF check is applied to OTC market"""
+    mock_vault_get.return_value = "test_key"
+    mock_market_open.return_value = True
+    node = PolygonUniverse(id=1, params={"market": "otc", "exclude_etfs": True})
+
+    mock_get = AsyncMock()
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        "tickers": [
+            {"ticker": "OTCTEST", "todaysChangePerc": 1.0, "day": {"v": 1000, "c": 5}, "prevDay": {"v": 900, "c": 4.95}},
+        ]
+    }
+
+    async def mock_get_side_effect(*args, **kwargs):
+        url = args[0] if args else kwargs.get("url", "")
+        if "tickers/OTCTEST" in url:
+            stock_response = MagicMock()
+            stock_response.status_code = 200
+            stock_response.json.return_value = {
+                "results": {"ticker": "OTCTEST", "type": "CS", "market": "otc"}
+            }
+            return stock_response
+        else:
+            return mock_response
+
+    mock_get.side_effect = mock_get_side_effect
+    mock_client.return_value.__aenter__.return_value.get = mock_get
+
+    node._execute_inputs = {"api_key": "test_key"}
+    symbols = await node._fetch_symbols()
+    # Should pass because OTC market applies ETF check
+    assert len(symbols) == 1
+    assert symbols[0].ticker == "OTCTEST"
+
+

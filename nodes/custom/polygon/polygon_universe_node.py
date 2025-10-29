@@ -6,6 +6,7 @@ import httpx
 from core.api_key_vault import APIKeyVault
 from core.types_registry import AssetClass, AssetSymbol, get_type
 from nodes.base.base_node import Base
+from services.rate_limiter import RateLimiter, process_with_worker_pool
 from services.time_utils import is_us_market_open
 
 # Type aliases for better readability
@@ -83,7 +84,19 @@ class PolygonUniverse(Base):
             "label": "Include OTC",
             "description": "Include over-the-counter symbols (stocks only)",
         },
+        {
+            "name": "exclude_etfs",
+            "type": "combo",
+            "default": True,
+            "options": [True, False],
+            "label": "Exclude ETFs",
+            "description": "If true, filters out ETFs (keeps only stocks). If false, keeps only ETFs.",
+        },
     ]
+    default_params = {
+        "max_concurrent": 5,  # For concurrent ETF checking
+        "rate_limit_per_second": 95,  # Stay under Polygon's 100/sec limit
+    }
 
     async def _execute_impl(self, inputs: dict[str, Any]) -> dict[str, Any]:
         try:
@@ -121,6 +134,19 @@ class PolygonUniverse(Base):
 
         headers = {"Authorization": f"Bearer {api_key}"}
         symbols: list[AssetSymbol] = []
+
+        # Initialize rate limiter for ETF checks (Polygon allows 100 requests/second)
+        exclude_etfs = self.params.get("exclude_etfs", True)
+        needs_etf_check = market in ["stocks", "otc"] and (
+            exclude_etfs is True or exclude_etfs is False
+        )
+
+        # Get concurrency params
+        max_concurrent_raw = self.params.get("max_concurrent", 5)
+        rate_limit_raw = self.params.get("rate_limit_per_second", 95)
+        max_concurrent = max_concurrent_raw if isinstance(max_concurrent_raw, int) else 5
+        rate_limit = rate_limit_raw if isinstance(rate_limit_raw, int) else 95
+
         async with httpx.AsyncClient() as client:
             response = await client.get(base_url, headers=headers, params=params)
             if response.status_code != 200:
@@ -128,6 +154,10 @@ class PolygonUniverse(Base):
                 raise ValueError(f"Failed to fetch snapshot: {response.status_code} - {error_text}")
             data = response.json()
             tickers_data = data.get("tickers", [])
+            total_tickers = len(tickers_data)
+
+            # Report initial progress after fetching snapshot
+            self.report_progress(5.0, f"Fetched {total_tickers} tickers, processing...")
 
             min_change_perc_raw = self.params.get("min_change_perc")
             min_change_perc = (
@@ -161,8 +191,13 @@ class PolygonUniverse(Base):
             tickers_with_data = 0
             tickers_using_prev_day = 0
             sample_tickers_with_data: list[TickerInfo] = []
+            processed_count = 0
+
+            # Collect ticker candidates that pass non-ETF filters
+            ticker_candidates: list[dict[str, Any]] = []
 
             for res_item in tickers_data:
+                processed_count += 1
                 # Type guard: ensure res is a dict with string keys
                 if not isinstance(res_item, dict):
                     continue
@@ -261,7 +296,7 @@ class PolygonUniverse(Base):
                     filtered_count += 1
                     continue
 
-                # Create AssetSymbol
+                # Parse ticker for crypto/fx markets
                 quote_currency = None
                 base_ticker = ticker
                 if market in ["crypto", "fx"] and ":" in ticker:
@@ -269,6 +304,68 @@ class PolygonUniverse(Base):
                     if len(tick) > 3 and tick[-3:].isalpha() and tick[-3:].isupper():
                         base_ticker = tick[:-3]
                         quote_currency = tick[-3:]
+
+                # Store candidate for ETF check or direct symbol creation
+                ticker_candidates.append(
+                    {
+                        "ticker": ticker,
+                        "res": res,
+                        "base_ticker": base_ticker,
+                        "quote_currency": quote_currency,
+                        "needs_etf_check": needs_etf_check,
+                    }
+                )
+
+            # Phase 1: Concurrent ETF checking for stocks/OTC markets
+            if needs_etf_check and ticker_candidates:
+                self.report_progress(
+                    10.0, f"Checking ETF status for {len(ticker_candidates)} tickers..."
+                )
+
+                rate_limiter = RateLimiter(max_per_second=rate_limit)
+
+                async def check_etf_worker(candidate: dict[str, Any]) -> dict[str, Any]:
+                    """Worker function that checks ETF status."""
+                    ticker = candidate["ticker"]
+                    is_etf = await self._is_etf(ticker, api_key, client)
+                    candidate["is_etf"] = is_etf
+                    return candidate
+
+                # Use worker pool for concurrent ETF checks
+                etf_checked_candidates = await process_with_worker_pool(
+                    items=ticker_candidates,
+                    worker_func=check_etf_worker,
+                    rate_limiter=rate_limiter,
+                    max_concurrent=max_concurrent,
+                    progress_callback=lambda p, t: self.report_progress(
+                        10.0 + (p * 0.7), f"ETF checks: {t}"
+                    ),
+                    stop_flag=lambda: self._is_stopped,
+                    logger_instance=logger,
+                )
+            else:
+                etf_checked_candidates = ticker_candidates
+                for candidate in etf_checked_candidates:
+                    candidate["is_etf"] = False  # Default for non-stocks markets
+
+            # Phase 2: Filter by ETF status and create symbols
+            self.report_progress(80.0, "Creating symbols from filtered tickers...")
+
+            for candidate in etf_checked_candidates:
+                ticker = candidate["ticker"]
+                res = candidate["res"]
+                base_ticker = candidate["base_ticker"]
+                quote_currency = candidate["quote_currency"]
+                is_etf = candidate.get("is_etf", False)
+
+                # Apply ETF filter
+                if needs_etf_check:
+                    if exclude_etfs and is_etf:
+                        filtered_count += 1
+                        continue
+                    if not exclude_etfs and not is_etf:
+                        filtered_count += 1
+                        continue
 
                 # Map market names to existing AssetClass values
                 market_mapping = {
@@ -292,4 +389,48 @@ class PolygonUniverse(Base):
                     )
                 )
 
+            # Report final progress
+            self.report_progress(
+                95.0, f"Completed: {len(symbols)} symbols from {total_tickers} tickers"
+            )
+
         return symbols
+
+    async def _is_etf(self, ticker: str, api_key: str, client: httpx.AsyncClient) -> bool:
+        """
+        Check if a ticker is an ETF using Polygon API v3 reference endpoint.
+
+        Args:
+            ticker: The ticker symbol to check
+            api_key: Polygon API key
+            client: Existing httpx AsyncClient instance
+
+        Returns:
+            True if the ticker is an ETF, False otherwise
+        """
+        url = f"https://api.polygon.io/v3/reference/tickers/{ticker}"
+        params: dict[str, str] = {"apiKey": api_key}
+
+        try:
+            response = await client.get(url, params=params)
+            response.raise_for_status()
+            data = response.json()
+            results = data.get("results", {})
+
+            # Check multiple fields that indicate ETF status
+            market_type = results.get("market", "")
+            type_field = results.get("type", "")
+
+            # Common ETF indicators in Polygon API
+            is_etf = (
+                market_type == "etp"  # Exchange Traded Product
+                or type_field == "ETF"
+                or "etf" in market_type.lower()
+                or "etf" in type_field.lower()
+            )
+
+            return is_etf
+        except Exception as e:
+            logger.warning(f"Failed to fetch ETF status for {ticker}: {e}")
+            # Default to not an ETF when uncertain (conservative approach)
+            return False

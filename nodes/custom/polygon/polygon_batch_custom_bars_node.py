@@ -1,4 +1,3 @@
-import asyncio
 import logging
 from typing import Any
 
@@ -6,7 +5,7 @@ from core.api_key_vault import APIKeyVault
 from core.types_registry import AssetSymbol, OHLCVBar, get_type
 from nodes.base.base_node import Base
 from services.polygon_service import fetch_bars
-from services.rate_limiter import RateLimiter
+from services.rate_limiter import RateLimiter, process_with_worker_pool
 
 logger = logging.getLogger(__name__)
 
@@ -71,18 +70,8 @@ class PolygonBatchCustomBars(Base):
 
     def __init__(self, id: int, params: dict[str, Any], graph_context: dict[str, Any] | None = None):
         super().__init__(id, params, graph_context)
-        self.workers: list[asyncio.Task] = []
         # Conservative cap to avoid event loop thrashing and ensure predictable batching in tests
         self._max_safe_concurrency = 5
-
-    def force_stop(self):
-        if self._is_stopped:
-            return
-        self._is_stopped = True
-        for w in self.workers:
-            if not w.done():
-                w.cancel()
-        self.workers.clear()
 
     async def _execute_impl(
         self, inputs: dict[str, Any]
@@ -96,100 +85,44 @@ class PolygonBatchCustomBars(Base):
         if not api_key:
             raise ValueError("Polygon API key not found in vault")
 
-        max_concurrent = self.params.get("max_concurrent", 10)
-        rate_limit = self.params.get("rate_limit_per_second", 95)
+        max_concurrent_raw = self.params.get("max_concurrent", 10)
+        rate_limit_raw = self.params.get("rate_limit_per_second", 95)
 
-        # Type guards to ensure correct types for RateLimiter
-        if not isinstance(max_concurrent, int):
-            max_concurrent = 10 if max_concurrent is None else max_concurrent
-        if not isinstance(rate_limit, int):
-            rate_limit = int(rate_limit) if rate_limit is not None else 95
+        # Type guards to ensure correct types
+        if not isinstance(max_concurrent_raw, int):
+            max_concurrent = 10
+        else:
+            max_concurrent = max_concurrent_raw
 
-        bundle: dict[AssetSymbol, list[OHLCVBar]] = {}
+        if not isinstance(rate_limit_raw, int):
+            rate_limit = 95
+        else:
+            rate_limit = rate_limit_raw
+
         rate_limiter = RateLimiter(max_per_second=rate_limit)
-        total_symbols = len(symbols)
-        completed_count = 0
-
-        # Use a bounded worker pool to avoid creating one task per symbol (scales to 100k+)
-        queue: asyncio.Queue = asyncio.Queue()
-        for sym in symbols:
-            queue.put_nowait(sym)
-
-        async def worker(worker_id: int):
-            nonlocal completed_count
-            while True:
-                # Check for cancellation before processing next symbol
-                if self._is_stopped:
-                    logger.debug(f"Worker {worker_id} stopped due to _is_stopped flag")
-                    break
-
-                try:
-                    try:
-                        sym = queue.get_nowait()
-                    except asyncio.QueueEmpty:
-                        logger.debug(f"Worker {worker_id} queue empty, finishing")
-                        break
-
-                    try:
-                        # Respect Polygon rate limit
-                        await rate_limiter.acquire()
-
-                        # Check for cancellation again after rate limiting
-                        if self._is_stopped:
-                            logger.debug(f"Worker {worker_id} stopped after rate limiting")
-                            break
-
-                        # Emit early progress to reflect work starting on this symbol
-                        try:
-                            progress_pre = (
-                                (completed_count / total_symbols) * 100 if total_symbols else 0.0
-                            )
-                            progress_text_pre = f"{completed_count}/{total_symbols}"
-                            self.report_progress(progress_pre, progress_text_pre)
-                        except Exception:
-                            # Progress reporting should never break execution
-                            logger.debug("Progress pre-update failed; continuing")
-
-                        # Fetch bars with error handling
-                        try:
-                            bars = await fetch_bars(sym, api_key, self.params)
-                            if bars:
-                                bundle[sym] = bars
-
-                            # Only increment counter on successful completion
-                            completed_count += 1
-                            progress = (completed_count / total_symbols) * 100
-                            progress_text = f"{completed_count}/{total_symbols}"
-                            self.report_progress(progress, progress_text)
-                        except asyncio.CancelledError:
-                            # Coordinate shutdown across workers
-                            self.force_stop()
-                            raise  # Propagate cancellation
-                        except Exception as e:
-                            logger.error(f"Error fetching bars for {sym}: {str(e)}", exc_info=True)
-                            # Continue without adding to bundle
-                    finally:
-                        queue.task_done()
-                except asyncio.CancelledError:
-                    # Also catch cancellations from rate limiter or queue ops
-                    self.force_stop()
-                    raise
-
-        # Enforce a conservative upper bound for concurrency to maintain fairness and predictable timing
         effective_concurrency = min(max_concurrent, self._max_safe_concurrency)
-        self.workers = [
-            asyncio.create_task(worker(i)) for i in range(min(effective_concurrency, total_symbols))
-        ]
 
-        # Gather workers: swallow regular exceptions to allow partial success, but
-        # propagate cancellations to honor caller's intent.
-        if self.workers:
-            results = await asyncio.gather(*self.workers, return_exceptions=True)
-            for res in results:
-                if isinstance(res, asyncio.CancelledError):
-                    # Re-raise cancellation so upstream can handle it
-                    raise res
-                if isinstance(res, Exception):
-                    logger.error(f"Worker task error: {res}", exc_info=True)
+        async def fetch_bars_worker(sym: AssetSymbol) -> tuple[AssetSymbol, list[OHLCVBar]] | None:
+            """Worker function that fetches bars for a symbol."""
+            bars = await fetch_bars(sym, api_key, self.params)
+            return (sym, bars) if bars else None
+
+        # Use shared worker pool to process symbols concurrently
+        results = await process_with_worker_pool(
+            items=symbols,
+            worker_func=fetch_bars_worker,
+            rate_limiter=rate_limiter,
+            max_concurrent=effective_concurrency,
+            progress_callback=self.report_progress,
+            stop_flag=lambda: self._is_stopped,
+            logger_instance=logger,
+        )
+
+        # Build bundle from results (filter out None results)
+        bundle: dict[AssetSymbol, list[OHLCVBar]] = {}
+        for result in results:
+            if result is not None:
+                sym, bars = result
+                bundle[sym] = bars
 
         return {"ohlcv_bundle": bundle}
