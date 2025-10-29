@@ -19,8 +19,8 @@ class PolygonUniverse(Base):
         {"name": "min_volume", "type": "number", "default": None, "optional": True, "label": "Min Volume", "unit": "shares/contracts", "description": "Minimum daily trading volume in shares or contracts"},
         {"name": "min_price", "type": "number", "default": None, "optional": True, "label": "Min Price", "unit": "USD", "description": "Minimum closing price in USD"},
         {"name": "max_price", "type": "number", "default": None, "optional": True, "label": "Max Price", "unit": "USD", "description": "Maximum closing price in USD"},
-        {"name": "include_otc", "type": "boolean", "default": False, "optional": True, "label": "Include OTC", "description": "Include over-the-counter symbols (stocks only)"},
-        {"name": "include_etfs", "type": "boolean", "default": False, "optional": True, "label": "Include ETFs", "description": "Include ETFs/ETPs (stocks only, default: exclude)"},
+        {"name": "include_otc", "type": "combo", "default": False, "options": [True, False], "optional": True, "label": "Include OTC", "description": "Include over-the-counter symbols (stocks only)"},
+        {"name": "include_etfs", "type": "combo", "default": False, "options": [True, False], "optional": True, "label": "Include ETFs", "description": "Include ETFs/ETPs (stocks only, default: exclude)"},
     ]
 
     async def _execute_impl(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
