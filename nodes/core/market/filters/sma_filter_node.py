@@ -51,7 +51,7 @@ class SMAFilter(BaseIndicatorFilter):
             )
 
         last_ts: int = ohlcv_data[-1]["timestamp"]
-        
+
         # Use calendar-aware date calculation instead of hardcoded milliseconds
         # Convert UTC timestamp to datetime, subtract days, convert back to milliseconds
         last_dt = datetime.fromtimestamp(last_ts / 1000, tz=pytz.UTC)

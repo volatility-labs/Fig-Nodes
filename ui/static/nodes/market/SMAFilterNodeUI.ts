@@ -3,17 +3,21 @@ import BaseCustomNode from '../base/BaseCustomNode';
 export default class SMAFilterNodeUI extends BaseCustomNode {
     constructor(title: string, data: any, serviceRegistry: any) {
         super(title, data, serviceRegistry);
-        this.size = [360, 160];
+        this.size = [220, 100];
         this.color = '#2c5530';  // Green theme for market data
         this.bgcolor = '#1a3320';
 
-        // Add convenience buttons
-        this.addWidget('button', 'Preview Filtered', '', () => {
-            this.displayFilteredPreview();
-        }, {});
-        this.addWidget('button', 'Copy Summary', '', () => {
-            this.copySummary();
-        }, {});
+        // After base setup, ensure step is explicitly set on number widgets
+        if (this.widgets && Array.isArray(data?.params)) {
+            data.params.forEach((param: any, index: number) => {
+                const widget = this.widgets && index < this.widgets.length ? this.widgets[index] : null;
+                if (!widget || widget.type !== 'number') return;
+
+                if (param.step !== undefined) {
+                    widget.options.step = param.step;
+                }
+            });
+        }
     }
 
     updateDisplay(result: any) {
@@ -23,33 +27,4 @@ export default class SMAFilterNodeUI extends BaseCustomNode {
         this.setDirtyCanvas(true, true);
     }
 
-    copySummary() {
-        const filteredBundle = (this.result as { filtered_ohlcv_bundle?: Record<string, unknown> })?.filtered_ohlcv_bundle;
-        if (!filteredBundle || Object.keys(filteredBundle).length === 0) {
-            navigator.clipboard.writeText('No assets passed SMA filter');
-            return;
-        }
-
-        const symbolCount = Object.keys(filteredBundle).length;
-        const period = this.properties?.period || 200;
-        const priorDays = this.properties?.prior_days || 1;
-
-        let summary = 'SMA Filter Results:\n';
-        summary += `${symbolCount} asset(s) passed filter\n`;
-        summary += `Period: ${period}\n`;
-        summary += `Prior Days: ${priorDays}\n\n`;
-
-        // Show symbols that passed
-        const symbols = Object.keys(filteredBundle);
-        summary += `Filtered Assets:\n${symbols.join(', ')}`;
-
-        navigator.clipboard.writeText(summary);
-    }
-
-    displayFilteredPreview() {
-        // Trigger execution to get fresh data for preview
-        if (this.graph && this.graph.onExecuteStep) {
-            this.graph.onExecuteStep();
-        }
-    }
 }
