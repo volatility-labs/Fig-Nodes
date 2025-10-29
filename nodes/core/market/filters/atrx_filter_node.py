@@ -9,7 +9,7 @@ from core.types_registry import (
     get_type,
 )
 from nodes.core.market.filters.base.base_indicator_filter_node import BaseIndicatorFilter
-from services.indicator_calculators.atrx_calculator import calculate_atrx
+from services.indicator_calculators.atrx_calculator import calculate_atrx_last_value
 
 logger = logging.getLogger(__name__)
 
@@ -109,9 +109,9 @@ class AtrXFilter(BaseIndicatorFilter):
 
         source_prices = price_map[price_col]
 
-        # Call calculator with lists and smoothing parameter
+        # Call optimized calculator for last value only
         smoothing_str = str(smoothing) if isinstance(smoothing, str) else "RMA"
-        atrx_result = calculate_atrx(
+        atrx_value = calculate_atrx_last_value(
             highs=high_prices,
             lows=low_prices,
             closes=close_prices,
@@ -120,21 +120,7 @@ class AtrXFilter(BaseIndicatorFilter):
             ma_length=ma_length_value,
             smoothing=smoothing_str,
         )
-        atrx_values = atrx_result.get("atrx", [])
 
-        if not atrx_values:
-            return IndicatorResult(
-                indicator_type=IndicatorType.ATRX,
-                timestamp=ohlcv_data[-1]["timestamp"],
-                values=IndicatorValue(single=0.0),
-                params=self.params,
-                error="ATRX calculation returned empty results",
-            )
-
-        # Get last value
-        atrx_value = atrx_values[-1]
-
-        # Handle None
         if atrx_value is None:
             return IndicatorResult(
                 indicator_type=IndicatorType.ATRX,

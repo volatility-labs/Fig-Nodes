@@ -6,7 +6,6 @@ import httpx
 from core.api_key_vault import APIKeyVault
 from core.types_registry import AssetClass, AssetSymbol, get_type
 from nodes.base.base_node import Base
-from services.rate_limiter import RateLimiter, process_with_worker_pool
 from services.time_utils import is_us_market_open
 
 # Type aliases for better readability
@@ -93,10 +92,7 @@ class PolygonUniverse(Base):
             "description": "If true, filters out ETFs (keeps only stocks). If false, keeps only ETFs.",
         },
     ]
-    default_params = {
-        "max_concurrent": 5,  # For concurrent ETF checking
-        "rate_limit_per_second": 95,  # Stay under Polygon's 100/sec limit
-    }
+    default_params = {}
 
     async def _execute_impl(self, inputs: dict[str, Any]) -> dict[str, Any]:
         try:
@@ -127,28 +123,31 @@ class PolygonUniverse(Base):
             locale = "global"
             markets = market
 
-        base_url = f"https://api.polygon.io/v2/snapshot/locale/{locale}/markets/{markets}/tickers"
-        params: dict[str, Any] = {}
-        if market == "otc" or (market == "stocks" and self.params.get("include_otc", False)):
-            params["include_otc"] = True
-
-        headers = {"Authorization": f"Bearer {api_key}"}
-        symbols: list[AssetSymbol] = []
-
-        # Initialize rate limiter for ETF checks (Polygon allows 100 requests/second)
-        exclude_etfs = self.params.get("exclude_etfs", True)
-        needs_etf_check = market in ["stocks", "otc"] and (
-            exclude_etfs is True or exclude_etfs is False
-        )
-
-        # Get concurrency params
-        max_concurrent_raw = self.params.get("max_concurrent", 5)
-        rate_limit_raw = self.params.get("rate_limit_per_second", 95)
-        max_concurrent = max_concurrent_raw if isinstance(max_concurrent_raw, int) else 5
-        rate_limit = rate_limit_raw if isinstance(rate_limit_raw, int) else 95
+        exclude_etfs_raw = self.params.get("exclude_etfs", True)
+        exclude_etfs = exclude_etfs_raw if isinstance(exclude_etfs_raw, bool) else True
+        needs_etf_filter = market in ["stocks", "otc"]
 
         async with httpx.AsyncClient() as client:
-            response = await client.get(base_url, headers=headers, params=params)
+            # Step 1: Fetch filtered ticker list with server-side ETF filtering
+            filtered_ticker_set: set[str] | None = None
+            if needs_etf_filter:
+                self.report_progress(5.0, "Fetching ticker metadata...")
+                filtered_ticker_set = await self._fetch_filtered_tickers(
+                    client, api_key, market, exclude_etfs
+                )
+                self.report_progress(30.0, f"Found {len(filtered_ticker_set)} filtered tickers")
+
+            # Step 2: Fetch snapshot data
+            snapshot_url = (
+                f"https://api.polygon.io/v2/snapshot/locale/{locale}/markets/{markets}/tickers"
+            )
+            snapshot_params: dict[str, Any] = {}
+            if market == "otc" or (market == "stocks" and self.params.get("include_otc", False)):
+                snapshot_params["include_otc"] = True
+
+            headers = {"Authorization": f"Bearer {api_key}"}
+            self.report_progress(35.0, "Fetching snapshot data...")
+            response = await client.get(snapshot_url, headers=headers, params=snapshot_params)
             if response.status_code != 200:
                 error_text = response.text if response.text else response.reason_phrase
                 raise ValueError(f"Failed to fetch snapshot: {response.status_code} - {error_text}")
@@ -156,8 +155,9 @@ class PolygonUniverse(Base):
             tickers_data = data.get("tickers", [])
             total_tickers = len(tickers_data)
 
-            # Report initial progress after fetching snapshot
-            self.report_progress(5.0, f"Fetched {total_tickers} tickers, processing...")
+            self.report_progress(
+                40.0, f"Fetched {total_tickers} tickers from snapshot, processing..."
+            )
 
             min_change_perc_raw = self.params.get("min_change_perc")
             min_change_perc = (
@@ -192,9 +192,7 @@ class PolygonUniverse(Base):
             tickers_using_prev_day = 0
             sample_tickers_with_data: list[TickerInfo] = []
             processed_count = 0
-
-            # Collect ticker candidates that pass non-ETF filters
-            ticker_candidates: list[dict[str, Any]] = []
+            symbols: list[AssetSymbol] = []
 
             for res_item in tickers_data:
                 processed_count += 1
@@ -208,6 +206,12 @@ class PolygonUniverse(Base):
                 if not isinstance(ticker_value, str):
                     continue
                 ticker: str = ticker_value
+
+                # Apply ETF filter using pre-fetched filtered ticker set
+                if filtered_ticker_set is not None:
+                    if ticker not in filtered_ticker_set:
+                        filtered_count += 1
+                        continue
 
                 # Determine which data to use: current day or previous day
                 day_value = res.get("day", {})
@@ -305,73 +309,12 @@ class PolygonUniverse(Base):
                         base_ticker = tick[:-3]
                         quote_currency = tick[-3:]
 
-                # Store candidate for ETF check or direct symbol creation
-                ticker_candidates.append(
-                    {
-                        "ticker": ticker,
-                        "res": res,
-                        "base_ticker": base_ticker,
-                        "quote_currency": quote_currency,
-                        "needs_etf_check": needs_etf_check,
-                    }
-                )
-
-            # Phase 1: Concurrent ETF checking for stocks/OTC markets
-            if needs_etf_check and ticker_candidates:
-                self.report_progress(
-                    10.0, f"Checking ETF status for {len(ticker_candidates)} tickers..."
-                )
-
-                rate_limiter = RateLimiter(max_per_second=rate_limit)
-
-                async def check_etf_worker(candidate: dict[str, Any]) -> dict[str, Any]:
-                    """Worker function that checks ETF status."""
-                    ticker = candidate["ticker"]
-                    is_etf = await self._is_etf(ticker, api_key, client)
-                    candidate["is_etf"] = is_etf
-                    return candidate
-
-                # Use worker pool for concurrent ETF checks
-                etf_checked_candidates = await process_with_worker_pool(
-                    items=ticker_candidates,
-                    worker_func=check_etf_worker,
-                    rate_limiter=rate_limiter,
-                    max_concurrent=max_concurrent,
-                    progress_callback=lambda p, t: self.report_progress(
-                        10.0 + (p * 0.7), f"ETF checks: {t}"
-                    ),
-                    stop_flag=lambda: self._is_stopped,
-                    logger_instance=logger,
-                )
-            else:
-                etf_checked_candidates = ticker_candidates
-                for candidate in etf_checked_candidates:
-                    candidate["is_etf"] = False  # Default for non-stocks markets
-
-            # Phase 2: Filter by ETF status and create symbols
-            self.report_progress(80.0, "Creating symbols from filtered tickers...")
-
-            for candidate in etf_checked_candidates:
-                ticker = candidate["ticker"]
-                res = candidate["res"]
-                base_ticker = candidate["base_ticker"]
-                quote_currency = candidate["quote_currency"]
-                is_etf = candidate.get("is_etf", False)
-
-                # Apply ETF filter
-                if needs_etf_check:
-                    if exclude_etfs and is_etf:
-                        filtered_count += 1
-                        continue
-                    if not exclude_etfs and not is_etf:
-                        filtered_count += 1
-                        continue
-
                 # Map market names to existing AssetClass values
                 market_mapping = {
                     "crypto": AssetClass.CRYPTO,
                     "stocks": AssetClass.STOCKS,
                     "stock": AssetClass.STOCKS,
+                    "otc": AssetClass.STOCKS,
                 }
                 asset_class = market_mapping.get(market.lower(), AssetClass.STOCKS)
 
@@ -396,41 +339,181 @@ class PolygonUniverse(Base):
 
         return symbols
 
-    async def _is_etf(self, ticker: str, api_key: str, client: httpx.AsyncClient) -> bool:
+    async def _fetch_ticker_types(self, client: httpx.AsyncClient, api_key: str) -> set[str]:
         """
-        Check if a ticker is an ETF using Polygon API v3 reference endpoint.
+        Fetch ticker types from Polygon API and identify ETF-related type codes.
 
         Args:
-            ticker: The ticker symbol to check
+            client: httpx AsyncClient instance
             api_key: Polygon API key
-            client: Existing httpx AsyncClient instance
 
         Returns:
-            True if the ticker is an ETF, False otherwise
+            Set of type codes that represent ETFs/ETNs/ETPs
         """
-        url = f"https://api.polygon.io/v3/reference/tickers/{ticker}"
+        url = "https://api.polygon.io/v3/reference/tickers/types"
         params: dict[str, str] = {"apiKey": api_key}
 
         try:
             response = await client.get(url, params=params)
             response.raise_for_status()
             data = response.json()
-            results = data.get("results", {})
+            results = data.get("results", [])
 
-            # Check multiple fields that indicate ETF status
-            market_type = results.get("market", "")
-            type_field = results.get("type", "")
+            etf_type_codes: set[str] = set()
+            for item in results:
+                if not isinstance(item, dict):
+                    continue
 
-            # Common ETF indicators in Polygon API
-            is_etf = (
-                market_type == "etp"  # Exchange Traded Product
-                or type_field == "ETF"
-                or "etf" in market_type.lower()
-                or "etf" in type_field.lower()
-            )
+                # Extract code field with type guard - skip if missing or wrong type
+                if "code" not in item:
+                    continue
+                code_raw: Any = item["code"]
+                if not isinstance(code_raw, str):
+                    continue
+                code: str = code_raw
 
-            return is_etf
+                # Extract description field with type guard
+                description_raw: Any = item["description"] if "description" in item else None
+                description: str = (
+                    description_raw.lower() if isinstance(description_raw, str) else ""
+                )
+
+                type_code: str = code.lower()
+
+                # Identify ETF-related types
+                if (
+                    "etf" in type_code
+                    or "etn" in type_code
+                    or "etp" in type_code
+                    or "exchange traded" in description
+                ):
+                    etf_type_codes.add(code)
+
+            logger.debug(f"Identified ETF type codes: {etf_type_codes}")
+            return etf_type_codes
         except Exception as e:
-            logger.warning(f"Failed to fetch ETF status for {ticker}: {e}")
-            # Default to not an ETF when uncertain (conservative approach)
-            return False
+            logger.warning(f"Failed to fetch ticker types: {e}, using fallback ETF detection")
+            # Fallback: common ETF type codes
+            return {"ETF", "ETN", "ETP"}
+
+    async def _fetch_filtered_tickers(
+        self,
+        client: httpx.AsyncClient,
+        api_key: str,
+        market: str,
+        exclude_etfs: bool,
+    ) -> set[str]:
+        """
+        Fetch filtered ticker list from Polygon API with server-side ETF filtering.
+
+        Args:
+            client: httpx AsyncClient instance
+            api_key: Polygon API key
+            market: Market type (stocks, otc, etc.)
+            exclude_etfs: Whether to exclude ETFs
+
+        Returns:
+            Set of ticker symbols that pass the filters
+        """
+        # Determine market parameter for reference endpoint
+        ref_market = "otc" if market == "otc" else market
+        needs_etf_filter = market in ["stocks", "otc"]
+
+        # Build query parameters
+        ref_params: dict[str, Any] = {
+            "active": True,
+            "limit": 1000,
+            "apiKey": api_key,
+        }
+
+        if market in ["stocks", "otc", "crypto", "fx", "indices"]:
+            ref_params["market"] = ref_market
+
+        # Fetch ETF type codes if we need ETF filtering (either exclude or include only)
+        etf_types: set[str] = set()
+        if needs_etf_filter:
+            etf_types = await self._fetch_ticker_types(client, api_key)
+            # We'll fetch all and filter client-side since Polygon API doesn't support
+            # type exclusion, only inclusion
+
+        ticker_set: set[str] = set()
+        ref_url = "https://api.polygon.io/v3/reference/tickers"
+        next_url: str | None = ref_url
+        page_count = 0
+
+        while next_url:
+            if page_count > 0:
+                # Use next_url with apiKey appended
+                if "?" in next_url:
+                    url_to_fetch = f"{next_url}&apiKey={api_key}"
+                else:
+                    url_to_fetch = f"{next_url}?apiKey={api_key}"
+                response = await client.get(url_to_fetch)
+            else:
+                response = await client.get(ref_url, params=ref_params)
+
+            if response.status_code != 200:
+                logger.warning(
+                    f"Failed to fetch ticker metadata page {page_count + 1}: {response.status_code}"
+                )
+                break
+
+            data = response.json()
+            results = data.get("results", [])
+
+            for item in results:
+                if not isinstance(item, dict):
+                    continue
+
+                # Extract ticker field with type guard - skip if missing or wrong type
+                if "ticker" not in item:
+                    continue
+                ticker_raw: Any = item["ticker"]
+                if not isinstance(ticker_raw, str) or not ticker_raw:
+                    continue
+                ticker: str = ticker_raw
+
+                # Extract type field with type guard
+                ticker_type_raw: Any = item["type"] if "type" in item else None
+                ticker_type: str = ticker_type_raw if isinstance(ticker_type_raw, str) else ""
+
+                # Extract market field with type guard
+                ticker_market_raw: Any = item["market"] if "market" in item else None
+                ticker_market: str = ticker_market_raw if isinstance(ticker_market_raw, str) else ""
+
+                # Apply ETF filtering if needed
+                if etf_types:
+                    is_etf = (
+                        ticker_type in etf_types
+                        or "etf" in ticker_type.lower()
+                        or "etn" in ticker_type.lower()
+                        or "etp" in ticker_type.lower()
+                        or ticker_market == "etp"
+                    )
+                    if exclude_etfs and is_etf:
+                        # Exclude ETFs: skip if it's an ETF
+                        continue
+                    if not exclude_etfs and not is_etf:
+                        # Include only ETFs: skip if it's NOT an ETF
+                        continue
+
+                # Apply OTC filtering for stocks market
+                include_otc = self.params.get("include_otc", False)
+                if market == "stocks" and not include_otc:
+                    if ticker_market == "otc" or ticker_market == "OTC":
+                        continue
+
+                ticker_set.add(ticker)
+
+            # Check for next page
+            next_url = data.get("next_url")
+            page_count += 1
+
+            # Progress reporting
+            if page_count % 5 == 0:
+                self.report_progress(
+                    5.0 + (min(page_count * 20, 25)),
+                    f"Fetched metadata for {len(ticker_set)} tickers (page {page_count})...",
+                )
+
+        return ticker_set
