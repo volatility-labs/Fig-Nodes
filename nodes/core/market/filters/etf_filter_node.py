@@ -7,6 +7,7 @@ import httpx
 from core.api_key_vault import APIKeyVault
 from core.types_registry import AssetSymbol, NodeCategory, OHLCVBar, get_type
 from nodes.core.market.filters.base.base_filter_node import BaseFilter
+from services.rate_limiter import RateLimiter
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +19,7 @@ class ETFFilter(BaseFilter):
     Checks ticker details from Polygon.io API to determine if an asset is an ETF.
     Only keeps non-ETF assets in the output.
     
-    Uses parallel API requests with rate limiting for optimal performance.
+    Uses worker pool pattern with rate limiting for optimal performance.
     """
 
     CATEGORY = NodeCategory.MARKET
@@ -26,7 +27,8 @@ class ETFFilter(BaseFilter):
     outputs = {"filtered_ohlcv_bundle": get_type("OHLCVBundle")}
     default_params = {
         "exclude_etfs": True,  # True = filter out ETFs, False = keep only ETFs
-        "max_concurrent_requests": 20,  # Maximum concurrent API requests
+        "max_concurrent": 5,  # Maximum concurrent workers
+        "rate_limit_per_second": 10,  # API calls per second
     }
     params_meta = [
         {
@@ -38,11 +40,18 @@ class ETFFilter(BaseFilter):
             "description": "If true, filters out ETFs (keeps only stocks). If false, keeps only ETFs.",
         },
         {
-            "name": "max_concurrent_requests",
+            "name": "max_concurrent",
             "type": "integer",
-            "default": 20,
-            "label": "Max Concurrent Requests",
-            "description": "Maximum number of parallel API requests (default: 20)",
+            "default": 5,
+            "label": "Max Concurrent Workers",
+            "description": "Maximum number of concurrent workers (default: 5)",
+        },
+        {
+            "name": "rate_limit_per_second",
+            "type": "integer",
+            "default": 10,
+            "label": "Rate Limit",
+            "description": "API requests per second (default: 10)",
         },
     ]
 
@@ -57,11 +66,19 @@ class ETFFilter(BaseFilter):
     ):
         super().__init__(id, params or {}, graph_context)
         self.exclude_etfs = self.params.get("exclude_etfs", True)
-        self.max_concurrent_requests = self.params.get("max_concurrent_requests", 20)
-        self._semaphore = asyncio.Semaphore(self.max_concurrent_requests)
+        self.max_concurrent = self.params.get("max_concurrent", 5)
+        self.rate_limit_per_second = self.params.get("rate_limit_per_second", 10)
+        self.workers = []
 
-    async def _is_etf(self, symbol: AssetSymbol, api_key: str, client: httpx.AsyncClient) -> bool:
-        """Check if symbol is an ETF using Polygon API with rate limiting."""
+    def force_stop(self):
+        """Cancel all workers on stop."""
+        for w in self.workers:
+            if not w.done():
+                w.cancel()
+        self.workers.clear()
+
+    async def _check_etf(self, symbol: AssetSymbol, api_key: str, client: httpx.AsyncClient, rate_limiter: RateLimiter) -> bool:
+        """Check if symbol is an ETF using Polygon API."""
         ticker = symbol.ticker
         
         # Check cache first
@@ -71,40 +88,39 @@ class ETFFilter(BaseFilter):
         url = f"https://api.polygon.io/v3/reference/tickers/{ticker}"
         params: dict[str, str] = {"apiKey": api_key}
 
-        async with self._semaphore:  # Rate limiting
-            try:
-                response = await client.get(url, params=params, timeout=10.0)
-                response.raise_for_status()
-                data = response.json()
-                results = data.get("results", {})
+        await rate_limiter.acquire()
+        try:
+            response = await client.get(url, params=params, timeout=10.0)
+            response.raise_for_status()
+            data = response.json()
+            results = data.get("results", {})
 
-                # Check multiple fields that indicate ETF status
-                market_type = results.get("market", "")
-                type_field = results.get("type", "")
+            # Check multiple fields that indicate ETF status
+            market_type = results.get("market", "")
+            type_field = results.get("type", "")
 
-                # Common ETF indicators in Polygon API
-                is_etf = (
-                    market_type == "etp"  # Exchange Traded Product
-                    or type_field == "ETF"
-                    or "etf" in market_type.lower()
-                    or "etf" in type_field.lower()
-                )
+            # Common ETF indicators in Polygon API
+            is_etf = (
+                market_type == "etp"  # Exchange Traded Product
+                or type_field == "ETF"
+                or "etf" in market_type.lower()
+                or "etf" in type_field.lower()
+            )
 
-                # Cache the result
-                ETFFilter._etf_cache[ticker] = is_etf
-                return is_etf
-            except Exception as e:
-                logger.warning(f"Failed to fetch ETF status for {symbol}: {e}")
-                # Cache as not an ETF when uncertain
-                ETFFilter._etf_cache[ticker] = False
-                return False
+            # Cache the result
+            ETFFilter._etf_cache[ticker] = is_etf
+            return is_etf
+        except Exception as e:
+            logger.warning(f"Failed to fetch ETF status for {symbol}: {e}")
+            # Cache as not an ETF when uncertain
+            ETFFilter._etf_cache[ticker] = False
+            return False
 
     async def _execute_impl(self, inputs: dict[str, Any]) -> dict[str, Any]:
-        """Optimized execution using parallel API requests with progress reporting."""
+        """Worker pool execution with rate limiting - matches PolygonBatchCustomBars pattern."""
         ohlcv_bundle: dict[AssetSymbol, list[OHLCVBar]] = inputs.get("ohlcv_bundle", {})
 
         if not ohlcv_bundle:
-            self.report_progress(100.0, "No symbols to filter")
             return {"filtered_ohlcv_bundle": {}}
 
         api_key = APIKeyVault().get("POLYGON_API_KEY")
@@ -115,86 +131,61 @@ class ETFFilter(BaseFilter):
         symbols_to_check = [(symbol, ohlcv_data) for symbol, ohlcv_data in ohlcv_bundle.items() if ohlcv_data]
         
         if not symbols_to_check:
-            self.report_progress(100.0, "No valid symbols to filter")
             return {"filtered_ohlcv_bundle": {}}
 
         total_symbols = len(symbols_to_check)
-        action = "Excluding ETFs" if self.exclude_etfs else "Keeping only ETFs"
-        self.report_progress(10.0, f"{action}: checking {total_symbols} symbols...")
-        logger.info(f"ETF Filter: Checking {total_symbols} symbols in parallel...")
-        
-        # Tracking for progress updates
         completed_count = 0
-        filtered_bundle = {}
-        errors = 0
+        etf_results: dict[AssetSymbol, bool] = {}
         
-        # Create a shared HTTP client for all requests
+        # Create queue and rate limiter
+        queue: asyncio.Queue = asyncio.Queue()
+        for sym, _ in symbols_to_check:
+            queue.put_nowait(sym)
+        
+        rate_limiter = RateLimiter(max_per_second=self.rate_limit_per_second)
+        
+        # Create shared HTTP client
         async with httpx.AsyncClient() as client:
-            # Create tasks for all symbols with progress tracking
-            async def check_symbol_with_progress(symbol: AssetSymbol, ohlcv_data: list[OHLCVBar]) -> tuple[AssetSymbol, list[OHLCVBar], bool]:
-                """Check a single symbol and return (symbol, data, should_include)."""
+            async def worker(worker_id: int):
                 nonlocal completed_count
-                try:
-                    is_etf = await self._is_etf(symbol, api_key, client)
-                    # If exclude_etfs is True, include when NOT an ETF
-                    # If exclude_etfs is False, include when IS an ETF
-                    should_include = not is_etf if self.exclude_etfs else is_etf
+                while not queue.empty():
+                    try:
+                        symbol = queue.get_nowait()
+                    except asyncio.QueueEmpty:
+                        break
                     
-                    # Update progress periodically
-                    completed_count += 1
-                    if completed_count % max(1, total_symbols // 10) == 0 or completed_count == total_symbols:
-                        progress = 10.0 + (completed_count / total_symbols * 80.0)  # 10-90%
-                        self.report_progress(
-                            progress,
-                            f"{action}: {completed_count}/{total_symbols} checked"
-                        )
-                    
-                    return (symbol, ohlcv_data, should_include)
-                except Exception as e:
-                    logger.warning(f"Failed to process ETF filter for {symbol}: {e}")
-                    # On error, exclude to be safe
-                    completed_count += 1
-                    return (symbol, ohlcv_data, False)
-
-            # Process all symbols in parallel
-            tasks = [check_symbol_with_progress(symbol, ohlcv_data) for symbol, ohlcv_data in symbols_to_check]
-            results = await asyncio.gather(*tasks, return_exceptions=True)
-
-        # Build filtered bundle from results
-        self.report_progress(90.0, "Building filtered results...")
+                    try:
+                        is_etf = await self._check_etf(symbol, api_key, client, rate_limiter)
+                        etf_results[symbol] = is_etf
+                        
+                        completed_count += 1
+                        # Report progress every 10% or at the end
+                        if completed_count % max(1, total_symbols // 10) == 0 or completed_count == total_symbols:
+                            progress = (completed_count / total_symbols) * 100.0
+                            self.report_progress(progress, f"{completed_count}/{total_symbols}")
+                    except Exception as e:
+                        logger.warning(f"Worker {worker_id} failed to check {symbol}: {e}")
+                        etf_results[symbol] = False  # Default to not ETF on error
+                        completed_count += 1
+            
+            # Start workers
+            self.workers = [asyncio.create_task(worker(i)) for i in range(self.max_concurrent)]
+            await asyncio.gather(*self.workers, return_exceptions=True)
+            self.workers.clear()
         
-        etfs_found = 0
-        stocks_found = 0
-        
-        for result in results:
-            if isinstance(result, Exception):
-                errors += 1
-                logger.error(f"ETF filter task failed: {result}")
-                continue
-            
-            symbol, ohlcv_data, should_include = result
-            
-            # Track what we found for better reporting
-            is_etf = symbol.ticker in ETFFilter._etf_cache and ETFFilter._etf_cache[symbol.ticker]
-            if is_etf:
-                etfs_found += 1
-            else:
-                stocks_found += 1
-            
+        # Build filtered bundle
+        filtered_bundle = {}
+        for symbol, ohlcv_data in symbols_to_check:
+            is_etf = etf_results.get(symbol, False)
+            # If exclude_etfs is True, include when NOT an ETF
+            # If exclude_etfs is False, include when IS an ETF
+            should_include = not is_etf if self.exclude_etfs else is_etf
             if should_include:
                 filtered_bundle[symbol] = ohlcv_data
-
-        # Final status message
-        kept = len(filtered_bundle)
-        removed = total_symbols - kept
-        status_msg = f"Kept {kept}/{total_symbols} symbols ({etfs_found} ETFs, {stocks_found} stocks found)"
-        if errors > 0:
-            status_msg += f", {errors} errors"
         
         logger.info(
-            f"ETF Filter: {status_msg} (cached: {len(ETFFilter._etf_cache)})"
+            f"ETF Filter: Kept {len(filtered_bundle)}/{total_symbols} symbols "
+            f"(cache size: {len(ETFFilter._etf_cache)})"
         )
-        
-        self.report_progress(95.0, status_msg)
 
         return {"filtered_ohlcv_bundle": filtered_bundle}
