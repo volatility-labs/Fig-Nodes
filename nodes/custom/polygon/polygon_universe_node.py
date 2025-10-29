@@ -20,6 +20,7 @@ class PolygonUniverse(Base):
         {"name": "min_price", "type": "number", "default": None, "optional": True, "label": "Min Price", "unit": "USD", "description": "Minimum closing price in USD"},
         {"name": "max_price", "type": "number", "default": None, "optional": True, "label": "Max Price", "unit": "USD", "description": "Maximum closing price in USD"},
         {"name": "include_otc", "type": "boolean", "default": False, "optional": True, "label": "Include OTC", "description": "Include over-the-counter symbols (stocks only)"},
+        {"name": "include_etfs", "type": "boolean", "default": False, "optional": True, "label": "Include ETFs", "description": "Include ETFs/ETPs (stocks only, default: exclude)"},
     ]
 
     async def _execute_impl(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
@@ -112,6 +113,20 @@ class PolygonUniverse(Base):
                     continue
                 if max_price is not None and price > max_price:
                     continue
+
+                # ETF filtering (stocks market only)
+                if market == "stocks" and not self.params.get("include_etfs", False):
+                    # Check if this is an ETF/ETP
+                    ticker_type = res.get("type", "")
+                    ticker_market = res.get("market", "")
+                    is_etf = (
+                        ticker_type == "ETF" or
+                        ticker_market == "etp" or
+                        "etf" in ticker_type.lower() or
+                        "etp" in ticker_market.lower()
+                    )
+                    if is_etf:
+                        continue  # Skip ETFs unless include_etfs is True
 
                 # Create AssetSymbol
                 quote_currency = None
