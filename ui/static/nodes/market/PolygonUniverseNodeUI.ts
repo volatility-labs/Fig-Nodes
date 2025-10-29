@@ -50,6 +50,7 @@ export default class PolygonUniverseNodeUI extends BaseCustomNode {
                 { name: 'min_price', label: 'Min Price', unit: 'USD' },
                 { name: 'max_price', label: 'Max Price', unit: 'USD' },
                 { name: 'include_otc', label: 'Include OTC' },
+                { name: 'include_etfs', label: 'Include ETFs' },
             ];
             params.forEach((param, index) => {
                 const widget = this.widgets && index < this.widgets.length ? this.widgets[index] : null;
