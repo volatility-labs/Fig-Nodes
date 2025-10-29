@@ -4,8 +4,6 @@ export default class LodFilterNodeUI extends BaseCustomNode {
     constructor(title: string, data: any, serviceRegistry: any) {
         super(title, data, serviceRegistry);
         this.size = [360, 120];
-        this.color = '#2c5530';  // Green theme for market data
-        this.bgcolor = '#1a3320';
 
         // After base setup, enhance numeric widget labels with units and ensure step/precision
         if (this.widgets && Array.isArray(data?.params)) {

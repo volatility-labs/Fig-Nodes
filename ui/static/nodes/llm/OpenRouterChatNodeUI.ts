@@ -4,8 +4,6 @@ export default class OpenRouterChatNodeUI extends BaseCustomNode {
     constructor(title: string, data: any, serviceRegistry: any) {
         super(title, data, serviceRegistry);
         this.size = [320, 280];
-        this.color = '#2a4a2a';  // Greenish for OpenRouter
-        this.bgcolor = '#0f1f0f';
 
         // Add tooltip to system input slot
         const systemSlotIndex = this.inputs?.findIndex(inp => inp.name === 'system');
@@ -37,8 +35,6 @@ export default class OpenRouterChatNodeUI extends BaseCustomNode {
         const error = result?.metrics?.error;
         if (error) {
             this.displayText = `❌ Error: ${error}`;
-            this.color = '#722f37';
-            this.bgcolor = '#2d1b1e';
             this.setDirtyCanvas(true, true);
             return;
         }
@@ -65,8 +61,6 @@ export default class OpenRouterChatNodeUI extends BaseCustomNode {
         }
 
         this.displayText = text || '';
-        this.color = '#2a4a2a';
-        this.bgcolor = '#0f1f0f';
         this.setDirtyCanvas(true, true);
     }
 }

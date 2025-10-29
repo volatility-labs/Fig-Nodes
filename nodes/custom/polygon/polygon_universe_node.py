@@ -70,7 +70,7 @@ class PolygonUniverse(Base):
         {
             "name": "max_price",
             "type": "number",
-            "default": 1000000,
+            "default": 999999,
             "label": "Max Price",
             "unit": "USD",
             "description": "Maximum closing price in USD",
@@ -92,7 +92,13 @@ class PolygonUniverse(Base):
             "description": "If true, filters out ETFs (keeps only stocks). If false, keeps only ETFs.",
         },
     ]
-    default_params = {}
+    default_params = {
+        "min_volume": 0,
+        "min_change_perc": -99,
+        "max_change_perc": 100000,
+        "min_price": 0,
+        "max_price": 999999,
+    }
 
     async def _execute_impl(self, inputs: dict[str, Any]) -> dict[str, Any]:
         try:

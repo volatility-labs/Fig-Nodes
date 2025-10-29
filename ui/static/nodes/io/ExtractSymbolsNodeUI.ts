@@ -4,8 +4,6 @@ export default class ExtractSymbolsNodeUI extends BaseCustomNode {
     constructor(title: string, data: any, serviceRegistry: any) {
         super(title, data, serviceRegistry);
         this.size = [200, 90];
-        this.color = '#2c5530';  // Green theme for market data
-        this.bgcolor = '#1a3320';
     }
 
     updateDisplay(result: any) {

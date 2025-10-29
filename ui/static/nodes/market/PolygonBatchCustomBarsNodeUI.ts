@@ -14,8 +14,6 @@ export default class PolygonBatchCustomBarsNodeUI extends BaseCustomNode {
     constructor(title: string, data: any, serviceRegistry: any) {
         super(title, data, serviceRegistry);
         this.size = [380, 200];
-        this.color = '#2c5530';  // Green theme for market data
-        this.bgcolor = '#1a3320';
 
         // Add convenience buttons for batch operations
         this.addWidget('button', 'Preview Bundle', '', () => {

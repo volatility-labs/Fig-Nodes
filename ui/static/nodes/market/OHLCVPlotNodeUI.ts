@@ -18,8 +18,6 @@ export default class OHLCVPlotNodeUI extends BaseCustomNode {
     constructor(title: string, data: any, serviceRegistry: any) {
         super(title, data, serviceRegistry);
         this.size = [500, 360];
-        this.color = '#3949ab';
-        this.bgcolor = '#1c2147';
         this.displayResults = false; // custom canvas rendering
         this.renderer = new OHLCVPlotRenderer(this);
     }

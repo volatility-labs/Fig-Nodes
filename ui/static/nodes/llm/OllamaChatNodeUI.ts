@@ -4,8 +4,6 @@ export default class OllamaChatNodeUI extends BaseCustomNode {
     constructor(title: string, data: any, serviceRegistry: any) {
         super(title, data, serviceRegistry);
         this.size = [320, 300];  // Extra space for host and model selector
-        this.color = '#1f2a44';
-        this.bgcolor = '#0b1220';
 
         // Model refresh before convenience buttons
         this.addWidget('button', 'Refresh Models', '', async () => {
@@ -64,12 +62,8 @@ export default class OllamaChatNodeUI extends BaseCustomNode {
 
         if (error) {
             this.displayText = `❌ Error: ${error}`;
-            this.color = '#722f37';
-            this.bgcolor = '#2d1b1e';
         } else if (typeof text === 'string') {
             this.displayText = text;
-            this.color = '#1f2a44';
-            this.bgcolor = '#0b1220';
         }
         this.setDirtyCanvas(true, true);
     }
@@ -79,8 +73,6 @@ export default class OllamaChatNodeUI extends BaseCustomNode {
         const error = result?.metrics?.error;
         if (error) {
             this.displayText = `❌ Error: ${error}`;
-            this.color = '#722f37';
-            this.bgcolor = '#2d1b1e';
             this.setDirtyCanvas(true, true);
             return;
         }
@@ -98,8 +90,6 @@ export default class OllamaChatNodeUI extends BaseCustomNode {
             text = JSON.stringify(result, null, 2);
         }
         this.displayText = text || '';
-        this.color = '#1f2a44';
-        this.bgcolor = '#0b1220';
         this.setDirtyCanvas(true, true);
     }
 }

@@ -6,7 +6,6 @@ export default class StreamingCustomNode extends BaseCustomNode {
 
     constructor(title: string, data: any, serviceRegistry: any) {
         super(title, data, serviceRegistry);
-        this.color = '#FF00FF'; // Purple for streaming nodes
     }
 
     onStreamUpdate(data: any) {
