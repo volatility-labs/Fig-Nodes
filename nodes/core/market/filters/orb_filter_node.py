@@ -1,13 +1,15 @@
 import asyncio
 import logging
 import math
-import pandas as pd
 from datetime import date, datetime, timedelta
-import pytz
 from typing import Any
+
+import pandas as pd
+import pytz
 
 from core.api_key_vault import APIKeyVault
 from core.types_registry import (
+    AssetClass,
     AssetSymbol,
     IndicatorResult,
     IndicatorType,
@@ -15,7 +17,6 @@ from core.types_registry import (
     NodeOutputs,
     OHLCVBar,
     get_type,
-    AssetClass,
 )
 from nodes.core.market.filters.base.base_indicator_filter_node import BaseIndicatorFilter
 from services.indicator_calculators.orb_calculator import calculate_orb
@@ -55,8 +56,10 @@ class OrbFilter(BaseIndicatorFilter):
         {"name": "avg_period", "type": "number", "default": 14, "min": 1, "step": 1},
     ]
 
-    def __init__(self, id: int, params: dict[str, Any]):
-        super().__init__(id, params)
+    def __init__(
+        self, id: int, params: dict[str, Any], graph_context: dict[str, Any] | None = None
+    ):
+        super().__init__(id, params, graph_context)
         self.workers: list[asyncio.Task[NodeOutputs]] = []
         self._max_safe_concurrency = 5
 
@@ -74,11 +77,11 @@ class OrbFilter(BaseIndicatorFilter):
         rel_vol_threshold = self.params["rel_vol_threshold"]
         avg_period = self.params["avg_period"]
 
-        if not isinstance(or_minutes, (int, float)) or or_minutes <= 0:
+        if not isinstance(or_minutes, int | float) or or_minutes <= 0:
             raise ValueError("Opening range minutes must be positive")
-        if not isinstance(rel_vol_threshold, (int, float)) or rel_vol_threshold < 0:
+        if not isinstance(rel_vol_threshold, int | float) or rel_vol_threshold < 0:
             raise ValueError("Relative volume threshold cannot be negative")
-        if not isinstance(avg_period, (int, float)) or avg_period <= 0:
+        if not isinstance(avg_period, int | float) or avg_period <= 0:
             raise ValueError("Average period must be positive")
 
     async def _calculate_orb_indicator(self, symbol: AssetSymbol, api_key: str) -> IndicatorResult:
@@ -86,20 +89,20 @@ class OrbFilter(BaseIndicatorFilter):
         or_minutes_raw = self.params["or_minutes"]
 
         # Type guard: ensure avg_period is a number
-        if not isinstance(avg_period_raw, (int, float)):
+        if not isinstance(avg_period_raw, int | float):
             raise ValueError(f"avg_period must be a number, got {type(avg_period_raw)}")
 
         avg_period = int(avg_period_raw)
 
         # Type guard: ensure or_minutes is a number
-        if not isinstance(or_minutes_raw, (int, float)):
+        if not isinstance(or_minutes_raw, int | float):
             raise ValueError(f"or_minutes must be a number, got {type(or_minutes_raw)}")
 
         or_minutes = int(or_minutes_raw)
 
-        # Fetch 1-min bars for last avg_period +1 days
+        # Fetch 5-min bars for last avg_period +1 days
         fetch_params = {
-            "multiplier": 1,
+            "multiplier": 5,
             "timespan": "minute",
             "lookback_period": f"{avg_period + 1} days",
             "adjusted": True,
@@ -134,7 +137,7 @@ class OrbFilter(BaseIndicatorFilter):
         direction = result.get("direction", "doji")
 
         # Type guard: ensure rel_vol is a number
-        if not isinstance(rel_vol_raw, (int, float)):
+        if not isinstance(rel_vol_raw, int | float):
             raise ValueError(f"rel_vol must be a number, got {type(rel_vol_raw)}")
 
         rel_vol = float(rel_vol_raw)
@@ -169,7 +172,7 @@ class OrbFilter(BaseIndicatorFilter):
             return False
 
         rel_vol_threshold = self.params.get("rel_vol_threshold", 0.0)
-        if not isinstance(rel_vol_threshold, (int, float)):
+        if not isinstance(rel_vol_threshold, int | float):
             raise ValueError(f"rel_vol_threshold must be a number, got {type(rel_vol_threshold)}")
 
         if rel_vol < float(rel_vol_threshold):
@@ -180,11 +183,13 @@ class OrbFilter(BaseIndicatorFilter):
             return True
         return direction == param_dir
 
-    def _get_target_date_for_orb(self, symbol: AssetSymbol, today_date: date, df: pd.DataFrame) -> date:
+    def _get_target_date_for_orb(
+        self, symbol: AssetSymbol, today_date: date, df: pd.DataFrame
+    ) -> date:
         if symbol.asset_class == AssetClass.CRYPTO:
-            utc_now = datetime.now(pytz.timezone('UTC'))
+            utc_now = datetime.now(pytz.timezone("UTC"))
             return utc_now.date() - timedelta(days=1)
-        sorted_dates = sorted(set(df['date']))
+        sorted_dates = sorted(set(df["date"]))
         if today_date in sorted_dates:
             return today_date
         else:
