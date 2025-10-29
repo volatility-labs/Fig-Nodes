@@ -62,33 +62,47 @@ class DiscordOutput(Base):
         # Group symbols by asset class
         grouped: dict[str, list[str]] = {}
         for symbol in symbols:
-            asset_class = symbol.asset_class.value if hasattr(symbol.asset_class, 'value') else str(symbol.asset_class)
-            if asset_class not in grouped:
-                grouped[asset_class] = []
-            grouped[asset_class].append(symbol.ticker)
-
-        # Build formatted string
-        formatted_parts = []
-        total_shown = 0
-        
-        for asset_class, tickers in grouped.items():
-            tickers_to_show = min(len(tickers), max_display - total_shown)
-            if tickers_to_show <= 0:
-                break
+            # Get the enum name (e.g., "STOCKS", "CRYPTO")
+            if hasattr(symbol.asset_class, 'name'):
+                asset_class_name = symbol.asset_class.name
+            else:
+                asset_class_name = str(symbol.asset_class)
             
+            if asset_class_name not in grouped:
+                grouped[asset_class_name] = []
+            grouped[asset_class_name].append(symbol.ticker)
+
+        # Build formatted string with better styling
+        formatted_parts = []
+        
+        # Add emoji based on asset class
+        asset_class_emoji = {
+            "STOCKS": "📈",
+            "CRYPTO": "₿",
+        }
+        
+        for asset_class, tickers in sorted(grouped.items()):
             # Sort tickers alphabetically
             tickers.sort()
-            shown_tickers = tickers[:tickers_to_show]
             
-            formatted_parts.append(f"**{asset_class.upper()}:**")
-            formatted_parts.append(", ".join(f"`{t}`" for t in shown_tickers))
+            # Get emoji for this asset class
+            emoji = asset_class_emoji.get(asset_class, "📊")
             
-            if len(tickers) > tickers_to_show:
-                remaining = len(tickers) - tickers_to_show
+            # Format asset class name (capitalize first letter, lowercase rest)
+            display_name = asset_class.capitalize()
+            
+            # Check if we need to truncate
+            if len(tickers) > max_display:
+                shown_tickers = tickers[:max_display]
+                remaining = len(tickers) - max_display
+                formatted_parts.append(f"{emoji} **{display_name}** ({len(tickers)} total):")
+                formatted_parts.append(", ".join(f"`{t}`" for t in shown_tickers))
                 formatted_parts.append(f"*...and {remaining} more*")
+            else:
+                formatted_parts.append(f"{emoji} **{display_name}** ({len(tickers)}):")
+                formatted_parts.append(", ".join(f"`{t}`" for t in tickers))
             
             formatted_parts.append("")  # Empty line between groups
-            total_shown += tickers_to_show
 
         return "\n".join(formatted_parts).strip()
 
@@ -96,14 +110,20 @@ class DiscordOutput(Base):
         """Send symbols to Discord webhook."""
         symbols: list[AssetSymbol] = inputs.get("symbols", [])
         
+        logger.info(f"DiscordOutput: Starting execution with {len(symbols) if symbols else 0} symbols")
+        
         if not symbols:
             logger.info("DiscordOutput: No symbols provided, skipping Discord notification")
+            self.report_progress(100.0, "No symbols to send")
             return {"status": "Skipped (no symbols)"}
 
         # Get Discord webhook URL from vault
         webhook_url = APIKeyVault().get("DISCORD_WEBHOOK_URL")
+        logger.info(f"DiscordOutput: Retrieved webhook URL from vault: {'Yes' if webhook_url else 'No'}")
+        
         if not webhook_url:
             logger.warning("DiscordOutput: DISCORD_WEBHOOK_URL not set, skipping Discord notification")
+            self.report_progress(100.0, "Webhook URL not configured")
             return {"status": "Skipped (no webhook URL configured)"}
 
         # Get parameters
