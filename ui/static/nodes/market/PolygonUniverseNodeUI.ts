@@ -44,6 +44,11 @@ export default class PolygonUniverseNodeUI extends BaseCustomNode {
             // For simplicity, hardcode the params here to match
             const params = [
                 { name: 'market', label: 'Market Type' },
+                { name: 'min_change_perc', label: 'Min Change', unit: '%' },
+                { name: 'max_change_perc', label: 'Max Change', unit: '%' },
+                { name: 'min_volume', label: 'Min Volume', unit: 'shares/contracts' },
+                { name: 'min_price', label: 'Min Price', unit: 'USD' },
+                { name: 'max_price', label: 'Max Price', unit: 'USD' },
                 { name: 'include_otc', label: 'Include OTC' },
                 { name: 'include_etfs', label: 'Include ETFs' },
             ];
