@@ -16,8 +16,8 @@ class APIKeyVault:
             load_dotenv(cls._resolve_dotenv_path(), override=True)
             # Cache all keys that start with typical API key prefixes or known keys
             for key, value in os.environ.items():
-                if any(prefix in key.upper() for prefix in ['API', 'KEY', 'TOKEN', 'SECRET']) or \
-                   key in ['POLYGON_API_KEY', 'TAVILY_API_KEY', 'OLLAMA_API_KEY']:
+                if any(prefix in key.upper() for prefix in ['API', 'KEY', 'TOKEN', 'SECRET', 'WEBHOOK']) or \
+                   key in ['POLYGON_API_KEY', 'TAVILY_API_KEY', 'OLLAMA_API_KEY', 'DISCORD_WEBHOOK_URL']:
                     cls._keys[key] = value
         return cls._instance
 
@@ -41,8 +41,8 @@ class APIKeyVault:
         # Return a copy of cached keys plus any new ones from environment
         result = self._keys.copy()
         for key, value in os.environ.items():
-            if any(prefix in key.upper() for prefix in ['API', 'KEY', 'TOKEN', 'SECRET']) or \
-               key in ['POLYGON_API_KEY', 'TAVILY_API_KEY', 'OLLAMA_API_KEY']:
+            if any(prefix in key.upper() for prefix in ['API', 'KEY', 'TOKEN', 'SECRET', 'WEBHOOK']) or \
+               key in ['POLYGON_API_KEY', 'TAVILY_API_KEY', 'OLLAMA_API_KEY', 'DISCORD_WEBHOOK_URL']:
                 result[key] = value
         return result
     
