@@ -90,7 +90,7 @@ class PolygonUniverse(Base):
             next_url = ref_url
             page_count = 0
             
-            while next_url and page_count < 10:  # Limit pages
+            while next_url and page_count < 50:  # Fetch up to 50 pages (50,000 symbols max)
                 if page_count > 0:
                     response = await client.get(next_url + f"&apiKey={api_key}")
                 else:
@@ -102,7 +102,7 @@ class PolygonUniverse(Base):
                 
                 data = response.json()
                 results = data.get("results", [])
-                print(f"DEBUG: Received {len(results)} ticker metadata on page {page_count + 1}")
+                print(f"DEBUG: Received {len(results)} ticker metadata on page {page_count + 1} (total so far: {len(ticker_metadata) + len(results)})")
                 
                 for ticker_info in results:
                     ticker = ticker_info.get("ticker", "")
@@ -112,8 +112,7 @@ class PolygonUniverse(Base):
                 next_url = data.get("next_url")
                 page_count += 1
                 
-                if len(ticker_metadata) >= 1000:
-                    break
+                # No early break - fetch all pages to ensure complete metadata coverage
             
             print(f"DEBUG: Fetched metadata for {len(ticker_metadata)} tickers")
 
