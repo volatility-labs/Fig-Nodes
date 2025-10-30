@@ -71,7 +71,8 @@ class SMAFilter(BaseIndicatorFilter):
 
         # Handle prior_days = 0 case (no slope requirement)
         if self.prior_days == 0:
-            values = IndicatorValue(lines={"current": current_sma, "previous": np.nan})
+            current_price = ohlcv_data[-1]["close"]
+            values = IndicatorValue(lines={"current": current_sma, "previous": np.nan, "price": current_price})
             return IndicatorResult(
                 indicator_type=IndicatorType.SMA,
                 timestamp=last_ts,
@@ -89,10 +90,11 @@ class SMAFilter(BaseIndicatorFilter):
         previous_data: list[OHLCVBar] = [bar for bar in ohlcv_data if bar["timestamp"] < cutoff_ts]
 
         if len(previous_data) < self.period:
+            current_price = ohlcv_data[-1]["close"]
             return IndicatorResult(
                 indicator_type=IndicatorType.SMA,
                 timestamp=last_ts,
-                values=IndicatorValue(lines={"current": np.nan, "previous": np.nan}),
+                values=IndicatorValue(lines={"current": np.nan, "previous": np.nan, "price": current_price}),
                 error="Insufficient data for previous SMA",
             )
 
@@ -106,14 +108,16 @@ class SMAFilter(BaseIndicatorFilter):
         previous_sma: float = previous_sma_raw if previous_sma_raw is not None else np.nan
 
         if np.isnan(previous_sma):
+            current_price = ohlcv_data[-1]["close"]
             return IndicatorResult(
                 indicator_type=IndicatorType.SMA,
                 timestamp=last_ts,
-                values=IndicatorValue(lines={"current": current_sma, "previous": np.nan}),
+                values=IndicatorValue(lines={"current": current_sma, "previous": np.nan, "price": current_price}),
                 error="Unable to compute previous SMA",
             )
 
-        values = IndicatorValue(lines={"current": current_sma, "previous": previous_sma})
+        current_price = ohlcv_data[-1]["close"]
+        values = IndicatorValue(lines={"current": current_sma, "previous": previous_sma, "price": current_price})
         return IndicatorResult(
             indicator_type=IndicatorType.SMA,
             timestamp=last_ts,
@@ -125,16 +129,22 @@ class SMAFilter(BaseIndicatorFilter):
         if indicator_result.error:
             return False
 
-        # If prior_days is 0, no slope requirement - always pass
-        if self.prior_days == 0:
-            lines: dict[str, float] = indicator_result.values.lines
-            current: float = lines.get("current", np.nan)
-            return not np.isnan(current)
-
-        # For prior_days > 0, check that current SMA > previous SMA
         lines: dict[str, float] = indicator_result.values.lines
-        current: float = lines.get("current", np.nan)
-        previous: float = lines.get("previous", np.nan)
-        if np.isnan(current) or np.isnan(previous):
+        current_sma: float = lines.get("current", np.nan)
+        current_price: float = lines.get("price", np.nan)
+
+        # Always require price > current SMA
+        if np.isnan(current_price) or np.isnan(current_sma):
             return False
-        return current > previous
+        if not (current_price > current_sma):
+            return False
+
+        # If prior_days is 0, no slope requirement beyond price > SMA
+        if self.prior_days == 0:
+            return True
+
+        # For prior_days > 0, also check that current SMA > previous SMA (upward slope)
+        previous: float = lines.get("previous", np.nan)
+        if np.isnan(previous):
+            return False
+        return current_sma > previous

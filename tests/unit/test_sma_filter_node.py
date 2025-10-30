@@ -153,6 +153,39 @@ async def test_sma_filter_zero_prior_days(sma_filter_node, sample_ohlcv_bars):
 
 
 @pytest.mark.asyncio
+async def test_sma_filter_price_below_sma_fails(sma_filter_node):
+    """Test that filter fails when price is below SMA."""
+    from unittest.mock import patch
+
+    # Create data where price is below SMA (decreasing prices)
+    bars = []
+    base_ts = 1672531200000
+    for i in range(10):
+        close_price = 120 - (i * 2)  # Decreasing: 120, 118, 116, ...
+        bar = {
+            'timestamp': base_ts + (i * 86400000),
+            'open': close_price + 1,
+            'high': close_price + 2,
+            'low': close_price - 1,
+            'close': close_price,
+            'volume': 1000
+        }
+        bars.append(bar)
+
+    # Mock the calculate_sma function
+    with patch('nodes.core.market.filters.sma_filter_node.calculate_sma') as mock_calculate_sma:
+        mock_calculate_sma.return_value = {"sma": [106.0]}  # SMA = 106, but price = 102
+
+        inputs = {
+            "ohlcv_bundle": {AssetSymbol("TEST", AssetClass.STOCKS): bars}
+        }
+        result = await sma_filter_node.execute(inputs)
+
+        # Should fail because price (102) < SMA (106)
+        assert AssetSymbol("TEST", AssetClass.STOCKS) not in result["filtered_ohlcv_bundle"]
+
+
+@pytest.mark.asyncio
 async def test_sma_filter_large_prior_days(sma_filter_node, sample_ohlcv_bars):
     """Test prior_days larger than available data."""
     sma_filter_node.prior_days = 20  # More than 10 bars
