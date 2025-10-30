@@ -70,7 +70,7 @@ class PolygonUniverse(Base):
         {
             "name": "max_price",
             "type": "number",
-            "default": 999999,
+            "default": 1000000,
             "label": "Max Price",
             "unit": "USD",
             "description": "Maximum closing price in USD",
@@ -92,13 +92,7 @@ class PolygonUniverse(Base):
             "description": "If true, filters out ETFs (keeps only stocks). If false, keeps only ETFs.",
         },
     ]
-    default_params = {
-        "min_volume": 0,
-        "min_change_perc": -99,
-        "max_change_perc": 100000,
-        "min_price": 0,
-        "max_price": 999999,
-    }
+    default_params = {}
 
     async def _execute_impl(self, inputs: dict[str, Any]) -> dict[str, Any]:
         try:
@@ -234,15 +228,14 @@ class PolygonUniverse(Base):
                 else:
                     prev_day = prev_day_value
 
-                # Use prevDay if market is closed OR if current day has no volume
+                # Use prevDay if market is closed. During market hours, only use current day data.
                 volume_day_raw = day.get("v", 0)
                 volume_day = volume_day_raw if isinstance(volume_day_raw, int | float) else 0
 
-                if use_prev_day or volume_day == 0:
-                    # Use previous day data
+                if use_prev_day:
+                    # Market is closed - use previous day data
                     source_name = "prevDay"
-                    if use_prev_day and volume_day == 0:
-                        tickers_using_prev_day += 1
+                    tickers_using_prev_day += 1
 
                     # For prevDay, we don't have change percentage readily available
                     # Skip change percentage filtering when using prevDay during closed hours
@@ -253,6 +246,11 @@ class PolygonUniverse(Base):
 
                     volume_raw = prev_day.get("v", 0)
                     volume = volume_raw if isinstance(volume_raw, int | float) else 0
+                elif volume_day == 0:
+                    # During market hours, if stock hasn't traded yet today, skip it
+                    # Don't fall back to previous day data as that would use yesterday's volume
+                    filtered_count += 1
+                    continue
                 else:
                     # Use current day data
                     source_name = "day"
@@ -267,7 +265,7 @@ class PolygonUniverse(Base):
                     volume_raw = day.get("v", 0)
                     volume = volume_raw if isinstance(volume_raw, int | float) else 0
 
-                # Track tickers with trading data
+                # Track tickers with trading data (only count if we have volume data)
                 if volume > 0:
                     tickers_with_data += 1
                     if len(sample_tickers_with_data) < 3:
