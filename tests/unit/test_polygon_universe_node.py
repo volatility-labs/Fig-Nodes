@@ -234,8 +234,8 @@ async def test_polygon_market_variants_and_otc_flags(mock_client, mock_vault_get
     node_indices = PolygonUniverse(id=2, params={"market": "indices"})
     # FX
     node_fx = PolygonUniverse(id=3, params={"market": "fx"})
-    # OTC flag passed via stocks
-    node_otc = PolygonUniverse(id=4, params={"market": "stocks", "include_otc": True})
+    # OTC market
+    node_otc = PolygonUniverse(id=4, params={"market": "otc"})
 
     # Mock responses for different endpoints
     snapshot_response = MagicMock()
@@ -449,8 +449,8 @@ async def test_polygon_exclude_etfs_filters_out_etfs(mock_client, mock_vault_get
 @patch("nodes.custom.polygon.polygon_universe_node.is_us_market_open")
 @patch("core.api_key_vault.APIKeyVault.get")
 @patch("httpx.AsyncClient")
-async def test_polygon_exclude_etfs_false_keeps_only_etfs(mock_client, mock_vault_get, mock_market_open):
-    """Test that exclude_etfs=False keeps only ETFs"""
+async def test_polygon_exclude_etfs_false_includes_both_etfs_and_stocks(mock_client, mock_vault_get, mock_market_open):
+    """Test that exclude_etfs=False includes both ETFs and stocks"""
     mock_vault_get.return_value = "test_key"
     mock_market_open.return_value = True
     node = PolygonUniverse(id=1, params={"market": "stocks", "exclude_etfs": False})
@@ -498,9 +498,9 @@ async def test_polygon_exclude_etfs_false_keeps_only_etfs(mock_client, mock_vaul
     node._execute_inputs = {"api_key": "test_key"}
     symbols = await node._fetch_symbols()
     tickers = {s.ticker for s in symbols}
-    # Should only have SPY (ETF), not AAPL (stock)
-    assert tickers == {"SPY"}
-    assert len(symbols) == 1
+    # Should have both AAPL (stock) and SPY (ETF)
+    assert tickers == {"AAPL", "SPY"}
+    assert len(symbols) == 2
 
 
 @pytest.mark.asyncio

@@ -61,27 +61,19 @@ class PolygonUniverse(Base):
         },
         {
             "name": "min_price",
-            "type": "number",
-            "default": None,
+            "type": "float",
+            "default": 0.0,
             "label": "Min Price",
             "unit": "USD",
-            "description": "Minimum closing price in USD",
+            "description": "Minimum closing price in USD (0.0 = no filter, supports fractional cents for OTC stocks)",
         },
         {
             "name": "max_price",
-            "type": "number",
-            "default": 1000000,
+            "type": "float",
+            "default": 1000000.0,
             "label": "Max Price",
             "unit": "USD",
-            "description": "Maximum closing price in USD",
-        },
-        {
-            "name": "include_otc",
-            "type": "combo",
-            "default": False,
-            "options": [True, False],
-            "label": "Include OTC",
-            "description": "Include over-the-counter symbols (stocks only)",
+            "description": "Maximum closing price in USD (supports fractional cents for OTC stocks)",
         },
         {
             "name": "exclude_etfs",
@@ -89,7 +81,7 @@ class PolygonUniverse(Base):
             "default": True,
             "options": [True, False],
             "label": "Exclude ETFs",
-            "description": "If true, filters out ETFs (keeps only stocks). If false, keeps only ETFs.",
+            "description": "If true, filters out ETFs (keeps only stocks). If false, includes both ETFs and stocks.",
         },
     ]
     default_params = {}
@@ -137,12 +129,13 @@ class PolygonUniverse(Base):
                 )
                 self.report_progress(30.0, f"Found {len(filtered_ticker_set)} filtered tickers")
 
+
             # Step 2: Fetch snapshot data
             snapshot_url = (
                 f"https://api.polygon.io/v2/snapshot/locale/{locale}/markets/{markets}/tickers"
             )
             snapshot_params: dict[str, Any] = {}
-            if market == "otc" or (market == "stocks" and self.params.get("include_otc", False)):
+            if market == "otc":
                 snapshot_params["include_otc"] = True
 
             headers = {"Authorization": f"Bearer {api_key}"}
@@ -173,7 +166,7 @@ class PolygonUniverse(Base):
             min_volume = min_volume_raw if isinstance(min_volume_raw, int | float) else None
 
             min_price_raw = self.params.get("min_price")
-            min_price = min_price_raw if isinstance(min_price_raw, int | float) else None
+            min_price = min_price_raw if isinstance(min_price_raw, int | float) and min_price_raw > 0.0 else None
 
             max_price_raw = self.params.get("max_price")
             max_price = max_price_raw if isinstance(max_price_raw, int | float) else None
@@ -343,6 +336,40 @@ class PolygonUniverse(Base):
 
         return symbols
 
+
+    async def _create_symbols_from_reference_data(
+        self,
+        client: httpx.AsyncClient,
+        api_key: str,
+        filtered_ticker_set: set[str] | None,
+    ) -> list[AssetSymbol]:
+        """
+        Create AssetSymbol objects directly from reference API data for markets without snapshot data (like OTC).
+        This skips trading data filters since snapshot data is not available.
+        """
+        if not filtered_ticker_set:
+            return []
+
+        # Process all OTC tickers
+        symbols: list[AssetSymbol] = []
+        for ticker in filtered_ticker_set:
+            asset_class = AssetClass.STOCKS
+            metadata = {
+                "original_ticker": ticker,
+                "market": "otc"
+            }
+
+            symbols.append(
+                AssetSymbol(
+                    ticker=ticker,
+                    asset_class=asset_class,
+                    quote_currency=None,
+                    metadata=metadata,
+                )
+            )
+
+        return symbols
+
     async def _fetch_ticker_types(self, client: httpx.AsyncClient, api_key: str) -> set[str]:
         """
         Fetch ticker types from Polygon API and identify ETF-related type codes.
@@ -486,25 +513,26 @@ class PolygonUniverse(Base):
                 ticker_market: str = ticker_market_raw if isinstance(ticker_market_raw, str) else ""
 
                 # Apply ETF filtering if needed
-                if etf_types:
-                    is_etf = (
-                        ticker_type in etf_types
-                        or "etf" in ticker_type.lower()
-                        or "etn" in ticker_type.lower()
-                        or "etp" in ticker_type.lower()
-                        or ticker_market == "etp"
-                    )
-                    if exclude_etfs and is_etf:
-                        # Exclude ETFs: skip if it's an ETF
-                        continue
-                    if not exclude_etfs and not is_etf:
-                        # Include only ETFs: skip if it's NOT an ETF
-                        continue
+                # Always check for ETF status, even if etf_types is empty
+                is_etf = (
+                    (etf_types and ticker_type in etf_types)
+                    or "etf" in ticker_type.lower()
+                    or "etn" in ticker_type.lower()
+                    or "etp" in ticker_type.lower()
+                    or ticker_market == "etp"
+                )
+                if exclude_etfs and is_etf:
+                    # Exclude ETFs: skip if it's an ETF
+                    continue
 
-                # Apply OTC filtering for stocks market
-                include_otc = self.params.get("include_otc", False)
-                if market == "stocks" and not include_otc:
+                # Apply OTC filtering
+                if market == "stocks":
+                    # For stocks market, always exclude OTC (OTC is separate market type)
                     if ticker_market == "otc" or ticker_market == "OTC":
+                        continue
+                elif market == "otc":
+                    # For OTC market, include OTC tickers and all stocks (since OTC is separate from stocks market)
+                    if ticker_market not in ["otc", "OTC", "stocks", "STOCKS"]:
                         continue
 
                 ticker_set.add(ticker)
