@@ -494,6 +494,28 @@ export class EditorInitializer {
             apiKeysBtn.title = 'Manage API keys for external services';
             apiKeysBtn.addEventListener('click', () => this.apiKeyManager.openSettings());
             footerCenter.appendChild(apiKeysBtn);
+
+            // Add Auto-Align button
+            const autoAlignBtn = document.createElement('button');
+            autoAlignBtn.id = 'auto-align-btn';
+            autoAlignBtn.className = 'btn-secondary';
+            autoAlignBtn.textContent = 'Align';
+            autoAlignBtn.title = 'Automatically align nodes based on graph flow';
+            autoAlignBtn.addEventListener('click', () => {
+                try {
+                    const graph = this.serviceRegistry.get('graph') as LGraph;
+                    if (graph) {
+                        import('./GraphAutoAlign').then(({ GraphAutoAlign }) => {
+                            GraphAutoAlign.alignGraph(graph);
+                        }).catch((error) => {
+                            console.error('Failed to auto-align graph:', error);
+                        });
+                    }
+                } catch (error) {
+                    console.error('Failed to auto-align graph:', error);
+                }
+            });
+            footerCenter.appendChild(autoAlignBtn);
         }
     }
 
