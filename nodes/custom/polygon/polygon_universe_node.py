@@ -61,16 +61,16 @@ class PolygonUniverse(Base):
         },
         {
             "name": "min_price",
-            "type": "float",
-            "default": 0.0,
+            "type": "text",
+            "default": "",
             "label": "Min Price",
             "unit": "USD",
-            "description": "Minimum closing price in USD (0.0 = no filter, supports fractional cents for OTC stocks)",
+            "description": "Minimum closing price in USD (leave empty for no filter, supports fractional cents for OTC stocks)",
         },
         {
             "name": "max_price",
-            "type": "float",
-            "default": 1000000.0,
+            "type": "text",
+            "default": "1000000",
             "label": "Max Price",
             "unit": "USD",
             "description": "Maximum closing price in USD (supports fractional cents for OTC stocks)",
@@ -166,10 +166,30 @@ class PolygonUniverse(Base):
             min_volume = min_volume_raw if isinstance(min_volume_raw, int | float) else None
 
             min_price_raw = self.params.get("min_price")
-            min_price = min_price_raw if isinstance(min_price_raw, int | float) and min_price_raw > 0.0 else None
+            if isinstance(min_price_raw, str) and min_price_raw.strip():
+                try:
+                    min_price = float(min_price_raw.strip())
+                    if min_price <= 0.0:
+                        min_price = None
+                except ValueError:
+                    min_price = None
+            elif isinstance(min_price_raw, int | float) and min_price_raw > 0.0:
+                min_price = min_price_raw
+            else:
+                min_price = None
 
             max_price_raw = self.params.get("max_price")
-            max_price = max_price_raw if isinstance(max_price_raw, int | float) else None
+            if isinstance(max_price_raw, str) and max_price_raw.strip():
+                try:
+                    max_price = float(max_price_raw.strip())
+                    if max_price <= 0.0:
+                        max_price = None
+                except ValueError:
+                    max_price = None
+            elif isinstance(max_price_raw, int | float) and max_price_raw > 0.0:
+                max_price = max_price_raw
+            else:
+                max_price = None
 
             # Validate change percentage range if both provided
             if min_change_perc is not None and max_change_perc is not None:
