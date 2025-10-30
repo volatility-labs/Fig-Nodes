@@ -1,6 +1,6 @@
 import BaseCustomNode from '../base/BaseCustomNode';
 
-export default class SMAFilterNodeUI extends BaseCustomNode {
+export default class MovingAverageFilterNodeUI extends BaseCustomNode {
     constructor(title: string, data: any, serviceRegistry: any) {
         super(title, data, serviceRegistry);
         this.size = [220, 100];
@@ -26,3 +26,4 @@ export default class SMAFilterNodeUI extends BaseCustomNode {
     }
 
 }
+
