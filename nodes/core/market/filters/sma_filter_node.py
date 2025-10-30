@@ -15,7 +15,7 @@ class SMAFilter(BaseIndicatorFilter):
     default_params = {"period": 200, "prior_days": 1}
     params_meta = [
         {"name": "period", "type": "number", "default": 200, "min": 2, "step": 1},
-        {"name": "prior_days", "type": "number", "default": 1, "min": 1, "step": 1},
+        {"name": "prior_days", "type": "number", "default": 1, "min": 0, "step": 1},
     ]
 
     def _validate_indicator_params(self):
@@ -52,23 +52,6 @@ class SMAFilter(BaseIndicatorFilter):
 
         last_ts: int = ohlcv_data[-1]["timestamp"]
 
-        # Use calendar-aware date calculation instead of hardcoded milliseconds
-        # Convert UTC timestamp to datetime, subtract days, convert back to milliseconds
-        last_dt = datetime.fromtimestamp(last_ts / 1000, tz=pytz.UTC)
-        cutoff_dt = last_dt - timedelta(days=self.prior_days)
-        cutoff_ts: int = int(cutoff_dt.timestamp() * 1000)
-
-        # Filter previous data manually by timestamp
-        previous_data: list[OHLCVBar] = [bar for bar in ohlcv_data if bar["timestamp"] < cutoff_ts]
-
-        if len(previous_data) < self.period:
-            return IndicatorResult(
-                indicator_type=IndicatorType.SMA,
-                timestamp=last_ts,
-                values=IndicatorValue(lines={"current": np.nan, "previous": np.nan}),
-                error="Insufficient data for previous SMA",
-            )
-
         # Calculate current SMA using the calculator
         current_close_prices: list[float] = [bar["close"] for bar in ohlcv_data]
         current_sma_result: dict[str, list[float | None]] = calculate_sma(
@@ -84,6 +67,33 @@ class SMAFilter(BaseIndicatorFilter):
                 timestamp=last_ts,
                 values=IndicatorValue(lines={}),
                 error="Unable to compute current SMA",
+            )
+
+        # Handle prior_days = 0 case (no slope requirement)
+        if self.prior_days == 0:
+            values = IndicatorValue(lines={"current": current_sma, "previous": np.nan})
+            return IndicatorResult(
+                indicator_type=IndicatorType.SMA,
+                timestamp=last_ts,
+                values=values,
+                params={"period": self.period},
+            )
+
+        # Use calendar-aware date calculation instead of hardcoded milliseconds
+        # Convert UTC timestamp to datetime, subtract days, convert back to milliseconds
+        last_dt = datetime.fromtimestamp(last_ts / 1000, tz=pytz.UTC)
+        cutoff_dt = last_dt - timedelta(days=self.prior_days)
+        cutoff_ts: int = int(cutoff_dt.timestamp() * 1000)
+
+        # Filter previous data manually by timestamp
+        previous_data: list[OHLCVBar] = [bar for bar in ohlcv_data if bar["timestamp"] < cutoff_ts]
+
+        if len(previous_data) < self.period:
+            return IndicatorResult(
+                indicator_type=IndicatorType.SMA,
+                timestamp=last_ts,
+                values=IndicatorValue(lines={"current": np.nan, "previous": np.nan}),
+                error="Insufficient data for previous SMA",
             )
 
         # Calculate previous SMA using the calculator
@@ -114,6 +124,14 @@ class SMAFilter(BaseIndicatorFilter):
     def _should_pass_filter(self, indicator_result: IndicatorResult) -> bool:
         if indicator_result.error:
             return False
+
+        # If prior_days is 0, no slope requirement - always pass
+        if self.prior_days == 0:
+            lines: dict[str, float] = indicator_result.values.lines
+            current: float = lines.get("current", np.nan)
+            return not np.isnan(current)
+
+        # For prior_days > 0, check that current SMA > previous SMA
         lines: dict[str, float] = indicator_result.values.lines
         current: float = lines.get("current", np.nan)
         previous: float = lines.get("previous", np.nan)

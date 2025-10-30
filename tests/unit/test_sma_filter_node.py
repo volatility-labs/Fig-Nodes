@@ -4,7 +4,7 @@ import numpy as np
 from typing import List
 from nodes.core.market.filters.sma_filter_node import SMAFilter
 from core.types_registry import OHLCVBar, AssetSymbol, IndicatorResult, IndicatorType, AssetClass
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 @pytest.fixture
 def sma_filter_node():
@@ -79,14 +79,16 @@ async def test_sma_filter_insufficient_data(sma_filter_node):
 @pytest.mark.asyncio
 async def test_sma_filter_nan_values(sma_filter_node, sample_ohlcv_bars):
     """Test handling of NaN in SMA calculations."""
-    sma_filter_node.indicators_service.calculate_sma.return_value = np.nan
+    # Mock the calculate_sma function to return NaN values
+    with patch('nodes.core.market.filters.sma_filter_node.calculate_sma') as mock_calculate_sma:
+        mock_calculate_sma.return_value = {"sma": [np.nan]}
 
-    inputs = {
-        "ohlcv_bundle": {AssetSymbol("TEST", AssetClass.STOCKS): sample_ohlcv_bars}
-    }
-    result = await sma_filter_node.execute(inputs)
+        inputs = {
+            "ohlcv_bundle": {AssetSymbol("TEST", AssetClass.STOCKS): sample_ohlcv_bars}
+        }
+        result = await sma_filter_node.execute(inputs)
 
-    assert AssetSymbol("TEST", AssetClass.STOCKS) not in result["filtered_ohlcv_bundle"]  # Should not pass due to NaN
+        assert AssetSymbol("TEST", AssetClass.STOCKS) not in result["filtered_ohlcv_bundle"]  # Should not pass due to NaN
 
 
 @pytest.mark.asyncio
