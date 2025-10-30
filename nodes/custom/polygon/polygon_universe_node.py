@@ -228,15 +228,14 @@ class PolygonUniverse(Base):
                 else:
                     prev_day = prev_day_value
 
-                # Use prevDay if market is closed OR if current day has no volume
+                # Use prevDay if market is closed. During market hours, only use current day data.
                 volume_day_raw = day.get("v", 0)
                 volume_day = volume_day_raw if isinstance(volume_day_raw, int | float) else 0
 
-                if use_prev_day or volume_day == 0:
-                    # Use previous day data
+                if use_prev_day:
+                    # Market is closed - use previous day data
                     source_name = "prevDay"
-                    if use_prev_day and volume_day == 0:
-                        tickers_using_prev_day += 1
+                    tickers_using_prev_day += 1
 
                     # For prevDay, we don't have change percentage readily available
                     # Skip change percentage filtering when using prevDay during closed hours
@@ -247,6 +246,11 @@ class PolygonUniverse(Base):
 
                     volume_raw = prev_day.get("v", 0)
                     volume = volume_raw if isinstance(volume_raw, int | float) else 0
+                elif volume_day == 0:
+                    # During market hours, if stock hasn't traded yet today, skip it
+                    # Don't fall back to previous day data as that would use yesterday's volume
+                    filtered_count += 1
+                    continue
                 else:
                     # Use current day data
                     source_name = "day"
@@ -261,7 +265,7 @@ class PolygonUniverse(Base):
                     volume_raw = day.get("v", 0)
                     volume = volume_raw if isinstance(volume_raw, int | float) else 0
 
-                # Track tickers with trading data
+                # Track tickers with trading data (only count if we have volume data)
                 if volume > 0:
                     tickers_with_data += 1
                     if len(sample_tickers_with_data) < 3:
