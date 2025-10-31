@@ -9,8 +9,9 @@ class TestStockChartsViewer:
 
     def test_node_attributes(self):
         """Test that node has correct inputs, outputs, and category."""
-        assert StockChartsViewer.inputs == {"symbol": str}
-        assert StockChartsViewer.outputs == {"url": str, "status": str}
+        from typing import Any, List
+        assert StockChartsViewer.inputs == {"symbol": Any}  # Any type
+        assert StockChartsViewer.outputs == {"urls": List[str], "status": str, "count": int}
         assert StockChartsViewer.CATEGORY.name == "IO"
 
     def test_default_params(self):
@@ -18,6 +19,7 @@ class TestStockChartsViewer:
         expected_defaults = {
             "auto_open": True,
             "chart_style": "c",
+            "max_tabs": 10,
         }
         assert StockChartsViewer.default_params == expected_defaults
 
@@ -53,8 +55,9 @@ class TestStockChartsViewer:
             mock_open_tab.assert_called_once_with("https://stockcharts.com/sc3/ui/?s=TSLA")
 
             # Check result
-            assert result["url"] == "https://stockcharts.com/sc3/ui/?s=TSLA"
-            assert "Successfully opened chart for TSLA in browser" in result["status"]
+            assert result["urls"] == ["https://stockcharts.com/sc3/ui/?s=TSLA"]
+            assert "Successfully opened 1 chart(s) in browser" in result["status"]
+            assert result["count"] == 1
 
     @pytest.mark.asyncio
     async def test_execute_with_valid_symbol_no_auto_open(self):
@@ -64,8 +67,9 @@ class TestStockChartsViewer:
         result = await node._execute_impl({"symbol": "AAPL"})
 
         # Check result
-        assert result["url"] == "https://stockcharts.com/sc3/ui/?s=AAPL"
-        assert "Generated chart URL for AAPL (auto-open disabled)" in result["status"]
+        assert result["urls"] == ["https://stockcharts.com/sc3/ui/?s=AAPL"]
+        assert "Generated 1 chart URL(s) (auto-open disabled)" in result["status"]
+        assert result["count"] == 1
 
     @pytest.mark.asyncio
     async def test_execute_with_no_symbol(self):
@@ -74,8 +78,9 @@ class TestStockChartsViewer:
 
         result = await node._execute_impl({})
 
-        assert result["url"] == ""
-        assert result["status"] == "No symbol provided"
+        assert result["urls"] == []
+        assert result["status"] == "No valid symbols provided"
+        assert result["count"] == 0
 
     @pytest.mark.asyncio
     async def test_execute_with_empty_symbol(self):
@@ -84,8 +89,9 @@ class TestStockChartsViewer:
 
         result = await node._execute_impl({"symbol": ""})
 
-        assert result["url"] == ""
-        assert result["status"] == "No symbol provided"
+        assert result["urls"] == []
+        assert result["status"] == "No valid symbols provided"
+        assert result["count"] == 0
 
     @pytest.mark.asyncio
     async def test_execute_browser_open_fails(self):
@@ -95,8 +101,9 @@ class TestStockChartsViewer:
         with patch('webbrowser.open_new_tab', side_effect=Exception("Browser error")):
             result = await node._execute_impl({"symbol": "MSFT"})
 
-            assert result["url"] == "https://stockcharts.com/sc3/ui/?s=MSFT"
-            assert "Generated URL but failed to open browser: Browser error" in result["status"]
+            assert result["urls"] == ["https://stockcharts.com/sc3/ui/?s=MSFT"]
+            assert "Opened 0/1 charts in browser (some failed)" in result["status"]
+            assert result["count"] == 1
 
     @pytest.mark.asyncio
     async def test_execute_with_different_chart_styles(self):
@@ -107,5 +114,90 @@ class TestStockChartsViewer:
 
         result = await node._execute_impl({"symbol": "GOOGL"})
 
-        assert result["url"] == "https://stockcharts.com/sc3/ui/?s=GOOGL"
-        assert "Generated chart URL for GOOGL" in result["status"]
+        assert result["urls"] == ["https://stockcharts.com/sc3/ui/?s=GOOGL"]
+        assert "Generated 1 chart URL(s) (auto-open disabled)" in result["status"]
+        assert result["count"] == 1
+
+    @pytest.mark.asyncio
+    async def test_execute_with_multiple_symbols(self):
+        """Test execution with multiple symbols."""
+        node = StockChartsViewer(1, {"auto_open": False})
+
+        with patch('webbrowser.open_new_tab') as mock_open_tab:
+            result = await node._execute_impl({"symbol": ["TSLA", "AAPL", "GOOGL"]})
+
+            # Should not open browser (auto_open=False)
+            mock_open_tab.assert_not_called()
+
+            # Check results
+            expected_urls = [
+                "https://stockcharts.com/sc3/ui/?s=TSLA",
+                "https://stockcharts.com/sc3/ui/?s=AAPL",
+                "https://stockcharts.com/sc3/ui/?s=GOOGL"
+            ]
+            assert result["urls"] == expected_urls
+            assert "Generated 3 chart URL(s) (auto-open disabled)" in result["status"]
+            assert result["count"] == 3
+
+    @pytest.mark.asyncio
+    async def test_execute_with_multiple_symbols_auto_open(self):
+        """Test execution with multiple symbols and auto-open enabled."""
+        node = StockChartsViewer(1, {"auto_open": True, "max_tabs": 5})
+
+        with patch('webbrowser.open_new_tab') as mock_open_tab:
+            result = await node._execute_impl({"symbol": ["TSLA", "AAPL"]})
+
+            # Should open 2 tabs
+            assert mock_open_tab.call_count == 2
+            mock_open_tab.assert_any_call("https://stockcharts.com/sc3/ui/?s=TSLA")
+            mock_open_tab.assert_any_call("https://stockcharts.com/sc3/ui/?s=AAPL")
+
+            # Check results
+            expected_urls = [
+                "https://stockcharts.com/sc3/ui/?s=TSLA",
+                "https://stockcharts.com/sc3/ui/?s=AAPL"
+            ]
+            assert result["urls"] == expected_urls
+            assert "Successfully opened 2 chart(s) in browser" in result["status"]
+            assert result["count"] == 2
+
+    @pytest.mark.asyncio
+    async def test_execute_max_tabs_limit(self):
+        """Test that max_tabs parameter limits the number of tabs opened."""
+        node = StockChartsViewer(1, {"auto_open": False, "max_tabs": 2})
+
+        result = await node._execute_impl({"symbol": ["TSLA", "AAPL", "GOOGL", "MSFT"]})
+
+        # Should only process first 2 symbols due to max_tabs limit
+        expected_urls = [
+            "https://stockcharts.com/sc3/ui/?s=TSLA",
+            "https://stockcharts.com/sc3/ui/?s=AAPL"
+        ]
+        assert result["urls"] == expected_urls
+        assert result["count"] == 2
+
+    @pytest.mark.asyncio
+    async def test_extract_symbols_from_asset_symbols(self):
+        """Test extracting symbols from AssetSymbol objects."""
+        from core.types_registry import AssetSymbol
+
+        node = StockChartsViewer(1, {})
+
+        # Create mock AssetSymbol objects
+        asset1 = AssetSymbol(ticker="TSLA", asset_class="stocks", quote_currency="USD")
+        asset2 = AssetSymbol(ticker="AAPL", asset_class="stocks", quote_currency="USD")
+
+        symbols = node._extract_symbols([asset1, asset2])
+        assert symbols == ["TSLA", "AAPL"]
+
+    @pytest.mark.asyncio
+    async def test_extract_symbols_mixed_input(self):
+        """Test extracting symbols from mixed input types."""
+        from core.types_registry import AssetSymbol
+
+        node = StockChartsViewer(1, {})
+
+        asset = AssetSymbol(ticker="TSLA", asset_class="stocks", quote_currency="USD")
+
+        symbols = node._extract_symbols(["AAPL", asset, "GOOGL"])
+        assert symbols == ["AAPL", "TSLA", "GOOGL"]
