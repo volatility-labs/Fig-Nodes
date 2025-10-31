@@ -110,9 +110,16 @@ class OrbFilter(BaseIndicatorFilter):
             "limit": 50000,
         }
 
+        logger.info("=" * 80)
+        logger.info(f"ORB_FILTER: Starting bar fetch for {symbol.ticker} ({symbol.asset_class})")
+        logger.info(f"ORB_FILTER: Fetch params: {fetch_params}")
+        logger.info(f"ORB_FILTER: Request time: {datetime.now(pytz.timezone('US/Eastern'))}")
+        logger.info("=" * 80)
+
         bars = await fetch_bars(symbol, api_key, fetch_params)
 
         if not bars:
+            logger.warning(f"ORB_FILTER: No bars returned for {symbol.ticker}")
             return IndicatorResult(
                 indicator_type=IndicatorType.ORB,
                 timestamp=0,
@@ -120,6 +127,31 @@ class OrbFilter(BaseIndicatorFilter):
                 params=self.params,
                 error="No bars fetched",
             )
+        
+        # Log bar details for delay analysis
+        if bars:
+            from services.time_utils import utc_timestamp_ms_to_et_datetime
+            current_time_et = datetime.now(pytz.timezone("US/Eastern"))
+            first_bar_time = utc_timestamp_ms_to_et_datetime(bars[0]["timestamp"])
+            last_bar_time = utc_timestamp_ms_to_et_datetime(bars[-1]["timestamp"])
+            time_diff = current_time_et - last_bar_time
+            delay_minutes = time_diff.total_seconds() / 60
+            
+            logger.info("=" * 80)
+            logger.info(f"ORB_FILTER: Bars received for {symbol.ticker}")
+            logger.info(f"ORB_FILTER: Total bars: {len(bars)}")
+            logger.info(f"ORB_FILTER: First bar timestamp (ET): {first_bar_time}")
+            logger.info(f"ORB_FILTER: Last bar timestamp (ET): {last_bar_time}")
+            logger.info(f"ORB_FILTER: Current time (ET): {current_time_et}")
+            logger.info(f"ORB_FILTER: Delay from last bar: {delay_minutes:.2f} minutes")
+            
+            if delay_minutes < 5:
+                logger.info(f"ORB_FILTER: ✅ Data appears REAL-TIME for {symbol.ticker}")
+            elif delay_minutes < 15:
+                logger.warning(f"ORB_FILTER: ⚠️ Data appears SLIGHTLY DELAYED for {symbol.ticker} ({delay_minutes:.2f} min)")
+            else:
+                logger.warning(f"ORB_FILTER: ⚠️ Data appears SIGNIFICANTLY DELAYED for {symbol.ticker} ({delay_minutes:.2f} min)")
+            logger.info("=" * 80)
 
         # Use the calculator to calculate ORB indicators
         result = calculate_orb(bars, symbol, or_minutes, avg_period)

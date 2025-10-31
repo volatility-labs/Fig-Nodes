@@ -43,18 +43,30 @@ def calculate_orb(
         Note: The paper also mentions ATR filtering (> $0.50 over 14 days) but that is
         a separate filter, not part of the ORB calculation itself.
     """
+    current_time_utc = datetime.now(pytz.timezone("UTC"))
+    current_time_et = current_time_utc.astimezone(pytz.timezone("US/Eastern"))
+    
     print("=" * 80)
     print("ORB CALCULATOR: Starting calculation")
     print("=" * 80)
     logger.info("=" * 80)
     logger.info("ORB CALCULATOR: Starting calculation")
+    logger.info(f"ORB CALCULATOR: Current time (UTC): {current_time_utc}")
+    logger.info(f"ORB CALCULATOR: Current time (ET): {current_time_et}")
     logger.info("=" * 80)
 
     if not bars or len(bars) == 0:
+        logger.error("ORB CALCULATOR: No bars provided")
         return {"rel_vol": None, "direction": None, "error": "No bars provided"}
 
     print(f"ORB CALCULATOR: Processing {len(bars)} bars for {symbol.ticker}")
     logger.info(f"ORB Calculator: Processing {len(bars)} bars for {symbol.ticker}")
+    
+    # Log raw bar timestamps before conversion
+    if bars:
+        first_bar_raw = bars[0]["timestamp"]
+        last_bar_raw = bars[-1]["timestamp"]
+        logger.info(f"ORB CALCULATOR: Raw timestamps - First: {first_bar_raw}, Last: {last_bar_raw}")
 
     # Convert timestamps to datetime objects (assuming milliseconds)
     bar_data: list[dict[str, Any]] = []
@@ -72,12 +84,33 @@ def calculate_orb(
             }
         )
 
-    print(
-        f"ORB CALCULATOR: Converted bars. First bar: {bar_data[0]['timestamp']}, Last bar: {bar_data[-1]['timestamp']}"
-    )
-    logger.info(
-        f"ORB Calculator: Converted bars. First bar: {bar_data[0]['timestamp']}, Last bar: {bar_data[-1]['timestamp']}"
-    )
+    if bar_data:
+        first_bar_time = bar_data[0]["timestamp"]
+        last_bar_time = bar_data[-1]["timestamp"]
+        time_diff = current_time_et - last_bar_time
+        delay_minutes = time_diff.total_seconds() / 60
+        
+        print(
+            f"ORB CALCULATOR: Converted bars. First bar: {first_bar_time}, Last bar: {last_bar_time}"
+        )
+        logger.info(
+            f"ORB Calculator: Converted bars. First bar: {first_bar_time}, Last bar: {last_bar_time}"
+        )
+        logger.info(f"ORB CALCULATOR: Current time (ET): {current_time_et}")
+        logger.info(f"ORB CALCULATOR: Delay from last bar: {delay_minutes:.2f} minutes")
+        
+        if delay_minutes < 5:
+            logger.info(f"ORB CALCULATOR: ✅ Bar data appears REAL-TIME (delay < 5 minutes)")
+        elif delay_minutes < 15:
+            logger.warning(f"ORB CALCULATOR: ⚠️ Bar data appears SLIGHTLY DELAYED (delay {delay_minutes:.2f} minutes)")
+        else:
+            logger.warning(f"ORB CALCULATOR: ⚠️ Bar data appears SIGNIFICANTLY DELAYED (delay {delay_minutes:.2f} minutes)")
+
+    # Determine today's date early for logging
+    if now_func is None:
+        now_func = datetime.now
+    today_date = now_func(pytz.timezone("US/Eastern")).date()
+    logger.info(f"ORB Calculator: Today's date: {today_date}")
 
     # Group bars by date
     daily_groups: dict[date, list[dict[str, Any]]] = {}
@@ -89,15 +122,23 @@ def calculate_orb(
 
     print(f"ORB CALCULATOR: Grouped into {len(daily_groups)} days")
     logger.info(f"ORB Calculator: Grouped into {len(daily_groups)} days")
+    logger.info(f"ORB CALCULATOR: Available dates: {sorted(daily_groups.keys())}")
+    logger.info(f"ORB CALCULATOR: Today's date: {today_date}")
+    
+    if today_date in daily_groups:
+        logger.info(f"ORB CALCULATOR: ✅ Today's data ({today_date}) is AVAILABLE")
+    else:
+        latest_date = max(daily_groups.keys()) if daily_groups else None
+        if latest_date:
+            days_behind = (today_date - latest_date).days
+            logger.warning(f"ORB CALCULATOR: ⚠️ Today's data ({today_date}) is NOT AVAILABLE")
+            logger.warning(f"ORB CALCULATOR: ⚠️ Latest available date: {latest_date} ({days_behind} days behind)")
+        else:
+            logger.warning(f"ORB CALCULATOR: ⚠️ Today's data ({today_date}) is NOT AVAILABLE - No dates found")
 
     # Calculate opening range volumes and directions for each day
     or_volumes: dict[date, float] = {}
     or_directions: dict[date, str] = {}
-    if now_func is None:
-        now_func = datetime.now
-    today_date = now_func(pytz.timezone("US/Eastern")).date()
-
-    logger.info(f"ORB Calculator: Today's date: {today_date}")
 
     for date_key, day_bars in daily_groups.items():
         # Sort bars by timestamp to ensure chronological order
@@ -131,6 +172,11 @@ def calculate_orb(
             print(f"ORB CALCULATOR: No opening range bar found for {date_key}")
             print(f"ORB CALCULATOR: Looking for bars between {open_time} and {open_range_end}")
             logger.warning(f"ORB Calculator: No opening range bar found for {date_key}")
+            logger.warning(f"ORB CALCULATOR: Expected opening range: {open_time} to {open_range_end}")
+            logger.warning(f"ORB CALCULATOR: Available bars for {date_key}: {len(day_bars_sorted)}")
+            if day_bars_sorted:
+                logger.warning(f"ORB CALCULATOR: First bar time: {day_bars_sorted[0]['timestamp']}")
+                logger.warning(f"ORB CALCULATOR: Last bar time: {day_bars_sorted[-1]['timestamp']}")
             continue
 
         # Pick the earliest bar in the opening range
@@ -172,6 +218,20 @@ def calculate_orb(
     print(f"ORB CALCULATOR: Date range: {sorted_dates[0]} to {sorted_dates[-1]}")
     logger.info(f"ORB Calculator: Found {len(sorted_dates)} days with opening range bars")
     logger.info(f"ORB Calculator: Date range: {sorted_dates[0]} to {sorted_dates[-1]}")
+    logger.info(f"ORB CALCULATOR: Days with OR data: {sorted_dates}")
+    
+    # Check if today has OR data
+    if today_date in sorted_dates:
+        logger.info(f"ORB CALCULATOR: ✅ Today ({today_date}) has opening range data")
+        today_or_volume = or_volumes.get(today_date, 0)
+        today_or_direction = or_directions.get(today_date, "unknown")
+        logger.info(f"ORB CALCULATOR: Today's OR - Volume: {today_or_volume}, Direction: {today_or_direction}")
+    else:
+        latest_or_date = sorted_dates[-1] if sorted_dates else None
+        if latest_or_date:
+            days_behind = (today_date - latest_or_date).days
+            logger.warning(f"ORB CALCULATOR: ⚠️ Today ({today_date}) does NOT have opening range data")
+            logger.warning(f"ORB CALCULATOR: ⚠️ Latest OR date: {latest_or_date} ({days_behind} days behind)")
 
     # Determine target date (today or last trading day)
     if symbol.asset_class == AssetClass.CRYPTO:
@@ -187,6 +247,12 @@ def calculate_orb(
 
     print(f"ORB CALCULATOR: Target date: {target_date}")
     logger.info(f"ORB Calculator: Target date: {target_date}")
+    
+    if target_date == today_date:
+        logger.info(f"ORB CALCULATOR: ✅ Using TODAY ({target_date}) as target date")
+    else:
+        days_behind = (today_date - target_date).days
+        logger.warning(f"ORB CALCULATOR: ⚠️ Using {target_date} as target date ({days_behind} days behind today)")
 
     # Calculate average volume from past periods (excluding target date)
     target_volume_date = target_date if target_date in or_volumes else sorted_dates[-1]
@@ -232,6 +298,21 @@ def calculate_orb(
 
     print(f"ORB CALCULATOR: Final result - rel_vol={rel_vol}%, direction={direction}")
     logger.info(f"ORB Calculator: Final result - rel_vol={rel_vol}%, direction={direction}")
+    
+    # Final summary with data freshness check
+    logger.info("=" * 80)
+    logger.info(f"ORB CALCULATOR: Final Summary for {symbol.ticker}")
+    logger.info(f"ORB CALCULATOR: Target date used: {target_date}")
+    logger.info(f"ORB CALCULATOR: Relative volume: {rel_vol}%")
+    logger.info(f"ORB CALCULATOR: Direction: {direction}")
+    
+    if target_date == today_date:
+        logger.info(f"ORB CALCULATOR: ✅ Using REAL-TIME data (today)")
+    else:
+        days_behind = (today_date - target_date).days
+        logger.warning(f"ORB CALCULATOR: ⚠️ Using DELAYED data ({days_behind} days behind)")
+    
+    logger.info("=" * 80)
 
     return {
         "rel_vol": rel_vol,
