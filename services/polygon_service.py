@@ -7,11 +7,44 @@ import httpx
 import pytz
 
 from core.types_registry import AssetClass, AssetSymbol, OHLCVBar
+from services.time_utils import is_us_market_open, utc_timestamp_ms_to_et_datetime
 
 logger = logging.getLogger(__name__)
 
 
-async def fetch_bars(symbol: AssetSymbol, api_key: str, params: dict[str, Any]) -> list[OHLCVBar]:
+def determine_data_status(
+    api_status: str,
+    delay_minutes: float | None,
+    symbol: AssetSymbol,
+    current_time_et: datetime,
+    last_bar_time: datetime | None,
+) -> str:
+    """Determine if data is real-time, delayed, or market is closed."""
+    # Check if market is closed (for stocks)
+    if symbol.asset_class != AssetClass.CRYPTO:
+        if not is_us_market_open():
+            return "market-closed"
+
+    # Check API status
+    if api_status == "DELAYED":
+        return "delayed"
+
+    # Check delay from last bar
+    if delay_minutes is not None:
+        if delay_minutes > 15:
+            return "delayed"
+        elif delay_minutes < 5:
+            return "real-time"
+        else:
+            return "delayed"  # Slightly delayed
+
+    # Default to delayed if we can't determine
+    return "delayed"
+
+
+async def fetch_bars(
+    symbol: AssetSymbol, api_key: str, params: dict[str, Any]
+) -> tuple[list[OHLCVBar], dict[str, Any]]:
     """
     Fetches OHLCV bars for a symbol from Massive.com API (formerly Polygon.io).
 
@@ -27,7 +60,11 @@ async def fetch_bars(symbol: AssetSymbol, api_key: str, params: dict[str, Any]) 
         params: Parameters including multiplier, timespan, lookback_period, etc.
 
     Returns:
-        List of OHLCVBar objects
+        Tuple of (list of OHLCVBar objects, status_info dict) where status_info contains:
+        - status: "real-time", "delayed", or "market-closed"
+        - api_status: API response status ("OK" or "DELAYED")
+        - delay_minutes: Delay in minutes from last bar to current time (None if no bars)
+        - market_open: Whether market is currently open (always True for crypto)
     """
     print(f"STOP_TRACE: fetch_bars started for {symbol}")
     multiplier = params.get("multiplier", 1)
@@ -126,6 +163,8 @@ async def fetch_bars(symbol: AssetSymbol, api_key: str, params: dict[str, Any]) 
 
             results = data.get("results", [])
             bars: list[OHLCVBar] = []
+            delay_minutes: float | None = None
+            last_bar_time: datetime | None = None
 
             if not results:
                 logger.warning(f"POLYGON_SERVICE: No bars returned for {symbol.ticker}")
@@ -152,8 +191,6 @@ async def fetch_bars(symbol: AssetSymbol, api_key: str, params: dict[str, Any]) 
 
                 if timestamps_ms:
                     # Convert timestamps to ET for analysis
-                    from services.time_utils import utc_timestamp_ms_to_et_datetime
-
                     first_bar_time = utc_timestamp_ms_to_et_datetime(min(timestamps_ms))
                     last_bar_time = utc_timestamp_ms_to_et_datetime(max(timestamps_ms))
 
@@ -185,7 +222,22 @@ async def fetch_bars(symbol: AssetSymbol, api_key: str, params: dict[str, Any]) 
                     logger.info(f"POLYGON_SERVICE: Total bars processed: {len(bars)}")
                     logger.info("=" * 80)
 
-            return bars
+            # Determine data status
+            status_info = {
+                "status": determine_data_status(
+                    api_status=api_status,
+                    delay_minutes=delay_minutes,
+                    symbol=symbol,
+                    current_time_et=current_time_et,
+                    last_bar_time=last_bar_time,
+                ),
+                "api_status": api_status,
+                "delay_minutes": delay_minutes,
+                "market_open": is_us_market_open()
+                if symbol.asset_class != AssetClass.CRYPTO
+                else True,
+            }
+            return bars, status_info
     except asyncio.CancelledError:
         print(f"STOP_TRACE: CancelledError caught in fetch_bars for {symbol}")
         # Re-raise immediately for proper cancellation propagation

@@ -14,10 +14,10 @@ class PolygonBatchCustomBars(Base):
     """
     Fetches custom aggregate bars (OHLCV) for multiple symbols from Massive.com API (formerly Polygon.io) in batch.
     Outputs a bundle (dict of symbol to list of bars).
-    
+
     Note: Polygon.io has rebranded to Massive.com. The API endpoints have been updated
     to use api.massive.com, but the API routes remain unchanged.
-    
+
     For crypto symbols, the ticker is automatically prefixed with "X:" (e.g., BTCUSD -> X:BTCUSD)
     as required by the Massive.com crypto aggregates API.
     """
@@ -74,14 +74,14 @@ class PolygonBatchCustomBars(Base):
         # Internal execution controls are not exposed to UI
     ]
 
-    def __init__(self, id: int, params: dict[str, Any], graph_context: dict[str, Any] | None = None):
+    def __init__(
+        self, id: int, params: dict[str, Any], graph_context: dict[str, Any] | None = None
+    ):
         super().__init__(id, params, graph_context)
         # Conservative cap to avoid event loop thrashing and ensure predictable batching in tests
         self._max_safe_concurrency = 5
 
-    async def _execute_impl(
-        self, inputs: dict[str, Any]
-    ) -> dict[str, dict[AssetSymbol, list[OHLCVBar]]]:
+    async def _execute_impl(self, inputs: dict[str, Any]) -> dict[str, Any]:
         symbols: list[AssetSymbol] = inputs.get("symbols", [])
         if not symbols:
             return {"ohlcv_bundle": {}}
@@ -108,10 +108,12 @@ class PolygonBatchCustomBars(Base):
         rate_limiter = RateLimiter(max_per_second=rate_limit)
         effective_concurrency = min(max_concurrent, self._max_safe_concurrency)
 
-        async def fetch_bars_worker(sym: AssetSymbol) -> tuple[AssetSymbol, list[OHLCVBar]] | None:
+        async def fetch_bars_worker(
+            sym: AssetSymbol,
+        ) -> tuple[AssetSymbol, list[OHLCVBar], dict[str, Any]] | None:
             """Worker function that fetches bars for a symbol."""
-            bars = await fetch_bars(sym, api_key, self.params)
-            return (sym, bars) if bars else None
+            bars, status_info = await fetch_bars(sym, api_key, self.params)
+            return (sym, bars, status_info) if bars else None
 
         # Use shared worker pool to process symbols concurrently
         results = await process_with_worker_pool(
@@ -126,9 +128,15 @@ class PolygonBatchCustomBars(Base):
 
         # Build bundle from results (filter out None results)
         bundle: dict[AssetSymbol, list[OHLCVBar]] = {}
+        status_info_by_symbol: dict[AssetSymbol, dict[str, Any]] = {}
+
         for result in results:
             if result is not None:
-                sym, bars = result
+                sym, bars, status_info = result
                 bundle[sym] = bars
+                status_info_by_symbol[sym] = status_info
 
-        return {"ohlcv_bundle": bundle}
+        return {
+            "ohlcv_bundle": bundle,
+            "status_info": status_info_by_symbol,
+        }
