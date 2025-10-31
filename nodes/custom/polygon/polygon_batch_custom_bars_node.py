@@ -81,7 +81,9 @@ class PolygonBatchCustomBars(Base):
         # Conservative cap to avoid event loop thrashing and ensure predictable batching in tests
         self._max_safe_concurrency = 5
 
-    async def _execute_impl(self, inputs: dict[str, Any]) -> dict[str, Any]:
+    async def _execute_impl(
+        self, inputs: dict[str, Any]
+    ) -> dict[str, dict[AssetSymbol, list[OHLCVBar]]]:
         symbols: list[AssetSymbol] = inputs.get("symbols", [])
         if not symbols:
             return {"ohlcv_bundle": {}}
@@ -108,12 +110,10 @@ class PolygonBatchCustomBars(Base):
         rate_limiter = RateLimiter(max_per_second=rate_limit)
         effective_concurrency = min(max_concurrent, self._max_safe_concurrency)
 
-        async def fetch_bars_worker(
-            sym: AssetSymbol,
-        ) -> tuple[AssetSymbol, list[OHLCVBar], dict[str, Any]] | None:
+        async def fetch_bars_worker(sym: AssetSymbol) -> tuple[AssetSymbol, list[OHLCVBar]] | None:
             """Worker function that fetches bars for a symbol."""
-            bars, status_info = await fetch_bars(sym, api_key, self.params)
-            return (sym, bars, status_info) if bars else None
+            bars = await fetch_bars(sym, api_key, self.params)
+            return (sym, bars) if bars else None
 
         # Use shared worker pool to process symbols concurrently
         results = await process_with_worker_pool(
@@ -128,15 +128,9 @@ class PolygonBatchCustomBars(Base):
 
         # Build bundle from results (filter out None results)
         bundle: dict[AssetSymbol, list[OHLCVBar]] = {}
-        status_info_by_symbol: dict[AssetSymbol, dict[str, Any]] = {}
-
         for result in results:
             if result is not None:
-                sym, bars, status_info = result
+                sym, bars = result
                 bundle[sym] = bars
-                status_info_by_symbol[sym] = status_info
 
-        return {
-            "ohlcv_bundle": bundle,
-            "status_info": status_info_by_symbol,
-        }
+        return {"ohlcv_bundle": bundle}

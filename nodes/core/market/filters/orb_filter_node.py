@@ -116,7 +116,7 @@ class OrbFilter(BaseIndicatorFilter):
         logger.info(f"ORB_FILTER: Request time: {datetime.now(pytz.timezone('US/Eastern'))}")
         logger.info("=" * 80)
 
-        bars, status_info = await fetch_bars(symbol, api_key, fetch_params)
+        bars = await fetch_bars(symbol, api_key, fetch_params)
 
         if not bars:
             logger.warning(f"ORB_FILTER: No bars returned for {symbol.ticker}")
@@ -127,14 +127,6 @@ class OrbFilter(BaseIndicatorFilter):
                 params=self.params,
                 error="No bars fetched",
             )
-        
-        # Log status info
-        logger.info("=" * 80)
-        logger.info(f"ORB_FILTER: Data status for {symbol.ticker}: {status_info.get('status', 'unknown')}")
-        logger.info(f"ORB_FILTER: API status: {status_info.get('api_status', 'unknown')}")
-        logger.info(f"ORB_FILTER: Delay: {status_info.get('delay_minutes', 'N/A')} minutes")
-        logger.info(f"ORB_FILTER: Market open: {status_info.get('market_open', 'N/A')}")
-        logger.info("=" * 80)
         
         # Log bar details for delay analysis
         if bars:

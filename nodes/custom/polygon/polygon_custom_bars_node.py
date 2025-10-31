@@ -1,7 +1,7 @@
-from typing import Dict, Any
+from typing import Dict, Any, List
 import logging
 from nodes.base.base_node import Base
-from core.types_registry import get_type, AssetSymbol
+from core.types_registry import get_type, AssetSymbol, OHLCVBar
 from core.api_key_vault import APIKeyVault
 from services.polygon_service import fetch_bars
 
@@ -37,7 +37,7 @@ class PolygonCustomBars(Base):
         {"name": "limit", "type": "number", "default": 5000, "min": 1, "max": 50000, "step": 1},
     ]
 
-    async def _execute_impl(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
+    async def _execute_impl(self, inputs: Dict[str, Any]) -> Dict[str, List[OHLCVBar]]:
         symbol = inputs.get("symbol")
         if not symbol or not isinstance(symbol, AssetSymbol):
             raise ValueError("Symbol input is required")
@@ -46,8 +46,5 @@ class PolygonCustomBars(Base):
         if not api_key:
             raise ValueError("Polygon API key not found in vault")
 
-        bars, status_info = await fetch_bars(symbol, api_key, self.params)
-        return {
-            "ohlcv": bars,
-            "status_info": status_info,
-        }
+        bars = await fetch_bars(symbol, api_key, self.params)
+        return {"ohlcv": bars}

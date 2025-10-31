@@ -95,7 +95,7 @@ class OrbIndicator(BaseIndicator):
             print(f"ORB INDICATOR: Fetching bars with params: {fetch_params}")
             logger.info(f"ORB INDICATOR: Fetching bars with params: {fetch_params}")
 
-            bars, _status_info = await fetch_bars(symbol, api_key, fetch_params)
+            bars = await fetch_bars(symbol, api_key, fetch_params)
 
             if not bars:
                 print(f"ORB INDICATOR: No bars fetched for {symbol.ticker}")
