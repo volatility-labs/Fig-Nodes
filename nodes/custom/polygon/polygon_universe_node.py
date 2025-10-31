@@ -16,9 +16,13 @@ logger = logging.getLogger(__name__)
 
 class PolygonUniverse(Base):
     """
-    A node that fetches symbols from the Polygon API and filters them based on the provided parameters.
+    A node that fetches symbols from the Massive.com API (formerly Polygon.io) and filters them
+    based on the provided parameters.
 
-    Polygon endpoint: https://api.polygon.io/v2/snapshot/locale/us/markets/stocks/tickers
+    Note: Polygon.io has rebranded to Massive.com. The API endpoints have been updated
+    to use api.massive.com, but the API routes remain unchanged.
+
+    Endpoint: https://api.massive.com/v2/snapshot/locale/us/markets/stocks/tickers
     """
 
     inputs = {"filter_symbols": get_type("AssetSymbolList") | None}
@@ -139,7 +143,7 @@ class PolygonUniverse(Base):
 
             # Step 2: Fetch snapshot data
             snapshot_url = (
-                f"https://api.polygon.io/v2/snapshot/locale/{locale}/markets/{markets}/tickers"
+                f"https://api.massive.com/v2/snapshot/locale/{locale}/markets/{markets}/tickers"
             )
             snapshot_params: dict[str, Any] = {}
             if market == "otc" or (market == "stocks" and self.params.get("include_otc", False)):
@@ -345,16 +349,16 @@ class PolygonUniverse(Base):
 
     async def _fetch_ticker_types(self, client: httpx.AsyncClient, api_key: str) -> set[str]:
         """
-        Fetch ticker types from Polygon API and identify ETF-related type codes.
+        Fetch ticker types from Massive.com API (formerly Polygon.io) and identify ETF-related type codes.
 
         Args:
             client: httpx AsyncClient instance
-            api_key: Polygon API key
+            api_key: Massive.com API key (POLYGON_API_KEY)
 
         Returns:
             Set of type codes that represent ETFs/ETNs/ETPs
         """
-        url = "https://api.polygon.io/v3/reference/tickers/types"
+        url = "https://api.massive.com/v3/reference/tickers/types"
         params: dict[str, str] = {"apiKey": api_key}
 
         try:
@@ -408,11 +412,11 @@ class PolygonUniverse(Base):
         exclude_etfs: bool,
     ) -> set[str]:
         """
-        Fetch filtered ticker list from Polygon API with server-side ETF filtering.
+        Fetch filtered ticker list from Massive.com API (formerly Polygon.io) with server-side ETF filtering.
 
         Args:
             client: httpx AsyncClient instance
-            api_key: Polygon API key
+            api_key: Massive.com API key (POLYGON_API_KEY)
             market: Market type (stocks, otc, etc.)
             exclude_etfs: Whether to exclude ETFs
 
@@ -437,11 +441,11 @@ class PolygonUniverse(Base):
         etf_types: set[str] = set()
         if needs_etf_filter:
             etf_types = await self._fetch_ticker_types(client, api_key)
-            # We'll fetch all and filter client-side since Polygon API doesn't support
+            # We'll fetch all and filter client-side since Massive.com API doesn't support
             # type exclusion, only inclusion
 
         ticker_set: set[str] = set()
-        ref_url = "https://api.polygon.io/v3/reference/tickers"
+        ref_url = "https://api.massive.com/v3/reference/tickers"
         next_url: str | None = ref_url
         page_count = 0
 

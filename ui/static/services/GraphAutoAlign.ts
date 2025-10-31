@@ -1,4 +1,5 @@
 import { LGraph, LGraphNode } from '@comfyorg/litegraph';
+import { LiteGraph } from '@comfyorg/litegraph';
 
 interface NodePosition {
     node: LGraphNode;
@@ -11,6 +12,7 @@ export class GraphAutoAlign {
     private static readonly VERTICAL_SPACING = 100; // Space between nodes in same level
     private static readonly START_X = 100; // Starting X position
     private static readonly START_Y = 100; // Starting Y position
+    private static readonly ESTIMATED_CANVAS_HEIGHT = 800; // Fallback if no canvas info; can be overridden
 
     /**
      * Auto-aligns all nodes in the graph based on flow topology
@@ -18,6 +20,13 @@ export class GraphAutoAlign {
     static alignGraph(graph: LGraph): void {
         const nodes = graph._nodes || [];
         if (nodes.length === 0) return;
+
+        // Ensure all nodes have unique IDs
+        nodes.forEach((node: LGraphNode, index: number) => {
+            if (!(node as any).id) {
+                (node as any).id = `node_${index}_${Date.now()}`;
+            }
+        });
 
         // Get serialized graph data to access links and node IDs
         const serialized = graph.asSerialisable({ sortNodes: true }) as any;
@@ -28,37 +37,17 @@ export class GraphAutoAlign {
         // Since asSerialisable with sortNodes: true preserves order, we can match by index
         const nodeMap = new Map<number, LGraphNode>();
         
-        serializedNodes.forEach((serializedNode: any, index: number) => {
+        serializedNodes.forEach((serializedNode: any) => {
             const nodeId = serializedNode.id;
-            let node: LGraphNode | undefined;
-            
-            // First try to match by index (most reliable when sortNodes: true)
-            if (index < nodes.length) {
-                node = nodes[index];
-            }
-            
-            // Fallback: try to find by ID property if nodes have it
-            if (!node) {
-                node = nodes.find((n: any) => {
-                    const nodeIdProp = (n as any).id;
-                    return nodeIdProp !== undefined && nodeIdProp === nodeId;
-                });
-            }
-            
-            // Final fallback: match by position and size
-            if (!node) {
-                node = nodes.find((n: any) => {
-                    return (
-                        n.pos &&
-                        Math.abs(n.pos[0] - serializedNode.pos[0]) < 0.1 &&
-                        Math.abs(n.pos[1] - serializedNode.pos[1]) < 0.1 &&
-                        n.size &&
-                        n.size[0] === serializedNode.size[0] &&
-                        n.size[1] === serializedNode.size[1]
-                    );
-                });
-            }
-            
+            const node = nodes.find((n: any) => (n as any).id === nodeId) ||
+                        nodes.find((n: any) => 
+                            n.pos &&
+                            Math.abs(n.pos[0] - serializedNode.pos[0]) < 0.1 &&
+                            Math.abs(n.pos[1] - serializedNode.pos[1]) < 0.1 &&
+                            n.size &&
+                            n.size[0] === serializedNode.size[0] &&
+                            n.size[1] === serializedNode.size[1]
+                        );
             if (node) {
                 nodeMap.set(nodeId, node);
             }
@@ -141,6 +130,17 @@ export class GraphAutoAlign {
             }
         });
 
+        // After processing, detect cycles (unprocessed nodes with inDegree > 0)
+        const processedCount = nodeLevels.size;
+        if (processedCount < nodeMap.size) {
+            console.warn(`Cycle detected: ${nodeMap.size - processedCount} nodes in cycle(s). Grouping at max level + 1.`);
+            let maxLevel = Math.max(...Array.from(nodeLevels.values()), 0);
+            nodeMap.forEach((_, nodeId) => {
+                if (!nodeLevels.has(nodeId)) {
+                    nodeLevels.set(nodeId, maxLevel + 1);
+                }
+            });
+        }
         return nodeLevels;
     }
 
@@ -150,7 +150,6 @@ export class GraphAutoAlign {
     ): void {
         const nodesByLevel = new Map<number, LGraphNode[]>();
 
-        // Group nodes by level
         nodeLevels.forEach((level, nodeId) => {
             const node = nodeMap.get(nodeId);
             if (node) {
@@ -161,17 +160,37 @@ export class GraphAutoAlign {
             }
         });
 
-        // Sort levels
         const sortedLevels = Array.from(nodesByLevel.keys()).sort((a, b) => a - b);
 
-        // Position nodes level by level
-        sortedLevels.forEach(level => {
-            const levelNodes = nodesByLevel.get(level) || [];
-            const x = this.START_X + (level * this.HORIZONTAL_SPACING);
+        // For disconnected components at level 0, offset them horizontally if multiple groups
+        if (nodesByLevel.has(0)) {
+            const level0Nodes = nodesByLevel.get(0)!;
+            // Simple grouping: sort by original X to cluster
+            level0Nodes.sort((a, b) => (a.pos?.[0] ?? 0) - (b.pos?.[0] ?? 0));
+        }
 
-            // Calculate starting Y position to center nodes vertically
-            let currentY = this.START_Y;
-
+        sortedLevels.forEach((level, levelIndex) => {
+            let levelNodes = nodesByLevel.get(level) || [];
+            
+            // Sort within level by original Y position for consistency
+            levelNodes = levelNodes.sort((a, b) => (a.pos?.[1] ?? 0) - (b.pos?.[1] ?? 0));
+            
+            // Dynamic horizontal spacing: add extra based on max width in previous level
+            let x = this.START_X + (level * this.HORIZONTAL_SPACING);
+            if (level > 0) {
+                const prevLevelNodes = nodesByLevel.get(sortedLevels[levelIndex - 1]) || [];
+                const maxPrevWidth = Math.max(...prevLevelNodes.map(n => (n.size?.[0] ?? 200)), 200);
+                x += maxPrevWidth / 2;
+            }
+            
+            // Calculate total height for centering
+            const totalHeight = levelNodes.reduce((sum, node) => {
+                return sum + ((node.size && node.size[1]) ? node.size[1] : 100) + this.VERTICAL_SPACING;
+            }, 0) - this.VERTICAL_SPACING;
+            
+            // Center vertically using estimated canvas height
+            let currentY = this.START_Y + (this.ESTIMATED_CANVAS_HEIGHT - totalHeight) / 2;
+            
             levelNodes.forEach(node => {
                 const nodeHeight = (node.size && node.size[1]) ? node.size[1] : 100;
                 node.pos = [x, currentY];

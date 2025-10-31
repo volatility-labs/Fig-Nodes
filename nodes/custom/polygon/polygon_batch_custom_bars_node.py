@@ -12,8 +12,14 @@ logger = logging.getLogger(__name__)
 
 class PolygonBatchCustomBars(Base):
     """
-    Fetches custom aggregate bars (OHLCV) for multiple symbols from Polygon.io in batch.
+    Fetches custom aggregate bars (OHLCV) for multiple symbols from Massive.com API (formerly Polygon.io) in batch.
     Outputs a bundle (dict of symbol to list of bars).
+    
+    Note: Polygon.io has rebranded to Massive.com. The API endpoints have been updated
+    to use api.massive.com, but the API routes remain unchanged.
+    
+    For crypto symbols, the ticker is automatically prefixed with "X:" (e.g., BTCUSD -> X:BTCUSD)
+    as required by the Massive.com crypto aggregates API.
     """
 
     required_keys = ["POLYGON_API_KEY"]

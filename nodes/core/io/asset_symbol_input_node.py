@@ -23,7 +23,12 @@ class AssetSymbolInput(Base):
             "default": AssetClass.CRYPTO.name,
             "options": [e.name for e in AssetClass],
         },
-        {"name": "quote_currency", "type": "text", "default": "USDT"},
+        {
+            "name": "quote_currency",
+            "type": "combo",
+            "default": "USDT",
+            "options": ["USD", "USDC", "USDT"],
+        },
         {
             "name": "instrument_type",
             "type": "combo",

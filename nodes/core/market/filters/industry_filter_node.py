@@ -12,9 +12,13 @@ logger = logging.getLogger(__name__)
 
 class IndustryFilter(BaseFilter):
     """
-    Filters OHLCV bundles based on company industry from Polygon.io Ticker Overview API.
+    Filters OHLCV bundles based on company industry from Massive.com API (formerly Polygon.io) Ticker Overview API.
     Uses sic_description for matching (e.g., 'Computer Programming Services').
-    Requires Polygon API key from vault.
+    
+    Note: Polygon.io has rebranded to Massive.com. The API endpoints have been updated
+    to use api.massive.com, but the API routes remain unchanged.
+    
+    Requires Massive.com API key (POLYGON_API_KEY) from vault.
     """
 
     inputs = {"ohlcv_bundle": get_type("OHLCVBundle")}
@@ -48,8 +52,8 @@ class IndustryFilter(BaseFilter):
             self.allowed_industries = []
 
     async def _fetch_industry(self, symbol: AssetSymbol, api_key: str) -> str:
-        """Fetch sic_description from Polygon API."""
-        url = f"https://api.polygon.io/v3/reference/tickers/{symbol.ticker}"
+        """Fetch sic_description from Massive.com API (formerly Polygon.io)."""
+        url = f"https://api.massive.com/v3/reference/tickers/{symbol.ticker}"
         params: dict[str, str] = {"apiKey": api_key}
         date_value = self.params.get("date")
         if date_value:
@@ -70,7 +74,7 @@ class IndustryFilter(BaseFilter):
     ) -> bool:
         api_key = APIKeyVault().get("POLYGON_API_KEY")
         if not api_key:
-            raise ValueError("Polygon API key not found in vault")
+            raise ValueError("Massive.com API key (POLYGON_API_KEY) not found in vault")
 
         industry = await self._fetch_industry(symbol, api_key)
         return industry in self.allowed_industries

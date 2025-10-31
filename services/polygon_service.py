@@ -4,10 +4,27 @@ from typing import Any
 
 import httpx
 
-from core.types_registry import AssetSymbol, OHLCVBar
+from core.types_registry import AssetClass, AssetSymbol, OHLCVBar
 
 
 async def fetch_bars(symbol: AssetSymbol, api_key: str, params: dict[str, Any]) -> list[OHLCVBar]:
+    """
+    Fetches OHLCV bars for a symbol from Massive.com API (formerly Polygon.io).
+
+    Note: Polygon.io has rebranded to Massive.com. The API endpoints have been updated
+    to use api.massive.com, but the API routes remain unchanged.
+
+    For crypto symbols, automatically adds "X:" prefix to the ticker (e.g., BTCUSD -> X:BTCUSD)
+    as required by the Massive.com crypto aggregates API.
+
+    Args:
+        symbol: AssetSymbol to fetch bars for
+        api_key: API key for Massive.com (POLYGON_API_KEY)
+        params: Parameters including multiplier, timespan, lookback_period, etc.
+
+    Returns:
+        List of OHLCVBar objects
+    """
     print(f"STOP_TRACE: fetch_bars started for {symbol}")
     multiplier = params.get("multiplier", 1)
     timespan = params.get("timespan", "day")
@@ -38,7 +55,10 @@ async def fetch_bars(symbol: AssetSymbol, api_key: str, params: dict[str, Any]) 
 
     # Construct API URL and fetch (copied from PolygonCustomBarsNode.execute)
     ticker = str(symbol)
-    url = f"https://api.polygon.io/v2/aggs/ticker/{ticker}/range/{multiplier}/{timespan}/{from_date_str}/{to_date}"
+    # Add "X:" prefix for crypto tickers as required by Massive.com API
+    if symbol.asset_class == AssetClass.CRYPTO:
+        ticker = f"X:{ticker}"
+    url = f"https://api.massive.com/v2/aggs/ticker/{ticker}/range/{multiplier}/{timespan}/{from_date_str}/{to_date}"
     query_params = {
         "adjusted": str(adjusted).lower(),
         "sort": sort,
@@ -56,7 +76,7 @@ async def fetch_bars(symbol: AssetSymbol, api_key: str, params: dict[str, Any]) 
                 raise ValueError(f"Failed to fetch bars: HTTP {response.status_code}")
             data = response.json()
             if data.get("status") not in ["OK", "DELAYED"]:
-                raise ValueError(f"Polygon API error: {data.get('error', 'Unknown error')}")
+                raise ValueError(f"Massive.com API error: {data.get('error', 'Unknown error')}")
             results = data.get("results", [])
             bars: list[OHLCVBar] = []
             for result in results:

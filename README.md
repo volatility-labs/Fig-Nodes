@@ -42,7 +42,7 @@ uv run python main.py --dev
 
 The default graph should load. Press `Execute` at the bottom right of the canvas. 
 
-## Setup Ollama
+## (Optional) Setup Ollama
 
 For local LLM inference nodes, Fig Nodes *require* a local Ollama installation. Please see [Ollama installation instructions here](https://github.com/ollama/ollama).
 
@@ -65,9 +65,9 @@ To run the unit tests:
 uv run pytest tests/unit/
 ``` 
 
-## Hardware Requirements
-
-Minimum 16gb of VRAM on either a dedicated GPU or shared memory (Apple M series)
+## TODO
+- Canvas grouping square for visual grouping of nodes on canvas
+- OHLCV charting nodes
 
 ## License
 Fig Nodes is licensed under the Apache License 2.0. See [LICENSE](LICENSE) for details.

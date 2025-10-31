@@ -1,7 +1,5 @@
 from typing import Dict, Any, List
-import httpx
 import logging
-from datetime import datetime, timedelta
 from nodes.base.base_node import Base
 from core.types_registry import get_type, AssetSymbol, OHLCVBar
 from core.api_key_vault import APIKeyVault
@@ -12,7 +10,13 @@ logger = logging.getLogger(__name__)
 
 class PolygonCustomBars(Base):
     """
-    Fetches custom aggregate bars (OHLCV) for a symbol from Polygon.io
+    Fetches custom aggregate bars (OHLCV) for a symbol from Massive.com API (formerly Polygon.io).
+    
+    Note: Polygon.io has rebranded to Massive.com. The API endpoints have been updated
+    to use api.massive.com, but the API routes remain unchanged.
+    
+    For crypto symbols, the ticker is automatically prefixed with "X:" (e.g., BTCUSD -> X:BTCUSD)
+    as required by the Massive.com crypto aggregates API.
     """
     inputs = {"symbol": get_type("AssetSymbol")}
     outputs = {"ohlcv": get_type("OHLCV")}
@@ -34,8 +38,8 @@ class PolygonCustomBars(Base):
     ]
 
     async def _execute_impl(self, inputs: Dict[str, Any]) -> Dict[str, List[OHLCVBar]]:
-        symbol: AssetSymbol = inputs.get("symbol")
-        if not symbol:
+        symbol = inputs.get("symbol")
+        if not symbol or not isinstance(symbol, AssetSymbol):
             raise ValueError("Symbol input is required")
 
         api_key = APIKeyVault().get("POLYGON_API_KEY")

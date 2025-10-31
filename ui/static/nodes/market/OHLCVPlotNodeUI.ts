@@ -14,6 +14,8 @@ class OHLCVPlotRenderer extends NodeRenderer {
 
 export default class OHLCVPlotNodeUI extends BaseCustomNode {
     private images: { [label: string]: string } = {};
+    private loadedImages: Map<string, HTMLImageElement> = new Map();
+    private imageAspectRatios: Map<string, number> = new Map();
 
     constructor(title: string, data: any, serviceRegistry: any) {
         super(title, data, serviceRegistry);
@@ -26,7 +28,116 @@ export default class OHLCVPlotNodeUI extends BaseCustomNode {
         // Expect { images: { label: dataUrl } }
         const imgs = (result && result.images) || {};
         this.images = imgs;
+        this.loadedImages.clear();
+        this.imageAspectRatios.clear();
+        
+        // Preload all images and calculate aspect ratios
+        let allLoaded = 0;
+        const totalImages = Object.keys(imgs).length;
+        
+        Object.entries(imgs).forEach(([label, dataUrl]) => {
+            const img = new Image();
+            img.onload = () => {
+                this.loadedImages.set(label, img);
+                const aspectRatio = img.width / img.height;
+                this.imageAspectRatios.set(label, aspectRatio);
+                allLoaded++;
+                
+                // Resize node when all images are loaded
+                if (allLoaded === totalImages) {
+                    this.resizeNodeToMatchAspectRatio();
+                }
+                
+                this.setDirtyCanvas(true, true);
+            };
+            img.src = dataUrl as string;
+        });
+        
         this.setDirtyCanvas(true, true);
+    }
+
+    private resizeNodeToMatchAspectRatio() {
+        const labels = Object.keys(this.images || {});
+        if (!labels.length) return;
+
+        const widgetHeight = this.widgets ? this.widgets.length * LiteGraph.NODE_WIDGET_HEIGHT : 0;
+        const padding = 12;
+        const widgetSpacing = 8;
+        const labelHeight = 20;
+        const headerHeight = LiteGraph.NODE_TITLE_HEIGHT + widgetHeight + widgetSpacing;
+        const minWidth = 400;
+        const minHeight = 200;
+        const maxWidth = 800;
+
+        if (labels.length === 1) {
+            // Single image: resize node to match image aspect ratio
+            const label = labels[0];
+            if (!label) return;
+            const aspectRatio = this.imageAspectRatios.get(label);
+            if (!aspectRatio) return;
+
+            // Calculate content area dimensions
+            const contentWidth = Math.max(minWidth, Math.min(maxWidth, 500));
+            const contentHeight = contentWidth / aspectRatio;
+            const totalHeight = headerHeight + padding * 2 + labelHeight + contentHeight;
+
+            this.size[0] = contentWidth + padding * 2;
+            this.size[1] = Math.max(minHeight + headerHeight, totalHeight);
+        } else {
+            // Multiple images: use grid layout, calculate optimal size
+            const cols = Math.ceil(Math.sqrt(labels.length));
+            const rows = Math.ceil(labels.length / cols);
+            
+            // Get average aspect ratio of all images
+            const aspectRatios = Array.from(this.imageAspectRatios.values());
+            const avgAspectRatio = aspectRatios.reduce((sum, ar) => sum + ar, 0) / aspectRatios.length;
+            
+            // Calculate cell dimensions based on average aspect ratio
+            const cellSpacing = 4;
+            const cellLabelHeight = 16;
+            
+            // Target: fit cells with proper aspect ratio
+            const targetCellWidth = Math.max(150, Math.min(250, 200));
+            const targetCellHeight = targetCellWidth / avgAspectRatio + cellLabelHeight;
+            
+            const contentWidth = cols * targetCellWidth + (cols - 1) * cellSpacing;
+            const contentHeight = rows * targetCellHeight + (rows - 1) * cellSpacing;
+            const totalHeight = headerHeight + padding * 2 + contentHeight;
+
+            this.size[0] = Math.max(minWidth, Math.min(maxWidth, contentWidth + padding * 2));
+            this.size[1] = Math.max(minHeight + headerHeight, totalHeight);
+        }
+
+        this.setDirtyCanvas(true, true);
+    }
+
+    private fitImageToBounds(
+        imgWidth: number,
+        imgHeight: number,
+        maxWidth: number,
+        maxHeight: number
+    ): { width: number; height: number; x: number; y: number } {
+        const imgAspectRatio = imgWidth / imgHeight;
+        const containerAspectRatio = maxWidth / maxHeight;
+
+        let width: number;
+        let height: number;
+
+        if (imgAspectRatio > containerAspectRatio) {
+            // Image is wider - fit to width
+            width = maxWidth;
+            height = maxWidth / imgAspectRatio;
+        } else {
+            // Image is taller - fit to height
+            height = maxHeight;
+            width = maxHeight * imgAspectRatio;
+        }
+
+        // Center the image
+        const x = (maxWidth - width) / 2;
+        const y = (maxHeight - height) / 2;
+
+        return { width, height, x, y };
     }
 
     drawPlots(ctx: CanvasRenderingContext2D) {
@@ -36,31 +147,94 @@ export default class OHLCVPlotNodeUI extends BaseCustomNode {
             return;
         }
         const labels = Object.keys(this.images || {});
-        const padding = 8;
+        const padding = 12;
+        const widgetSpacing = 8; // Extra space after widgets
         const widgetHeight = this.widgets ? this.widgets.length * LiteGraph.NODE_WIDGET_HEIGHT : 0;
         const x0 = padding;
-        const y0 = LiteGraph.NODE_TITLE_HEIGHT + widgetHeight + padding;
+        const y0 = LiteGraph.NODE_TITLE_HEIGHT + widgetHeight + widgetSpacing + padding;
         const w = Math.max(0, this.size[0] - padding * 2);
-        const h = Math.max(0, this.size[1] - LiteGraph.NODE_TITLE_HEIGHT - widgetHeight - padding * 2);
+        const h = Math.max(0, this.size[1] - LiteGraph.NODE_TITLE_HEIGHT - widgetHeight - widgetSpacing - padding * 2);
 
-        // Background
-        ctx.fillStyle = '#111827';
+        // Draw subtle separator line between widgets and content
+        if (widgetHeight > 0) {
+            ctx.strokeStyle = 'rgba(75, 85, 99, 0.2)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(x0, LiteGraph.NODE_TITLE_HEIGHT + widgetHeight + widgetSpacing / 2);
+            ctx.lineTo(x0 + w, LiteGraph.NODE_TITLE_HEIGHT + widgetHeight + widgetSpacing / 2);
+            ctx.stroke();
+        }
+
+        // Clip to node bounds to prevent rendering outside
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(x0, y0, w, h);
+        ctx.clip();
+
+        // Minimal flat background
+        ctx.fillStyle = '#0f1419';
         ctx.fillRect(x0, y0, w, h);
-        ctx.strokeStyle = '#374151';
+        
+        // Subtle rounded inner border
+        ctx.strokeStyle = 'rgba(75, 85, 99, 0.2)';
+        ctx.lineWidth = 1;
         ctx.strokeRect(x0 + 0.5, y0 + 0.5, w - 1, h - 1);
 
         if (!labels.length) {
-            ctx.fillStyle = '#9ca3af';
+            // Minimal empty state
+            const centerX = x0 + w / 2;
+            const centerY = y0 + h / 2;
+            
+            ctx.fillStyle = 'rgba(156, 163, 175, 0.4)';
             ctx.font = '12px Arial';
-            ctx.fillText('No images', x0 + 10, y0 + 20);
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('No charts to display', centerX, centerY);
+            
+            ctx.restore();
             return;
         }
 
-        // Compute grid
+        // For single image, use full space with aspect ratio preservation
+        if (labels.length === 1) {
+            const label = labels[0];
+            if (!label) {
+                ctx.restore();
+                return;
+            }
+            const img = this.loadedImages.get(label);
+            if (img) {
+                // Minimal label text with better positioning
+                ctx.fillStyle = 'rgba(229, 231, 235, 0.65)';
+                ctx.font = '11px monospace';
+                ctx.textAlign = 'left';
+                ctx.textBaseline = 'top';
+                ctx.fillText(label || '', x0 + 4, y0 + 4);
+                
+                // Fit image preserving aspect ratio with more space for label
+                const imageArea = this.fitImageToBounds(img.width, img.height, w, h - 20);
+                ctx.drawImage(img, x0 + imageArea.x, y0 + 20 + imageArea.y, imageArea.width, imageArea.height);
+            } else {
+                // Minimal loading state
+                const centerX = x0 + w / 2;
+                const centerY = y0 + h / 2;
+                
+                ctx.fillStyle = 'rgba(156, 163, 175, 0.5)';
+                ctx.font = '12px Arial';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText('Loading...', centerX, centerY);
+            }
+            ctx.restore();
+            return;
+        }
+
+        // Compute grid for multiple images
         const cols = Math.ceil(Math.sqrt(labels.length));
         const rows = Math.ceil(labels.length / cols);
-        const cellW = Math.floor((w - (cols - 1) * 6) / cols);
-        const cellH = Math.floor((h - (rows - 1) * 6) / rows);
+        const cellSpacing = 4;
+        const cellW = Math.floor((w - (cols - 1) * cellSpacing) / cols);
+        const cellH = Math.floor((h - (rows - 1) * cellSpacing) / rows);
 
         // Draw each image into a cell
         let idx = 0;
@@ -68,33 +242,39 @@ export default class OHLCVPlotNodeUI extends BaseCustomNode {
             for (let c = 0; c < cols; c++) {
                 if (idx >= labels.length) break;
                 const label = labels[idx++];
-                const dataUrl = this.images[label!];
+                if (!label) continue;
+                const img = this.loadedImages.get(label);
 
-                const cx = x0 + c * (cellW + 6);
-                const cy = y0 + r * (cellH + 6);
+                const cx = x0 + c * (cellW + cellSpacing);
+                const cy = y0 + r * (cellH + cellSpacing);
 
-                // Label background
-                ctx.fillStyle = 'rgba(0,0,0,0.45)';
-                ctx.fillRect(cx, cy, cellW, 16);
-                ctx.fillStyle = '#e5e7eb';
-                ctx.font = '11px Arial';
-                ctx.fillText(String(label), cx + 6, cy + 12);
+                // Minimal label text - monospace font for better readability
+                ctx.fillStyle = 'rgba(229, 231, 235, 0.55)';
+                ctx.font = '9px monospace';
+                ctx.textAlign = 'left';
+                ctx.textBaseline = 'top';
+                ctx.fillText(label || '', cx + 3, cy + 3);
 
-                // Image
-                const img = new Image();
-                img.onload = () => {
-                    // Reserve space below label
-                    const ih = Math.max(0, cellH - 18);
-                    const iw = cellW;
-                    ctx.drawImage(img, cx, cy + 18, iw, ih);
-                };
-                img.src = dataUrl || '';
+                // Image - fit preserving aspect ratio with more space for label
+                if (img) {
+                    const imageArea = this.fitImageToBounds(img.width, img.height, cellW - 2, cellH - 16);
+                    ctx.drawImage(
+                        img,
+                        cx + 1 + imageArea.x,
+                        cy + 16 + imageArea.y,
+                        imageArea.width,
+                        imageArea.height
+                    );
+                }
 
-                // Cell border
-                ctx.strokeStyle = '#4b5563';
+                // Very subtle border
+                ctx.strokeStyle = 'rgba(75, 85, 99, 0.18)';
+                ctx.lineWidth = 1;
                 ctx.strokeRect(cx + 0.5, cy + 0.5, cellW - 1, cellH - 1);
             }
         }
+        
+        ctx.restore();
     }
 }
 
