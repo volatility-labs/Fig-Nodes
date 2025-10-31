@@ -195,7 +195,7 @@ class VBPLevelFilter(BaseIndicatorFilter):
             "limit": 50000,
         }
 
-        bars = await fetch_bars(symbol, api_key, fetch_params)
+        bars, _metadata = await fetch_bars(symbol, api_key, fetch_params)
         return bars
 
     def _aggregate_to_weekly(self, ohlcv_data: list[OHLCVBar]) -> list[OHLCVBar]:

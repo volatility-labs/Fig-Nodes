@@ -110,10 +110,42 @@ class PolygonBatchCustomBars(Base):
         rate_limiter = RateLimiter(max_per_second=rate_limit)
         effective_concurrency = min(max_concurrent, self._max_safe_concurrency)
 
-        async def fetch_bars_worker(sym: AssetSymbol) -> tuple[AssetSymbol, list[OHLCVBar]] | None:
+        # Track statuses as they come in
+        status_tracker: dict[str, int] = {
+            "real-time": 0,
+            "delayed": 0,
+            "market-closed": 0,
+        }
+
+        async def fetch_bars_worker(
+            sym: AssetSymbol,
+        ) -> tuple[AssetSymbol, list[OHLCVBar], dict[str, Any]] | None:
             """Worker function that fetches bars for a symbol."""
-            bars = await fetch_bars(sym, api_key, self.params)
-            return (sym, bars) if bars else None
+            bars, metadata = await fetch_bars(sym, api_key, self.params)
+            if bars:
+                # Update status tracker and send incremental status update
+                data_status = metadata.get("data_status", "unknown")
+                if data_status in status_tracker:
+                    status_tracker[data_status] += 1
+
+                # Determine current overall status
+                overall_status = "real-time"
+                if status_tracker["market-closed"] > 0:
+                    overall_status = "market-closed"
+                elif status_tracker["delayed"] > 0:
+                    overall_status = "delayed"
+
+                # Send incremental status update
+                from nodes.base.base_node import ProgressState
+
+                self._emit_progress(
+                    ProgressState.UPDATE,
+                    progress=None,
+                    text="Fetching symbols...",
+                    meta={"polygon_data_status": overall_status},
+                )
+
+            return (sym, bars, metadata) if bars else None
 
         # Use shared worker pool to process symbols concurrently
         results = await process_with_worker_pool(
@@ -130,7 +162,24 @@ class PolygonBatchCustomBars(Base):
         bundle: dict[AssetSymbol, list[OHLCVBar]] = {}
         for result in results:
             if result is not None:
-                sym, bars = result
+                sym, bars, _metadata = result
                 bundle[sym] = bars
+
+        # Determine overall status from tracker (prefer most severe: market-closed > delayed > real-time)
+        overall_status = "real-time"
+        if status_tracker["market-closed"] > 0:
+            overall_status = "market-closed"
+        elif status_tracker["delayed"] > 0:
+            overall_status = "delayed"
+
+        # Send final status update
+        from nodes.base.base_node import ProgressState
+
+        self._emit_progress(
+            ProgressState.UPDATE,
+            progress=None,
+            text=f"Fetched {len(bundle)} symbols",
+            meta={"polygon_data_status": overall_status},
+        )
 
         return {"ohlcv_bundle": bundle}

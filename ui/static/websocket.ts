@@ -137,6 +137,7 @@ function forceCleanup() {
     showExecuteButton();
     const statusService = getStatusService();
     statusService?.setIdle();
+    // Don't clear polygon status - keep it visible
 
     if (stopPromiseResolver) {
         stopPromiseResolver();
@@ -197,6 +198,7 @@ function handleStatusMessage(message: ServerToClientStatusMessage) {
     // Show execute button when execution finishes or errors
     if (message.state === 'finished' || message.state === 'error') {
         showExecuteButton();
+        // Don't clear polygon status - keep it visible
     }
 }
 
@@ -209,6 +211,7 @@ function handleStoppedMessage(data: any) {
     // Clean up UI state
     const statusService = getStatusService();
     statusService?.stopped(null);
+    // Don't clear polygon status - keep it visible
     
     // Resolve the stop promise
     if (stopPromiseResolver) {
@@ -252,6 +255,32 @@ function handleProgressMessage(data: any, graph: LGraph) {
             node.setProgress(progress);
         }
     }
+    
+    // Handle polygon data status metadata
+    if (data.meta?.polygon_data_status) {
+        updatePolygonStatus(data.meta.polygon_data_status);
+    }
+}
+
+function updatePolygonStatus(status: string) {
+    const element = document.getElementById('polygon-status');
+    if (!element) {
+        return;
+    }
+
+    element.className = `polygon-status ${status}`;
+
+    const labels: Record<string, string> = {
+        'real-time': 'Real-Time',
+        'delayed': 'Delayed',
+        'market-closed': 'Market Closed',
+        'unknown': 'Unknown',
+        'na': 'N/A',
+        'polygon-status-na': 'N/A'
+    };
+
+    element.textContent = labels[status] || status;
+    element.setAttribute('title', `Polygon Data Status: ${labels[status] || status}`);
 }
 
 function handleQueuePositionMessage(message: ServerToClientQueuePositionMessage) {

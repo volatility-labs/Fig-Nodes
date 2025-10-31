@@ -116,7 +116,7 @@ class OrbFilter(BaseIndicatorFilter):
         logger.info(f"ORB_FILTER: Request time: {datetime.now(pytz.timezone('US/Eastern'))}")
         logger.info("=" * 80)
 
-        bars = await fetch_bars(symbol, api_key, fetch_params)
+        bars, _metadata = await fetch_bars(symbol, api_key, fetch_params)
 
         if not bars:
             logger.warning(f"ORB_FILTER: No bars returned for {symbol.ticker}")

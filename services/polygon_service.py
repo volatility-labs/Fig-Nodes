@@ -11,7 +11,9 @@ from core.types_registry import AssetClass, AssetSymbol, OHLCVBar
 logger = logging.getLogger(__name__)
 
 
-async def fetch_bars(symbol: AssetSymbol, api_key: str, params: dict[str, Any]) -> list[OHLCVBar]:
+async def fetch_bars(
+    symbol: AssetSymbol, api_key: str, params: dict[str, Any]
+) -> tuple[list[OHLCVBar], dict[str, Any]]:
     """
     Fetches OHLCV bars for a symbol from Massive.com API (formerly Polygon.io).
 
@@ -27,7 +29,11 @@ async def fetch_bars(symbol: AssetSymbol, api_key: str, params: dict[str, Any]) 
         params: Parameters including multiplier, timespan, lookback_period, etc.
 
     Returns:
-        List of OHLCVBar objects
+        Tuple of (list of OHLCVBar objects, metadata dict with data_status)
+        metadata contains:
+        - data_status: "real-time", "delayed", or "market-closed"
+        - api_status: "OK" or "DELAYED" from API response
+        - market_open: bool indicating if US market is open
     """
     print(f"STOP_TRACE: fetch_bars started for {symbol}")
     multiplier = params.get("multiplier", 1)
@@ -124,6 +130,26 @@ async def fetch_bars(symbol: AssetSymbol, api_key: str, params: dict[str, Any]) 
                 logger.error(f"POLYGON_SERVICE: API error for {symbol.ticker}: {error_msg}")
                 raise ValueError(f"Massive.com API error: {error_msg}")
 
+            # Determine data status based on market state and API status
+            from services.time_utils import is_us_market_open
+
+            market_is_open = is_us_market_open()
+
+            if not market_is_open:
+                data_status = "market-closed"
+            elif api_status == "OK":
+                data_status = "real-time"
+            elif api_status == "DELAYED":
+                data_status = "delayed"
+            else:
+                data_status = "unknown"
+
+            metadata = {
+                "data_status": data_status,
+                "api_status": api_status,
+                "market_open": market_is_open,
+            }
+
             results = data.get("results", [])
             bars: list[OHLCVBar] = []
 
@@ -137,9 +163,11 @@ async def fetch_bars(symbol: AssetSymbol, api_key: str, params: dict[str, Any]) 
                 for result in results:
                     if not isinstance(result, dict):
                         continue
-                    timestamp_ms = result["t"]
-                    if isinstance(timestamp_ms, int):
-                        timestamps_ms.append(timestamp_ms)
+                    timestamp_ms_raw = result.get("t")
+                    if not isinstance(timestamp_ms_raw, int):
+                        continue
+                    timestamp_ms = timestamp_ms_raw
+                    timestamps_ms.append(timestamp_ms)
                     bar: OHLCVBar = {
                         "timestamp": timestamp_ms,
                         "open": result["o"],
@@ -173,19 +201,33 @@ async def fetch_bars(symbol: AssetSymbol, api_key: str, params: dict[str, Any]) 
                         logger.info(
                             "POLYGON_SERVICE: ✅ Data appears REAL-TIME (delay < 5 minutes)"
                         )
+                        # Override status if delay suggests real-time but API says delayed
+                        if api_status == "DELAYED" and delay_minutes < 5:
+                            data_status = "real-time"
                     elif delay_minutes < 15:
                         logger.warning(
                             f"POLYGON_SERVICE: ⚠️ Data appears SLIGHTLY DELAYED (delay {delay_minutes:.2f} minutes)"
                         )
+                        # Override status based on actual delay if significant
+                        if delay_minutes >= 15:
+                            data_status = "delayed"
                     else:
                         logger.warning(
                             f"POLYGON_SERVICE: ⚠️ Data appears SIGNIFICANTLY DELAYED (delay {delay_minutes:.2f} minutes)"
                         )
+                        # Always mark as delayed if delay is significant, regardless of API status
+                        data_status = "delayed"
+
+                    # Update metadata with refined status based on actual delay
+                    metadata["data_status"] = data_status
+                    logger.info(
+                        f"POLYGON_SERVICE: Final data status: {data_status} (API status: {api_status})"
+                    )
 
                     logger.info(f"POLYGON_SERVICE: Total bars processed: {len(bars)}")
                     logger.info("=" * 80)
 
-            return bars
+            return bars, metadata
     except asyncio.CancelledError:
         print(f"STOP_TRACE: CancelledError caught in fetch_bars for {symbol}")
         # Re-raise immediately for proper cancellation propagation

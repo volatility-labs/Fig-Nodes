@@ -46,5 +46,15 @@ class PolygonCustomBars(Base):
         if not api_key:
             raise ValueError("Polygon API key not found in vault")
 
-        bars = await fetch_bars(symbol, api_key, self.params)
+        bars, metadata = await fetch_bars(symbol, api_key, self.params)
+
+        # Report status via progress callback
+        from nodes.base.base_node import ProgressState
+        self._emit_progress(
+            ProgressState.UPDATE,
+            progress=None,
+            text=f"Fetched bars for {symbol.ticker}",
+            meta={"polygon_data_status": metadata.get("data_status", "unknown")},
+        )
+
         return {"ohlcv": bars}
