@@ -19,7 +19,7 @@ export default class OHLCVPlotNodeUI extends BaseCustomNode {
 
     constructor(title: string, data: any, serviceRegistry: any) {
         super(title, data, serviceRegistry);
-        this.size = [500, 360];
+        this.size = [500, 500]; // Increased height for more chart space
         this.displayResults = false; // custom canvas rendering
         this.renderer = new OHLCVPlotRenderer(this);
     }
@@ -62,11 +62,11 @@ export default class OHLCVPlotNodeUI extends BaseCustomNode {
 
         const widgetHeight = this.widgets ? this.widgets.length * LiteGraph.NODE_WIDGET_HEIGHT : 0;
         const padding = 12;
-        const widgetSpacing = 8;
+        const widgetSpacing = 35; // Extra spacing to prevent widget overlap with charts
         const labelHeight = 20;
         const headerHeight = LiteGraph.NODE_TITLE_HEIGHT + widgetHeight + widgetSpacing;
         const minWidth = 400;
-        const minHeight = 200;
+        const minHeight = 400; // Increased min height for better chart display
         const maxWidth = 800;
 
         if (labels.length === 1) {
@@ -148,7 +148,7 @@ export default class OHLCVPlotNodeUI extends BaseCustomNode {
         }
         const labels = Object.keys(this.images || {});
         const padding = 12;
-        const widgetSpacing = 8; // Extra space after widgets
+        const widgetSpacing = 35; // Extra space after widgets to prevent overlap
         const widgetHeight = this.widgets ? this.widgets.length * LiteGraph.NODE_WIDGET_HEIGHT : 0;
         const x0 = padding;
         const y0 = LiteGraph.NODE_TITLE_HEIGHT + widgetHeight + widgetSpacing + padding;

@@ -46,6 +46,11 @@ class VBPLevelFilter(BaseIndicatorFilter):
         "ohlcv_bundle": get_type("OHLCVBundle"),
     }
 
+    outputs = {
+        "filtered_ohlcv_bundle": get_type("OHLCVBundle"),
+        "vbp_levels_bundle": get_type("ConfigDict"),  # Optional: dict[str, list[float]]
+    }
+
     default_params = {
         "bins": 50,
         "lookback_years": 2,
@@ -58,6 +63,7 @@ class VBPLevelFilter(BaseIndicatorFilter):
         "rate_limit_per_second": 95,
         "use_dollar_weighted": False,
         "use_close_only": False,
+        "output_vbp_levels": False,  # Enable to output VBP levels for plotting
     }
 
     params_meta = [
@@ -147,6 +153,14 @@ class VBPLevelFilter(BaseIndicatorFilter):
             "label": "Use Close Price Only",
             "description": "If true, bin by close price only. If false, use HLC average (typical price)",
         },
+        {
+            "name": "output_vbp_levels",
+            "type": "combo",
+            "default": False,
+            "options": [True, False],
+            "label": "Output VBP Levels for Charts",
+            "description": "Enable to output VBP price levels for plotting on charts",
+        },
     ]
 
     def __init__(
@@ -155,6 +169,7 @@ class VBPLevelFilter(BaseIndicatorFilter):
         super().__init__(id, params, graph_context)
         self.workers: list[asyncio.Task[None]] = []
         self._max_safe_concurrency = 5
+        self._vbp_levels_cache: dict[str, list[float]] = {}
 
     def force_stop(self):
         if self._is_stopped:
@@ -252,7 +267,7 @@ class VBPLevelFilter(BaseIndicatorFilter):
         # Take top num_levels
         return sorted_bins[:num_levels]
 
-    def _calculate_indicator(self, ohlcv_data: list[OHLCVBar]) -> IndicatorResult:
+    def _calculate_indicator(self, ohlcv_data: list[OHLCVBar], symbol: AssetSymbol | None = None) -> IndicatorResult:
         """Calculate VBP levels and return IndicatorResult. Supports two lookback periods."""
         if not ohlcv_data:
             return IndicatorResult(
@@ -286,6 +301,12 @@ class VBPLevelFilter(BaseIndicatorFilter):
 
         filtered_data_1 = [bar for bar in ohlcv_data if bar["timestamp"] >= cutoff_timestamp_1]
 
+        # print(f"VBP CALC: Period 1 ({lookback_years_1}yr) - {len(filtered_data_1)} bars before aggregation")
+        # if filtered_data_1:
+        #     first_dt = datetime.fromtimestamp(filtered_data_1[0]["timestamp"] / 1000, tz=pytz.UTC)
+        #     last_dt = datetime.fromtimestamp(filtered_data_1[-1]["timestamp"] / 1000, tz=pytz.UTC)
+        #     print(f"VBP CALC: Date range: {first_dt.date()} to {last_dt.date()}")
+
         if len(filtered_data_1) < 10:
             return IndicatorResult(
                 indicator_type=IndicatorType.VBP,
@@ -298,6 +319,7 @@ class VBPLevelFilter(BaseIndicatorFilter):
         # Aggregate to weekly if needed
         if not self.params.get("use_weekly", False):
             filtered_data_1 = self._aggregate_to_weekly(filtered_data_1)
+            # print(f"VBP CALC: After weekly aggregation: {len(filtered_data_1)} bars")
 
         if len(filtered_data_1) < 10:
             return IndicatorResult(
@@ -351,11 +373,18 @@ class VBPLevelFilter(BaseIndicatorFilter):
             cutoff_timestamp_2 = int(cutoff_dt_2.timestamp() * 1000)
 
             filtered_data_2 = [bar for bar in ohlcv_data if bar["timestamp"] >= cutoff_timestamp_2]
+            
+            # print(f"VBP CALC: Period 2 ({lookback_years_2}yr) - {len(filtered_data_2)} bars before aggregation")
+            # if filtered_data_2:
+            #     first_dt_2 = datetime.fromtimestamp(filtered_data_2[0]["timestamp"] / 1000, tz=pytz.UTC)
+            #     last_dt_2 = datetime.fromtimestamp(filtered_data_2[-1]["timestamp"] / 1000, tz=pytz.UTC)
+            #     print(f"VBP CALC: Date range: {first_dt_2.date()} to {last_dt_2.date()}")
 
             if len(filtered_data_2) >= 10:
                 # Aggregate to weekly if needed
                 if not self.params.get("use_weekly", False):
                     filtered_data_2 = self._aggregate_to_weekly(filtered_data_2)
+                    # print(f"VBP CALC: After weekly aggregation: {len(filtered_data_2)} bars")
 
                 if len(filtered_data_2) >= 10:
                     vbp_result_2 = calculate_vbp(
@@ -475,6 +504,11 @@ class VBPLevelFilter(BaseIndicatorFilter):
             f"has_resistance_above={has_resistance_above}"
         )
 
+        # Extract all level prices for optional output
+        all_level_prices_list = [float(level.get("priceLevel", 0.0)) for level in unique_levels]
+        all_level_prices_list.sort()
+        vbp_levels_for_output = [{"price": p} for p in all_level_prices_list]
+
         return IndicatorResult(
             indicator_type=IndicatorType.VBP,
             timestamp=ohlcv_data[-1]["timestamp"],
@@ -487,7 +521,8 @@ class VBPLevelFilter(BaseIndicatorFilter):
                     "distance_to_resistance": distance_to_resistance,
                     "num_levels": len(unique_levels),
                     "has_resistance_above": has_resistance_above,
-                }
+                },
+                series=vbp_levels_for_output,  # Store VBP levels for extraction
             ),
             params=self.params,
         )
@@ -582,6 +617,7 @@ class VBPLevelFilter(BaseIndicatorFilter):
             rate_limit: int = rate_limit_raw
 
             filtered_bundle = {}
+            vbp_levels_dict: dict[str, list[float]] = {}  # Store VBP levels per symbol
             rate_limiter = RateLimiter(max_per_second=rate_limit)
             total_symbols = len(ohlcv_bundle)
             completed_count = 0
@@ -630,15 +666,24 @@ class VBPLevelFilter(BaseIndicatorFilter):
                             try:
                                 weekly_bars = await self._fetch_weekly_bars(symbol, api_key)
                                 if weekly_bars:
-                                    updated_data = weekly_bars
+                                    # Calculate VBP on weekly bars
+                                    indicator_result = self._calculate_indicator(weekly_bars, symbol)
                                 else:
-                                    updated_data = ohlcv_data
-
-                                # Calculate indicator
-                                indicator_result = self._calculate_indicator(updated_data)
+                                    # Fallback to daily bars if weekly fetch fails
+                                    indicator_result = self._calculate_indicator(ohlcv_data, symbol)
 
                                 if self._should_pass_filter(indicator_result):
-                                    filtered_bundle[symbol] = updated_data
+                                    # Always output daily bars for charting (not weekly)
+                                    filtered_bundle[symbol] = ohlcv_data
+                                    
+                                    # Store VBP levels if output enabled
+                                    if self.params.get("output_vbp_levels", False):
+                                        levels_series = indicator_result.values.series
+                                        if levels_series:
+                                            prices = [float(item["price"]) for item in levels_series if "price" in item]
+                                            if prices and symbol not in vbp_levels_dict:
+                                                vbp_levels_dict[str(symbol)] = prices
+                                                # print(f"VBP FILTER: Stored {len(prices)} VBP levels for {symbol}: {prices[:3]}...")
 
                                 completed_count += 1
                                 progress = (completed_count / total_symbols) * 100
@@ -671,7 +716,37 @@ class VBPLevelFilter(BaseIndicatorFilter):
                     if isinstance(res, Exception):
                         logger.error(f"Worker task error: {res}", exc_info=True)
 
-            return {"filtered_ohlcv_bundle": filtered_bundle}
+            result: dict[str, Any] = {"filtered_ohlcv_bundle": filtered_bundle}
+            output_vbp_enabled = self.params.get("output_vbp_levels", False)
+            # print(f"VBP FILTER: output_vbp_levels={output_vbp_enabled}, vbp_levels_dict has {len(vbp_levels_dict)} symbols")
+            if output_vbp_enabled and vbp_levels_dict:
+                result["vbp_levels_bundle"] = vbp_levels_dict
+                # print(f"VBP FILTER: Returning vbp_levels_bundle with {len(vbp_levels_dict)} symbols")
+            return result
 
-        # Call parent's execute implementation when not fetching weekly bars
-        return await super()._execute_impl({"ohlcv_bundle": ohlcv_bundle})
+        # If not using weekly bars, handle locally to extract VBP levels if needed
+        if self.params.get("output_vbp_levels", False):
+            self._vbp_levels_cache = {}  # Clear cache
+            filtered_bundle: dict[AssetSymbol, list[OHLCVBar]] = {}
+            
+            # Process each symbol
+            for symbol, ohlcv_data in ohlcv_bundle.items():
+                if ohlcv_data:
+                    indicator_result = self._calculate_indicator(ohlcv_data, symbol)
+                    if self._should_pass_filter(indicator_result):
+                        filtered_bundle[symbol] = ohlcv_data
+                        
+                        # Store VBP levels if output enabled
+                        levels_series = indicator_result.values.series
+                        if levels_series:
+                            prices = [float(item["price"]) for item in levels_series if "price" in item]
+                            if prices:
+                                self._vbp_levels_cache[str(symbol)] = prices
+            
+            result: dict[str, Any] = {"filtered_ohlcv_bundle": filtered_bundle}
+            if self._vbp_levels_cache:
+                result["vbp_levels_bundle"] = self._vbp_levels_cache
+            return result
+        else:
+            # Call parent's execute implementation when not outputting VBP levels
+            return await super()._execute_impl({"ohlcv_bundle": ohlcv_bundle})
