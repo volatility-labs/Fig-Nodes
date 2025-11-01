@@ -40,8 +40,8 @@ class OrbFilter(BaseIndicatorFilter):
         "rel_vol_threshold": 100.0,
         "direction": "both",  # 'bullish', 'bearish', 'both'
         "avg_period": 14,
-        "filter_above_orh": False,  # Filter for price above Opening Range High
-        "filter_below_orl": False,  # Filter for price below Opening Range Low
+        "filter_above_orh": "No",  # Filter for price above Opening Range High
+        "filter_below_orl": "No",  # Filter for price below Opening Range Low
         "max_concurrent": 10,  # For concurrency limiting
         "rate_limit_per_second": 95,  # Stay under Polygon's recommended 100/sec
     }
@@ -56,8 +56,18 @@ class OrbFilter(BaseIndicatorFilter):
             "options": ["bullish", "bearish", "both"],
         },
         {"name": "avg_period", "type": "number", "default": 14, "min": 1, "step": 1},
-        {"name": "filter_above_orh", "type": "boolean", "default": False},
-        {"name": "filter_below_orl", "type": "boolean", "default": False},
+        {
+            "name": "filter_above_orh",
+            "type": "combo",
+            "default": "No",
+            "options": ["No", "Yes"],
+        },
+        {
+            "name": "filter_below_orl",
+            "type": "combo",
+            "default": "No",
+            "options": ["No", "Yes"],
+        },
     ]
 
     def __init__(
@@ -236,16 +246,16 @@ class OrbFilter(BaseIndicatorFilter):
         or_low = lines.get("or_low")
 
         # Check filter_above_orh
-        filter_above_orh = self.params.get("filter_above_orh", False)
-        if filter_above_orh:
+        filter_above_orh = self.params.get("filter_above_orh", "No")
+        if filter_above_orh == "Yes":
             if current_price is None or or_high is None:
                 return False  # Can't filter if we don't have the data
             if not (current_price > or_high):
                 return False  # Price must be above ORH
 
         # Check filter_below_orl
-        filter_below_orl = self.params.get("filter_below_orl", False)
-        if filter_below_orl:
+        filter_below_orl = self.params.get("filter_below_orl", "No")
+        if filter_below_orl == "Yes":
             if current_price is None or or_low is None:
                 return False  # Can't filter if we don't have the data
             if not (current_price < or_low):
