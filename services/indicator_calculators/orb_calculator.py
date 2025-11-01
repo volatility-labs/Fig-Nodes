@@ -314,7 +314,32 @@ def calculate_orb(
     
     logger.info("=" * 80)
 
+    # Calculate opening range high and low for current target date
+    target_or_bar = None
+    for bar in bars:
+        bar_date = bar["timestamp"].date() if hasattr(bar["timestamp"], "date") else datetime.fromtimestamp(bar["timestamp"] / 1000, tz=pytz.timezone("US/Eastern")).date()
+        if bar_date == target_date:
+            # Check if this bar is within the opening range time window (9:30 AM ET ± or_minutes)
+            bar_time = bar["timestamp"] if isinstance(bar["timestamp"], datetime) else datetime.fromtimestamp(bar["timestamp"] / 1000, tz=pytz.timezone("US/Eastern"))
+            if hasattr(bar_time, "time"):
+                bar_time_only = bar_time.time()
+            else:
+                bar_time_only = datetime.fromtimestamp(bar["timestamp"] / 1000, tz=pytz.timezone("US/Eastern")).time()
+
+            opening_time = datetime.strptime("09:30", "%H:%M").time()
+            opening_window_start = (datetime.combine(datetime.today(), opening_time) - timedelta(minutes=1)).time()
+            opening_window_end = (datetime.combine(datetime.today(), opening_time) + timedelta(minutes=or_minutes)).time()
+
+            if opening_window_start <= bar_time_only <= opening_window_end:
+                target_or_bar = bar
+                break
+
+    or_high = target_or_bar["high"] if target_or_bar else None
+    or_low = target_or_bar["low"] if target_or_bar else None
+
     return {
         "rel_vol": rel_vol,
         "direction": direction,
+        "or_high": or_high,
+        "or_low": or_low,
     }
