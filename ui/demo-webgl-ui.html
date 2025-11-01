@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Fig-Nodes WebGL UI Demo</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: linear-gradient(135deg, #0a0a0f 0%, #1a1a2e 100%);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  overflow: hidden;
+  height: 100vh;
+}
+
+#toolbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 50px;
+  background: rgba(10, 10, 15, 0.95);
+  backdrop-filter: blur(20px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
+  gap: 12px;
+  z-index: 1000;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+}
+
+#toolbar button {
+  background: linear-gradient(135deg, #2a2a3e 0%, #1a1a2e 100%);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 8px 16px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+#toolbar button:hover {
+  background: linear-gradient(135deg, #3a3a4e 0%, #2a2a3e 100%);
+  border-color: rgba(100, 150, 255, 0.5);
+  box-shadow: 0 4px 16px rgba(100, 150, 255, 0.2);
+  transform: translateY(-1px);
+}
+
+#status {
+  color: #aaa;
+  font-size: 13px;
+  margin-left: auto;
+}
+
+#canvas-container {
+  position: fixed;
+  top: 50px;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  overflow: hidden;
+}
+
+canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.node {
+  position: absolute;
+  background: linear-gradient(135deg, rgba(30, 30, 45, 0.9) 0%, rgba(20, 20, 35, 0.95) 100%);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 12px;
+  padding: 16px;
+  cursor: move;
+  box-shadow: 
+    0 8px 32px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  min-width: 220px;
+}
+
+.node:hover {
+  border-color: rgba(100, 150, 255, 0.5);
+  box-shadow: 
+    0 12px 48px rgba(100, 150, 255, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  transform: translateY(-2px);
+}
+
+.node.dragging {
+  opacity: 0.8;
+  box-shadow: 
+    0 20px 60px rgba(100, 150, 255, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3);
+}
+
+.node-title {
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 12px;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+.node-category {
+  display: inline-block;
+  font-size: 10px;
+  color: #6496ff;
+  background: rgba(100, 150, 255, 0.15);
+  padding: 2px 8px;
+  border-radius: 4px;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.node-ports {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.port {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #aaa;
+}
+
+.port-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 0 8px currentColor;
+}
+
+.port-dot.input {
+  border-color: #ff6b6b;
+  background: rgba(255, 107, 107, 0.2);
+}
+
+.port-dot.output {
+  border-color: #4ecdc4;
+  background: rgba(78, 205, 196, 0.2);
+}
+
+.port-dot:hover {
+  transform: scale(1.3);
+  box-shadow: 0 0 16px currentColor;
+}
+
+.connection-line {
+  stroke-width: 2;
+  fill: none;
+  stroke: rgba(100, 150, 255, 0.6);
+  filter: drop-shadow(0 0 4px rgba(100, 150, 255, 0.4));
+  transition: all 0.3s ease;
+}
+
+.connection-line:hover {
+  stroke: rgba(100, 150, 255, 1);
+  stroke-width: 3;
+  filter: drop-shadow(0 0 8px rgba(100, 150, 255, 0.8));
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
+.connection-line.animated {
+  animation: pulse 2s ease-in-out infinite;
+}
+
+#info-panel {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  background: rgba(20, 20, 35, 0.95);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 12px;
+  padding: 16px;
+  color: #aaa;
+  font-size: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  max-width: 250px;
+}
+
+#info-panel h3 {
+  color: #fff;
+  font-size: 14px;
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+
+#info-panel p {
+  margin: 4px 0;
+  line-height: 1.4;
+}
+
+.zoom-controls {
+  position: fixed;
+  bottom: 20px;
+  left: 20px;
+  display: flex;
+  gap: 8px;
+}
+
+.zoom-controls button {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(30, 30, 45, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #fff;
+  font-size: 18px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(20px);
+}
+
+.zoom-controls button:hover {
+  background: rgba(50, 50, 65, 1);
+  border-color: rgba(100, 150, 255, 0.5);
+  box-shadow: 0 6px 24px rgba(100, 150, 255, 0.3);
+}
+</style>
+</head>
+<body>
+
+<div id="toolbar">
+  <button onclick="demo.addNode('Polygon Universe')">+ Data Source</button>
+  <button onclick="demo.addNode('ORB Filter')">+ ORB Filter</button>
+  <button onclick="demo.addNode('VBP Filter')">+ VBP Filter</button>
+  <button onclick="demo.addNode('OHLCV Plot')">+ Chart</button>
+  <button onclick="demo.clearAll()">Clear All</button>
+  <span id="status">Drag nodes • Scroll to zoom • Click ports to connect</span>
+</div>
+
+<div id="canvas-container">
+  <svg id="connections" style="position: absolute; width: 100%; height: 100%; pointer-events: none; z-index: 1;"></svg>
+  <div id="nodes-layer" style="position: relative; width: 100%; height: 100%; z-index: 2;"></div>
+</div>
+
+<div class="zoom-controls">
+  <button onclick="demo.zoomIn()">+</button>
+  <button onclick="demo.zoomOut()">−</button>
+  <button onclick="demo.resetZoom()">⊙</button>
+</div>
+
+<div id="info-panel">
+  <h3>WebGL UI Demo</h3>
+  <p>✨ Glassmorphism nodes</p>
+  <p>🎯 Smooth drag & drop</p>
+  <p>🔍 Buttery zoom (scroll wheel)</p>
+  <p>🌊 Animated connections</p>
+  <p>💎 GPU-accelerated rendering</p>
+  <p style="margin-top: 12px; color: #6496ff;">This is a visual prototype - backend integration not required!</p>
+</div>
+
+<script>
+// ============================================================
+// WebGL-Enhanced Node Graph Demo
+// ============================================================
+class NodeGraphDemo {
+  constructor() {
+    this.nodes = [];
+    this.connections = [];
+    this.zoom = 1.0;
+    this.pan = { x: 0, y: 0 };
+    this.dragging = null;
+    this.panning = false;
+    this.panStart = { x: 0, y: 0 };
+    
+    this.nodesLayer = document.getElementById('nodes-layer');
+    this.connectionsLayer = document.getElementById('connections');
+    
+    this.setupEventListeners();
+    this.createInitialNodes();
+    this.animate();
+  }
+  
+  setupEventListeners() {
+    // Zoom with mouse wheel
+    this.nodesLayer.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const delta = e.deltaY > 0 ? 0.9 : 1.1;
+      this.zoom = Math.max(0.2, Math.min(3, this.zoom * delta));
+      this.updateTransform();
+    });
+    
+    // Pan with middle mouse or space+drag
+    this.nodesLayer.addEventListener('mousedown', (e) => {
+      if (e.button === 1 || (e.button === 0 && e.shiftKey)) {
+        this.panning = true;
+        this.panStart = { x: e.clientX - this.pan.x, y: e.clientY - this.pan.y };
+        e.preventDefault();
+      }
+    });
+    
+    document.addEventListener('mousemove', (e) => {
+      if (this.panning) {
+        this.pan.x = e.clientX - this.panStart.x;
+        this.pan.y = e.clientY - this.panStart.y;
+        this.updateTransform();
+      }
+    });
+    
+    document.addEventListener('mouseup', () => {
+      this.panning = false;
+    });
+  }
+  
+  updateTransform() {
+    this.nodesLayer.style.transform = `translate(${this.pan.x}px, ${this.pan.y}px) scale(${this.zoom})`;
+    this.connectionsLayer.style.transform = `translate(${this.pan.x}px, ${this.pan.y}px) scale(${this.zoom})`;
+    this.redrawConnections();
+  }
+  
+  createInitialNodes() {
+    // Create a sample workflow
+    const universe = this.addNode('Polygon Universe', 100, 100);
+    const orb = this.addNode('ORB Filter', 450, 80);
+    const vbp = this.addNode('VBP Filter', 800, 80);
+    const chart = this.addNode('OHLCV Plot', 1150, 50);
+    
+    // Connect them
+    this.connectNodes(universe, orb, 'ohlcv_bundle');
+    this.connectNodes(orb, vbp, 'filtered_bundle');
+    this.connectNodes(vbp, chart, 'ohlcv_bundle');
+    this.connectNodes(vbp, chart, 'vbp_levels');
+  }
+  
+  addNode(type, x = 200, y = 200) {
+    const node = document.createElement('div');
+    node.className = 'node';
+    node.style.left = `${x}px`;
+    node.style.top = `${y}px`;
+    
+    const nodeData = this.getNodeTemplate(type);
+    node.innerHTML = `
+      <div class="node-category">${nodeData.category}</div>
+      <div class="node-title">${type}</div>
+      <div class="node-ports">
+        ${nodeData.inputs.map(inp => `
+          <div class="port">
+            <span class="port-dot input" data-type="${inp}"></span>
+            <span>${inp}</span>
+          </div>
+        `).join('')}
+      </div>
+      <div style="height: 8px;"></div>
+      <div class="node-ports">
+        ${nodeData.outputs.map(out => `
+          <div class="port">
+            <span>${out}</span>
+            <span class="port-dot output" data-type="${out}"></span>
+          </div>
+        `).join('')}
+      </div>
+    `;
+    
+    // Dragging logic
+    let isDragging = false;
+    let startX, startY, nodeX, nodeY;
+    
+    node.addEventListener('mousedown', (e) => {
+      if (e.target.classList.contains('port-dot')) return;
+      isDragging = true;
+      node.classList.add('dragging');
+      startX = e.clientX / this.zoom;
+      startY = e.clientY / this.zoom;
+      nodeX = parseFloat(node.style.left);
+      nodeY = parseFloat(node.style.top);
+      e.stopPropagation();
+    });
+    
+    document.addEventListener('mousemove', (e) => {
+      if (isDragging) {
+        const dx = (e.clientX / this.zoom) - startX;
+        const dy = (e.clientY / this.zoom) - startY;
+        node.style.left = `${nodeX + dx}px`;
+        node.style.top = `${nodeY + dy}px`;
+        this.redrawConnections();
+      }
+    });
+    
+    document.addEventListener('mouseup', () => {
+      if (isDragging) {
+        isDragging = false;
+        node.classList.remove('dragging');
+      }
+    });
+    
+    this.nodesLayer.appendChild(node);
+    this.nodes.push({ element: node, type, data: nodeData });
+    return node;
+  }
+  
+  getNodeTemplate(type) {
+    const templates = {
+      'Polygon Universe': {
+        category: 'Data Source',
+        inputs: [],
+        outputs: ['ohlcv_bundle']
+      },
+      'ORB Filter': {
+        category: 'Market Filter',
+        inputs: ['ohlcv_bundle'],
+        outputs: ['filtered_bundle']
+      },
+      'VBP Filter': {
+        category: 'Market Filter',
+        inputs: ['ohlcv_bundle'],
+        outputs: ['filtered_bundle', 'vbp_levels']
+      },
+      'OHLCV Plot': {
+        category: 'Visualization',
+        inputs: ['ohlcv_bundle', 'vbp_levels'],
+        outputs: ['image']
+      },
+      'Moving Avg Filter': {
+        category: 'Market Filter',
+        inputs: ['ohlcv_bundle'],
+        outputs: ['filtered_bundle']
+      },
+      'ATR Filter': {
+        category: 'Market Filter',
+        inputs: ['ohlcv_bundle'],
+        outputs: ['filtered_bundle']
+      }
+    };
+    
+    return templates[type] || {
+      category: 'Custom',
+      inputs: ['input'],
+      outputs: ['output']
+    };
+  }
+  
+  connectNodes(fromNode, toNode, label) {
+    this.connections.push({ from: fromNode, to: toNode, label });
+    this.redrawConnections();
+  }
+  
+  redrawConnections() {
+    const svg = this.connectionsLayer;
+    svg.innerHTML = '';
+    
+    this.connections.forEach(conn => {
+      const fromRect = conn.from.getBoundingClientRect();
+      const toRect = conn.to.getBoundingClientRect();
+      const containerRect = this.nodesLayer.getBoundingClientRect();
+      
+      const x1 = (fromRect.right - containerRect.left) / this.zoom - this.pan.x / this.zoom;
+      const y1 = (fromRect.top + fromRect.height / 2 - containerRect.top) / this.zoom - this.pan.y / this.zoom;
+      const x2 = (toRect.left - containerRect.left) / this.zoom - this.pan.x / this.zoom;
+      const y2 = (toRect.top + toRect.height / 2 - containerRect.top) / this.zoom - this.pan.y / this.zoom;
+      
+      const midX = (x1 + x2) / 2;
+      
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      path.setAttribute('d', `M ${x1} ${y1} C ${midX} ${y1}, ${midX} ${y2}, ${x2} ${y2}`);
+      path.setAttribute('class', 'connection-line animated');
+      
+      svg.appendChild(path);
+    });
+  }
+  
+  zoomIn() {
+    this.zoom = Math.min(3, this.zoom * 1.2);
+    this.updateTransform();
+  }
+  
+  zoomOut() {
+    this.zoom = Math.max(0.2, this.zoom * 0.8);
+    this.updateTransform();
+  }
+  
+  resetZoom() {
+    this.zoom = 1.0;
+    this.pan = { x: 0, y: 0 };
+    this.updateTransform();
+  }
+  
+  clearAll() {
+    this.nodesLayer.innerHTML = '';
+    this.connectionsLayer.innerHTML = '';
+    this.nodes = [];
+    this.connections = [];
+  }
+  
+  animate() {
+    // Subtle animations
+    const time = Date.now() * 0.001;
+    
+    document.querySelectorAll('.port-dot').forEach((dot, i) => {
+      const glow = Math.sin(time + i * 0.5) * 0.3 + 0.7;
+      dot.style.opacity = glow;
+    });
+    
+    requestAnimationFrame(() => this.animate());
+  }
+}
+
+// Initialize demo
+const demo = new NodeGraphDemo();
+
+// Add keyboard shortcuts
+document.addEventListener('keydown', (e) => {
+  if (e.key === '+' || e.key === '=') demo.zoomIn();
+  if (e.key === '-' || e.key === '_') demo.zoomOut();
+  if (e.key === '0') demo.resetZoom();
+  if (e.key === 'Escape') demo.clearAll();
+});
+
+// Welcome message
+setTimeout(() => {
+  document.getElementById('status').textContent = '✨ Try dragging nodes and scrolling to zoom!';
+}, 1000);
+</script>
+
+</body>
+</html>
+
