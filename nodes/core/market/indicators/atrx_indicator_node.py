@@ -4,7 +4,7 @@ from typing import Any, cast
 import numpy as np
 import pandas as pd
 
-from core.types_registry import IndicatorResult, IndicatorType, IndicatorValue, get_type
+from core.types_registry import AssetSymbol, IndicatorResult, IndicatorType, IndicatorValue, get_type
 from nodes.core.market.indicators.base.base_indicator_node import BaseIndicator
 from services.indicator_calculators.atrx_calculator import calculate_atrx
 
@@ -22,7 +22,7 @@ class AtrXIndicator(BaseIndicator):
         https://www.tradingview.com/script/oimVgV7e-ATR-multiple-from-50-MA/
     """
 
-    inputs = {"ohlcv": get_type("OHLCV")}
+    inputs = {"ohlcv": get_type("OHLCVBundle")}
     outputs = {"results": list[IndicatorResult]}
     default_params = {
         "length": 14,  # ATR period
@@ -48,7 +48,14 @@ class AtrXIndicator(BaseIndicator):
         return IndicatorValue(single=float("nan"))
 
     async def _execute_impl(self, inputs: dict[str, Any]) -> dict[str, Any]:
-        ohlcv: list[dict[str, float]] = inputs.get("ohlcv", [])
+        ohlcv_bundle: dict[AssetSymbol, list[dict[str, float]]] = inputs.get("ohlcv", {})
+        if not ohlcv_bundle:
+            logger.warning("Empty OHLCV bundle provided to ATRX indicator")
+            return {"results": []}
+
+        # Get the first (and typically only) symbol's bars
+        ohlcv = next(iter(ohlcv_bundle.values()))
+        
         if not ohlcv:
             logger.warning("Empty OHLCV data provided to ATRX indicator")
             return {"results": []}

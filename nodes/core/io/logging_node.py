@@ -103,8 +103,33 @@ class Logging(Base):
         elif semantic_type == "AssetSymbolList" and isinstance(value, list):
             text = ", ".join(str(sym) for sym in value)
             await self._safe_print(text)
+        elif semantic_type == "OHLCVBundle" and isinstance(value, dict):
+            # OHLCVBundle data preview
+            total_bars = sum(len(bars) for bars in value.values() if isinstance(bars, list))
+            symbol_count = len(value)
+            text = f"OHLCVBundle data ({symbol_count} symbol(s), {total_bars} total bars):\n"
+            preview_count = 0
+            for sym, bars in list(value.items())[:3]:  # Show first 3 symbols
+                if isinstance(bars, list) and bars:
+                    preview_bars = min(3, len(bars))
+                    text += f"  {sym} ({len(bars)} bars):\n"
+                    for i, bar in enumerate(bars[:preview_bars]):
+                        if isinstance(bar, dict) and all(
+                            key in bar for key in {"timestamp", "open", "high", "low", "close", "volume"}
+                        ):
+                            text += f"    Bar {i + 1}: {bar['timestamp']} O:{bar['open']} H:{bar['high']} L:{bar['low']} C:{bar['close']} V:{bar['volume']}\n"
+                    if len(bars) > preview_bars:
+                        text += f"    ... and {len(bars) - preview_bars} more bars\n"
+                    preview_count += len(bars)
+            if symbol_count > 3:
+                text += f"  ... and {symbol_count - 3} more symbols"
+            # Only print in debug mode to reduce log verbosity
+            import os
+
+            if os.getenv("DEBUG_LOGGING") == "1":
+                await self._safe_print(f"LoggingNode {self.id}: {text}")
         elif semantic_type == "OHLCV" and _is_list_of_dicts(value):
-            # OHLCV data preview
+            # Legacy OHLCV format (list) - should not happen but handle gracefully
             preview_count = min(10, len(value))
             text = f"OHLCV data ({len(value)} bars):\n"
             for i, bar in enumerate(value[:preview_count]):

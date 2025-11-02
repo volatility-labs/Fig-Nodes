@@ -233,7 +233,7 @@ function handleDataMessage(data: any, graph: LGraph) {
         const node: any = graph.getNodeById(parseInt(nodeId));
         if (!node) continue;
 
-        const allowRender = node.type === 'Logging' || node.type === 'OHLCVPlot';
+        const allowRender = node.type === 'Logging' || node.type === 'OHLCVPlot' || node.type === 'OHLCVPlotEnhanced';
         const updateMethod = node.onStreamUpdate || node.updateDisplay;
 
         if (allowRender && typeof updateMethod === 'function') {

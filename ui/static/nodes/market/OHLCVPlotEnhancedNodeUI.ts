@@ -2,9 +2,9 @@ import BaseCustomNode from '../base/BaseCustomNode';
 import { LiteGraph } from '@comfyorg/litegraph';
 import { NodeRenderer } from '../utils/NodeRenderer';
 
-class OHLCVPlotRenderer extends NodeRenderer {
+class OHLCVPlotEnhancedRenderer extends NodeRenderer {
     onDrawForeground(ctx: CanvasRenderingContext2D) {
-        const node = this.node as OHLCVPlotNodeUI;
+        const node = this.node as OHLCVPlotEnhancedNodeUI;
         node.drawPlots(ctx);
         this.drawHighlight(ctx);
         this.drawProgressBar(ctx);
@@ -12,7 +12,7 @@ class OHLCVPlotRenderer extends NodeRenderer {
     }
 }
 
-export default class OHLCVPlotNodeUI extends BaseCustomNode {
+export default class OHLCVPlotEnhancedNodeUI extends BaseCustomNode {
     private images: { [label: string]: string } = {};
     private loadedImages: Map<string, HTMLImageElement> = new Map();
     private imageAspectRatios: Map<string, number> = new Map();
@@ -21,7 +21,7 @@ export default class OHLCVPlotNodeUI extends BaseCustomNode {
         super(title, data, serviceRegistry);
         this.size = [500, 360];
         this.displayResults = false; // custom canvas rendering
-        this.renderer = new OHLCVPlotRenderer(this);
+        this.renderer = new OHLCVPlotEnhancedRenderer(this);
     }
 
     updateDisplay(result: any) {
@@ -261,5 +261,4 @@ export default class OHLCVPlotNodeUI extends BaseCustomNode {
         ctx.restore();
     }
 }
-
 

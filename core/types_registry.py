@@ -339,7 +339,6 @@ AssetSymbolList: TypeAlias = list[AssetSymbol]
 IndicatorDict: TypeAlias = dict[str, float]
 AnyList: TypeAlias = list[Any]
 ConfigDict: TypeAlias = dict[str, Any]
-OHLCV: TypeAlias = list[OHLCVBar]
 OHLCVBundle: TypeAlias = dict[AssetSymbol, list[OHLCVBar]]
 OHLCVStream: TypeAlias = AsyncGenerator[dict[AssetSymbol, list[OHLCVBar]], None]
 LLMChatMessageList: TypeAlias = list[LLMChatMessage]
@@ -367,7 +366,6 @@ TYPE_REGISTRY: dict[str, type[Any]] = {
     "IndicatorDict": IndicatorDict,
     "AnyList": AnyList,
     "ConfigDict": ConfigDict,
-    "OHLCV": OHLCV,
     "OHLCVBundle": OHLCVBundle,
     "Score": float,
     "OHLCVStream": OHLCVStream,
@@ -434,7 +432,6 @@ __all__ = [
     "IndicatorDict",
     "AnyList",
     "ConfigDict",
-    "OHLCV",
     "OHLCVBundle",
     "OHLCVStream",
     "LLMChatMessageList",

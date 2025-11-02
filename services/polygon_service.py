@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 from datetime import datetime, timedelta
 from typing import Any
@@ -63,9 +64,8 @@ async def fetch_bars(
     to_date = now.strftime("%Y-%m-%d")
     from_date_str = from_date.strftime("%Y-%m-%d")
 
-    # Construct API URL and fetch (copied from PolygonCustomBarsNode.execute)
     ticker = str(symbol)
-    # Add "X:" prefix for crypto tickers as required by Massive.com API
+    # Special handling for crypto tickers - add "X:" prefix for crypto tickers as required by Massive.com API.
     if symbol.asset_class == AssetClass.CRYPTO:
         ticker = f"X:{ticker}"
     url = f"https://api.massive.com/v2/aggs/ticker/{ticker}/range/{multiplier}/{timespan}/{from_date_str}/{to_date}"
@@ -79,6 +79,7 @@ async def fetch_bars(
     # Use shorter timeout for better cancellation responsiveness
     timeout = httpx.Timeout(5.0, connect=2.0)  # 5s total, 2s connect
 
+    # Log the times
     current_time_utc = datetime.now(pytz.timezone("UTC"))
     current_time_et = current_time_utc.astimezone(pytz.timezone("US/Eastern"))
 
@@ -95,7 +96,6 @@ async def fetch_bars(
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
             response = await client.get(url, params=query_params)
-            print(f"STOP_TRACE: Completed client.get for {symbol}, status: {response.status_code}")
             logger.info(f"POLYGON_SERVICE: HTTP response status: {response.status_code}")
 
             if response.status_code != 200:
@@ -135,14 +135,23 @@ async def fetch_bars(
 
             market_is_open = is_us_market_open()
 
-            if not market_is_open:
-                data_status = "market-closed"
-            elif api_status == "OK":
-                data_status = "real-time"
-            elif api_status == "DELAYED":
-                data_status = "delayed"
+            # Determine status by asset class: crypto trades 24/7, don't mark as market-closed
+            if symbol.asset_class == AssetClass.CRYPTO:
+                if api_status == "OK":
+                    data_status = "real-time"
+                elif api_status == "DELAYED":
+                    data_status = "delayed"
+                else:
+                    data_status = "unknown"
             else:
-                data_status = "unknown"
+                if not market_is_open:
+                    data_status = "market-closed"
+                elif api_status == "OK":
+                    data_status = "real-time"
+                elif api_status == "DELAYED":
+                    data_status = "delayed"
+                else:
+                    data_status = "unknown"
 
             metadata = {
                 "data_status": data_status,
@@ -150,7 +159,8 @@ async def fetch_bars(
                 "market_open": market_is_open,
             }
 
-            results = data.get("results", [])
+            results_raw = data.get("results", [])
+            results: list[Any] = results_raw if isinstance(results_raw, list) else []
             bars: list[OHLCVBar] = []
 
             if not results:
@@ -160,21 +170,37 @@ async def fetch_bars(
 
                 # Track timestamps for delay analysis
                 timestamps_ms: list[int] = []
-                for result in results:
-                    if not isinstance(result, dict):
+                for result_item in results:
+                    if not isinstance(result_item, dict):
                         continue
-                    timestamp_ms_raw = result.get("t")
-                    if not isinstance(timestamp_ms_raw, int):
+                    result_dict: dict[str, Any] = result_item
+                    t_raw = result_dict.get("t")
+                    o_raw = result_dict.get("o")
+                    h_raw = result_dict.get("h")
+                    l_raw = result_dict.get("l")
+                    c_raw = result_dict.get("c")
+                    v_raw = result_dict.get("v")
+                    if not isinstance(t_raw, int):
                         continue
-                    timestamp_ms = timestamp_ms_raw
+                    if not isinstance(o_raw, int | float):
+                        continue
+                    if not isinstance(h_raw, int | float):
+                        continue
+                    if not isinstance(l_raw, int | float):
+                        continue
+                    if not isinstance(c_raw, int | float):
+                        continue
+                    if not isinstance(v_raw, int | float):
+                        continue
+                    timestamp_ms = t_raw
                     timestamps_ms.append(timestamp_ms)
                     bar: OHLCVBar = {
                         "timestamp": timestamp_ms,
-                        "open": result["o"],
-                        "high": result["h"],
-                        "low": result["l"],
-                        "close": result["c"],
-                        "volume": result["v"],
+                        "open": float(o_raw),
+                        "high": float(h_raw),
+                        "low": float(l_raw),
+                        "close": float(c_raw),
+                        "volume": float(v_raw),
                     }
                     bars.append(bar)
 
@@ -236,3 +262,221 @@ async def fetch_bars(
         print(f"STOP_TRACE: Exception in fetch_bars for {symbol}: {e}")
         # Wrap other exceptions but let CancelledError through immediately
         raise
+
+
+# -------------------------- Massive.com Helpers ---------------------------
+
+
+def massive_build_snapshot_tickers(filter_symbols: list[AssetSymbol]) -> list[str]:
+    tickers: list[str] = []
+    for sym in filter_symbols:
+        if sym.asset_class == AssetClass.CRYPTO:
+            tickers.append(f"X:{str(sym)}")
+        else:
+            tickers.append(sym.ticker.upper())
+    return tickers
+
+
+def massive_get_numeric_from_dict(data: dict[str, Any], key: str, default: float) -> float:
+    value = data.get(key, default)
+    if isinstance(value, int | float):
+        return float(value)
+    return default
+
+
+def massive_parse_ticker_for_market(ticker: str, market: str) -> tuple[str, str | None]:
+    if market not in ["crypto", "fx"] or ":" not in ticker:
+        return ticker, None
+    _, tick = ticker.split(":", 1)
+    if len(tick) > 3 and tick[-3:].isalpha() and tick[-3:].isupper():
+        return tick[:-3], tick[-3:]
+    return ticker, None
+
+
+def massive_compute_closed_change_perc(
+    prev_day: dict[str, Any], last_trade: dict[str, Any]
+) -> tuple[float, float | None]:
+    prev_close = massive_get_numeric_from_dict(prev_day, "c", 0.0)
+    last_trade_price = massive_get_numeric_from_dict(last_trade, "p", 0.0)
+    price = last_trade_price if last_trade_price > 0 else prev_close
+    change_perc = None
+    if last_trade_price > 0 and prev_close > 0:
+        change_perc = ((last_trade_price - prev_close) / prev_close) * 100.0
+    return price, change_perc
+
+
+async def massive_fetch_ticker_types(client: httpx.AsyncClient, api_key: str) -> set[str]:
+    url = "https://api.massive.com/v3/reference/tickers/types"
+    params: dict[str, str] = {"apiKey": api_key}
+    try:
+        response = await client.get(url, params=params)
+        response.raise_for_status()
+        data = response.json()
+        results = data.get("results", [])
+        etf_type_codes: set[str] = set()
+        for item in results:
+            if not isinstance(item, dict):
+                continue
+            item_dict: dict[str, Any] = item
+            code_raw: Any = item_dict.get("code")
+            desc_raw: Any = item_dict.get("description")
+            code = code_raw if isinstance(code_raw, str) else ""
+            description = desc_raw.lower() if isinstance(desc_raw, str) else ""
+            type_code = code.lower()
+            if (
+                "etf" in type_code
+                or "etn" in type_code
+                or "etp" in type_code
+                or "exchange traded" in description
+            ):
+                etf_type_codes.add(code)
+        return etf_type_codes
+    except Exception:
+        return {"ETF", "ETN", "ETP"}
+
+
+async def massive_fetch_filtered_tickers_for_list(
+    client: httpx.AsyncClient,
+    api_key: str,
+    market: str,
+    exclude_etfs: bool,
+    tickers: list[str],
+) -> set[str]:
+    etf_types: set[str] = set()
+    if market in ["stocks", "otc"]:
+        etf_types = await massive_fetch_ticker_types(client, api_key)
+    ref_market = "otc" if market == "otc" else market
+    allowed: set[str] = set()
+
+    for ticker in tickers:
+        params: dict[str, Any] = {"active": True, "limit": 1, "apiKey": api_key}
+        if market in ["stocks", "otc", "crypto", "fx", "indices"]:
+            params["market"] = ref_market
+        params["ticker"] = ticker
+        response = await client.get("https://api.massive.com/v3/reference/tickers", params=params)
+        if response.status_code != 200:
+            allowed.add(ticker)
+            continue
+        data = response.json()
+        results = data.get("results", [])
+        if not isinstance(results, list) or not results:
+            allowed.add(ticker)
+            continue
+        results_list: list[Any] = results
+        first_item_raw = results_list[0]
+        if not isinstance(first_item_raw, dict):
+            allowed.add(ticker)
+            continue
+        first_item: dict[str, Any] = first_item_raw
+        type_val: Any = first_item.get("type")
+        market_val: Any = first_item.get("market")
+        type_str = type_val if isinstance(type_val, str) else ""
+        market_str = market_val if isinstance(market_val, str) else ""
+        is_etf = (
+            (type_str in etf_types)
+            or ("etf" in type_str.lower())
+            or ("etn" in type_str.lower())
+            or ("etp" in type_str.lower())
+            or (market_str == "etp")
+        )
+        if exclude_etfs and is_etf:
+            continue
+        if not exclude_etfs and not is_etf:
+            continue
+        allowed.add(ticker)
+    return allowed
+
+
+async def massive_fetch_filtered_tickers(
+    client: httpx.AsyncClient,
+    api_key: str,
+    market: str,
+    exclude_etfs: bool,
+) -> set[str]:
+    ref_market = "otc" if market == "otc" else market
+    needs_etf_filter = market in ["stocks", "otc"]
+    ref_params: dict[str, Any] = {"active": True, "limit": 1000, "apiKey": api_key}
+    if market in ["stocks", "otc", "crypto", "fx", "indices"]:
+        ref_params["market"] = ref_market
+    etf_types: set[str] = set()
+    if needs_etf_filter:
+        etf_types = await massive_fetch_ticker_types(client, api_key)
+    ticker_set: set[str] = set()
+    ref_url = "https://api.massive.com/v3/reference/tickers"
+    next_url: str | None = ref_url
+    page_count = 0
+    while next_url:
+        if page_count > 0:
+            if "?" in next_url:
+                url_to_fetch = f"{next_url}&apiKey={api_key}"
+            else:
+                url_to_fetch = f"{next_url}?apiKey={api_key}"
+            response = await client.get(url_to_fetch)
+        else:
+            response = await client.get(ref_url, params=ref_params)
+        if response.status_code != 200:
+            break
+        data = response.json()
+        results = data.get("results", [])
+        for item in results:
+            if not isinstance(item, dict):
+                continue
+            item_dict: dict[str, Any] = item
+            ticker_raw: Any = item_dict.get("ticker")
+            if not isinstance(ticker_raw, str) or not ticker_raw:
+                continue
+            ticker = ticker_raw
+            type_val: Any = item_dict.get("type")
+            market_val: Any = item_dict.get("market")
+            ticker_type = type_val if isinstance(type_val, str) else ""
+            ticker_market = market_val if isinstance(market_val, str) else ""
+            if etf_types:
+                is_etf = (
+                    ticker_type in etf_types
+                    or "etf" in ticker_type.lower()
+                    or "etn" in ticker_type.lower()
+                    or "etp" in ticker_type.lower()
+                    or ticker_market == "etp"
+                )
+                if exclude_etfs and is_etf:
+                    continue
+                if not exclude_etfs and not is_etf:
+                    continue
+            ticker_set.add(ticker)
+        next_url = data.get("next_url")
+        page_count += 1
+    return ticker_set
+
+
+async def massive_fetch_snapshot(
+    client: httpx.AsyncClient,
+    api_key: str,
+    locale: str,
+    markets: str,
+    market: str,
+    tickers: list[str] | None,
+    include_otc: bool,
+) -> list[dict[str, Any]]:
+    url = f"https://api.massive.com/v2/snapshot/locale/{locale}/markets/{markets}/tickers"
+    params: dict[str, Any] = {}
+    if include_otc and market in ["stocks", "otc"]:
+        params["include_otc"] = True
+    if tickers:
+        params["tickers"] = ",".join(tickers)
+    params["apiKey"] = api_key
+    response = await client.get(url, params=params)
+    if response.status_code != 200:
+        error_text = response.text if response.text else response.reason_phrase
+        raise ValueError(f"Failed to fetch snapshot: {response.status_code} - {error_text}")
+    data = response.json()
+    tickers_raw = data.get("tickers", [])
+    tickers_list_any: list[Any] = tickers_raw if isinstance(tickers_raw, list) else []
+    ticker_dicts: list[dict[str, Any]] = []
+    for t in tickers_list_any:
+        if isinstance(t, dict):
+            try:
+                sanitized: dict[str, Any] = json.loads(json.dumps(t))
+            except Exception:
+                sanitized = {}
+            ticker_dicts.append(sanitized)
+    return ticker_dicts

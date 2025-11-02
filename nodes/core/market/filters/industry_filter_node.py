@@ -14,10 +14,10 @@ class IndustryFilter(BaseFilter):
     """
     Filters OHLCV bundles based on company industry from Massive.com API (formerly Polygon.io) Ticker Overview API.
     Uses sic_description for matching (e.g., 'Computer Programming Services').
-    
+
     Note: Polygon.io has rebranded to Massive.com. The API endpoints have been updated
     to use api.massive.com, but the API routes remain unchanged.
-    
+
     Requires Massive.com API key (POLYGON_API_KEY) from vault.
     """
 
@@ -43,7 +43,12 @@ class IndustryFilter(BaseFilter):
         },
     ]
 
-    def __init__(self, id: int, params: dict[str, Any] | None = None, graph_context: dict[str, Any] | None = None):  # Changed from node_id: str
+    def __init__(
+        self,
+        id: int,
+        params: dict[str, Any] | None = None,
+        graph_context: dict[str, Any] | None = None,
+    ):  # Changed from node_id: str
         super().__init__(id, params or {}, graph_context)
         allowed_industries_param = self.params.get("allowed_industries", [])
         if isinstance(allowed_industries_param, list):

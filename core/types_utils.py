@@ -191,7 +191,7 @@ def infer_data_type(data: Any) -> str:
         if item_type == "AssetSymbol":
             return "AssetSymbolList"
         if item_type == "OHLCVBar":
-            return "OHLCV"
+            return "OHLCVBundle"
         if item_type == "LLMChatMessage":
             return "LLMChatMessageList"
         if item_type == "IndicatorResult":

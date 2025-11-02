@@ -15,14 +15,16 @@ def _sample_bars(n: int = 20) -> List[OHLCVBar]:
 @pytest.mark.asyncio
 async def test_plot_node_single_series():
     node = OHLCVPlot(id=1, params={})
-    inputs = {"ohlcv": _sample_bars(30)}
+    symbol = AssetSymbol("TEST", AssetClass.STOCKS)
+    bundle = {symbol: _sample_bars(30)}
+    inputs = {"ohlcv": bundle}
     out = await node.execute(inputs)
     assert "images" in out
     imgs = out["images"]
     assert isinstance(imgs, dict)
-    assert "OHLCV" in imgs
-    assert isinstance(imgs["OHLCV"], str)
-    assert imgs["OHLCV"].startswith("data:image/png;base64,")
+    assert str(symbol) in imgs
+    assert isinstance(imgs[str(symbol)], str)
+    assert imgs[str(symbol)].startswith("data:image/png;base64,")
 
 
 @pytest.mark.asyncio
@@ -41,9 +43,11 @@ async def test_plot_node_bundle_multiple_symbols():
 @pytest.mark.asyncio
 async def test_plot_node_lookback_applied():
     node = OHLCVPlot(id=1, params={"lookback_bars": 10})
-    out = await node.execute({"ohlcv": _sample_bars(50)})
+    symbol = AssetSymbol("TEST", AssetClass.STOCKS)
+    bundle = {symbol: _sample_bars(50)}
+    out = await node.execute({"ohlcv": bundle})
     # Still should produce an image
-    assert out["images"]["OHLCV"].startswith("data:image/png;base64,")
+    assert out["images"][str(symbol)].startswith("data:image/png;base64,")
 
 
 @pytest.mark.asyncio

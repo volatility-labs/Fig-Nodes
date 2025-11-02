@@ -23,6 +23,11 @@ from services.rate_limiter import RateLimiter
 
 logger = logging.getLogger(__name__)
 
+# Constants
+MIN_BARS_REQUIRED = 10
+DAYS_PER_YEAR = 365.25
+PRICE_ROUNDING_PRECISION = 2
+
 
 class VBPLevelFilter(BaseIndicatorFilter):
     """
@@ -32,14 +37,6 @@ class VBPLevelFilter(BaseIndicatorFilter):
     is within specified distance from support (below) and resistance (above).
 
     Can either use weekly bars (fetched directly from Polygon) or aggregate daily bars to weekly.
-
-    Parameters:
-    - bins: Number of bins for volume histogram (default: 50)
-    - lookback_years: Number of years to look back for volume data (default: 2)
-    - num_levels: Number of significant volume levels to identify (default: 5)
-    - max_distance_to_support: Maximum % distance to nearest support level (default: 5.0)
-    - min_distance_to_resistance: Minimum % distance to nearest resistance level (default: 5.0)
-    - use_weekly: If True, fetch weekly bars from Polygon (default: False, uses daily bars from upstream)
     """
 
     inputs = {
@@ -177,13 +174,39 @@ class VBPLevelFilter(BaseIndicatorFilter):
         if not isinstance(num_levels_raw, int | float) or num_levels_raw < 1:
             raise ValueError("Number of levels must be at least 1")
 
+    # Type conversion helpers
+    def _get_int_param(self, key: str, default: int) -> int:
+        """Get and validate an integer parameter."""
+        raw = self.params.get(key, default)
+        if not isinstance(raw, int | float):
+            raise ValueError(f"{key} must be a number, got {type(raw)}")
+        return int(raw)
+
+    def _get_float_param(self, key: str, default: float) -> float:
+        """Get and validate a float parameter."""
+        raw = self.params.get(key, default)
+        if not isinstance(raw, int | float):
+            raise ValueError(f"{key} must be a number, got {type(raw)}")
+        return float(raw)
+
+    def _get_bool_param(self, key: str, default: bool) -> bool:
+        """Get and validate a boolean parameter."""
+        raw = self.params.get(key, default)
+        return bool(raw) if raw is not None else default
+
+    def _get_optional_int_param(self, key: str) -> int | None:
+        """Get and validate an optional integer parameter."""
+        raw = self.params.get(key)
+        if raw is None:
+            return None
+        if not isinstance(raw, int | float):
+            raise ValueError(f"{key} must be a number or None, got {type(raw)}")
+        return int(raw)
+
+    # Data fetching and aggregation
     async def _fetch_weekly_bars(self, symbol: AssetSymbol, api_key: str) -> list[OHLCVBar]:
         """Fetch weekly bars directly from Polygon API."""
-        lookback_years_raw = self.params.get("lookback_years", 2)
-        if not isinstance(lookback_years_raw, int | float):
-            raise ValueError(f"lookback_years must be a number, got {type(lookback_years_raw)}")
-
-        lookback_years = int(lookback_years_raw)
+        lookback_years = self._get_int_param("lookback_years", 2)
         lookback_days = lookback_years * 365
 
         fetch_params = {
@@ -203,12 +226,10 @@ class VBPLevelFilter(BaseIndicatorFilter):
         if not ohlcv_data:
             return []
 
-        # Group by week
         weekly_groups: dict[str, list[OHLCVBar]] = {}
 
         for bar in ohlcv_data:
             dt = datetime.fromtimestamp(bar["timestamp"] / 1000, tz=pytz.UTC)
-            # Create a unique week identifier: year-week
             year = dt.isocalendar()[0]
             week = dt.isocalendar()[1]
             week_key = f"{year}-W{week:02d}"
@@ -235,6 +256,27 @@ class VBPLevelFilter(BaseIndicatorFilter):
 
         return weekly_bars
 
+    def _filter_by_lookback_period(
+        self, ohlcv_data: list[OHLCVBar], lookback_years: int
+    ) -> list[OHLCVBar]:
+        """Filter bars by lookback period using calendar-aware calculation."""
+        if not ohlcv_data:
+            return []
+
+        last_ts = ohlcv_data[-1]["timestamp"]
+        last_dt = datetime.fromtimestamp(last_ts / 1000, tz=pytz.UTC)
+        cutoff_dt = last_dt - timedelta(days=lookback_years * DAYS_PER_YEAR)
+        cutoff_timestamp = int(cutoff_dt.timestamp() * 1000)
+
+        return [bar for bar in ohlcv_data if bar["timestamp"] >= cutoff_timestamp]
+
+    def _prepare_data_for_vbp(self, ohlcv_data: list[OHLCVBar]) -> list[OHLCVBar]:
+        """Prepare data for VBP calculation by aggregating to weekly if needed."""
+        if self._get_bool_param("use_weekly", False):
+            return ohlcv_data
+        return self._aggregate_to_weekly(ohlcv_data)
+
+    # VBP calculation helpers
     def _find_significant_levels(
         self, histogram: list[dict[str, Any]], num_levels: int
     ) -> list[dict[str, Any]]:
@@ -242,15 +284,38 @@ class VBPLevelFilter(BaseIndicatorFilter):
         if not histogram:
             return []
 
-        # Sort by volume descending
         def volume_key(x: dict[str, Any]) -> float:
             vol = x.get("volume", 0.0)
             return float(vol) if isinstance(vol, int | float) else 0.0
 
         sorted_bins = sorted(histogram, key=volume_key, reverse=True)
-
-        # Take top num_levels
         return sorted_bins[:num_levels]
+
+    def _calculate_vbp_for_period(
+        self, ohlcv_data: list[OHLCVBar], lookback_years: int
+    ) -> list[dict[str, Any]]:
+        """Calculate VBP levels for a single lookback period."""
+        filtered_data = self._filter_by_lookback_period(ohlcv_data, lookback_years)
+
+        if len(filtered_data) < MIN_BARS_REQUIRED:
+            return []
+
+        prepared_data = self._prepare_data_for_vbp(filtered_data)
+
+        if len(prepared_data) < MIN_BARS_REQUIRED:
+            return []
+
+        bins = self._get_int_param("bins", 50)
+        use_dollar_weighted = self._get_bool_param("use_dollar_weighted", False)
+        use_close_only = self._get_bool_param("use_close_only", False)
+
+        vbp_result = calculate_vbp(prepared_data, bins, use_dollar_weighted, use_close_only)
+
+        if vbp_result.get("pointOfControl") is None:
+            return []
+
+        num_levels = self._get_int_param("num_levels", 5)
+        return self._find_significant_levels(vbp_result["histogram"], num_levels)
 
     def _calculate_indicator(self, ohlcv_data: list[OHLCVBar]) -> IndicatorResult:
         """Calculate VBP levels and return IndicatorResult. Supports two lookback periods."""
@@ -263,118 +328,15 @@ class VBPLevelFilter(BaseIndicatorFilter):
                 error="No OHLCV data",
             )
 
-        # Get lookback periods
-        lookback_years_1_raw = self.params.get("lookback_years", 2)
-        lookback_years_2_raw = self.params.get("lookback_years_2")
+        # Calculate levels for first period
+        lookback_years_1 = self._get_int_param("lookback_years", 2)
+        all_levels = self._calculate_vbp_for_period(ohlcv_data, lookback_years_1)
 
-        if not isinstance(lookback_years_1_raw, int | float):
-            raise ValueError(f"lookback_years must be a number, got {type(lookback_years_1_raw)}")
-
-        lookback_years_1 = int(lookback_years_1_raw)
-
-        # Calculate VBP levels for first period
-        all_levels: list[dict[str, Any]] = []
-
-        # Use calendar-aware year calculation instead of hardcoded milliseconds
-        # Convert UTC timestamp to datetime, subtract years, convert back to milliseconds
-        last_ts = ohlcv_data[-1]["timestamp"]
-        last_dt = datetime.fromtimestamp(last_ts / 1000, tz=pytz.UTC)
-        cutoff_dt_1 = last_dt - timedelta(
-            days=lookback_years_1 * 365.25
-        )  # 365.25 accounts for leap years
-        cutoff_timestamp_1 = int(cutoff_dt_1.timestamp() * 1000)
-
-        filtered_data_1 = [bar for bar in ohlcv_data if bar["timestamp"] >= cutoff_timestamp_1]
-
-        if len(filtered_data_1) < 10:
-            return IndicatorResult(
-                indicator_type=IndicatorType.VBP,
-                timestamp=ohlcv_data[-1]["timestamp"],
-                values=IndicatorValue(lines={}),
-                params=self.params,
-                error=f"Insufficient data for period 1: need at least 10 bars, got {len(filtered_data_1)}",
-            )
-
-        # Aggregate to weekly if needed
-        if not self.params.get("use_weekly", False):
-            filtered_data_1 = self._aggregate_to_weekly(filtered_data_1)
-
-        if len(filtered_data_1) < 10:
-            return IndicatorResult(
-                indicator_type=IndicatorType.VBP,
-                timestamp=ohlcv_data[-1]["timestamp"],
-                values=IndicatorValue(lines={}),
-                params=self.params,
-                error=f"Insufficient data after aggregation (period 1): need at least 10 bars, got {len(filtered_data_1)}",
-            )
-
-        # Use the existing calculate_vbp function
-        bins_raw = self.params.get("bins", 50)
-        if not isinstance(bins_raw, (int | float)):
-            raise ValueError(f"bins must be a number, got {type(bins_raw)}")
-        bins = int(bins_raw)
-
-        use_dollar_weighted_raw = self.params.get("use_dollar_weighted", False)
-        use_close_only_raw = self.params.get("use_close_only", False)
-        use_dollar_weighted = (
-            bool(use_dollar_weighted_raw) if use_dollar_weighted_raw is not None else False
-        )
-        use_close_only = bool(use_close_only_raw) if use_close_only_raw is not None else False
-
-        vbp_result_1 = calculate_vbp(filtered_data_1, bins, use_dollar_weighted, use_close_only)
-
-        if vbp_result_1.get("pointOfControl") is not None:
-            # Extract significant levels from histogram
-            num_levels_raw = self.params.get("num_levels", 5)
-            if not isinstance(num_levels_raw, int | float):
-                raise ValueError(f"num_levels must be a number, got {type(num_levels_raw)}")
-            num_levels_1 = int(num_levels_raw)
-
-            significant_levels_1 = self._find_significant_levels(
-                vbp_result_1["histogram"], num_levels_1
-            )
-            all_levels.extend(significant_levels_1)
-
-        # Calculate VBP levels for second period if specified
-        if lookback_years_2_raw is not None:
-            if not isinstance(lookback_years_2_raw, (int | float)):
-                raise ValueError(
-                    f"lookback_years_2 must be a number, got {type(lookback_years_2_raw)}"
-                )
-
-            lookback_years_2 = int(lookback_years_2_raw)
-
-            # Use calendar-aware year calculation for second period
-            cutoff_dt_2 = last_dt - timedelta(
-                days=lookback_years_2 * 365.25
-            )  # 365.25 accounts for leap years
-            cutoff_timestamp_2 = int(cutoff_dt_2.timestamp() * 1000)
-
-            filtered_data_2 = [bar for bar in ohlcv_data if bar["timestamp"] >= cutoff_timestamp_2]
-
-            if len(filtered_data_2) >= 10:
-                # Aggregate to weekly if needed
-                if not self.params.get("use_weekly", False):
-                    filtered_data_2 = self._aggregate_to_weekly(filtered_data_2)
-
-                if len(filtered_data_2) >= 10:
-                    vbp_result_2 = calculate_vbp(
-                        filtered_data_2, bins, use_dollar_weighted, use_close_only
-                    )
-
-                    if vbp_result_2.get("pointOfControl") is not None:
-                        # Extract significant levels from histogram
-                        num_levels_raw = self.params.get("num_levels", 5)
-                        if not isinstance(num_levels_raw, (int | float)):
-                            raise ValueError(
-                                f"num_levels must be a number, got {type(num_levels_raw)}"
-                            )
-                        num_levels_2 = int(num_levels_raw)
-
-                        significant_levels_2 = self._find_significant_levels(
-                            vbp_result_2["histogram"], num_levels_2
-                        )
-                        all_levels.extend(significant_levels_2)
+        # Calculate levels for second period if specified
+        lookback_years_2 = self._get_optional_int_param("lookback_years_2")
+        if lookback_years_2 is not None:
+            levels_2 = self._calculate_vbp_for_period(ohlcv_data, lookback_years_2)
+            all_levels.extend(levels_2)
 
         if not all_levels:
             return IndicatorResult(
@@ -385,94 +347,127 @@ class VBPLevelFilter(BaseIndicatorFilter):
                 error="No valid levels found",
             )
 
-        # Get current price
-        current_price = ohlcv_data[-1]["close"]
+        # Process levels and calculate distances
+        return self._build_indicator_result(ohlcv_data, all_levels)
 
-        # Combine levels and sort by volume
+    def _get_price_level(self, level: dict[str, Any]) -> float:
+        """Extract price level from a VBP level dict."""
+        pl = level.get("priceLevel", 0.0)
+        return float(pl) if isinstance(pl, (int | float)) else 0.0
+
+    def _deduplicate_levels(
+        self, levels: list[dict[str, Any]], max_levels: int
+    ) -> list[dict[str, Any]]:
+        """Deduplicate and limit levels by price."""
+
+        # Sort by volume descending
         def volume_sort_key(x: dict[str, Any]) -> float:
             vol = x.get("volume", 0.0)
             return float(vol) if isinstance(vol, (int | float)) else 0.0
 
-        all_levels.sort(key=volume_sort_key, reverse=True)
-
-        # Take top num_levels per period (or combined if two periods)
-        num_levels_raw = self.params.get("num_levels", 5)
-        if not isinstance(num_levels_raw, (int | float)):
-            raise ValueError(f"num_levels must be a number, got {type(num_levels_raw)}")
-        num_levels = int(num_levels_raw)
-
-        if lookback_years_2_raw is not None:
-            # If two periods, take top num_levels from combined list
-            combined_levels: list[dict[str, Any]] = all_levels[: num_levels * 2]
-        else:
-            combined_levels: list[dict[str, Any]] = all_levels[:num_levels]
+        sorted_levels = sorted(levels, key=volume_sort_key, reverse=True)
+        top_levels = sorted_levels[:max_levels]
 
         # Remove duplicates based on price (within small tolerance)
         unique_levels: list[dict[str, Any]] = []
         seen_prices: set[float] = set()
-        for level in combined_levels:
-            price_level = level.get("priceLevel", 0.0)
-            if not isinstance(price_level, (int | float)):
-                continue
-            price_rounded = round(float(price_level), 2)
+
+        for level in top_levels:
+            price_level = self._get_price_level(level)
+            price_rounded = round(price_level, PRICE_ROUNDING_PRECISION)
+
             if price_rounded not in seen_prices:
                 unique_levels.append(level)
                 seen_prices.add(price_rounded)
 
-        # Calculate support/resistance
-        def get_price_level(level: dict[str, Any]) -> float:
-            pl = level.get("priceLevel", 0.0)
-            return float(pl) if isinstance(pl, (int | float)) else 0.0
+        return unique_levels
 
+    def _calculate_support_resistance(
+        self, current_price: float, unique_levels: list[dict[str, Any]]
+    ) -> tuple[float, float, bool]:
+        """Calculate closest support and resistance levels."""
         support_levels = [
-            level for level in unique_levels if get_price_level(level) < current_price
+            level for level in unique_levels if self._get_price_level(level) < current_price
         ]
         resistance_levels = [
-            level for level in unique_levels if get_price_level(level) > current_price
+            level for level in unique_levels if self._get_price_level(level) > current_price
         ]
 
+        # Find closest support
         if support_levels:
-            closest_support = max(support_levels, key=get_price_level)
-            closest_support_price = get_price_level(closest_support)
+            closest_support_price = max(self._get_price_level(level) for level in support_levels)
         else:
-            # No support found, use lowest level
-            if unique_levels:
-                closest_support_price = min(get_price_level(level) for level in unique_levels)
-            else:
-                closest_support_price = current_price
+            closest_support_price = (
+                min(self._get_price_level(level) for level in unique_levels)
+                if unique_levels
+                else current_price
+            )
 
+        # Find closest resistance
         if resistance_levels:
-            closest_resistance = min(resistance_levels, key=get_price_level)
-            closest_resistance_price = get_price_level(closest_resistance)
+            closest_resistance_price = min(
+                self._get_price_level(level) for level in resistance_levels
+            )
         else:
-            # No resistance found, use highest level
-            if unique_levels:
-                closest_resistance_price = max(get_price_level(level) for level in unique_levels)
-            else:
-                closest_resistance_price = current_price
+            closest_resistance_price = (
+                max(self._get_price_level(level) for level in unique_levels)
+                if unique_levels
+                else current_price
+            )
 
         has_resistance_above = len(resistance_levels) > 0
+        return closest_support_price, closest_resistance_price, has_resistance_above
 
+    def _calculate_distances(
+        self,
+        current_price: float,
+        support_price: float,
+        resistance_price: float,
+        has_resistance: bool,
+    ) -> tuple[float, float]:
+        """Calculate percentage distances to support and resistance."""
         distance_to_support = (
-            abs(current_price - closest_support_price) / current_price * 100
-            if current_price > 0
-            else 0
+            abs(current_price - support_price) / current_price * 100 if current_price > 0 else 0
         )
 
-        if has_resistance_above:
+        if has_resistance:
             distance_to_resistance = (
-                abs(closest_resistance_price - current_price) / current_price * 100
+                abs(resistance_price - current_price) / current_price * 100
                 if current_price > 0
                 else 0
             )
         else:
             distance_to_resistance = float("inf")
 
+        return distance_to_support, distance_to_resistance
+
+    def _build_indicator_result(
+        self, ohlcv_data: list[OHLCVBar], all_levels: list[dict[str, Any]]
+    ) -> IndicatorResult:
+        """Build IndicatorResult from calculated levels."""
+        current_price = ohlcv_data[-1]["close"]
+        num_levels = self._get_int_param("num_levels", 5)
+
+        # Determine max levels based on whether second period is used
+        lookback_years_2 = self._get_optional_int_param("lookback_years_2")
+        max_levels = num_levels * 2 if lookback_years_2 is not None else num_levels
+
+        unique_levels = self._deduplicate_levels(all_levels, max_levels)
+
+        support_price, resistance_price, has_resistance_above = self._calculate_support_resistance(
+            current_price, unique_levels
+        )
+
+        distance_to_support, distance_to_resistance = self._calculate_distances(
+            current_price, support_price, resistance_price, has_resistance_above
+        )
+
         logger.debug(
-            f"VBP calculation: current_price={current_price:.2f}, closest_support={closest_support_price:.2f}, "
-            f"closest_resistance={closest_resistance_price:.2f}, distance_to_support={distance_to_support:.2f}%, "
-            f"distance_to_resistance={distance_to_resistance:.2f}%, num_levels={len(unique_levels)}, "
-            f"has_resistance_above={has_resistance_above}"
+            f"VBP calculation: current_price={current_price:.2f}, "
+            f"closest_support={support_price:.2f}, closest_resistance={resistance_price:.2f}, "
+            f"distance_to_support={distance_to_support:.2f}%, "
+            f"distance_to_resistance={distance_to_resistance:.2f}%, "
+            f"num_levels={len(unique_levels)}, has_resistance_above={has_resistance_above}"
         )
 
         return IndicatorResult(
@@ -481,8 +476,8 @@ class VBPLevelFilter(BaseIndicatorFilter):
             values=IndicatorValue(
                 lines={
                     "current_price": current_price,
-                    "closest_support": closest_support_price,
-                    "closest_resistance": closest_resistance_price,
+                    "closest_support": support_price,
+                    "closest_resistance": resistance_price,
                     "distance_to_support": distance_to_support,
                     "distance_to_resistance": distance_to_resistance,
                     "num_levels": len(unique_levels),
@@ -499,7 +494,6 @@ class VBPLevelFilter(BaseIndicatorFilter):
             return False
 
         lines = indicator_result.values.lines
-
         distance_to_support_raw = lines.get("distance_to_support", 0)
         distance_to_resistance_raw = lines.get("distance_to_resistance", 0)
         has_resistance_above = lines.get("has_resistance_above", True)
@@ -509,26 +503,12 @@ class VBPLevelFilter(BaseIndicatorFilter):
             return False
 
         distance_to_support = float(distance_to_support_raw)
+        max_distance_support = self._get_float_param("max_distance_to_support", 5.0)
 
-        max_distance_support_raw = self.params.get("max_distance_to_support", 5.0)
-        min_distance_resistance_raw = self.params.get("min_distance_to_resistance", 5.0)
-
-        if not isinstance(max_distance_support_raw, (int | float)):
-            raise ValueError(
-                f"max_distance_to_support must be a number, got {type(max_distance_support_raw)}"
-            )
-        if not isinstance(min_distance_resistance_raw, (int | float)):
-            raise ValueError(
-                f"min_distance_to_resistance must be a number, got {type(min_distance_resistance_raw)}"
-            )
-
-        max_distance_support = float(max_distance_support_raw)
-        min_distance_resistance = float(min_distance_resistance_raw)
-
-        # Check if within max distance to support
         if distance_to_support > max_distance_support:
             logger.debug(
-                f"VBP filter FAILED: distance_to_support={distance_to_support:.2f}% > max={max_distance_support:.2f}%"
+                f"VBP filter FAILED: distance_to_support={distance_to_support:.2f}% > "
+                f"max={max_distance_support:.2f}%"
             )
             return False
 
@@ -543,18 +523,33 @@ class VBPLevelFilter(BaseIndicatorFilter):
             return False
 
         distance_to_resistance = float(distance_to_resistance_raw)
+        min_distance_resistance = self._get_float_param("min_distance_to_resistance", 5.0)
 
         if distance_to_resistance < min_distance_resistance:
             logger.debug(
-                f"VBP filter FAILED: distance_to_resistance={distance_to_resistance:.2f}% < min={min_distance_resistance:.2f}%"
+                f"VBP filter FAILED: distance_to_resistance={distance_to_resistance:.2f}% < "
+                f"min={min_distance_resistance:.2f}%"
             )
             return False
 
         logger.debug(
-            f"VBP filter PASSED: distance_to_support={distance_to_support:.2f}% <= max={max_distance_support:.2f}%, "
-            f"distance_to_resistance={distance_to_resistance:.2f}% >= min={min_distance_resistance:.2f}%"
+            f"VBP filter PASSED: distance_to_support={distance_to_support:.2f}% <= "
+            f"max={max_distance_support:.2f}%, distance_to_resistance={distance_to_resistance:.2f}% >= "
+            f"min={min_distance_resistance:.2f}%"
         )
         return True
+
+    async def _calculate_vbp_indicator(
+        self, symbol: AssetSymbol, api_key: str, ohlcv_data: list[OHLCVBar]
+    ) -> IndicatorResult:
+        """Calculate VBP indicator, fetching weekly bars if needed."""
+        if self._get_bool_param("use_weekly", False):
+            weekly_bars = await self._fetch_weekly_bars(symbol, api_key)
+            calculation_data = weekly_bars if weekly_bars else ohlcv_data
+        else:
+            calculation_data = ohlcv_data
+
+        return self._calculate_indicator(calculation_data)
 
     async def _execute_impl(self, inputs: dict[str, Any]) -> NodeOutputs:
         """Override to handle weekly bar fetching when use_weekly=True."""
@@ -564,22 +559,13 @@ class VBPLevelFilter(BaseIndicatorFilter):
             return {"filtered_ohlcv_bundle": {}}
 
         # If use_weekly is True, fetch weekly bars from Polygon for each symbol
-        if self.params.get("use_weekly", False):
+        if self._get_bool_param("use_weekly", False):
             api_key = APIKeyVault().get("POLYGON_API_KEY")
             if not api_key:
                 raise ValueError("Polygon API key not found in vault")
 
-            max_concurrent_raw = self.params.get("max_concurrent", 10)
-            if not isinstance(max_concurrent_raw, int):
-                raise ValueError(f"max_concurrent must be an int, got {type(max_concurrent_raw)}")
-            max_concurrent: int = max_concurrent_raw
-
-            rate_limit_raw = self.params.get("rate_limit_per_second", 95)
-            if not isinstance(rate_limit_raw, int):
-                raise ValueError(
-                    f"rate_limit_per_second must be an int, got {type(rate_limit_raw)}"
-                )
-            rate_limit: int = rate_limit_raw
+            max_concurrent = self._get_int_param("max_concurrent", 10)
+            rate_limit = self._get_int_param("rate_limit_per_second", 95)
 
             filtered_bundle = {}
             rate_limiter = RateLimiter(max_per_second=rate_limit)
@@ -626,19 +612,15 @@ class VBPLevelFilter(BaseIndicatorFilter):
                             except Exception:
                                 logger.debug("Progress pre-update failed; continuing")
 
-                            # Fetch weekly bars
+                            # Calculate indicator on fetched data (for filtering)
                             try:
-                                weekly_bars = await self._fetch_weekly_bars(symbol, api_key)
-                                if weekly_bars:
-                                    updated_data = weekly_bars
-                                else:
-                                    updated_data = ohlcv_data
+                                indicator_result = await self._calculate_vbp_indicator(
+                                    symbol, api_key, ohlcv_data
+                                )
 
-                                # Calculate indicator
-                                indicator_result = self._calculate_indicator(updated_data)
-
+                                # Always output original input bars (preserve data fidelity)
                                 if self._should_pass_filter(indicator_result):
-                                    filtered_bundle[symbol] = updated_data
+                                    filtered_bundle[symbol] = ohlcv_data
 
                                 completed_count += 1
                                 progress = (completed_count / total_symbols) * 100

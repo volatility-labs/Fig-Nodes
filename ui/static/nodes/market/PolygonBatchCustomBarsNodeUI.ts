@@ -3,7 +3,7 @@ import BaseCustomNode from '../base/BaseCustomNode';
 export default class PolygonBatchCustomBarsNodeUI extends BaseCustomNode {
     constructor(title: string, data: any, serviceRegistry: any) {
         super(title, data, serviceRegistry);
-        this.size = [300, 150];
+        this.size = [200, 150];
     }
 
     updateDisplay(result: any) {

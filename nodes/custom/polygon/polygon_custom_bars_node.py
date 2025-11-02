@@ -1,8 +1,9 @@
-from typing import Dict, Any, List
 import logging
-from nodes.base.base_node import Base
-from core.types_registry import get_type, AssetSymbol, OHLCVBar
+from typing import Any
+
 from core.api_key_vault import APIKeyVault
+from core.types_registry import AssetSymbol, OHLCVBar, get_type
+from nodes.base.base_node import Base
 from services.polygon_service import fetch_bars
 
 logger = logging.getLogger(__name__)
@@ -11,15 +12,16 @@ logger = logging.getLogger(__name__)
 class PolygonCustomBars(Base):
     """
     Fetches custom aggregate bars (OHLCV) for a symbol from Massive.com API (formerly Polygon.io).
-    
+
     Note: Polygon.io has rebranded to Massive.com. The API endpoints have been updated
     to use api.massive.com, but the API routes remain unchanged.
-    
+
     For crypto symbols, the ticker is automatically prefixed with "X:" (e.g., BTCUSD -> X:BTCUSD)
     as required by the Massive.com crypto aggregates API.
     """
+
     inputs = {"symbol": get_type("AssetSymbol")}
-    outputs = {"ohlcv": get_type("OHLCV")}
+    outputs = {"ohlcv": get_type("OHLCVBundle")}
     default_params = {
         "multiplier": 1,
         "timespan": "day",
@@ -30,14 +32,43 @@ class PolygonCustomBars(Base):
     }
     params_meta = [
         {"name": "multiplier", "type": "number", "default": 1, "min": 1, "step": 1},
-        {"name": "timespan", "type": "combo", "default": "day", "options": ["minute", "hour", "day", "week", "month", "quarter", "year"]},
-        {"name": "lookback_period", "type": "combo", "default": "3 months", "options": ["1 day", "3 days", "1 week", "2 weeks", "1 month", "2 months", "3 months", "4 months", "6 months", "9 months", "1 year", "18 months", "2 years", "3 years", "5 years", "10 years"]},
+        {
+            "name": "timespan",
+            "type": "combo",
+            "default": "day",
+            "options": ["minute", "hour", "day", "week", "month", "quarter", "year"],
+        },
+        {
+            "name": "lookback_period",
+            "type": "combo",
+            "default": "3 months",
+            "options": [
+                "1 day",
+                "3 days",
+                "1 week",
+                "2 weeks",
+                "1 month",
+                "2 months",
+                "3 months",
+                "4 months",
+                "6 months",
+                "9 months",
+                "1 year",
+                "18 months",
+                "2 years",
+                "3 years",
+                "5 years",
+                "10 years",
+            ],
+        },
         {"name": "adjusted", "type": "combo", "default": True, "options": [True, False]},
         {"name": "sort", "type": "combo", "default": "asc", "options": ["asc", "desc"]},
         {"name": "limit", "type": "number", "default": 5000, "min": 1, "max": 50000, "step": 1},
     ]
 
-    async def _execute_impl(self, inputs: Dict[str, Any]) -> Dict[str, List[OHLCVBar]]:
+    async def _execute_impl(
+        self, inputs: dict[str, Any]
+    ) -> dict[str, dict[AssetSymbol, list[OHLCVBar]]]:
         symbol = inputs.get("symbol")
         if not symbol or not isinstance(symbol, AssetSymbol):
             raise ValueError("Symbol input is required")
@@ -50,6 +81,7 @@ class PolygonCustomBars(Base):
 
         # Report status via progress callback
         from nodes.base.base_node import ProgressState
+
         self._emit_progress(
             ProgressState.UPDATE,
             progress=None,
@@ -57,4 +89,4 @@ class PolygonCustomBars(Base):
             meta={"polygon_data_status": metadata.get("data_status", "unknown")},
         )
 
-        return {"ohlcv": bars}
+        return {"ohlcv": {symbol: bars}}

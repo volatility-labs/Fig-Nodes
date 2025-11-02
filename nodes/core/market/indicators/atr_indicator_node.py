@@ -1,7 +1,7 @@
 import logging
 from typing import Any
 
-from core.types_registry import IndicatorResult, IndicatorType, IndicatorValue, get_type
+from core.types_registry import AssetSymbol, IndicatorResult, IndicatorType, IndicatorValue, get_type
 from nodes.core.market.indicators.base.base_indicator_node import BaseIndicator
 from services.indicator_calculators.atr_calculator import calculate_atr
 
@@ -13,7 +13,7 @@ class ATRIndicator(BaseIndicator):
     Computes the ATR indicator for a single asset's OHLCV data.
     """
 
-    inputs = {"ohlcv": get_type("OHLCV")}
+    inputs = {"ohlcv": get_type("OHLCVBundle")}
     outputs = {"results": list[IndicatorResult]}
     default_params = {
         "window": 14,
@@ -23,7 +23,13 @@ class ATRIndicator(BaseIndicator):
     ]
 
     async def _execute_impl(self, inputs: dict[str, Any]) -> dict[str, Any]:
-        ohlcv: list[dict[str, float]] = inputs.get("ohlcv", [])
+        ohlcv_bundle: dict[AssetSymbol, list[dict[str, float]]] = inputs.get("ohlcv", {})
+        if not ohlcv_bundle:
+            return {"results": []}
+
+        # Get the first (and typically only) symbol's bars
+        ohlcv = next(iter(ohlcv_bundle.values()))
+        
         if not ohlcv:
             return {"results": []}
 

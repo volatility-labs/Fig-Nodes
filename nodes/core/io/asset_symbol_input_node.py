@@ -26,7 +26,7 @@ class AssetSymbolInput(Base):
         {
             "name": "quote_currency",
             "type": "combo",
-            "default": "USDT",
+            "default": "USD",
             "options": ["USD", "USDC", "USDT"],
         },
         {

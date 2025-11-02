@@ -23,37 +23,53 @@ export default class PolygonCustomBarsNodeUI extends BaseCustomNode {
 
     private copySummary() {
         const ohlcv = (this.result as { ohlcv?: unknown })?.ohlcv;
-        if (!ohlcv || !(ohlcv instanceof Array) && Object.keys(ohlcv).length === 0) {
+        if (!ohlcv) {
             navigator.clipboard.writeText('No data available');
             return;
         }
 
-        // Handle both DataFrame (from pandas) and plain object/array formats
-        let df = ohlcv;
-        if (!(df instanceof Array) && typeof df === 'object') {
-            // Convert object to array of rows for summary
-            df = Object.values(df);
+        // Handle OHLCVBundle format (dict[AssetSymbol, list[OHLCVBar]])
+        let bars: any[] = [];
+        let symbolCount = 0;
+        
+        if (Array.isArray(ohlcv)) {
+            // Legacy format: array of bars (shouldn't happen but handle gracefully)
+            bars = ohlcv;
+        } else if (typeof ohlcv === 'object' && ohlcv !== null) {
+            // Bundle format: extract bars from all symbols
+            const bundle = ohlcv as Record<string, any[]>;
+            const symbolKeys = Object.keys(bundle);
+            symbolCount = symbolKeys.length;
+            
+            // Get bars from first symbol (or all symbols if needed)
+            if (symbolKeys.length > 0) {
+                const firstSymbolBars = bundle[symbolKeys[0]];
+                if (Array.isArray(firstSymbolBars)) {
+                    bars = firstSymbolBars;
+                }
+            }
         }
 
-        if (Array.isArray(df) && df.length > 0) {
-            const rowCount = df.length;
-            const columns = Object.keys(df[0] || {});
-            // Get lookback period from params for display
-            const lookbackPeriod = this.properties?.lookback_period || '3 months';
-            const summary = `OHLCV Data: ${rowCount} bars (${lookbackPeriod})\nColumns: ${columns.join(', ')}`;
-
-            // Show first few bars as preview
-            const previewBars = df.slice(0, 3).map((bar: any, i: number) => {
-                const timestamp = bar.timestamp || bar.index || `Bar ${i + 1}`;
-                const ohlc = `O:${parseFloat(bar.open)?.toFixed(2) ?? 'N/A'} H:${parseFloat(bar.high)?.toFixed(2) ?? 'N/A'} L:${parseFloat(bar.low)?.toFixed(2) ?? 'N/A'} C:${parseFloat(bar.close)?.toFixed(2) ?? 'N/A'}`;
-                const volume = bar.volume ? ` V:${bar.volume.toLocaleString()}` : '';
-                return `${timestamp}: ${ohlc}${volume}`;
-            }).join('\n');
-
-            navigator.clipboard.writeText(`${summary}\n\n${previewBars}${rowCount > 3 ? `\n... and ${rowCount - 3} more bars` : ''}`);
-        } else {
+        if (bars.length === 0) {
             navigator.clipboard.writeText('No bars data');
+            return;
         }
+
+        const rowCount = bars.length;
+        const columns = Object.keys(bars[0] || {});
+        const lookbackPeriod = this.properties?.lookback_period || '3 months';
+        const symbolInfo = symbolCount > 0 ? ` (${symbolCount} symbol${symbolCount > 1 ? 's' : ''})` : '';
+        const summary = `OHLCV Data${symbolInfo}: ${rowCount} bars (${lookbackPeriod})\nColumns: ${columns.join(', ')}`;
+
+        // Show first few bars as preview
+        const previewBars = bars.slice(0, 3).map((bar: any, i: number) => {
+            const timestamp = bar.timestamp || bar.index || `Bar ${i + 1}`;
+            const ohlc = `O:${parseFloat(bar.open)?.toFixed(2) ?? 'N/A'} H:${parseFloat(bar.high)?.toFixed(2) ?? 'N/A'} L:${parseFloat(bar.low)?.toFixed(2) ?? 'N/A'} C:${parseFloat(bar.close)?.toFixed(2) ?? 'N/A'}`;
+            const volume = bar.volume ? ` V:${bar.volume.toLocaleString()}` : '';
+            return `${timestamp}: ${ohlc}${volume}`;
+        }).join('\n');
+
+        navigator.clipboard.writeText(`${summary}\n\n${previewBars}${rowCount > 3 ? `\n... and ${rowCount - 3} more bars` : ''}`);
     }
 
     private displayDataPreview() {
@@ -91,27 +107,53 @@ export default class PolygonCustomBarsNodeUI extends BaseCustomNode {
             white-space: pre-wrap;
         `;
 
+        // Handle OHLCVBundle format (dict[AssetSymbol, list[OHLCVBar]])
+        let bars: any[] = [];
+        let symbolKeys: string[] = [];
+        
+        if (Array.isArray(ohlcv)) {
+            // Legacy format: array of bars (shouldn't happen but handle gracefully)
+            bars = ohlcv;
+        } else if (typeof ohlcv === 'object' && ohlcv !== null) {
+            // Bundle format: extract bars from all symbols
+            const bundle = ohlcv as Record<string, any[]>;
+            symbolKeys = Object.keys(bundle);
+            
+            // Get bars from first symbol for display
+            if (symbolKeys.length > 0) {
+                const firstSymbolBars = bundle[symbolKeys[0]];
+                if (Array.isArray(firstSymbolBars)) {
+                    bars = firstSymbolBars;
+                }
+            }
+        }
+
         // Format data for display
         const lookbackPeriod = this.properties?.lookback_period || '3 months';
-        let displayData = `OHLCV Data Preview (${lookbackPeriod}):\n\n`;
-        if (Array.isArray(ohlcv) && ohlcv.length > 0) {
+        let displayData = `OHLCV Data Preview (${lookbackPeriod})`;
+        if (symbolKeys.length > 0) {
+            displayData += `\nSymbol: ${symbolKeys[0]}${symbolKeys.length > 1 ? ` (+${symbolKeys.length - 1} more)` : ''}`;
+        }
+        displayData += '\n\n';
+        
+        if (Array.isArray(bars) && bars.length > 0) {
             // Show column headers
-            const headers = Object.keys(ohlcv[0]).join('\t');
+            const headers = Object.keys(bars[0]).join('\t');
             displayData += headers + '\n';
             displayData += '-'.repeat(headers.length) + '\n';
 
             // Show first 20 rows
-            const rowsToShow = Math.min(20, ohlcv.length);
+            const rowsToShow = Math.min(20, bars.length);
             for (let i = 0; i < rowsToShow; i++) {
-                const row = ohlcv[i];
+                const row = bars[i];
                 const values = Object.values(row).map(v =>
                     typeof v === 'number' ? v.toFixed(4) : String(v)
                 ).join('\t');
                 displayData += values + '\n';
             }
 
-            if (ohlcv.length > 20) {
-                displayData += `\n... and ${ohlcv.length - 20} more rows`;
+            if (bars.length > 20) {
+                displayData += `\n... and ${bars.length - 20} more rows`;
             }
         } else {
             displayData += 'No data available or unsupported format';

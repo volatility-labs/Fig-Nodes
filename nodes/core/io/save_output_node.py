@@ -7,6 +7,7 @@ from typing import Any
 from core.types_registry import (
     AssetSymbol,
     NodeCategory,
+    OHLCVBar,
 )
 from nodes.base.base_node import Base
 
@@ -97,6 +98,16 @@ class SaveOutput(Base):
         required_keys = {"timestamp", "open", "high", "low", "close", "volume"}
         return isinstance(value, dict) and all(key in value for key in required_keys)
 
+    def _is_ohlcv_bundle(self, value: dict[str, Any]) -> bool:
+        """Check if dict represents an OHLCVBundle (dict[AssetSymbol, list[OHLCVBar]])."""
+        if not isinstance(value, dict) or not value:
+            return False
+        first_key = next(iter(value.keys()))
+        first_value = value[first_key]
+        return isinstance(first_key, AssetSymbol) and isinstance(first_value, list) and (
+            not first_value or self._is_ohlcv_bar(first_value[0])
+        )
+
     def _is_llm_chat_message(self, value: dict[str, Any]) -> bool:
         """Check if dict represents an LLMChatMessage."""
         required_keys = {"role", "content"}
@@ -138,12 +149,14 @@ class SaveOutput(Base):
             if data and isinstance(data[0], AssetSymbol):
                 type_prefix = "assetsymbol_list"
             elif data and self._is_ohlcv_bar(data[0]):
-                type_prefix = "ohlcv"
+                type_prefix = "ohlcv_bundle"
             else:
                 type_prefix = "list"
         elif isinstance(data, dict):
             if self._is_ohlcv_bar(data):
                 type_prefix = "ohlcv_bar"
+            elif self._is_ohlcv_bundle(data):
+                type_prefix = "ohlcv_bundle"
             elif self._is_llm_chat_message(data):
                 type_prefix = "llm_message"
             else:
@@ -239,12 +252,14 @@ class SaveOutput(Base):
             if data and isinstance(data[0], AssetSymbol):
                 return "AssetSymbolList"
             elif data and self._is_ohlcv_bar(data[0]):
-                return "OHLCV"
+                return "OHLCVBundle"
             else:
                 return "List"
         elif isinstance(data, dict):
             if self._is_ohlcv_bar(data):
                 return "OHLCVBar"
+            elif self._is_ohlcv_bundle(data):
+                return "OHLCVBundle"
             elif self._is_llm_chat_message(data):
                 return "LLMChatMessage"
             else:

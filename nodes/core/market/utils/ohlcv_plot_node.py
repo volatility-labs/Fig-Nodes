@@ -83,13 +83,12 @@ class OHLCVPlot(Base):
     """
     Renders OHLCV data as candlestick chart(s) and returns base64 PNG image(s).
 
-    - Inputs: either 'ohlcv_bundle' (Dict[AssetSymbol, List[OHLCVBar]]) or 'ohlcv' (List[OHLCVBar])
+    - Inputs: either 'ohlcv_bundle' (Dict[AssetSymbol, List[OHLCVBar]]) or 'ohlcv' (Dict[AssetSymbol, List[OHLCVBar]])
     - Output: 'images' -> Dict[str, str] mapping label to data URL
     """
 
     inputs = {
         "ohlcv_bundle": get_type("OHLCVBundle") | None,
-        "ohlcv": get_type("OHLCV") | None,
     }
     optional_inputs = ["ohlcv_bundle", "ohlcv"]
 
@@ -116,9 +115,15 @@ class OHLCVPlot(Base):
 
     async def _execute_impl(self, inputs: dict[str, Any]) -> dict[str, Any]:
         bundle: dict[AssetSymbol, list[OHLCVBar]] | None = inputs.get("ohlcv_bundle")
-        series: list[OHLCVBar] | None = inputs.get("ohlcv")
+        single_bundle: dict[AssetSymbol, list[OHLCVBar]] | None = inputs.get("ohlcv")
 
-        if not bundle and not series:
+        # Merge both inputs if both provided, otherwise use whichever is available
+        if bundle and single_bundle:
+            bundle = {**bundle, **single_bundle}
+        elif single_bundle:
+            bundle = single_bundle
+
+        if not bundle:
             raise NodeValidationError(self.id, "Provide either 'ohlcv_bundle' or 'ohlcv'")
 
         lookback_raw = self.params.get("lookback_bars")
@@ -131,33 +136,23 @@ class OHLCVPlot(Base):
                     lookback = None
         images: dict[str, str] = {}
 
-        if bundle:
-            # Limit symbols for safety
-            max_syms_raw = self.params.get("max_symbols") or 12
-            max_syms = 12
-            if isinstance(max_syms_raw, int | float | str):
-                try:
-                    max_syms = int(max_syms_raw)
-                except (ValueError, TypeError):
-                    max_syms = 12
-            items = list(bundle.items())[:max_syms]
-            for sym, bars in items:
-                norm = _normalize_bars(bars)
-                if lookback is not None and lookback > 0:
-                    norm = norm[-lookback:]
-                fig, ax = plt.subplots(figsize=(3.2, 2.2))  # pyright: ignore
-                _plot_candles(ax, norm)
-                ax.set_title(str(sym), fontsize=8)  # pyright: ignore
-                ax.tick_params(labelsize=7)  # pyright: ignore
-                images[str(sym)] = _encode_fig_to_data_url(fig)
-        else:
-            norm = _normalize_bars(series or [])
+        # Limit symbols for safety
+        max_syms_raw = self.params.get("max_symbols") or 12
+        max_syms = 12
+        if isinstance(max_syms_raw, int | float | str):
+            try:
+                max_syms = int(max_syms_raw)
+            except (ValueError, TypeError):
+                max_syms = 12
+        items = list(bundle.items())[:max_syms]
+        for sym, bars in items:
+            norm = _normalize_bars(bars)
             if lookback is not None and lookback > 0:
                 norm = norm[-lookback:]
-            fig, ax = plt.subplots(figsize=(4.0, 2.8))  # pyright: ignore
+            fig, ax = plt.subplots(figsize=(3.2, 2.2))  # pyright: ignore
             _plot_candles(ax, norm)
-            ax.set_title("OHLCV", fontsize=9)  # pyright: ignore
-            ax.tick_params(labelsize=8)  # pyright: ignore
-            images["OHLCV"] = _encode_fig_to_data_url(fig)
+            ax.set_title(str(sym), fontsize=8)  # pyright: ignore
+            ax.tick_params(labelsize=7)  # pyright: ignore
+            images[str(sym)] = _encode_fig_to_data_url(fig)
 
         return {"images": images}

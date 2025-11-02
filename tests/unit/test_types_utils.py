@@ -546,14 +546,21 @@ def test_infer_data_type_asset_symbol_list():
 
 
 def test_infer_data_type_ohlcv():
-    """Test infer_data_type for OHLCV lists"""
+    """Test infer_data_type for OHLCV lists - now returns OHLCVBundle"""
+    from core.types_registry import AssetSymbol, AssetClass
     from core.types_utils import infer_data_type
     
+    # Test with bundle format (dict[AssetSymbol, list[OHLCVBar]])
+    symbol = AssetSymbol("TEST", AssetClass.STOCKS)
     bars = [
         {"timestamp": 1234567890, "open": 100.0, "high": 105.0, "low": 95.0, "close": 102.0, "volume": 1000000},
         {"timestamp": 1234567900, "open": 102.0, "high": 107.0, "low": 97.0, "close": 104.0, "volume": 1200000}
     ]
-    assert infer_data_type(bars) == "OHLCV"
+    bundle = {symbol: bars}
+    assert infer_data_type(bundle) == "OHLCVBundle"
+    
+    # Test with list format - should also return OHLCVBundle (for backward compatibility)
+    assert infer_data_type(bars) == "OHLCVBundle"
 
 
 def test_infer_data_type_llm_chat_message_list():

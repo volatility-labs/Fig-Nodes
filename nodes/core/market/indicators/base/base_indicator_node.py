@@ -14,7 +14,7 @@ class BaseIndicator(Base, ABC):
     Subclasses should implement _map_to_indicator_value for specific indicator handling.
     """
 
-    inputs = {"ohlcv": get_type("OHLCV")}
+    inputs = {"ohlcv": get_type("OHLCVBundle")}
     outputs = {"results": list[IndicatorResult]}
     default_params = {
         "timeframe": "1d",
