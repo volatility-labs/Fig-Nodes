@@ -1,0 +1,10 @@
+# Ignore scan results (local data)
+*.csv
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Keep documentation files
+!README.md
+
