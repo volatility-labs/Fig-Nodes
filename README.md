@@ -65,6 +65,16 @@ To run the unit tests:
 uv run pytest tests/unit/
 ``` 
 
+## Recurring execution (schedule a saved graph)
+
+You can run a saved workflow JSON on a fixed cadence using the recurring runner script:
+
+```bash
+uv run python scripts/recurring_runner.py --graph "/path/to/your-graph.json" --interval 5m
+```
+
+Supported intervals: `5m`, `15m`, `30m`, `1h`, `1d`. Optional: `--runs N` to limit runs (default infinite). Make sure the backend is running (e.g., `uv run python main.py --dev`).
+
 ## TODO
 - Canvas grouping square for visual grouping of nodes on canvas
 - OHLCV charting nodes
