@@ -49,6 +49,27 @@ export class EditorInitializer {
             const graph = new LGraph();
             const canvasElement = container.querySelector('#litegraph-canvas') as HTMLCanvasElement;
             const canvas = new LGraphCanvas(canvasElement, graph);
+            
+            // ============================================================
+            // GLASSMORPHISM UI ENHANCEMENT
+            // ============================================================
+            // Customize LiteGraph canvas rendering colors
+            canvas.clear_background_color = "#0f0f1a"; // Dark blue-gray
+            canvas.node_title_color = "#ffffff";
+            canvas.default_connection_color = {
+                input_off: "#ff6b6b",
+                input_on: "#ff8787",
+                output_off: "#4ecdc4",
+                output_on: "#6ee7e0"
+            };
+            
+            // Enhanced node appearance
+            (LiteGraph as any).NODE_DEFAULT_COLOR = "#1e1e2d";
+            (LiteGraph as any).NODE_SELECTED_TITLE_COLOR = "#6496ff";
+            (LiteGraph as any).NODE_TITLE_COLOR = "#323246";
+            (LiteGraph as any).DEFAULT_SHADOW_COLOR = "rgba(0,0,0,0.5)";
+            (LiteGraph as any).CONNECTING_LINK_COLOR = "#6496ff";
+            
             // Suppress native search UI with correctly typed no-op
             canvas.showSearchBox = function (event: MouseEvent, _searchOptions?: unknown): HTMLDivElement {
                 event?.preventDefault?.();
@@ -516,7 +537,89 @@ export class EditorInitializer {
                 }
             });
             footerCenter.appendChild(autoAlignBtn);
+
+            // Recurring execution selector
+            const repeatWrap = document.createElement('div');
+            repeatWrap.style.display = 'inline-flex';
+            repeatWrap.style.alignItems = 'center';
+            repeatWrap.style.gap = '6px';
+            repeatWrap.style.marginLeft = '8px';
+
+            const repeatLabel = document.createElement('span');
+            repeatLabel.textContent = 'Repeat:';
+            repeatLabel.style.fontSize = '12px';
+            repeatLabel.style.opacity = '0.8';
+
+            const select = document.createElement('select');
+            select.id = 'recurring-interval-select';
+            select.className = 'btn-secondary';
+            const opts: Array<[string, string]> = [
+                ['off', 'Off'],
+                ['5m', '5m'],
+                ['15m', '15m'],
+                ['30m', '30m'],
+                ['1h', '1h'],
+                ['1d', '1d'],
+            ];
+            opts.forEach(([val, label]) => {
+                const o = document.createElement('option');
+                o.value = val;
+                o.textContent = label;
+                select.appendChild(o);
+            });
+
+            // restore previous selection
+            const saved = localStorage.getItem('recurring_interval') || 'off';
+            if ([...opts.map(o => o[0])].includes(saved)) select.value = saved;
+
+            select.addEventListener('change', () => {
+                localStorage.setItem('recurring_interval', select.value);
+            });
+
+            repeatWrap.appendChild(repeatLabel);
+            repeatWrap.appendChild(select);
+            footerCenter.appendChild(repeatWrap);
+
+            // Start lightweight scheduler loop
+            this.startRecurringScheduler();
         }
+    }
+
+    private startRecurringScheduler(): void {
+        const getSeconds = (v: string): number => {
+            if (v === '5m') return 5 * 60;
+            if (v === '15m') return 15 * 60;
+            if (v === '30m') return 30 * 60;
+            if (v === '1h') return 60 * 60;
+            if (v === '1d') return 24 * 60 * 60;
+            return 0;
+        };
+
+        let lastRun = 0;
+        const tick = () => {
+            try {
+                const select = document.getElementById('recurring-interval-select') as HTMLSelectElement | null;
+                if (!select) return;
+                const val = select.value || 'off';
+                const interval = getSeconds(val);
+                if (interval <= 0) return; // off
+
+                const statusService = this.serviceRegistry.get('statusService') as any;
+                const state = statusService?.getState?.() as string;
+                const now = Date.now() / 1000;
+                // Only trigger when idle (connected) and the interval elapsed
+                if (state === 'connected' && now - lastRun >= interval) {
+                    const execBtn = document.getElementById('execute') as HTMLButtonElement | null;
+                    if (execBtn) {
+                        execBtn.click();
+                        lastRun = now;
+                    }
+                }
+            } catch { /* ignore */ }
+        };
+
+        // Poll every 5 seconds
+        window.setInterval(tick, 5000);
     }
 
     private async loadDefaultGraph(graph: LGraph, canvas: LGraphCanvas): Promise<void> {
