@@ -22,12 +22,9 @@ class DuplicateSymbolFilter(BaseFilter):
 
     CATEGORY = NodeCategory.MARKET
 
-    # Support up to 3 OHLCV bundles as inputs to merge different feeds
-    inputs = {
-        "ohlcv_bundle_1": get_type("OHLCVBundle"),
-        "ohlcv_bundle_2": get_type("OHLCVBundle"),
-        "ohlcv_bundle_3": get_type("OHLCVBundle"),
-    }
+    # Single-input version for compatibility with existing graphs
+    # (Use this input: ohlcv_bundle)
+    inputs = {"ohlcv_bundle": get_type("OHLCVBundle")}
     outputs = {"filtered_ohlcv_bundle": get_type("OHLCVBundle")}
 
     default_params = {
@@ -91,16 +88,9 @@ class DuplicateSymbolFilter(BaseFilter):
         return True
 
     async def _execute_impl(self, inputs: dict[str, Any]) -> dict[str, Any]:
-        # Grab individual bundles
-        b1: dict[AssetSymbol, list[OHLCVBar]] = inputs.get("ohlcv_bundle_1", {}) or {}
-        b2: dict[AssetSymbol, list[OHLCVBar]] = inputs.get("ohlcv_bundle_2", {}) or {}
-        b3: dict[AssetSymbol, list[OHLCVBar]] = inputs.get("ohlcv_bundle_3", {}) or {}
-        # Combined view for global logic
-        bundle: dict[AssetSymbol, list[OHLCVBar]] = {}
-        for b in (b1, b2, b3):
-            if isinstance(b, dict):
-                bundle.update(b)
-        if not bundle and not (b1 or b2 or b3):
+        # Single bundle
+        bundle: dict[AssetSymbol, list[OHLCVBar]] = inputs.get("ohlcv_bundle", {}) or {}
+        if not bundle:
             return {"filtered_ohlcv_bundle": {}}
 
         mode = self.params.get("mode", "unique")
@@ -116,30 +106,7 @@ class DuplicateSymbolFilter(BaseFilter):
                 k = sym.ticker
             return k.lower() if case_insensitive else k
 
-        # Optional pairwise mode between inputs 1 and 2
-        pair_mode = str(self.params.get("pair_mode", "global"))
-        if pair_mode != "global" and (b1 or b2):
-            # Build key sets per input
-            keys1 = {make_key(sym) for sym in b1.keys()}
-            keys2 = {make_key(sym) for sym in b2.keys()}
-
-            if pair_mode == "intersection_1_2":
-                keys_final = keys1 & keys2
-                source = {}
-                source.update(b1)
-                source.update(b2)
-                filtered = {s: source[s] for s in source.keys() if make_key(s) in keys_final}
-                return {"filtered_ohlcv_bundle": filtered}
-
-            if pair_mode == "left_only_1_minus_2":
-                keys_final = keys1 - keys2
-                filtered = {s: b1[s] for s in b1.keys() if make_key(s) in keys_final}
-                return {"filtered_ohlcv_bundle": filtered}
-
-            if pair_mode == "right_only_2_minus_1":
-                keys_final = keys2 - keys1
-                filtered = {s: b2[s] for s in b2.keys() if make_key(s) in keys_final}
-                return {"filtered_ohlcv_bundle": filtered}
+        # Pair modes are disabled in single-input compatibility mode
 
         # Global (merged) duplicate logic
         key_to_symbols: Dict[str, list[AssetSymbol]] = {}
