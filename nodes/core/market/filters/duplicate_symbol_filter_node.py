@@ -22,8 +22,12 @@ class DuplicateSymbolFilter(BaseFilter):
 
     CATEGORY = NodeCategory.MARKET
 
-    # Inherit inputs/outputs from BaseFilter
-    inputs = {"ohlcv_bundle": get_type("OHLCVBundle")}
+    # Support up to 3 OHLCV bundles as inputs to merge different feeds
+    inputs = {
+        "ohlcv_bundle_1": get_type("OHLCVBundle"),
+        "ohlcv_bundle_2": get_type("OHLCVBundle"),
+        "ohlcv_bundle_3": get_type("OHLCVBundle"),
+    }
     outputs = {"filtered_ohlcv_bundle": get_type("OHLCVBundle")}
 
     default_params = {
@@ -67,7 +71,13 @@ class DuplicateSymbolFilter(BaseFilter):
         return True
 
     async def _execute_impl(self, inputs: dict[str, Any]) -> dict[str, Any]:
-        bundle: dict[AssetSymbol, list[OHLCVBar]] = inputs.get("ohlcv_bundle", {})
+        # Merge up to three incoming bundles
+        bundle: dict[AssetSymbol, list[OHLCVBar]] = {}
+        for key in ("ohlcv_bundle_1", "ohlcv_bundle_2", "ohlcv_bundle_3"):
+            b = inputs.get(key)
+            if isinstance(b, dict):
+                # Later bundles can overwrite earlier ones for identical AssetSymbol keys
+                bundle.update(b)
         if not bundle:
             return {"filtered_ohlcv_bundle": {}}
 
