@@ -171,7 +171,12 @@ class DiscordOutput(Base):
                     )
                     return {"status": f"Success: {len(symbols)} symbols sent to Discord"}
                 else:
-                    error_msg = f"Discord API error: {response.status_code}"
+                    # Include response text to aid debugging
+                    try:
+                        resp_text = response.text
+                    except Exception:
+                        resp_text = "<no body>"
+                    error_msg = f"Discord API error: {response.status_code} - {resp_text}"
                     logger.error(f"DiscordOutput: {error_msg}")
                     return {"status": f"Error: {error_msg}"}
 

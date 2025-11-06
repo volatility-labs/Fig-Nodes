@@ -37,6 +37,13 @@ class DuplicateSymbolFilter(BaseFilter):
         # compare by: 'ticker' (base symbol ticker) or 'symbol_string' (str(symbol))
         "compare_by": "ticker",  # "ticker" | "symbol_string"
         "case_insensitive": True,
+        # Pairwise comparison for two-input workflows (overrides global mode when active)
+        # Options:
+        #  - global: use global duplicate logic across all merged inputs (default)
+        #  - intersection_1_2: keep only symbols present in both input 1 and input 2
+        #  - left_only_1_minus_2: keep symbols present in input 1 but not input 2
+        #  - right_only_2_minus_1: keep symbols present in input 2 but not input 1
+        "pair_mode": "global",
     }
 
     params_meta = [
@@ -64,6 +71,19 @@ class DuplicateSymbolFilter(BaseFilter):
             "label": "Case Insensitive",
             "description": "Compare keys without case sensitivity",
         },
+        {
+            "name": "pair_mode",
+            "type": "combo",
+            "default": "global",
+            "options": [
+                "global",
+                "intersection_1_2",
+                "left_only_1_minus_2",
+                "right_only_2_minus_1",
+            ],
+            "label": "Two-Input Mode",
+            "description": "Apply pairwise filtering between inputs 1 and 2 instead of global dedupe",
+        },
     ]
 
     def _filter_condition(self, symbol: AssetSymbol, ohlcv_data: list[OHLCVBar]) -> bool:
@@ -71,14 +91,16 @@ class DuplicateSymbolFilter(BaseFilter):
         return True
 
     async def _execute_impl(self, inputs: dict[str, Any]) -> dict[str, Any]:
-        # Merge up to three incoming bundles
+        # Grab individual bundles
+        b1: dict[AssetSymbol, list[OHLCVBar]] = inputs.get("ohlcv_bundle_1", {}) or {}
+        b2: dict[AssetSymbol, list[OHLCVBar]] = inputs.get("ohlcv_bundle_2", {}) or {}
+        b3: dict[AssetSymbol, list[OHLCVBar]] = inputs.get("ohlcv_bundle_3", {}) or {}
+        # Combined view for global logic
         bundle: dict[AssetSymbol, list[OHLCVBar]] = {}
-        for key in ("ohlcv_bundle_1", "ohlcv_bundle_2", "ohlcv_bundle_3"):
-            b = inputs.get(key)
+        for b in (b1, b2, b3):
             if isinstance(b, dict):
-                # Later bundles can overwrite earlier ones for identical AssetSymbol keys
                 bundle.update(b)
-        if not bundle:
+        if not bundle and not (b1 or b2 or b3):
             return {"filtered_ohlcv_bundle": {}}
 
         mode = self.params.get("mode", "unique")
@@ -94,7 +116,32 @@ class DuplicateSymbolFilter(BaseFilter):
                 k = sym.ticker
             return k.lower() if case_insensitive else k
 
-        # Build index of compare keys to list of symbols
+        # Optional pairwise mode between inputs 1 and 2
+        pair_mode = str(self.params.get("pair_mode", "global"))
+        if pair_mode != "global" and (b1 or b2):
+            # Build key sets per input
+            keys1 = {make_key(sym) for sym in b1.keys()}
+            keys2 = {make_key(sym) for sym in b2.keys()}
+
+            if pair_mode == "intersection_1_2":
+                keys_final = keys1 & keys2
+                source = {}
+                source.update(b1)
+                source.update(b2)
+                filtered = {s: source[s] for s in source.keys() if make_key(s) in keys_final}
+                return {"filtered_ohlcv_bundle": filtered}
+
+            if pair_mode == "left_only_1_minus_2":
+                keys_final = keys1 - keys2
+                filtered = {s: b1[s] for s in b1.keys() if make_key(s) in keys_final}
+                return {"filtered_ohlcv_bundle": filtered}
+
+            if pair_mode == "right_only_2_minus_1":
+                keys_final = keys2 - keys1
+                filtered = {s: b2[s] for s in b2.keys() if make_key(s) in keys_final}
+                return {"filtered_ohlcv_bundle": filtered}
+
+        # Global (merged) duplicate logic
         key_to_symbols: Dict[str, list[AssetSymbol]] = {}
         for sym in bundle.keys():
             key = make_key(sym)
@@ -104,12 +151,12 @@ class DuplicateSymbolFilter(BaseFilter):
 
         if mode == "duplicates_only":
             for key, syms in key_to_symbols.items():
+                # keep all symbols whose compare key appears more than once ANYWHERE (across merged inputs)
                 if len(syms) > 1:
                     for s in syms:
                         filtered[s] = bundle[s]
-        else:  # unique (keep first occurrence only)
+        else:  # unique (keep first occurrence only globally)
             for key, syms in key_to_symbols.items():
-                # Keep the first symbol encountered for the key
                 first = syms[0]
                 filtered[first] = bundle[first]
 
