@@ -42,6 +42,9 @@ uv run python main.py --dev
 
 The default graph should load. Press `Execute` at the bottom right of the canvas. 
 
+### Node guide: DuplicateSymbolFilter
+- See docs/DuplicateSymbolFilter.md for how to do single-feed dedupe and two-feed comparisons (intersection, A−B, B−A) in one node.
+
 ## (Optional) Setup Ollama
 
 For local LLM inference nodes, Fig Nodes *require* a local Ollama installation. Please see [Ollama installation instructions here](https://github.com/ollama/ollama).
