@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from datetime import datetime, timedelta
-from typing import Any
+from typing import Any, cast
 
 import httpx
 import pytz
@@ -60,15 +60,16 @@ async def fetch_bars(
         from_date = now - timedelta(days=amount * 365)
     else:
         raise ValueError(f"Unsupported time unit: {unit}")
-    to_date = now.strftime("%Y-%m-%d")
-    from_date_str = from_date.strftime("%Y-%m-%d")
+    # Prefer millisecond timestamps for more precise, up-to-now queries
+    to_ms = int(now.timestamp() * 1000)
+    from_ms = int(from_date.timestamp() * 1000)
 
     # Construct API URL and fetch (copied from PolygonCustomBarsNode.execute)
     ticker = str(symbol)
     # Add "X:" prefix for crypto tickers as required by Massive.com API
     if symbol.asset_class == AssetClass.CRYPTO:
         ticker = f"X:{ticker}"
-    url = f"https://api.massive.com/v2/aggs/ticker/{ticker}/range/{multiplier}/{timespan}/{from_date_str}/{to_date}"
+    url = f"https://api.massive.com/v2/aggs/ticker/{ticker}/range/{multiplier}/{timespan}/{from_ms}/{to_ms}"
     query_params = {
         "adjusted": str(adjusted).lower(),
         "sort": sort,
@@ -77,7 +78,7 @@ async def fetch_bars(
     }
 
     # Use shorter timeout for better cancellation responsiveness
-    timeout = httpx.Timeout(5.0, connect=2.0)  # 5s total, 2s connect
+    timeout = httpx.Timeout(10.0, connect=5.0)  # modestly higher to reduce spurious timeouts
 
     current_time_utc = datetime.now(pytz.timezone("UTC"))
     current_time_et = current_time_utc.astimezone(pytz.timezone("US/Eastern"))
@@ -86,7 +87,7 @@ async def fetch_bars(
     logger.info(f"POLYGON_SERVICE: Fetching bars for {symbol.ticker} ({symbol.asset_class})")
     logger.info(f"POLYGON_SERVICE: Request time (UTC): {current_time_utc}")
     logger.info(f"POLYGON_SERVICE: Request time (ET): {current_time_et}")
-    logger.info(f"POLYGON_SERVICE: Date range: {from_date_str} to {to_date}")
+    logger.info(f"POLYGON_SERVICE: Date range (ms): {from_ms} to {to_ms}")
     logger.info(
         f"POLYGON_SERVICE: Parameters: multiplier={multiplier}, timespan={timespan}, limit={limit}"
     )
@@ -94,7 +95,18 @@ async def fetch_bars(
 
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
-            response = await client.get(url, params=query_params)
+            # simple retry for transient connect timeouts
+            response: httpx.Response | None = None
+            for attempt in range(2):
+                try:
+                    response = await client.get(url, params=query_params)
+                    break
+                except httpx.ConnectTimeout:
+                    if attempt == 1:
+                        raise
+                    await asyncio.sleep(0.5)
+            if response is None:
+                raise RuntimeError("No response received from Massive aggregates endpoint")
             print(f"STOP_TRACE: Completed client.get for {symbol}, status: {response.status_code}")
             logger.info(f"POLYGON_SERVICE: HTTP response status: {response.status_code}")
 
@@ -133,7 +145,11 @@ async def fetch_bars(
             # Determine data status based on market state and API status
             from services.time_utils import is_us_market_open
 
-            market_is_open = is_us_market_open()
+            # Crypto trades 24/7; always treat as open
+            if symbol.asset_class == AssetClass.CRYPTO:
+                market_is_open = True
+            else:
+                market_is_open = is_us_market_open()
 
             if not market_is_open:
                 data_status = "market-closed"
@@ -152,32 +168,139 @@ async def fetch_bars(
 
             results = data.get("results", [])
             bars: list[OHLCVBar] = []
+            
+            # Track if we need to append current bar from snapshot
+            needs_current_bar = False
+            current_bar_dict: OHLCVBar | None = None
 
             if not results:
                 logger.warning(f"POLYGON_SERVICE: No bars returned for {symbol.ticker}")
+                
+                # For crypto symbols, try snapshot fallback when no aggregates available
+                if symbol.asset_class == AssetClass.CRYPTO and timespan == "minute":
+                    logger.info(f"POLYGON_SERVICE: Attempting snapshot fallback for crypto {symbol.ticker}")
+                    from services.polygon_snapshot_service import create_current_bar_from_snapshot
+                    
+                    try:
+                        snapshot_bars, snapshot_metadata = await create_current_bar_from_snapshot(symbol, api_key)
+                        if snapshot_bars:
+                            logger.info(f"POLYGON_SERVICE: ✅ Using snapshot fallback for {symbol.ticker}")
+                            return snapshot_bars, snapshot_metadata
+                        else:
+                            logger.warning(f"POLYGON_SERVICE: Snapshot fallback also failed for {symbol.ticker}")
+                    except Exception as e:
+                        logger.error(f"POLYGON_SERVICE: Snapshot fallback error for {symbol.ticker}: {e}")
             else:
                 logger.info(f"POLYGON_SERVICE: Processing {len(results)} bars for {symbol.ticker}")
+                
+                # Check if the latest bar is too old for crypto (more than 30 minutes)
+                # We'll fill in missing intervals with snapshot data to keep bars recent
+                if results and symbol.asset_class == AssetClass.CRYPTO and timespan == "minute":
+                    # Determine which bar is most recent based on sort order
+                    sort_order = params.get("sort", "asc")
+                    if sort_order == "desc":
+                        latest_bar = results[0]  # Most recent is first
+                    else:
+                        latest_bar = results[-1]  # Most recent is last
+                    
+                    latest_timestamp_ms = latest_bar.get("t", 0)
+                    if isinstance(latest_timestamp_ms, int):
+                        # Convert timestamp to datetime for comparison
+                        latest_time_utc = datetime.fromtimestamp(latest_timestamp_ms / 1000, tz=pytz.UTC)
+                        current_time_utc = datetime.now(pytz.UTC)
+                        age_minutes = (current_time_utc - latest_time_utc).total_seconds() / 60
+                        
+                        logger.info(f"POLYGON_SERVICE: Latest bar for {symbol.ticker} is {age_minutes:.1f} minutes old")
+                        
+                        if age_minutes > 30:  # If latest bar is more than 30 minutes old
+                            logger.warning(f"POLYGON_SERVICE: Latest bar for {symbol.ticker} is {age_minutes:.1f} minutes old, filling missing intervals with snapshot")
+                            from services.polygon_snapshot_service import fetch_current_snapshot
+                            
+                            try:
+                                # Get current price from snapshot
+                                current_price, snapshot_metadata = await fetch_current_snapshot(symbol, api_key)
+                                
+                                if current_price is not None:
+                                    # Calculate interval based on multiplier (1min, 5min, 15min, 30min)
+                                    multiplier = params.get("multiplier", 1)
+                                    interval_minutes = multiplier
+                                    
+                                    # Round current time down to the nearest interval
+                                    # e.g., if it's 5:37 PM and using 5min bars, round to 5:35 PM
+                                    current_minute = current_time_utc.minute
+                                    rounded_minute = (current_minute // interval_minutes) * interval_minutes
+                                    rounded_time = current_time_utc.replace(minute=rounded_minute, second=0, microsecond=0)
+                                    
+                                    # Create bar at the rounded interval timestamp
+                                    current_bar_dict = {
+                                        "timestamp": int(rounded_time.timestamp() * 1000),
+                                        "open": current_price,
+                                        "high": current_price,
+                                        "low": current_price,
+                                        "close": current_price,
+                                        "volume": 0.0,
+                                    }
+                                    needs_current_bar = True
+                                    logger.info(f"POLYGON_SERVICE: ✅ Will append current snapshot bar for {symbol.ticker} at interval {rounded_time.strftime('%Y-%m-%d %H:%M:%S UTC')}")
+                                else:
+                                    logger.warning(f"POLYGON_SERVICE: Could not get current price for {symbol.ticker} from snapshot")
+                            except Exception as e:
+                                logger.error(f"POLYGON_SERVICE: Snapshot fallback error for {symbol.ticker}: {e}", exc_info=True)
+                                # Continue with stale bars if fallback fails
 
                 # Track timestamps for delay analysis
                 timestamps_ms: list[int] = []
-                for result in results:
-                    if not isinstance(result, dict):
+                for result_item in results:
+                    if not isinstance(result_item, dict):
                         continue
-                    timestamp_ms_raw = result.get("t")
-                    if not isinstance(timestamp_ms_raw, int):
+                    result_dict = cast(dict[str, Any], result_item)
+                    ts_val = result_dict.get("t")
+                    if not isinstance(ts_val, int):
                         continue
-                    timestamp_ms = timestamp_ms_raw
+                    timestamp_ms = ts_val
                     timestamps_ms.append(timestamp_ms)
                     bar: OHLCVBar = {
                         "timestamp": timestamp_ms,
-                        "open": result["o"],
-                        "high": result["h"],
-                        "low": result["l"],
-                        "close": result["c"],
-                        "volume": result["v"],
+                        "open": float(result_dict.get("o", 0.0)),
+                        "high": float(result_dict.get("h", 0.0)),
+                        "low": float(result_dict.get("l", 0.0)),
+                        "close": float(result_dict.get("c", 0.0)),
+                        "volume": float(result_dict.get("v", 0.0)),
                     }
                     bars.append(bar)
 
+                # Append current bar from snapshot if latest aggregate bar is too old
+                if needs_current_bar and current_bar_dict:
+                    # Determine correct position based on sort order
+                    sort_order = params.get("sort", "asc")
+                    if sort_order == "desc":
+                        # For descending sort, prepend to make it the newest (first)
+                        bars.insert(0, current_bar_dict)
+                        logger.info(f"POLYGON_SERVICE: ✅ Prepended current snapshot bar (newest) to {len(bars)} total bars for {symbol.ticker}")
+                    else:
+                        # For ascending sort, append to make it the newest (last)
+                        bars.append(current_bar_dict)
+                        logger.info(f"POLYGON_SERVICE: ✅ Appended current snapshot bar (newest) to {len(bars)} total bars for {symbol.ticker}")
+                    
+                    # Log the timestamp of the appended bar for debugging
+                    appended_timestamp = current_bar_dict["timestamp"]
+                    appended_time = datetime.fromtimestamp(appended_timestamp / 1000, tz=pytz.UTC)
+                    logger.info(f"POLYGON_SERVICE: Appended bar timestamp: {appended_time.strftime('%Y-%m-%d %H:%M:%S UTC')}")
+                    
+                    # Log the total bars and timestamps for verification
+                    if sort_order == "desc":
+                        newest_bar = bars[0]
+                    else:
+                        newest_bar = bars[-1]
+                    newest_ts = newest_bar["timestamp"]
+                    newest_time = datetime.fromtimestamp(newest_ts / 1000, tz=pytz.UTC)
+                    logger.info(f"POLYGON_SERVICE: Total bars after append: {len(bars)}, newest bar time: {newest_time.strftime('%Y-%m-%d %H:%M:%S UTC')}")
+
+                # Include appended bar timestamp in analysis if present
+                if needs_current_bar and current_bar_dict:
+                    appended_ts = current_bar_dict["timestamp"]
+                    timestamps_ms.append(appended_ts)
+                
                 if timestamps_ms:
                     # Convert timestamps to ET for analysis
                     from services.time_utils import utc_timestamp_ms_to_et_datetime
