@@ -22,9 +22,14 @@ class DuplicateSymbolFilter(BaseFilter):
 
     CATEGORY = NodeCategory.MARKET
 
-    # Single-input version for compatibility with existing graphs
-    # (Use this input: ohlcv_bundle)
-    inputs = {"ohlcv_bundle": get_type("OHLCVBundle")}
+    # Combined: support classic single-bundle AND optional pairwise bundles
+    # Mark additional inputs as optional by allowing None
+    ohlcv_tp = get_type("OHLCVBundle")
+    inputs = {
+        "ohlcv_bundle": ohlcv_tp | None,
+        "left_bundle": ohlcv_tp | None,
+        "right_bundle": ohlcv_tp | None,
+    }
     outputs = {"filtered_ohlcv_bundle": get_type("OHLCVBundle")}
 
     default_params = {
@@ -88,41 +93,79 @@ class DuplicateSymbolFilter(BaseFilter):
         return True
 
     async def _execute_impl(self, inputs: dict[str, Any]) -> dict[str, Any]:
-        # Single bundle
-        bundle: dict[AssetSymbol, list[OHLCVBar]] = inputs.get("ohlcv_bundle", {}) or {}
-        if not bundle:
-            return {"filtered_ohlcv_bundle": {}}
+        # Inputs
+        single_bundle: dict[AssetSymbol, list[OHLCVBar]] = inputs.get("ohlcv_bundle", {}) or {}
+        left: dict[AssetSymbol, list[OHLCVBar]] = inputs.get("left_bundle", {}) or {}
+        right: dict[AssetSymbol, list[OHLCVBar]] = inputs.get("right_bundle", {}) or {}
 
-        mode = self.params.get("mode", "unique")
         compare_by = self.params.get("compare_by", "ticker")
         case_insensitive = bool(self.params.get("case_insensitive", True))
 
         def make_key(sym: AssetSymbol) -> str:
             if compare_by == "symbol_string":
-                # Uses __str__ -> may include quote currency
                 k = str(sym)
             else:
-                # ticker only; ignore quote currency to catch dup variants
                 k = sym.ticker
             return k.lower() if case_insensitive else k
 
-        # Pair modes are disabled in single-input compatibility mode
+        # Pairwise if either left or right provided
+        pair_mode = str(self.params.get("pair_mode", "global"))
+        if (left or right) and pair_mode != "global":
+            left_keys: Dict[str, list[AssetSymbol]] = {}
+            right_keys: Dict[str, list[AssetSymbol]] = {}
+            for s in left.keys():
+                left_keys.setdefault(make_key(s), []).append(s)
+            for s in right.keys():
+                right_keys.setdefault(make_key(s), []).append(s)
 
-        # Global (merged) duplicate logic
+            filtered: dict[AssetSymbol, list[OHLCVBar]] = {}
+            if pair_mode == "intersection_1_2":
+                keys_final = set(left_keys.keys()) & set(right_keys.keys())
+                for k in keys_final:
+                    s_left = left_keys[k][0]
+                    filtered[s_left] = left[s_left]
+            elif pair_mode == "left_only_1_minus_2":
+                keys_final = set(left_keys.keys()) - set(right_keys.keys())
+                for k in keys_final:
+                    s_left = left_keys[k][0]
+                    filtered[s_left] = left[s_left]
+            elif pair_mode == "right_only_2_minus_1":
+                keys_final = set(right_keys.keys()) - set(left_keys.keys())
+                for k in keys_final:
+                    s_right = right_keys[k][0]
+                    filtered[s_right] = right[s_right]
+            else:
+                # Fallback to union unique across left/right
+                merged: dict[str, AssetSymbol] = {}
+                for s in list(left.keys()) + list(right.keys()):
+                    k = make_key(s)
+                    if k not in merged:
+                        merged[k] = s
+                for k, s in merged.items():
+                    if s in left:
+                        filtered[s] = left[s]
+                    elif s in right:
+                        filtered[s] = right[s]
+            return {"filtered_ohlcv_bundle": filtered}
+
+        # Otherwise, run global single-bundle duplicate logic
+        bundle = single_bundle
+        if not bundle:
+            return {"filtered_ohlcv_bundle": {}}
+
+        mode = self.params.get("mode", "unique")
         key_to_symbols: Dict[str, list[AssetSymbol]] = {}
         for sym in bundle.keys():
             key = make_key(sym)
             key_to_symbols.setdefault(key, []).append(sym)
 
         filtered: dict[AssetSymbol, list[OHLCVBar]] = {}
-
         if mode == "duplicates_only":
             for key, syms in key_to_symbols.items():
-                # keep all symbols whose compare key appears more than once ANYWHERE (across merged inputs)
                 if len(syms) > 1:
                     for s in syms:
                         filtered[s] = bundle[s]
-        else:  # unique (keep first occurrence only globally)
+        else:  # unique
             for key, syms in key_to_symbols.items():
                 first = syms[0]
                 filtered[first] = bundle[first]
