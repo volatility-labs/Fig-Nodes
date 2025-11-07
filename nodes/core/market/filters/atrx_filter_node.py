@@ -9,7 +9,7 @@ from core.types_registry import (
     get_type,
 )
 from nodes.core.market.filters.base.base_indicator_filter_node import BaseIndicatorFilter
-from services.indicator_calculators.atrx_calculator import calculate_atrx_last_value
+from services.indicator_calculators.atrx_calculator import calculate_atrx_last_value, calculate_atrx
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +30,7 @@ class AtrXFilter(BaseIndicatorFilter):
         "upper_threshold": 6.0,
         "lower_threshold": -4.0,
         "filter_condition": "outside",  # "outside" or "inside"
+        "recent_candles": 1,  # lookback window over last N candles
     }
     params_meta = [
         {"name": "length", "type": "integer", "default": 14},
@@ -44,6 +45,7 @@ class AtrXFilter(BaseIndicatorFilter):
             "default": "outside",
             "options": ["outside", "inside"],
         },
+        {"name": "recent_candles", "type": "integer", "default": 1},
     ]
 
     def _calculate_indicator(self, ohlcv_data: list[OHLCVBar]) -> IndicatorResult:
@@ -130,10 +132,29 @@ class AtrXFilter(BaseIndicatorFilter):
                 error="ATRX calculation resulted in None",
             )
 
+        # Also compute short trailing series to enable recent_candles lookback checks
+        atrx_series_result = calculate_atrx(
+            highs=high_prices,
+            lows=low_prices,
+            closes=close_prices,
+            prices=source_prices,
+            length=length_value,
+            ma_length=ma_length_value,
+            smoothing=smoothing_str,
+        )
+        atrx_series: list[float | None] = atrx_series_result.get("atrx", []) if isinstance(atrx_series_result, dict) else []
+        # Keep only numeric values; store last window for reference
+        series_payload = []
+        if atrx_series:
+            # Include the last up to 100 points for potential downstream use
+            tail = atrx_series[-100:]
+            for v in tail:
+                series_payload.append({"atrx": v})
+
         return IndicatorResult(
             indicator_type=IndicatorType.ATRX,
             timestamp=ohlcv_data[-1]["timestamp"],
-            values=IndicatorValue(single=atrx_value),
+            values=IndicatorValue(single=float(atrx_value), series=series_payload),
             params=self.params,
         )
 
@@ -157,10 +178,35 @@ class AtrXFilter(BaseIndicatorFilter):
             filter_condition = "outside"
         condition = str(filter_condition)
 
+        # Lookback window: if recent_candles > 1, check the last N atrx values
+        recent = self.params.get("recent_candles", 1)
+        try:
+            recent_n = int(recent)
+        except Exception:
+            recent_n = 1
+        if recent_n <= 1:
+            if condition == "outside":
+                return value >= upper or value <= lower
+            else:  # "inside"
+                return lower <= value <= upper
+
+        # Gather last N values from series, fallback to single if series missing
+        series_vals: list[float] = []
+        try:
+            for item in indicator_result.values.series[-recent_n:]:
+                v = item.get("atrx")
+                if isinstance(v, (int, float)):
+                    series_vals.append(float(v))
+        except Exception:
+            series_vals = []
+        if not series_vals:
+            series_vals = [value]
+
+        # Pass if ANY of last N satisfy the condition
         if condition == "outside":
-            return value >= upper or value <= lower
-        else:  # "inside"
-            return lower <= value <= upper
+            return any((v >= upper or v <= lower) for v in series_vals)
+        else:
+            return any((lower <= v <= upper) for v in series_vals)
 
     async def _execute_impl(self, inputs: dict[str, Any]) -> dict[str, Any]:
         # Delegate to BaseIndicatorFilterNode to leverage per-symbol error handling and progress reporting
