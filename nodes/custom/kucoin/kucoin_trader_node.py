@@ -63,6 +63,7 @@ class KucoinTraderNode(Base):
         "take_profit_percent": 3.0,   # e.g., +3%
         "place_brackets": True,
         "stop_loss_percent": 2.0,
+        "trading_mode": "spot",  # spot | futures
         # Scaling and persistence
         "allow_scaling": False,
         "max_scale_entries": 1,
@@ -77,6 +78,7 @@ class KucoinTraderNode(Base):
         {"name": "risk_per_trade_usd", "type": "number", "default": 10.0, "label": "Risk per trade (USD)"},
         {"name": "sl_buffer_percent_above_liquidation", "type": "number", "default": 0.5, "label": "SL buffer % above liq"},
         {"name": "take_profit_percent", "type": "number", "default": 3.0, "label": "TP %"},
+        {"name": "trading_mode", "type": "combo", "default": "spot", "options": ["spot", "futures"], "label": "Trading mode"},
         {"name": "place_brackets", "type": "combo", "default": True, "options": [True, False], "label": "Place TP/SL after fill"},
         {"name": "stop_loss_percent", "type": "number", "default": 2.0, "label": "SL % (spot)"},
         {"name": "leverage", "type": "integer", "default": 40, "label": "Desired leverage"},
@@ -129,6 +131,7 @@ class KucoinTraderNode(Base):
         skip_unsupported = bool(params.get("skip_unsupported_markets", True))
         place_brackets = bool(params.get("place_brackets", True))
         stop_loss_percent = _as_float(params.get("stop_loss_percent", 2.0) or 2.0, 2.0)
+        trading_mode = str(params.get("trading_mode", "spot")).lower()
 
         # Load state
         state_key = "kucoin_trader_state"
@@ -162,7 +165,11 @@ class KucoinTraderNode(Base):
             quote = (sym.quote_currency or default_quote or "USDT").upper()
             if convert_usd_to_usdt and quote == "USD":
                 quote = "USDT"
-            market_symbol = f"{ticker}-{quote}"
+            if trading_mode == "futures":
+                # ccxt unified futures symbol for Kucoin is like "BTC/USDT:USDT"
+                market_symbol = f"{ticker}/{quote}:{quote}"
+            else:
+                market_symbol = f"{ticker}-{quote}"
 
             # Optional precheck: skip unsupported markets
             if skip_unsupported:
@@ -183,7 +190,7 @@ class KucoinTraderNode(Base):
                     async with markets_lock:
                         if not markets_loaded:
                             try:
-                                ex_pre: Any = ccxt.kucoin()
+                                ex_pre: Any = ccxt.kucoinfutures() if trading_mode == "futures" else ccxt.kucoin()
                                 loaded: dict[str, Any] = cast(dict[str, Any], ex_pre.load_markets())
                                 markets_set = set(map(str, loaded.keys()))
                                 markets_loaded = True
@@ -276,12 +283,17 @@ class KucoinTraderNode(Base):
                 }
 
             try:
-                exchange: Any = ccxt.kucoin({
+                exchange: Any = (ccxt.kucoinfutures if trading_mode == "futures" else ccxt.kucoin)({
                     "apiKey": api_key,
                     "secret": api_secret,
                     "password": api_passphrase,
                     "enableRateLimit": True,
                 })
+                if trading_mode == "futures":
+                    try:
+                        exchange.set_leverage(leverage, market_symbol)
+                    except Exception:  # pragma: no cover
+                        pass
 
                 # Compute base amount if operating in quote terms
                 order_amount = amount
@@ -292,11 +304,18 @@ class KucoinTraderNode(Base):
                         raise ValueError(f"Cannot determine price for {market_symbol}")
                     order_amount = amount / last
 
+                # Place entry
+                order_params: dict[str, Any] = {}
+                if trading_mode == "futures":
+                    order_params["reduceOnly"] = False
+
                 order: dict[str, Any] | Any = exchange.create_order(
                     market_symbol,
                     "market",
                     "buy",
                     exchange.amount_to_precision(market_symbol, order_amount),
+                    None if trading_mode == "futures" else None,
+                    order_params,
                 )
                 # Update state (scale count + timestamp)
                 async with lock:
@@ -324,7 +343,7 @@ class KucoinTraderNode(Base):
                 order_result["sl_buffer_percent_above_liquidation"] = _as_float(params.get("sl_buffer_percent_above_liquidation", 0.0) or 0.0, 0.0)
                 order_result["leverage"] = leverage
 
-                # Optional bracket placement for spot (TP limit + SL stop/stop-limit)
+                # Optional bracket placement
                 if place_brackets:
                     try:
                         # Determine entry price
@@ -340,12 +359,41 @@ class KucoinTraderNode(Base):
 
                         qty = exchange.amount_to_precision(market_symbol, order_amount)
                         tp_pct = _as_float(params.get("take_profit_percent", 3.0), 3.0)
-                        sl_pct_spot = float(stop_loss_percent)
                         tp_price = entry_price * (1.0 + tp_pct / 100.0)
-                        sl_price = entry_price * (1.0 - sl_pct_spot / 100.0)
+                        if trading_mode == "futures":
+                            # Try to fetch liquidation price to compute SL buffer
+                            sl_price: float | None = None
+                            try:
+                                positions = []
+                                try:
+                                    positions = exchange.fetch_positions([market_symbol]) or []
+                                except Exception:
+                                    positions = exchange.fetch_positions() or []
+                                liq = None
+                                for p in positions:
+                                    sym = p.get("symbol") or p.get("info", {}).get("symbol")
+                                    if sym == market_symbol:
+                                        liq = p.get("liquidationPrice") or p.get("info", {}).get("liquidationPrice")
+                                        break
+                                if liq:
+                                    liq_f = float(liq)
+                                    # Long only for now
+                                    sl_price = liq_f * (1.0 + _as_float(params.get("sl_buffer_percent_above_liquidation", 0.5), 0.5) / 100.0)
+                            except Exception:
+                                sl_price = None
+                            if not sl_price:
+                                # Fallback to percent-of-entry if no liq price available
+                                sl_price = entry_price * (1.0 - _as_float(params.get("stop_loss_percent", 2.0), 2.0) / 100.0)
+                        else:
+                            sl_pct_spot = float(stop_loss_percent)
+                            sl_price = entry_price * (1.0 - sl_pct_spot / 100.0)
 
                         tp_price_p: str = cast(str, exchange.price_to_precision(market_symbol, tp_price))
                         sl_price_p: str = cast(str, exchange.price_to_precision(market_symbol, sl_price))
+
+                        tp_params: dict[str, Any] = {}
+                        if trading_mode == "futures":
+                            tp_params["reduceOnly"] = True
 
                         tp_order: dict[str, Any] | Any = exchange.create_order(
                             market_symbol,
@@ -353,7 +401,7 @@ class KucoinTraderNode(Base):
                             "sell",
                             qty,
                             float(tp_price_p),
-                            {},
+                            tp_params,
                         )
                         order_result["tp_order"] = tp_order
 
@@ -362,7 +410,9 @@ class KucoinTraderNode(Base):
                         sl_error = None
                         try:
                             # Many exchanges require stop params; Kucoin may accept 'stop'/'stopPrice'.
-                            sl_params = {"stop": "loss", "stopPrice": float(sl_price_p)}
+                            sl_params: dict[str, Any] = {"stop": "loss", "stopPrice": float(sl_price_p)}
+                            if trading_mode == "futures":
+                                sl_params["reduceOnly"] = True
                             # Prefer market stop; if rejected, fall back to stop-limit with price
                             try:
                                 sl_order = exchange.create_order(
@@ -375,6 +425,8 @@ class KucoinTraderNode(Base):
                                 )
                             except Exception:
                                 sl_params_lim = {"stop": "loss", "stopPrice": float(sl_price_p)}
+                                if trading_mode == "futures":
+                                    sl_params_lim["reduceOnly"] = True
                                 sl_order = exchange.create_order(
                                     market_symbol,
                                     "limit",
