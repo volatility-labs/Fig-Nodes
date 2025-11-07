@@ -387,8 +387,29 @@ class KucoinTraderNode(Base):
                         if entry_price <= 0:
                             raise ValueError("cannot determine entry price for bracket calc")
 
-                        qty_prec = exchange.amount_to_precision(market_symbol, order_amount)
-                        qty_num = float(qty_prec) if isinstance(qty_prec, str) else float(qty_prec)
+                        # Determine bracket quantity:
+                        # Futures: use current position size; Spot: use entry amount
+                        if trading_mode == "futures":
+                            pos_size = 0.0
+                            try:
+                                positions = []
+                                try:
+                                    positions = exchange.fetch_positions([market_symbol]) or []
+                                except Exception:
+                                    positions = exchange.fetch_positions() or []
+                                for p in positions:
+                                    sym = p.get("symbol") or p.get("info", {}).get("symbol")
+                                    if sym == market_symbol:
+                                        size_val = p.get("contracts") or p.get("size") or p.get("positionAmt") or p.get("info", {}).get("size")
+                                        if size_val is not None:
+                                            pos_size = abs(float(size_val))
+                                        break
+                            except Exception:
+                                pos_size = 0.0
+                            qty_num = pos_size if pos_size > 0 else float(exchange.amount_to_precision(market_symbol, order_amount))
+                        else:
+                            qty_prec = exchange.amount_to_precision(market_symbol, order_amount)
+                            qty_num = float(qty_prec) if isinstance(qty_prec, str) else float(qty_prec)
                         tp_pct = _as_float(params.get("take_profit_percent", 3.0), 3.0)
                         tp_price = entry_price * (1.0 + tp_pct / 100.0)
                         if trading_mode == "futures":
@@ -421,6 +442,22 @@ class KucoinTraderNode(Base):
 
                         tp_price_p: str = cast(str, exchange.price_to_precision(market_symbol, tp_price))
                         sl_price_p: str = cast(str, exchange.price_to_precision(market_symbol, sl_price))
+
+                        # Cleanup existing reduce-only sells (best-effort) before placing fresh brackets
+                        try:
+                            open_orders = exchange.fetch_open_orders(market_symbol) or []
+                            for oo in open_orders:
+                                try:
+                                    is_sell = (str(oo.get("side", "")).lower() == "sell")
+                                    reduce_only = bool(oo.get("reduceOnly")) or bool(oo.get("info", {}).get("reduceOnly"))
+                                    if is_sell and reduce_only:
+                                        oid = oo.get("id") or oo.get("orderId") or oo.get("info", {}).get("orderId")
+                                        if oid:
+                                            exchange.cancel_order(oid, market_symbol)
+                                except Exception:
+                                    continue
+                        except Exception:
+                            pass
 
                         tp_params: dict[str, Any] = {}
                         if trading_mode == "futures":
