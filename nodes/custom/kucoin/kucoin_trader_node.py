@@ -148,9 +148,12 @@ class KucoinTraderNode(Base):
         self.graph_context[state_key] = state
 
         vault = APIKeyVault()
-        api_key = vault.get("KUCOIN_API_KEY")
-        api_secret = vault.get("KUCOIN_API_SECRET")
-        api_passphrase = vault.get("KUCOIN_API_PASSPHRASE")
+        def _strip_or_none(val: Any) -> Any:
+            return val.strip() if isinstance(val, str) else val
+
+        api_key = _strip_or_none(vault.get("KUCOIN_API_KEY"))
+        api_secret = _strip_or_none(vault.get("KUCOIN_API_SECRET"))
+        api_passphrase = _strip_or_none(vault.get("KUCOIN_API_PASSPHRASE"))
 
         lock = asyncio.Lock()
 
