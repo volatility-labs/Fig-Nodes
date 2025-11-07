@@ -423,6 +423,7 @@ class KucoinTraderNode(Base):
 
                 amt_prec = exchange.amount_to_precision(market_symbol, order_amount)
                 order_amount_num = float(amt_prec) if isinstance(amt_prec, str) else float(amt_prec)
+                # Create entry strictly sized by risk and leverage (contract-capped).
                 order: dict[str, Any] | Any = exchange.create_order(
                     market_symbol,
                     "market",
@@ -549,18 +550,37 @@ class KucoinTraderNode(Base):
                         placed_tps: list[dict[str, Any]] = []
                         tp_split_sizes: list[float] = []
                         tp_split_prices: list[float] = []
-                        # Equal split, adjust last to remaining after rounding
-                        base_split = qty_num / float(tp_splits)
+                        # Respect exchange minimum amount; reduce number of splits if needed
+                        min_amt = None
+                        try:
+                            mkt = markets_map.get(market_symbol) if markets_loaded else None
+                            if mkt:
+                                limits = mkt.get("limits") or {}
+                                min_amt_val = (limits.get("amount") or {}).get("min")
+                                if isinstance(min_amt_val, (int, float)) and min_amt_val:
+                                    min_amt = float(min_amt_val)
+                        except Exception:
+                            min_amt = None
+                        # Determine feasible splits
+                        feasible_splits = int(tp_splits)
+                        if min_amt and min_amt > 0:
+                            # max splits such that each split >= min_amt
+                            feasible_splits = max(1, min(tp_splits, int(qty_num // min_amt)))
+                        # Equal split across feasible_splits; adjust last for rounding
+                        base_split = qty_num / float(feasible_splits)
                         consumed = 0.0
-                        for i in range(1, tp_splits + 1):
+                        for i in range(1, feasible_splits + 1):
                             tp_level = entry_price * (1.0 + (tp_pct * i) / 100.0)
                             tp_level_p: str = cast(str, exchange.price_to_precision(market_symbol, tp_level))
-                            if i < tp_splits:
+                            if i < feasible_splits:
                                 raw_split = base_split
                             else:
                                 raw_split = max(0.0, qty_num - consumed)
                             split_qty_prec = exchange.amount_to_precision(market_symbol, raw_split)
                             split_qty_num = float(split_qty_prec) if isinstance(split_qty_prec, str) else float(split_qty_prec)
+                            # If still below min amount, skip this split
+                            if min_amt and split_qty_num < min_amt and i != feasible_splits:
+                                continue
                             consumed += split_qty_num
                             tp_params: dict[str, Any] = {}
                             if trading_mode == "futures":
