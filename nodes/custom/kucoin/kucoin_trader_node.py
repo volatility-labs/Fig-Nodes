@@ -336,6 +336,9 @@ class KucoinTraderNode(Base):
                 order_params: dict[str, Any] = {}
                 if trading_mode == "futures":
                     order_params["reduceOnly"] = False
+                    # Ensure leverage/margin are honored at order level
+                    order_params["leverage"] = str(leverage)
+                    order_params["marginMode"] = "isolated"
 
                 amt_prec = exchange.amount_to_precision(market_symbol, order_amount)
                 order_amount_num = float(amt_prec) if isinstance(amt_prec, str) else float(amt_prec)
@@ -462,6 +465,8 @@ class KucoinTraderNode(Base):
                         tp_params: dict[str, Any] = {}
                         if trading_mode == "futures":
                             tp_params["reduceOnly"] = True
+                            tp_params["leverage"] = str(leverage)
+                            tp_params["marginMode"] = "isolated"
 
                         tp_order: dict[str, Any] | Any = exchange.create_order(
                             market_symbol,
@@ -478,9 +483,12 @@ class KucoinTraderNode(Base):
                         sl_error = None
                         try:
                             # Many exchanges require stop params; Kucoin may accept 'stop'/'stopPrice'.
-                            sl_params: dict[str, Any] = {"stop": "loss", "stopPrice": float(sl_price_p)}
+                            # Kucoin Futures expects stop='down' for long SL; choose last price trigger ('TP')
+                            sl_params: dict[str, Any] = {"stop": "down", "stopPrice": float(sl_price_p), "stopPriceType": "TP"}
                             if trading_mode == "futures":
                                 sl_params["reduceOnly"] = True
+                                sl_params["leverage"] = str(leverage)
+                                sl_params["marginMode"] = "isolated"
                             # Prefer market stop; if rejected, fall back to stop-limit with price
                             try:
                                 sl_order = exchange.create_order(
@@ -492,9 +500,11 @@ class KucoinTraderNode(Base):
                                     sl_params,
                                 )
                             except Exception:
-                                sl_params_lim = {"stop": "loss", "stopPrice": float(sl_price_p)}
+                                sl_params_lim = {"stop": "down", "stopPrice": float(sl_price_p), "stopPriceType": "TP"}
                                 if trading_mode == "futures":
                                     sl_params_lim["reduceOnly"] = True
+                                    sl_params_lim["leverage"] = str(leverage)
+                                    sl_params_lim["marginMode"] = "isololated"
                                 sl_order = exchange.create_order(
                                     market_symbol,
                                     "limit",
