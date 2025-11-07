@@ -71,7 +71,8 @@ class DiscordOutput(Base):
 
             if asset_class_name not in grouped:
                 grouped[asset_class_name] = []
-            grouped[asset_class_name].append(symbol.ticker)
+            # Use AssetSymbol.__str__ which includes quote for crypto (e.g., LTCUSD, XRPAUD)
+            grouped[asset_class_name].append(str(symbol))
 
         # Build formatted string with better styling
         formatted_parts: list[str] = []
