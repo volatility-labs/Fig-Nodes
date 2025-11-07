@@ -237,6 +237,49 @@ class KucoinTraderNode(Base):
                 scale_count = int(info.get("scale_count", 0))
                 last_scale_time = float(info.get("last_scale_time", 0.0))
 
+                # If no active position exists on the exchange, reset scale counters to allow re-entry
+                # (handles manual closes or liquidations)
+                try:
+                    import ccxt  # type: ignore
+                    ex_chk: Any = ccxt.kucoinfutures({
+                        "apiKey": api_key,
+                        "secret": api_secret,
+                        "password": api_passphrase,
+                        "enableRateLimit": True,
+                    }) if trading_mode == "futures" else ccxt.kucoin({
+                        "apiKey": api_key,
+                        "secret": api_secret,
+                        "password": api_passphrase,
+                        "enableRateLimit": True,
+                    })
+                    pos_size = 0.0
+                    if trading_mode == "futures":
+                        try:
+                            positions = []
+                            try:
+                                positions = ex_chk.fetch_positions([market_symbol]) or []
+                            except Exception:
+                                positions = ex_chk.fetch_positions() or []
+                            for p in positions:
+                                sym_p = p.get("symbol") or p.get("info", {}).get("symbol")
+                                if sym_p == market_symbol:
+                                    size_val = p.get("contracts") or p.get("size") or p.get("positionAmt") or p.get("info", {}).get("size")
+                                    if size_val is not None:
+                                        pos_size = abs(float(size_val))
+                                    break
+                        except Exception:
+                            pos_size = 0.0
+                    # For spot, we treat as no persistent position
+                    if pos_size <= 0:
+                        scale_count = 0
+                        last_scale_time = 0.0
+                        info["scale_count"] = 0
+                        info["last_scale_time"] = 0.0
+                        entries[market_symbol] = info
+                except Exception:
+                    # If we can't verify, keep existing counters
+                    pass
+
                 if not allow_scaling and scale_count >= 1:
                     return {
                         "symbol": str(sym),
