@@ -409,8 +409,9 @@ class KucoinTraderNode(Base):
                                     contract_size = float(cs)
                         except Exception:
                             contract_size = 1.0
-                        # Contracts = notional / contract_size
-                        raw_contracts = max(0.0, target_notional_usdt / max(1e-12, contract_size))
+                        # Calculate contracts using ICP bot logic: notional / (price * multiplier)
+                        # For most Kucoin futures, multiplier is 1.0
+                        raw_contracts = max(0.0, target_notional_usdt / (last * contract_size))
                         # Round contracts to exchange precision/step
                         amt_prec = exchange.amount_to_precision(market_symbol, raw_contracts)
                         futures_entry_size_contracts = float(amt_prec) if isinstance(amt_prec, str) else float(amt_prec)
@@ -455,18 +456,31 @@ class KucoinTraderNode(Base):
 
                 amt_prec = exchange.amount_to_precision(market_symbol, order_amount)
                 order_amount_num = float(amt_prec) if isinstance(amt_prec, str) else float(amt_prec)
-                # For Kucoin Futures, pass size (contracts) explicitly to ensure margin ~= risk_usd
+                
+                # Create entry order with proper Kucoin futures parameters
+                order: dict[str, Any] | Any
                 if trading_mode == "futures":
-                    order_params["size"] = order_amount_num
-                # Create entry strictly sized by risk and leverage (contract-capped).
-                order: dict[str, Any] | Any = exchange.create_order(
-                    market_symbol,
-                    "market",
-                    "buy",
-                    order_amount_num,
-                    None if trading_mode == "futures" else None,
-                    order_params,
-                )
+                    # For futures: use size parameter with integer contracts (like ICP bot)
+                    contracts_int = int(order_amount_num)
+                    order_params["size"] = str(contracts_int)  # Integer string like ICP bot
+                    order = exchange.create_order(
+                        market_symbol,
+                        "market",
+                        "buy",
+                        None,  # No amount for futures - use size param
+                        None,  # No price for market orders
+                        order_params,
+                    )
+                else:
+                    # Spot trading uses amount parameter
+                    order = exchange.create_order(
+                        market_symbol,
+                        "market",
+                        "buy",
+                        order_amount_num,
+                        None,
+                        order_params,
+                    )
                 # Update state (scale count + timestamp)
                 async with lock:
                     entries = state.setdefault("entries", {})
@@ -627,17 +641,30 @@ class KucoinTraderNode(Base):
                                     current_lev = leverage
                                 tp_params["leverage"] = str(current_lev)
                                 tp_params["marginMode"] = "isolated"
-                                # Explicit size for kucoin futures
-                                tp_params["size"] = split_qty_num
+                                # Integer contracts for futures (like ICP bot)
+                                tp_params["size"] = str(int(split_qty_num))
                             tp_params["clientOrderId"] = _sanitize_client_oid(f"fig-tp-{i}-{market_symbol}")
-                            tp_order = exchange.create_order(
-                                market_symbol,
-                                "limit",
-                                "sell",
-                                split_qty_num,
-                                float(tp_level_p),
-                                tp_params,
-                            )
+                            
+                            if trading_mode == "futures":
+                                # For futures: use size param, no amount
+                                tp_order = exchange.create_order(
+                                    market_symbol,
+                                    "limit",
+                                    "sell",
+                                    None,  # No amount for futures
+                                    float(tp_level_p),
+                                    tp_params,
+                                )
+                            else:
+                                # For spot: use amount
+                                tp_order = exchange.create_order(
+                                    market_symbol,
+                                    "limit",
+                                    "sell",
+                                    split_qty_num,
+                                    float(tp_level_p),
+                                    tp_params,
+                                )
                             placed_tps.append(tp_order)
                             tp_split_sizes.append(split_qty_num)
                             tp_split_prices.append(float(tp_level_p))
@@ -660,17 +687,31 @@ class KucoinTraderNode(Base):
                                     current_lev = leverage
                                 sl_params["leverage"] = str(current_lev)
                                 sl_params["marginMode"] = "isolated"
+                                # Integer contracts for futures (like ICP bot)
+                                sl_params["size"] = str(int(qty_num))
                             sl_params["clientOrderId"] = _sanitize_client_oid(f"fig-sl-{market_symbol}")
                             # Prefer market stop; if rejected, fall back to stop-limit with price
                             try:
-                                sl_order = exchange.create_order(
-                                    market_symbol,
-                                    "market",
-                                    "sell",
-                                    qty_num,
-                                    None,
-                                    sl_params,
-                                )
+                                if trading_mode == "futures":
+                                    # For futures: use size param, no amount
+                                    sl_order = exchange.create_order(
+                                        market_symbol,
+                                        "market",
+                                        "sell",
+                                        None,  # No amount for futures
+                                        None,
+                                        sl_params,
+                                    )
+                                else:
+                                    # For spot: use amount
+                                    sl_order = exchange.create_order(
+                                        market_symbol,
+                                        "market",
+                                        "sell",
+                                        qty_num,
+                                        None,
+                                        sl_params,
+                                    )
                             except Exception:
                                 sl_params_lim = {"stop": "down", "stopPrice": float(sl_price_p), "stopPriceType": "TP"}
                                 if trading_mode == "futures":
@@ -681,16 +722,28 @@ class KucoinTraderNode(Base):
                                         current_lev = leverage
                                     sl_params_lim["leverage"] = str(current_lev)
                                     sl_params_lim["marginMode"] = "isolated"
-                                    sl_params_lim["size"] = qty_num
+                                    sl_params_lim["size"] = str(int(qty_num))
                                 sl_params_lim["clientOrderId"] = _sanitize_client_oid(f"fig-sl-{market_symbol}")
-                                sl_order = exchange.create_order(
-                                    market_symbol,
-                                    "limit",
-                                    "sell",
-                                    qty_num,
-                                    float(sl_price_p),
-                                    sl_params_lim,
-                                )
+                                if trading_mode == "futures":
+                                    # For futures: use size param, no amount
+                                    sl_order = exchange.create_order(
+                                        market_symbol,
+                                        "limit",
+                                        "sell",
+                                        None,  # No amount for futures
+                                        float(sl_price_p),
+                                        sl_params_lim,
+                                    )
+                                else:
+                                    # For spot: use amount
+                                    sl_order = exchange.create_order(
+                                        market_symbol,
+                                        "limit",
+                                        "sell",
+                                        qty_num,
+                                        float(sl_price_p),
+                                        sl_params_lim,
+                                    )
                         except Exception as e_sl:  # pragma: no cover
                             sl_error = str(e_sl)
 
