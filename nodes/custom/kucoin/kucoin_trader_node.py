@@ -547,12 +547,21 @@ class KucoinTraderNode(Base):
 
                         # Split TP ladder (i * base TP), equal-size reduce-only sells
                         placed_tps: list[dict[str, Any]] = []
-                        split_qty = qty_num / float(tp_splits)
+                        tp_split_sizes: list[float] = []
+                        tp_split_prices: list[float] = []
+                        # Equal split, adjust last to remaining after rounding
+                        base_split = qty_num / float(tp_splits)
+                        consumed = 0.0
                         for i in range(1, tp_splits + 1):
                             tp_level = entry_price * (1.0 + (tp_pct * i) / 100.0)
                             tp_level_p: str = cast(str, exchange.price_to_precision(market_symbol, tp_level))
-                            split_qty_prec = exchange.amount_to_precision(market_symbol, split_qty)
+                            if i < tp_splits:
+                                raw_split = base_split
+                            else:
+                                raw_split = max(0.0, qty_num - consumed)
+                            split_qty_prec = exchange.amount_to_precision(market_symbol, raw_split)
                             split_qty_num = float(split_qty_prec) if isinstance(split_qty_prec, str) else float(split_qty_prec)
+                            consumed += split_qty_num
                             tp_params: dict[str, Any] = {}
                             if trading_mode == "futures":
                                 tp_params["reduceOnly"] = True
@@ -562,6 +571,8 @@ class KucoinTraderNode(Base):
                                     current_lev = leverage
                                 tp_params["leverage"] = str(current_lev)
                                 tp_params["marginMode"] = "isolated"
+                                # Explicit size for kucoin futures
+                                tp_params["size"] = split_qty_num
                             tp_params["clientOrderId"] = _sanitize_client_oid(f"fig-tp-{i}-{market_symbol}")
                             tp_order = exchange.create_order(
                                 market_symbol,
@@ -572,7 +583,11 @@ class KucoinTraderNode(Base):
                                 tp_params,
                             )
                             placed_tps.append(tp_order)
+                            tp_split_sizes.append(split_qty_num)
+                            tp_split_prices.append(float(tp_level_p))
                         order_result["tp_orders"] = placed_tps
+                        order_result["tp_split_sizes"] = tp_split_sizes
+                        order_result["tp_split_prices"] = tp_split_prices
 
                         # Try to place a stop or stop-limit order for SL. If unsupported, capture error.
                         sl_order = None
@@ -610,6 +625,7 @@ class KucoinTraderNode(Base):
                                         current_lev = leverage
                                     sl_params_lim["leverage"] = str(current_lev)
                                     sl_params_lim["marginMode"] = "isolated"
+                                    sl_params_lim["size"] = qty_num
                                 sl_params_lim["clientOrderId"] = _sanitize_client_oid(f"fig-sl-{market_symbol}")
                                 sl_order = exchange.create_order(
                                     market_symbol,
