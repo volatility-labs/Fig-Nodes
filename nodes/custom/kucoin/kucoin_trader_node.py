@@ -66,6 +66,8 @@ class KucoinTraderNode(Base):
         "scale_cooldown_s": 1800,
         "persist_state": False,
         "state_path": "results/kucoin_trader_state.json",
+        # Market validation
+        "skip_unsupported_markets": True,
     }
 
     params_meta = [
@@ -75,6 +77,7 @@ class KucoinTraderNode(Base):
         {"name": "leverage", "type": "integer", "default": 40, "label": "Desired leverage"},
         {"name": "max_concurrent_positions", "type": "integer", "default": 25, "label": "Max concurrent positions"},
         {"name": "dry_run", "type": "combo", "default": True, "options": [True, False], "label": "Dry run (no real orders)"},
+        {"name": "skip_unsupported_markets", "type": "combo", "default": True, "options": [True, False], "label": "Skip unsupported markets"},
         {"name": "allow_scaling", "type": "combo", "default": False, "options": [True, False], "label": "Allow scaling"},
         {"name": "max_scale_entries", "type": "integer", "default": 1, "label": "Max scale entries"},
         {"name": "scale_cooldown_s", "type": "integer", "default": 1800, "label": "Scale cooldown (s)"},
@@ -107,6 +110,7 @@ class KucoinTraderNode(Base):
         scale_cooldown_s = max(0, int(params.get("scale_cooldown_s", 1800)))
         persist_state = bool(params.get("persist_state", False))
         state_path = str(params.get("state_path", "results/kucoin_trader_state.json"))
+        skip_unsupported = bool(params.get("skip_unsupported_markets", True))
 
         # Load state
         state_key = "kucoin_trader_state"
@@ -129,6 +133,11 @@ class KucoinTraderNode(Base):
 
         lock = asyncio.Lock()
 
+        # Cache markets set across tasks to avoid repeated load_markets()
+        markets_loaded = False
+        markets_set: set[str] = set()
+        markets_lock = asyncio.Lock()
+
         async def place_for_symbol(sym: AssetSymbol) -> dict[str, Any]:
             # Build Kucoin symbol format: TICKER-QUOTE
             ticker = sym.ticker.upper()
@@ -136,6 +145,48 @@ class KucoinTraderNode(Base):
             if convert_usd_to_usdt and quote == "USD":
                 quote = "USDT"
             market_symbol = f"{ticker}-{quote}"
+
+            # Optional precheck: skip unsupported markets
+            if skip_unsupported:
+                try:
+                    import ccxt  # type: ignore
+                except Exception as e:  # pragma: no cover
+                    return {
+                        "symbol": str(sym),
+                        "kucoin_symbol": market_symbol,
+                        "error": f"ccxt not available: {e}",
+                        "status": "error",
+                        "filled": False,
+                        "message": "ccxt not installed for market check",
+                    }
+
+                nonlocal markets_loaded, markets_set
+                if not markets_loaded:
+                    async with markets_lock:
+                        if not markets_loaded:
+                            try:
+                                ex_pre = ccxt.kucoin()
+                                loaded = ex_pre.load_markets()
+                                markets_set = set(loaded.keys())
+                                markets_loaded = True
+                            except Exception as e:
+                                return {
+                                    "symbol": str(sym),
+                                    "kucoin_symbol": market_symbol,
+                                    "error": str(e),
+                                    "status": "error",
+                                    "filled": False,
+                                    "message": "failed to load markets",
+                                }
+
+                if market_symbol not in markets_set:
+                    return {
+                        "symbol": str(sym),
+                        "kucoin_symbol": market_symbol,
+                        "status": "unsupported_market",
+                        "filled": False,
+                        "message": "market not listed on Kucoin",
+                    }
 
             # Scaling guards (and duplicate prevention)
             now_ts = time.time()
@@ -176,6 +227,8 @@ class KucoinTraderNode(Base):
                     "amount_mode": amount_mode,
                     "amount": amount,
                     "status": "dry_run",
+                    "filled": False,
+                    "message": "dry_run",
                 }
                 # Attach bracket preview if enabled
                 tp_pct = float(params.get("take_profit_percent", 3.0))
@@ -235,6 +288,9 @@ class KucoinTraderNode(Base):
                     info["last_scale_time"] = now_ts
                     entries[market_symbol] = info
 
+                order_status = str((order or {}).get("status", "")).lower()
+                is_filled = order_status in {"closed", "filled"}
+
                 result: dict[str, Any] = {
                     "symbol": str(sym),
                     "kucoin_symbol": market_symbol,
@@ -242,6 +298,8 @@ class KucoinTraderNode(Base):
                     "amount": order_amount,
                     "status": "filled_or_submitted",
                     "order": order,
+                    "filled": is_filled,
+                    "message": ("filled" if is_filled else (order_status or "submitted")),
                 }
                 # Return computed target percentages; order management handled externally
                 result["tp_percent"] = float(params.get("take_profit_percent", 3.0))
@@ -256,6 +314,8 @@ class KucoinTraderNode(Base):
                     "kucoin_symbol": market_symbol,
                     "error": str(e),
                     "status": "error",
+                    "filled": False,
+                    "message": "order_error",
                 }
 
         # Save state if persistence enabled after all tasks
