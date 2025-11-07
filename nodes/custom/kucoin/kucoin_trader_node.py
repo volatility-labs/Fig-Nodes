@@ -46,64 +46,25 @@ class KucoinTraderNode(Base):
     ]
 
     default_params = {
-        "side": "buy",  # "buy" | "sell"
-        "order_type": "market",  # currently only market supported
-        "order_amount_mode": "quote",  # "quote" | "base"
-        "amount": 25.0,  # amount in quote or base as per mode
+        # Fixed behavior: market BUY orders, quote-sized by risk_per_trade_usd
         # ICP-bot style runtime prompts
         "risk_per_trade_usd": 10.0,
         "sl_buffer_percent_above_liquidation": 0.5,
         "leverage": 40,
         "max_concurrent_positions": 25,
-        "default_quote_currency": "USDT",
-        "convert_usd_to_usdt": True,
+        # Hidden controls
         "dry_run": True,
         "concurrency": 3,
         # Bracket configuration (spot only)
-        "enable_bracket": False,
         "take_profit_percent": 3.0,   # e.g., +3%
-        "stop_loss_percent": 1.5,     # e.g., -1.5%
-        # Optional: compute SL relative to a provided liquidation price
-        "sl_from": "entry",          # "entry" | "liquidation"
-        "liquidation_price": None,    # if provided and sl_from==liquidation, use this reference
     }
 
     params_meta = [
-        {"name": "side", "type": "combo", "default": "buy", "options": ["buy", "sell"], "label": "Side"},
-        {
-            "name": "order_amount_mode",
-            "type": "combo",
-            "default": "quote",
-            "options": ["quote", "base"],
-            "label": "Amount Mode",
-            "description": "Interpret amount as quote (e.g., USDT) or base units",
-        },
-        {"name": "amount", "type": "number", "default": 25.0, "label": "Amount (fallback)"},
         {"name": "risk_per_trade_usd", "type": "number", "default": 10.0, "label": "Risk per trade (USD)"},
         {"name": "sl_buffer_percent_above_liquidation", "type": "number", "default": 0.5, "label": "SL buffer % above liq"},
         {"name": "take_profit_percent", "type": "number", "default": 3.0, "label": "TP %"},
         {"name": "leverage", "type": "integer", "default": 40, "label": "Desired leverage"},
         {"name": "max_concurrent_positions", "type": "integer", "default": 25, "label": "Max concurrent positions"},
-        {
-            "name": "default_quote_currency",
-            "type": "text",
-            "default": "USDT",
-            "label": "Default Quote",
-            "description": "Used when symbol quote is missing",
-        },
-        {
-            "name": "convert_usd_to_usdt",
-            "type": "combo",
-            "default": True,
-            "options": [True, False],
-            "label": "USD→USDT",
-        },
-        {"name": "dry_run", "type": "combo", "default": True, "options": [True, False], "label": "Dry Run"},
-        {"name": "concurrency", "type": "integer", "default": 3, "label": "Concurrency"},
-        {"name": "enable_bracket", "type": "combo", "default": False, "options": [True, False], "label": "Enable TP/SL"},
-        {"name": "stop_loss_percent", "type": "number", "default": 1.5, "label": "SL % (entry-based)"},
-        {"name": "sl_from", "type": "combo", "default": "entry", "options": ["entry", "liquidation"], "label": "SL From"},
-        {"name": "liquidation_price", "type": "number", "default": None, "label": "Liquidation Price (optional)"},
     ]
 
     async def _execute_impl(self, inputs: dict[str, Any]) -> dict[str, Any]:
@@ -114,15 +75,12 @@ class KucoinTraderNode(Base):
 
         params = self.params
         side = str(params.get("side", "buy")).lower()
-        amount_mode = str(params.get("order_amount_mode", "quote")).lower()
-        amount = float(params.get("amount", 25.0))
-        # Override amount with risk if provided (quote mode)
+        amount_mode = "quote"
+        # Always use risk per trade for quote sizing
         risk_usd = float(params.get("risk_per_trade_usd", 0.0) or 0.0)
-        if risk_usd > 0:
-            amount_mode = "quote"
-            amount = risk_usd
-        default_quote = str(params.get("default_quote_currency", "USDT")).upper()
-        convert_usd_to_usdt = bool(params.get("convert_usd_to_usdt", True))
+        amount = risk_usd if risk_usd > 0 else float(params.get("amount", 0.0) or 0.0)
+        default_quote = "USDT"
+        convert_usd_to_usdt = True
         dry_run = bool(params.get("dry_run", True))
         # Tie concurrency to max_concurrent_positions if provided
         concurrency = max(1, int(params.get("max_concurrent_positions", params.get("concurrency", 3))))
@@ -146,28 +104,17 @@ class KucoinTraderNode(Base):
                 result: dict[str, Any] = {
                     "symbol": str(sym),
                     "kucoin_symbol": market_symbol,
-                    "side": side,
+                    "side": "buy",
                     "amount_mode": amount_mode,
                     "amount": amount,
                     "status": "dry_run",
                 }
                 # Attach bracket preview if enabled
-                if params.get("enable_bracket", False):
-                    # Assume entry ~ latest price for preview
-                    # Lazy import avoids dependency if not installed
-                    tp_pct = float(params.get("take_profit_percent", 3.0))
-                    sl_pct = float(params.get("stop_loss_percent", 1.5))
-                    sl_from = str(params.get("sl_from", "entry"))
-                    liq = params.get("liquidation_price")
-                    sl_buf = float(params.get("sl_buffer_percent_above_liquidation", 0.0) or 0.0)
-                    result["bracket"] = {
-                        "tp_percent": tp_pct,
-                        "sl_percent": sl_pct,
-                        "sl_from": sl_from,
-                        "liquidation_price": liq,
-                        "sl_buffer_percent_above_liquidation": sl_buf,
-                        "leverage": leverage,
-                    }
+                tp_pct = float(params.get("take_profit_percent", 3.0))
+                sl_buf = float(params.get("sl_buffer_percent_above_liquidation", 0.0) or 0.0)
+                result["tp_percent"] = tp_pct
+                result["sl_buffer_percent_above_liquidation"] = sl_buf
+                result["leverage"] = leverage
                 return result
 
             if not (api_key and api_secret and api_passphrase):
@@ -206,88 +153,37 @@ class KucoinTraderNode(Base):
                         raise ValueError(f"Cannot determine price for {market_symbol}")
                     order_amount = amount / last
 
+                # Prevent immediate duplicate entries per session
+                active_key = "kucoin_active_symbols"
+                active: set[str] = self.graph_context.setdefault(active_key, set())  # type: ignore
+                if market_symbol in active:
+                    return {
+                        "symbol": str(sym),
+                        "kucoin_symbol": market_symbol,
+                        "status": "skipped_existing_position",
+                    }
+
                 order = exchange.create_order(
                     market_symbol,
                     "market",
-                    side,
+                    "buy",
                     exchange.amount_to_precision(market_symbol, order_amount),
                 )
+                # Mark as active to avoid immediate re-entry
+                active.add(market_symbol)
+
                 result: dict[str, Any] = {
                     "symbol": str(sym),
                     "kucoin_symbol": market_symbol,
-                    "side": side,
+                    "side": "buy",
                     "amount": order_amount,
                     "status": "filled_or_submitted",
                     "order": order,
                 }
-                # Optional TP/SL submit (spot): submit follow-up conditional/limit orders when enabled
-                if params.get("enable_bracket", False) and side == "buy":
-                    try:
-                        # Use last known price as entry approximation if needed
-                        entry_price = float(order.get("average") or order.get("price") or last)
-                        tp_pct = float(params.get("take_profit_percent", 3.0))
-                        sl_pct = float(params.get("stop_loss_percent", 1.5))
-                        sl_from = str(params.get("sl_from", "entry"))
-                        liq = params.get("liquidation_price")
-                        sl_buf = float(params.get("sl_buffer_percent_above_liquidation", 0.0) or 0.0)
-
-                        tp_price = entry_price * (1.0 + tp_pct / 100.0)
-                        if sl_from == "liquidation" and liq:
-                            # Two options:
-                            # 1) Explicit buffer above liquidation
-                            # 2) Percent from entry towards liquidation (fallback)
-                            try:
-                                liq_f = float(liq)
-                                if sl_buf > 0:
-                                    sl_price = liq_f * (1.0 + sl_buf / 100.0)
-                                else:
-                                    sl_price = liq_f + (entry_price - liq_f) * (1.0 - sl_pct / 100.0)
-                            except Exception:
-                                sl_price = entry_price * (1.0 - sl_pct / 100.0)
-                        else:
-                            sl_price = entry_price * (1.0 - sl_pct / 100.0)
-
-                        # Place TP as a limit sell
-                        tp_qty = exchange.amount_to_precision(market_symbol, order_amount)
-                        tp_px = exchange.price_to_precision(market_symbol, tp_price)
-                        tp_order = exchange.create_order(
-                            market_symbol,
-                            "limit",
-                            "sell",
-                            tp_qty,
-                            tp_px,
-                        )
-
-                        # Place SL as a stop-market sell (Kucoin conditional)
-                        sl_qty = tp_qty
-                        sl_px_raw = sl_price
-                        sl_px = exchange.price_to_precision(market_symbol, sl_px_raw)
-                        # Kucoin spot conditional params
-                        sl_params = {"stop": "loss", "stopPrice": float(sl_px)}
-                        sl_order = exchange.create_order(
-                            market_symbol,
-                            "market",
-                            "sell",
-                            sl_qty,
-                            params=sl_params,
-                        )
-
-                        result["tp_order"] = tp_order
-                        result["sl_order"] = sl_order
-                        result["bracket"] = {
-                            "entry_price": entry_price,
-                            "tp_price": tp_price,
-                            "sl_price": sl_price,
-                            "tp_percent": tp_pct,
-                            "sl_percent": sl_pct,
-                            "sl_buffer_percent_above_liquidation": sl_buf,
-                            "sl_from": sl_from,
-                            "liquidation_price": liq,
-                            "leverage": leverage,
-                        }
-                    except Exception as be:  # pragma: no cover
-                        logger.warning("Bracket placement failed: %s", be)
-                        result["bracket_error"] = str(be)
+                # Return computed target percentages; order management handled externally
+                result["tp_percent"] = float(params.get("take_profit_percent", 3.0))
+                result["sl_buffer_percent_above_liquidation"] = float(params.get("sl_buffer_percent_above_liquidation", 0.0) or 0.0)
+                result["leverage"] = leverage
 
                 return result
             except Exception as e:  # pragma: no cover
