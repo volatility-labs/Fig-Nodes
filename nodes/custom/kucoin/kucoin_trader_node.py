@@ -305,7 +305,26 @@ class KucoinTraderNode(Base):
                             exchange.set_margin_mode("isolated", market_symbol)
                         except Exception:
                             pass
-                        exchange.set_leverage(leverage, market_symbol)
+                        # Clamp leverage to contract max if available
+                        eff_leverage = leverage
+                        try:
+                            import ccxt  # type: ignore
+                            ex_meta: Any = ccxt.kucoinfutures()
+                            ex_meta.load_markets()
+                            mkt_meta: dict[str, Any] = cast(dict[str, Any], ex_meta.market(market_symbol))
+                            max_lev = None
+                            try:
+                                max_lev = (mkt_meta.get("limits", {}) or {}).get("leverage", {}).get("max")
+                            except Exception:
+                                max_lev = None
+                            if not max_lev:
+                                info = mkt_meta.get("info", {}) or {}
+                                max_lev = info.get("maxLeverage") or info.get("maxLeverageLevel")
+                            if max_lev:
+                                eff_leverage = min(leverage, int(float(max_lev)))
+                        except Exception:
+                            eff_leverage = leverage
+                        exchange.set_leverage(eff_leverage, market_symbol)
                     except Exception:  # pragma: no cover
                         pass
 
@@ -321,7 +340,12 @@ class KucoinTraderNode(Base):
                     allocated_risk = risk_usd * per_entry_fraction
                     if trading_mode == "futures":
                         # Margin (premium) targeting: position value = risk * leverage
-                        order_amount = (allocated_risk * leverage) / last
+                        # Use effective leverage (contract-capped)
+                        try:
+                            current_lev = eff_leverage  # type: ignore[name-defined]
+                        except Exception:
+                            current_lev = leverage
+                        order_amount = (allocated_risk * current_lev) / last
                     else:
                         order_amount = allocated_risk / last
 
@@ -341,7 +365,11 @@ class KucoinTraderNode(Base):
                 if trading_mode == "futures":
                     order_params["reduceOnly"] = False
                     # Ensure leverage/margin are honored at order level
-                    order_params["leverage"] = str(leverage)
+                    try:
+                        current_lev = eff_leverage  # type: ignore[name-defined]
+                    except Exception:
+                        current_lev = leverage
+                    order_params["leverage"] = str(current_lev)
                     order_params["marginMode"] = "isolated"
 
                 amt_prec = exchange.amount_to_precision(market_symbol, order_amount)
@@ -378,7 +406,11 @@ class KucoinTraderNode(Base):
                 # Return computed target percentages; order management handled externally
                 order_result["tp_percent"] = _as_float(params.get("take_profit_percent", 3.0), 3.0)
                 order_result["sl_buffer_percent_above_liquidation"] = _as_float(params.get("sl_buffer_percent_above_liquidation", 0.0) or 0.0, 0.0)
-                order_result["leverage"] = leverage
+                try:
+                    current_lev = eff_leverage  # type: ignore[name-defined]
+                except Exception:
+                    current_lev = leverage
+                order_result["leverage"] = current_lev
 
                 # Optional bracket placement
                 if place_brackets:
@@ -475,7 +507,11 @@ class KucoinTraderNode(Base):
                             tp_params: dict[str, Any] = {}
                             if trading_mode == "futures":
                                 tp_params["reduceOnly"] = True
-                                tp_params["leverage"] = str(leverage)
+                                try:
+                                    current_lev = eff_leverage  # type: ignore[name-defined]
+                                except Exception:
+                                    current_lev = leverage
+                                tp_params["leverage"] = str(current_lev)
                                 tp_params["marginMode"] = "isolated"
                             tp_params["clientOrderId"] = f"fig-tp-{i}-{market_symbol}"
                             tp_order = exchange.create_order(
@@ -498,7 +534,11 @@ class KucoinTraderNode(Base):
                             sl_params: dict[str, Any] = {"stop": "down", "stopPrice": float(sl_price_p), "stopPriceType": "TP"}
                             if trading_mode == "futures":
                                 sl_params["reduceOnly"] = True
-                                sl_params["leverage"] = str(leverage)
+                                try:
+                                    current_lev = eff_leverage  # type: ignore[name-defined]
+                                except Exception:
+                                    current_lev = leverage
+                                sl_params["leverage"] = str(current_lev)
                                 sl_params["marginMode"] = "isolated"
                             sl_params["clientOrderId"] = f"fig-sl-{market_symbol}"
                             # Prefer market stop; if rejected, fall back to stop-limit with price
@@ -515,7 +555,11 @@ class KucoinTraderNode(Base):
                                 sl_params_lim = {"stop": "down", "stopPrice": float(sl_price_p), "stopPriceType": "TP"}
                                 if trading_mode == "futures":
                                     sl_params_lim["reduceOnly"] = True
-                                    sl_params_lim["leverage"] = str(leverage)
+                                    try:
+                                        current_lev = eff_leverage  # type: ignore[name-defined]
+                                    except Exception:
+                                        current_lev = leverage
+                                    sl_params_lim["leverage"] = str(current_lev)
                                     sl_params_lim["marginMode"] = "isolated"
                                 sl_params_lim["clientOrderId"] = f"fig-sl-{market_symbol}"
                                 sl_order = exchange.create_order(
