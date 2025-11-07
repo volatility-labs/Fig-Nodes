@@ -160,6 +160,7 @@ class KucoinTraderNode(Base):
         # Cache markets set across tasks to avoid repeated load_markets()
         markets_loaded = False
         markets_set: set[str] = set()
+        markets_map: dict[str, dict[str, Any]] = {}
         markets_lock = asyncio.Lock()
 
         async def place_for_symbol(sym: AssetSymbol) -> dict[str, Any]:
@@ -196,6 +197,8 @@ class KucoinTraderNode(Base):
                                 ex_pre: Any = ccxt.kucoinfutures() if trading_mode == "futures" else ccxt.kucoin()
                                 loaded: dict[str, Any] = cast(dict[str, Any], ex_pre.load_markets())
                                 markets_set = set(map(str, loaded.keys()))
+                                markets_map.clear()
+                                markets_map.update(loaded)
                                 markets_loaded = True
                             except Exception as e:
                                 return {
@@ -294,6 +297,10 @@ class KucoinTraderNode(Base):
                 })
                 if trading_mode == "futures":
                     try:
+                        try:
+                            exchange.set_margin_mode("isolated", market_symbol)
+                        except Exception:
+                            pass
                         exchange.set_leverage(leverage, market_symbol)
                     except Exception:  # pragma: no cover
                         pass
@@ -305,7 +312,25 @@ class KucoinTraderNode(Base):
                     last = float(cast(float | int | str, ticker_info.get("last") or ticker_info.get("close") or 0.0))
                     if last <= 0:
                         raise ValueError(f"Cannot determine price for {market_symbol}")
-                    order_amount = amount / last
+                    # Allocate per-entry risk if scaling
+                    per_entry_fraction = (1.0 / max_scale_entries) if allow_scaling else 1.0
+                    allocated_risk = risk_usd * per_entry_fraction
+                    if trading_mode == "futures":
+                        # Margin (premium) targeting: position value = risk * leverage
+                        order_amount = (allocated_risk * leverage) / last
+                    else:
+                        order_amount = allocated_risk / last
+
+                # Respect exchange minimums when available
+                try:
+                    mkt = markets_map.get(market_symbol) if markets_loaded else None
+                    if mkt:
+                        limits = mkt.get("limits") or {}
+                        min_amt = (limits.get("amount") or {}).get("min")
+                        if isinstance(min_amt, (int, float)) and min_amt and order_amount < float(min_amt):
+                            order_amount = float(min_amt)
+                except Exception:
+                    pass
 
                 # Place entry
                 order_params: dict[str, Any] = {}
