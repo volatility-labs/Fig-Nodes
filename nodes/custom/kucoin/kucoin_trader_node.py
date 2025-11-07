@@ -248,6 +248,14 @@ class KucoinTraderNode(Base):
                 result["leverage"] = leverage
 
                 return result
+            except Exception as e:  # pragma: no cover
+                logger.exception("Kucoin order failed")
+                return {
+                    "symbol": str(sym),
+                    "kucoin_symbol": market_symbol,
+                    "error": str(e),
+                    "status": "error",
+                }
 
         # Save state if persistence enabled after all tasks
         async def save_state_if_needed():
