@@ -309,11 +309,13 @@ class KucoinTraderNode(Base):
                 if trading_mode == "futures":
                     order_params["reduceOnly"] = False
 
+                amt_prec = exchange.amount_to_precision(market_symbol, order_amount)
+                order_amount_num = float(amt_prec) if isinstance(amt_prec, str) else float(amt_prec)
                 order: dict[str, Any] | Any = exchange.create_order(
                     market_symbol,
                     "market",
                     "buy",
-                    exchange.amount_to_precision(market_symbol, order_amount),
+                    order_amount_num,
                     None if trading_mode == "futures" else None,
                     order_params,
                 )
@@ -357,7 +359,8 @@ class KucoinTraderNode(Base):
                         if entry_price <= 0:
                             raise ValueError("cannot determine entry price for bracket calc")
 
-                        qty = exchange.amount_to_precision(market_symbol, order_amount)
+                        qty_prec = exchange.amount_to_precision(market_symbol, order_amount)
+                        qty_num = float(qty_prec) if isinstance(qty_prec, str) else float(qty_prec)
                         tp_pct = _as_float(params.get("take_profit_percent", 3.0), 3.0)
                         tp_price = entry_price * (1.0 + tp_pct / 100.0)
                         if trading_mode == "futures":
@@ -399,7 +402,7 @@ class KucoinTraderNode(Base):
                             market_symbol,
                             "limit",
                             "sell",
-                            qty,
+                            qty_num,
                             float(tp_price_p),
                             tp_params,
                         )
@@ -419,7 +422,7 @@ class KucoinTraderNode(Base):
                                     market_symbol,
                                     "market",
                                     "sell",
-                                    qty,
+                                    qty_num,
                                     None,
                                     sl_params,
                                 )
@@ -431,7 +434,7 @@ class KucoinTraderNode(Base):
                                     market_symbol,
                                     "limit",
                                     "sell",
-                                    qty,
+                                    qty_num,
                                     float(sl_price_p),
                                     sl_params_lim,
                                 )
