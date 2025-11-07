@@ -463,11 +463,12 @@ class KucoinTraderNode(Base):
                     # For futures: use size parameter with integer contracts (like ICP bot)
                     contracts_int = int(order_amount_num)
                     order_params["size"] = str(contracts_int)  # Integer string like ICP bot
+                    # ccxt still needs a valid amount even with size param
                     order = exchange.create_order(
                         market_symbol,
                         "market",
                         "buy",
-                        None,  # No amount for futures - use size param
+                        contracts_int,  # Pass contracts as amount too for ccxt compatibility
                         None,  # No price for market orders
                         order_params,
                     )
@@ -646,12 +647,12 @@ class KucoinTraderNode(Base):
                             tp_params["clientOrderId"] = _sanitize_client_oid(f"fig-tp-{i}-{market_symbol}")
                             
                             if trading_mode == "futures":
-                                # For futures: use size param, no amount
+                                # For futures: use size param but also pass amount for ccxt compatibility
                                 tp_order = exchange.create_order(
                                     market_symbol,
                                     "limit",
                                     "sell",
-                                    None,  # No amount for futures
+                                    int(split_qty_num),  # Pass contracts as amount for ccxt
                                     float(tp_level_p),
                                     tp_params,
                                 )
@@ -693,12 +694,12 @@ class KucoinTraderNode(Base):
                             # Prefer market stop; if rejected, fall back to stop-limit with price
                             try:
                                 if trading_mode == "futures":
-                                    # For futures: use size param, no amount
+                                    # For futures: use size param but also pass amount for ccxt compatibility
                                     sl_order = exchange.create_order(
                                         market_symbol,
                                         "market",
                                         "sell",
-                                        None,  # No amount for futures
+                                        int(qty_num),  # Pass contracts as amount for ccxt
                                         None,
                                         sl_params,
                                     )
@@ -725,12 +726,12 @@ class KucoinTraderNode(Base):
                                     sl_params_lim["size"] = str(int(qty_num))
                                 sl_params_lim["clientOrderId"] = _sanitize_client_oid(f"fig-sl-{market_symbol}")
                                 if trading_mode == "futures":
-                                    # For futures: use size param, no amount
+                                    # For futures: use size param but also pass amount for ccxt compatibility
                                     sl_order = exchange.create_order(
                                         market_symbol,
                                         "limit",
                                         "sell",
-                                        None,  # No amount for futures
+                                        int(qty_num),  # Pass contracts as amount for ccxt
                                         float(sl_price_p),
                                         sl_params_lim,
                                     )
