@@ -74,6 +74,7 @@ class KucoinTraderNode(Base):
         {"name": "take_profit_percent", "type": "number", "default": 3.0, "label": "TP %"},
         {"name": "leverage", "type": "integer", "default": 40, "label": "Desired leverage"},
         {"name": "max_concurrent_positions", "type": "integer", "default": 25, "label": "Max concurrent positions"},
+        {"name": "dry_run", "type": "combo", "default": True, "options": [True, False], "label": "Dry run (no real orders)"},
         {"name": "allow_scaling", "type": "combo", "default": False, "options": [True, False], "label": "Allow scaling"},
         {"name": "max_scale_entries", "type": "integer", "default": 1, "label": "Max scale entries"},
         {"name": "scale_cooldown_s", "type": "integer", "default": 1800, "label": "Scale cooldown (s)"},
