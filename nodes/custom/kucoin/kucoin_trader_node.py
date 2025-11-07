@@ -64,6 +64,8 @@ class KucoinTraderNode(Base):
         "place_brackets": True,
         "stop_loss_percent": 2.0,
         "trading_mode": "spot",  # spot | futures
+        # Split TPs (ladder at multiples of base TP)
+        "tp_splits": 1,
         # Scaling and persistence
         "allow_scaling": False,
         "max_scale_entries": 1,
@@ -81,6 +83,7 @@ class KucoinTraderNode(Base):
         {"name": "trading_mode", "type": "combo", "default": "spot", "options": ["spot", "futures"], "label": "Trading mode"},
         {"name": "place_brackets", "type": "combo", "default": True, "options": [True, False], "label": "Place TP/SL after fill"},
         {"name": "stop_loss_percent", "type": "number", "default": 2.0, "label": "SL % (spot)"},
+        {"name": "tp_splits", "type": "integer", "default": 1, "label": "TP splits (1..5)"},
         {"name": "leverage", "type": "integer", "default": 40, "label": "Desired leverage"},
         {"name": "max_concurrent_positions", "type": "integer", "default": 25, "label": "Max concurrent positions"},
         {"name": "dry_run", "type": "combo", "default": True, "options": [True, False], "label": "Dry run (no real orders)"},
@@ -132,6 +135,7 @@ class KucoinTraderNode(Base):
         place_brackets = bool(params.get("place_brackets", True))
         stop_loss_percent = _as_float(params.get("stop_loss_percent", 2.0) or 2.0, 2.0)
         trading_mode = str(params.get("trading_mode", "spot")).lower()
+        tp_splits = max(1, min(5, _as_int(params.get("tp_splits", 1), 1)))
 
         # Load state
         state_key = "kucoin_trader_state"
@@ -414,7 +418,6 @@ class KucoinTraderNode(Base):
                             qty_prec = exchange.amount_to_precision(market_symbol, order_amount)
                             qty_num = float(qty_prec) if isinstance(qty_prec, str) else float(qty_prec)
                         tp_pct = _as_float(params.get("take_profit_percent", 3.0), 3.0)
-                        tp_price = entry_price * (1.0 + tp_pct / 100.0)
                         if trading_mode == "futures":
                             # Try to fetch liquidation price to compute SL buffer
                             sl_price: float | None = None
@@ -443,7 +446,6 @@ class KucoinTraderNode(Base):
                             sl_pct_spot = float(stop_loss_percent)
                             sl_price = entry_price * (1.0 - sl_pct_spot / 100.0)
 
-                        tp_price_p: str = cast(str, exchange.price_to_precision(market_symbol, tp_price))
                         sl_price_p: str = cast(str, exchange.price_to_precision(market_symbol, sl_price))
 
                         # Cleanup existing reduce-only sells (best-effort) before placing fresh brackets
@@ -462,21 +464,30 @@ class KucoinTraderNode(Base):
                         except Exception:
                             pass
 
-                        tp_params: dict[str, Any] = {}
-                        if trading_mode == "futures":
-                            tp_params["reduceOnly"] = True
-                            tp_params["leverage"] = str(leverage)
-                            tp_params["marginMode"] = "isolated"
-
-                        tp_order: dict[str, Any] | Any = exchange.create_order(
-                            market_symbol,
-                            "limit",
-                            "sell",
-                            qty_num,
-                            float(tp_price_p),
-                            tp_params,
-                        )
-                        order_result["tp_order"] = tp_order
+                        # Split TP ladder (i * base TP), equal-size reduce-only sells
+                        placed_tps: list[dict[str, Any]] = []
+                        split_qty = qty_num / float(tp_splits)
+                        for i in range(1, tp_splits + 1):
+                            tp_level = entry_price * (1.0 + (tp_pct * i) / 100.0)
+                            tp_level_p: str = cast(str, exchange.price_to_precision(market_symbol, tp_level))
+                            split_qty_prec = exchange.amount_to_precision(market_symbol, split_qty)
+                            split_qty_num = float(split_qty_prec) if isinstance(split_qty_prec, str) else float(split_qty_prec)
+                            tp_params: dict[str, Any] = {}
+                            if trading_mode == "futures":
+                                tp_params["reduceOnly"] = True
+                                tp_params["leverage"] = str(leverage)
+                                tp_params["marginMode"] = "isolated"
+                            tp_params["clientOrderId"] = f"fig-tp-{i}-{market_symbol}"
+                            tp_order = exchange.create_order(
+                                market_symbol,
+                                "limit",
+                                "sell",
+                                split_qty_num,
+                                float(tp_level_p),
+                                tp_params,
+                            )
+                            placed_tps.append(tp_order)
+                        order_result["tp_orders"] = placed_tps
 
                         # Try to place a stop or stop-limit order for SL. If unsupported, capture error.
                         sl_order = None
@@ -489,6 +500,7 @@ class KucoinTraderNode(Base):
                                 sl_params["reduceOnly"] = True
                                 sl_params["leverage"] = str(leverage)
                                 sl_params["marginMode"] = "isolated"
+                            sl_params["clientOrderId"] = f"fig-sl-{market_symbol}"
                             # Prefer market stop; if rejected, fall back to stop-limit with price
                             try:
                                 sl_order = exchange.create_order(
@@ -504,7 +516,8 @@ class KucoinTraderNode(Base):
                                 if trading_mode == "futures":
                                     sl_params_lim["reduceOnly"] = True
                                     sl_params_lim["leverage"] = str(leverage)
-                                    sl_params_lim["marginMode"] = "isololated"
+                                    sl_params_lim["marginMode"] = "isolated"
+                                sl_params_lim["clientOrderId"] = f"fig-sl-{market_symbol}"
                                 sl_order = exchange.create_order(
                                     market_symbol,
                                     "limit",
