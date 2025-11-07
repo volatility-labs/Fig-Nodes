@@ -50,6 +50,11 @@ class KucoinTraderNode(Base):
         "order_type": "market",  # currently only market supported
         "order_amount_mode": "quote",  # "quote" | "base"
         "amount": 25.0,  # amount in quote or base as per mode
+        # ICP-bot style runtime prompts
+        "risk_per_trade_usd": 10.0,
+        "sl_buffer_percent_above_liquidation": 0.5,
+        "leverage": 40,
+        "max_concurrent_positions": 25,
         "default_quote_currency": "USDT",
         "convert_usd_to_usdt": True,
         "dry_run": True,
@@ -73,7 +78,12 @@ class KucoinTraderNode(Base):
             "label": "Amount Mode",
             "description": "Interpret amount as quote (e.g., USDT) or base units",
         },
-        {"name": "amount", "type": "number", "default": 25.0, "label": "Amount"},
+        {"name": "amount", "type": "number", "default": 25.0, "label": "Amount (fallback)"},
+        {"name": "risk_per_trade_usd", "type": "number", "default": 10.0, "label": "Risk per trade (USD)"},
+        {"name": "sl_buffer_percent_above_liquidation", "type": "number", "default": 0.5, "label": "SL buffer % above liq"},
+        {"name": "take_profit_percent", "type": "number", "default": 3.0, "label": "TP %"},
+        {"name": "leverage", "type": "integer", "default": 40, "label": "Desired leverage"},
+        {"name": "max_concurrent_positions", "type": "integer", "default": 25, "label": "Max concurrent positions"},
         {
             "name": "default_quote_currency",
             "type": "text",
@@ -91,8 +101,7 @@ class KucoinTraderNode(Base):
         {"name": "dry_run", "type": "combo", "default": True, "options": [True, False], "label": "Dry Run"},
         {"name": "concurrency", "type": "integer", "default": 3, "label": "Concurrency"},
         {"name": "enable_bracket", "type": "combo", "default": False, "options": [True, False], "label": "Enable TP/SL"},
-        {"name": "take_profit_percent", "type": "number", "default": 3.0, "label": "TP %"},
-        {"name": "stop_loss_percent", "type": "number", "default": 1.5, "label": "SL %"},
+        {"name": "stop_loss_percent", "type": "number", "default": 1.5, "label": "SL % (entry-based)"},
         {"name": "sl_from", "type": "combo", "default": "entry", "options": ["entry", "liquidation"], "label": "SL From"},
         {"name": "liquidation_price", "type": "number", "default": None, "label": "Liquidation Price (optional)"},
     ]
@@ -107,10 +116,18 @@ class KucoinTraderNode(Base):
         side = str(params.get("side", "buy")).lower()
         amount_mode = str(params.get("order_amount_mode", "quote")).lower()
         amount = float(params.get("amount", 25.0))
+        # Override amount with risk if provided (quote mode)
+        risk_usd = float(params.get("risk_per_trade_usd", 0.0) or 0.0)
+        if risk_usd > 0:
+            amount_mode = "quote"
+            amount = risk_usd
         default_quote = str(params.get("default_quote_currency", "USDT")).upper()
         convert_usd_to_usdt = bool(params.get("convert_usd_to_usdt", True))
         dry_run = bool(params.get("dry_run", True))
-        concurrency = max(1, int(params.get("concurrency", 3)))
+        # Tie concurrency to max_concurrent_positions if provided
+        concurrency = max(1, int(params.get("max_concurrent_positions", params.get("concurrency", 3))))
+        # Optional leverage param (currently informational for spot; required for futures builds)
+        leverage = int(params.get("leverage", 1) or 1)
 
         vault = APIKeyVault()
         api_key = vault.get("KUCOIN_API_KEY")
@@ -142,11 +159,14 @@ class KucoinTraderNode(Base):
                     sl_pct = float(params.get("stop_loss_percent", 1.5))
                     sl_from = str(params.get("sl_from", "entry"))
                     liq = params.get("liquidation_price")
+                    sl_buf = float(params.get("sl_buffer_percent_above_liquidation", 0.0) or 0.0)
                     result["bracket"] = {
                         "tp_percent": tp_pct,
                         "sl_percent": sl_pct,
                         "sl_from": sl_from,
                         "liquidation_price": liq,
+                        "sl_buffer_percent_above_liquidation": sl_buf,
+                        "leverage": leverage,
                     }
                 return result
 
@@ -209,13 +229,19 @@ class KucoinTraderNode(Base):
                         sl_pct = float(params.get("stop_loss_percent", 1.5))
                         sl_from = str(params.get("sl_from", "entry"))
                         liq = params.get("liquidation_price")
+                        sl_buf = float(params.get("sl_buffer_percent_above_liquidation", 0.0) or 0.0)
 
                         tp_price = entry_price * (1.0 + tp_pct / 100.0)
                         if sl_from == "liquidation" and liq:
-                            # Place SL % away from liquidation towards entry: price = liq + (entry-liq)*(1 - sl%)
+                            # Two options:
+                            # 1) Explicit buffer above liquidation
+                            # 2) Percent from entry towards liquidation (fallback)
                             try:
                                 liq_f = float(liq)
-                                sl_price = liq_f + (entry_price - liq_f) * (1.0 - sl_pct / 100.0)
+                                if sl_buf > 0:
+                                    sl_price = liq_f * (1.0 + sl_buf / 100.0)
+                                else:
+                                    sl_price = liq_f + (entry_price - liq_f) * (1.0 - sl_pct / 100.0)
                             except Exception:
                                 sl_price = entry_price * (1.0 - sl_pct / 100.0)
                         else:
@@ -254,8 +280,10 @@ class KucoinTraderNode(Base):
                             "sl_price": sl_price,
                             "tp_percent": tp_pct,
                             "sl_percent": sl_pct,
+                            "sl_buffer_percent_above_liquidation": sl_buf,
                             "sl_from": sl_from,
                             "liquidation_price": liq,
+                            "leverage": leverage,
                         }
                     except Exception as be:  # pragma: no cover
                         logger.warning("Bracket placement failed: %s", be)
