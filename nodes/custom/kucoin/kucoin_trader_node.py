@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import time
+import re
 from typing import Any, cast
 
 from core.api_key_vault import APIKeyVault
@@ -107,6 +108,11 @@ class KucoinTraderNode(Base):
                 return int(val)
             except Exception:
                 return default
+        def _sanitize_client_oid(raw: str) -> str:
+            # Allow only [A-Za-z0-9_-]
+            safe = re.sub(r"[^A-Za-z0-9_-]", "-", raw)
+            # Kucoin requires <= 128 chars (safe cap)
+            return safe[:64]
 
         symbols: list[AssetSymbol] = inputs.get("symbols", []) or []
 
@@ -513,7 +519,7 @@ class KucoinTraderNode(Base):
                                     current_lev = leverage
                                 tp_params["leverage"] = str(current_lev)
                                 tp_params["marginMode"] = "isolated"
-                            tp_params["clientOrderId"] = f"fig-tp-{i}-{market_symbol}"
+                            tp_params["clientOrderId"] = _sanitize_client_oid(f"fig-tp-{i}-{market_symbol}")
                             tp_order = exchange.create_order(
                                 market_symbol,
                                 "limit",
@@ -540,7 +546,7 @@ class KucoinTraderNode(Base):
                                     current_lev = leverage
                                 sl_params["leverage"] = str(current_lev)
                                 sl_params["marginMode"] = "isolated"
-                            sl_params["clientOrderId"] = f"fig-sl-{market_symbol}"
+                            sl_params["clientOrderId"] = _sanitize_client_oid(f"fig-sl-{market_symbol}")
                             # Prefer market stop; if rejected, fall back to stop-limit with price
                             try:
                                 sl_order = exchange.create_order(
@@ -561,7 +567,7 @@ class KucoinTraderNode(Base):
                                         current_lev = leverage
                                     sl_params_lim["leverage"] = str(current_lev)
                                     sl_params_lim["marginMode"] = "isolated"
-                                sl_params_lim["clientOrderId"] = f"fig-sl-{market_symbol}"
+                                sl_params_lim["clientOrderId"] = _sanitize_client_oid(f"fig-sl-{market_symbol}")
                                 sl_order = exchange.create_order(
                                     market_symbol,
                                     "limit",
