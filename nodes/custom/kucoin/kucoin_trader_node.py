@@ -1,9 +1,10 @@
+# pyright: reportUnknownMemberType=false, reportUnknownVariableType=false, reportUnknownArgumentType=false, reportUnknownParameterType=false
 import asyncio
 import json
 import logging
 import os
 import time
-from typing import Any
+from typing import Any, cast
 
 from core.api_key_vault import APIKeyVault
 from core.types_registry import (
@@ -60,6 +61,8 @@ class KucoinTraderNode(Base):
         "concurrency": 3,
         # Bracket configuration (spot only)
         "take_profit_percent": 3.0,   # e.g., +3%
+        "place_brackets": True,
+        "stop_loss_percent": 2.0,
         # Scaling and persistence
         "allow_scaling": False,
         "max_scale_entries": 1,
@@ -74,6 +77,8 @@ class KucoinTraderNode(Base):
         {"name": "risk_per_trade_usd", "type": "number", "default": 10.0, "label": "Risk per trade (USD)"},
         {"name": "sl_buffer_percent_above_liquidation", "type": "number", "default": 0.5, "label": "SL buffer % above liq"},
         {"name": "take_profit_percent", "type": "number", "default": 3.0, "label": "TP %"},
+        {"name": "place_brackets", "type": "combo", "default": True, "options": [True, False], "label": "Place TP/SL after fill"},
+        {"name": "stop_loss_percent", "type": "number", "default": 2.0, "label": "SL % (spot)"},
         {"name": "leverage", "type": "integer", "default": 40, "label": "Desired leverage"},
         {"name": "max_concurrent_positions", "type": "integer", "default": 25, "label": "Max concurrent positions"},
         {"name": "dry_run", "type": "combo", "default": True, "options": [True, False], "label": "Dry run (no real orders)"},
@@ -86,31 +91,44 @@ class KucoinTraderNode(Base):
     ]
 
     async def _execute_impl(self, inputs: dict[str, Any]) -> dict[str, Any]:
+        def _as_float(val: Any, default: float) -> float:
+            try:
+                return float(val)
+            except Exception:
+                return default
+
+        def _as_int(val: Any, default: int) -> int:
+            try:
+                return int(val)
+            except Exception:
+                return default
+
         symbols: list[AssetSymbol] = inputs.get("symbols", []) or []
 
         if not symbols:
             return {"orders": []}
 
         params = self.params
-        side = str(params.get("side", "buy")).lower()
         amount_mode = "quote"
         # Always use risk per trade for quote sizing
-        risk_usd = float(params.get("risk_per_trade_usd", 0.0) or 0.0)
-        amount = risk_usd if risk_usd > 0 else float(params.get("amount", 0.0) or 0.0)
+        risk_usd = _as_float(params.get("risk_per_trade_usd", 0.0) or 0.0, 0.0)
+        amount = risk_usd if risk_usd > 0 else _as_float(params.get("amount", 0.0) or 0.0, 0.0)
         default_quote = "USDT"
         convert_usd_to_usdt = True
         dry_run = bool(params.get("dry_run", True))
         # Tie concurrency to max_concurrent_positions if provided
-        concurrency = max(1, int(params.get("max_concurrent_positions", params.get("concurrency", 3))))
+        concurrency = max(1, _as_int(params.get("max_concurrent_positions", params.get("concurrency", 3)), 3))
         # Optional leverage param (currently informational for spot; required for futures builds)
-        leverage = int(params.get("leverage", 1) or 1)
+        leverage = _as_int(params.get("leverage", 1) or 1, 1)
         # Scaling and persistence
         allow_scaling = bool(params.get("allow_scaling", False))
-        max_scale_entries = max(1, int(params.get("max_scale_entries", 1)))
-        scale_cooldown_s = max(0, int(params.get("scale_cooldown_s", 1800)))
+        max_scale_entries = max(1, _as_int(params.get("max_scale_entries", 1), 1))
+        scale_cooldown_s = max(0, _as_int(params.get("scale_cooldown_s", 1800), 1800))
         persist_state = bool(params.get("persist_state", False))
         state_path = str(params.get("state_path", "results/kucoin_trader_state.json"))
         skip_unsupported = bool(params.get("skip_unsupported_markets", True))
+        place_brackets = bool(params.get("place_brackets", True))
+        stop_loss_percent = _as_float(params.get("stop_loss_percent", 2.0) or 2.0, 2.0)
 
         # Load state
         state_key = "kucoin_trader_state"
@@ -165,9 +183,9 @@ class KucoinTraderNode(Base):
                     async with markets_lock:
                         if not markets_loaded:
                             try:
-                                ex_pre = ccxt.kucoin()
-                                loaded = ex_pre.load_markets()
-                                markets_set = set(loaded.keys())
+                                ex_pre: Any = ccxt.kucoin()
+                                loaded: dict[str, Any] = cast(dict[str, Any], ex_pre.load_markets())
+                                markets_set = set(map(str, loaded.keys()))
                                 markets_loaded = True
                             except Exception as e:
                                 return {
@@ -231,8 +249,8 @@ class KucoinTraderNode(Base):
                     "message": "dry_run",
                 }
                 # Attach bracket preview if enabled
-                tp_pct = float(params.get("take_profit_percent", 3.0))
-                sl_buf = float(params.get("sl_buffer_percent_above_liquidation", 0.0) or 0.0)
+                tp_pct = _as_float(params.get("take_profit_percent", 3.0), 3.0)
+                sl_buf = _as_float(params.get("sl_buffer_percent_above_liquidation", 0.0) or 0.0, 0.0)
                 result["tp_percent"] = tp_pct
                 result["sl_buffer_percent_above_liquidation"] = sl_buf
                 result["leverage"] = leverage
@@ -258,7 +276,7 @@ class KucoinTraderNode(Base):
                 }
 
             try:
-                exchange = ccxt.kucoin({
+                exchange: Any = ccxt.kucoin({
                     "apiKey": api_key,
                     "secret": api_secret,
                     "password": api_passphrase,
@@ -268,13 +286,13 @@ class KucoinTraderNode(Base):
                 # Compute base amount if operating in quote terms
                 order_amount = amount
                 if amount_mode == "quote":
-                    ticker_info = exchange.fetch_ticker(market_symbol)
-                    last = float(ticker_info.get("last") or ticker_info.get("close") or 0.0)
+                    ticker_info: dict[str, Any] = cast(dict[str, Any], exchange.fetch_ticker(market_symbol))
+                    last = float(cast(float | int | str, ticker_info.get("last") or ticker_info.get("close") or 0.0))
                     if last <= 0:
                         raise ValueError(f"Cannot determine price for {market_symbol}")
                     order_amount = amount / last
 
-                order = exchange.create_order(
+                order: dict[str, Any] | Any = exchange.create_order(
                     market_symbol,
                     "market",
                     "buy",
@@ -288,10 +306,10 @@ class KucoinTraderNode(Base):
                     info["last_scale_time"] = now_ts
                     entries[market_symbol] = info
 
-                order_status = str((order or {}).get("status", "")).lower()
+                order_status = str((cast(dict[str, Any], order) or {}).get("status", "")).lower()
                 is_filled = order_status in {"closed", "filled"}
 
-                result: dict[str, Any] = {
+                order_result: dict[str, Any] = {
                     "symbol": str(sym),
                     "kucoin_symbol": market_symbol,
                     "side": "buy",
@@ -302,11 +320,80 @@ class KucoinTraderNode(Base):
                     "message": ("filled" if is_filled else (order_status or "submitted")),
                 }
                 # Return computed target percentages; order management handled externally
-                result["tp_percent"] = float(params.get("take_profit_percent", 3.0))
-                result["sl_buffer_percent_above_liquidation"] = float(params.get("sl_buffer_percent_above_liquidation", 0.0) or 0.0)
-                result["leverage"] = leverage
+                order_result["tp_percent"] = _as_float(params.get("take_profit_percent", 3.0), 3.0)
+                order_result["sl_buffer_percent_above_liquidation"] = _as_float(params.get("sl_buffer_percent_above_liquidation", 0.0) or 0.0, 0.0)
+                order_result["leverage"] = leverage
 
-                return result
+                # Optional bracket placement for spot (TP limit + SL stop/stop-limit)
+                if place_brackets:
+                    try:
+                        # Determine entry price
+                        entry_price: float | None = None
+                        if isinstance(order, dict):
+                            entry_price = cast(float | int | str | None, order.get("average") or order.get("price") or cast(dict[str, Any], order.get("info", {})).get("price"))  # type: ignore[reportUnknownMemberType]
+                        if entry_price is None or float(entry_price) <= 0:
+                            tkr: dict[str, Any] = cast(dict[str, Any], exchange.fetch_ticker(market_symbol))
+                            entry_price = float(cast(float | int | str, tkr.get("last") or tkr.get("close") or 0.0))
+                        entry_price = float(entry_price)
+                        if entry_price <= 0:
+                            raise ValueError("cannot determine entry price for bracket calc")
+
+                        qty = exchange.amount_to_precision(market_symbol, order_amount)
+                        tp_pct = _as_float(params.get("take_profit_percent", 3.0), 3.0)
+                        sl_pct_spot = float(stop_loss_percent)
+                        tp_price = entry_price * (1.0 + tp_pct / 100.0)
+                        sl_price = entry_price * (1.0 - sl_pct_spot / 100.0)
+
+                        tp_price_p: str = cast(str, exchange.price_to_precision(market_symbol, tp_price))
+                        sl_price_p: str = cast(str, exchange.price_to_precision(market_symbol, sl_price))
+
+                        tp_order: dict[str, Any] | Any = exchange.create_order(
+                            market_symbol,
+                            "limit",
+                            "sell",
+                            qty,
+                            float(tp_price_p),
+                            {},
+                        )
+                        order_result["tp_order"] = tp_order
+
+                        # Try to place a stop or stop-limit order for SL. If unsupported, capture error.
+                        sl_order = None
+                        sl_error = None
+                        try:
+                            # Many exchanges require stop params; Kucoin may accept 'stop'/'stopPrice'.
+                            sl_params = {"stop": "loss", "stopPrice": float(sl_price_p)}
+                            # Prefer market stop; if rejected, fall back to stop-limit with price
+                            try:
+                                sl_order = exchange.create_order(
+                                    market_symbol,
+                                    "market",
+                                    "sell",
+                                    qty,
+                                    None,
+                                    sl_params,
+                                )
+                            except Exception:
+                                sl_params_lim = {"stop": "loss", "stopPrice": float(sl_price_p)}
+                                sl_order = exchange.create_order(
+                                    market_symbol,
+                                    "limit",
+                                    "sell",
+                                    qty,
+                                    float(sl_price_p),
+                                    sl_params_lim,
+                                )
+                        except Exception as e_sl:  # pragma: no cover
+                            sl_error = str(e_sl)
+
+                        if sl_order is not None:
+                            order_result["sl_order"] = sl_order
+                        if sl_error is not None:
+                            order_result["sl_error"] = sl_error
+                    except Exception as e_br:  # pragma: no cover
+                        order_result["brackets_error"] = str(e_br)
+
+                return order_result
             except Exception as e:  # pragma: no cover
                 logger.exception("Kucoin order failed")
                 return {
