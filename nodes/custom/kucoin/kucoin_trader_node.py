@@ -1,5 +1,8 @@
 import asyncio
+import json
 import logging
+import os
+import time
 from typing import Any
 
 from core.api_key_vault import APIKeyVault
@@ -57,6 +60,12 @@ class KucoinTraderNode(Base):
         "concurrency": 3,
         # Bracket configuration (spot only)
         "take_profit_percent": 3.0,   # e.g., +3%
+        # Scaling and persistence
+        "allow_scaling": False,
+        "max_scale_entries": 1,
+        "scale_cooldown_s": 1800,
+        "persist_state": False,
+        "state_path": "results/kucoin_trader_state.json",
     }
 
     params_meta = [
@@ -65,6 +74,11 @@ class KucoinTraderNode(Base):
         {"name": "take_profit_percent", "type": "number", "default": 3.0, "label": "TP %"},
         {"name": "leverage", "type": "integer", "default": 40, "label": "Desired leverage"},
         {"name": "max_concurrent_positions", "type": "integer", "default": 25, "label": "Max concurrent positions"},
+        {"name": "allow_scaling", "type": "combo", "default": False, "options": [True, False], "label": "Allow scaling"},
+        {"name": "max_scale_entries", "type": "integer", "default": 1, "label": "Max scale entries"},
+        {"name": "scale_cooldown_s", "type": "integer", "default": 1800, "label": "Scale cooldown (s)"},
+        {"name": "persist_state", "type": "combo", "default": False, "options": [True, False], "label": "Persist state"},
+        {"name": "state_path", "type": "text", "default": "results/kucoin_trader_state.json", "label": "State path"},
     ]
 
     async def _execute_impl(self, inputs: dict[str, Any]) -> dict[str, Any]:
@@ -86,11 +100,33 @@ class KucoinTraderNode(Base):
         concurrency = max(1, int(params.get("max_concurrent_positions", params.get("concurrency", 3))))
         # Optional leverage param (currently informational for spot; required for futures builds)
         leverage = int(params.get("leverage", 1) or 1)
+        # Scaling and persistence
+        allow_scaling = bool(params.get("allow_scaling", False))
+        max_scale_entries = max(1, int(params.get("max_scale_entries", 1)))
+        scale_cooldown_s = max(0, int(params.get("scale_cooldown_s", 1800)))
+        persist_state = bool(params.get("persist_state", False))
+        state_path = str(params.get("state_path", "results/kucoin_trader_state.json"))
+
+        # Load state
+        state_key = "kucoin_trader_state"
+        state: dict[str, Any] = self.graph_context.get(state_key) or {"entries": {}}
+        if persist_state:
+            try:
+                if os.path.exists(state_path):
+                    with open(state_path, "r", encoding="utf-8") as f:
+                        loaded = json.load(f)
+                        if isinstance(loaded, dict) and "entries" in loaded:
+                            state = loaded
+            except Exception as e:
+                logger.warning("Failed to load state from %s: %s", state_path, e)
+        self.graph_context[state_key] = state
 
         vault = APIKeyVault()
         api_key = vault.get("KUCOIN_API_KEY")
         api_secret = vault.get("KUCOIN_API_SECRET")
         api_passphrase = vault.get("KUCOIN_API_PASSPHRASE")
+
+        lock = asyncio.Lock()
 
         async def place_for_symbol(sym: AssetSymbol) -> dict[str, Any]:
             # Build Kucoin symbol format: TICKER-QUOTE
@@ -99,6 +135,37 @@ class KucoinTraderNode(Base):
             if convert_usd_to_usdt and quote == "USD":
                 quote = "USDT"
             market_symbol = f"{ticker}-{quote}"
+
+            # Scaling guards (and duplicate prevention)
+            now_ts = time.time()
+            async with lock:
+                entries: dict[str, Any] = state.setdefault("entries", {})
+                info = entries.get(market_symbol) or {"scale_count": 0, "last_scale_time": 0.0}
+                scale_count = int(info.get("scale_count", 0))
+                last_scale_time = float(info.get("last_scale_time", 0.0))
+
+                if not allow_scaling and scale_count >= 1:
+                    return {
+                        "symbol": str(sym),
+                        "kucoin_symbol": market_symbol,
+                        "status": "skipped_existing_position",
+                        "reason": "scaling_disabled",
+                    }
+                if allow_scaling:
+                    if scale_count >= max_scale_entries:
+                        return {
+                            "symbol": str(sym),
+                            "kucoin_symbol": market_symbol,
+                            "status": "skipped_max_scale",
+                            "scale_count": scale_count,
+                        }
+                    if last_scale_time > 0 and (now_ts - last_scale_time) < scale_cooldown_s:
+                        return {
+                            "symbol": str(sym),
+                            "kucoin_symbol": market_symbol,
+                            "status": "skipped_cooldown",
+                            "cooldown_remaining_s": int(scale_cooldown_s - (now_ts - last_scale_time)),
+                        }
 
             if dry_run:
                 result: dict[str, Any] = {
@@ -153,24 +220,19 @@ class KucoinTraderNode(Base):
                         raise ValueError(f"Cannot determine price for {market_symbol}")
                     order_amount = amount / last
 
-                # Prevent immediate duplicate entries per session
-                active_key = "kucoin_active_symbols"
-                active: set[str] = self.graph_context.setdefault(active_key, set())  # type: ignore
-                if market_symbol in active:
-                    return {
-                        "symbol": str(sym),
-                        "kucoin_symbol": market_symbol,
-                        "status": "skipped_existing_position",
-                    }
-
                 order = exchange.create_order(
                     market_symbol,
                     "market",
                     "buy",
                     exchange.amount_to_precision(market_symbol, order_amount),
                 )
-                # Mark as active to avoid immediate re-entry
-                active.add(market_symbol)
+                # Update state (scale count + timestamp)
+                async with lock:
+                    entries = state.setdefault("entries", {})
+                    info = entries.get(market_symbol) or {"scale_count": 0, "last_scale_time": 0.0}
+                    info["scale_count"] = int(info.get("scale_count", 0)) + 1
+                    info["last_scale_time"] = now_ts
+                    entries[market_symbol] = info
 
                 result: dict[str, Any] = {
                     "symbol": str(sym),
@@ -186,6 +248,17 @@ class KucoinTraderNode(Base):
                 result["leverage"] = leverage
 
                 return result
+
+        # Save state if persistence enabled after all tasks
+        async def save_state_if_needed():
+            if not persist_state:
+                return
+            try:
+                os.makedirs(os.path.dirname(state_path) or ".", exist_ok=True)
+                with open(state_path, "w", encoding="utf-8") as f:
+                    json.dump(state, f, indent=2)
+            except Exception as e:
+                logger.warning("Failed to save state to %s: %s", state_path, e)
             except Exception as e:  # pragma: no cover
                 logger.exception("Kucoin order failed")
                 return {
@@ -204,6 +277,7 @@ class KucoinTraderNode(Base):
 
         tasks = [asyncio.create_task(sem_task(s)) for s in symbols if s.asset_class == AssetClass.CRYPTO]
         results = await asyncio.gather(*tasks) if tasks else []
+        await save_state_if_needed()
         return {"orders": results}
 
 
