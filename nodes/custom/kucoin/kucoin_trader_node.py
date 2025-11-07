@@ -259,14 +259,6 @@ class KucoinTraderNode(Base):
                     json.dump(state, f, indent=2)
             except Exception as e:
                 logger.warning("Failed to save state to %s: %s", state_path, e)
-            except Exception as e:  # pragma: no cover
-                logger.exception("Kucoin order failed")
-                return {
-                    "symbol": str(sym),
-                    "kucoin_symbol": market_symbol,
-                    "error": str(e),
-                    "status": "error",
-                }
 
         # Concurrency-limited execution
         semaphore = asyncio.Semaphore(concurrency)
