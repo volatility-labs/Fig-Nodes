@@ -377,8 +377,9 @@ class KucoinTraderNode(Base):
                     except Exception:  # pragma: no cover
                         pass
 
-                # Compute base amount if operating in quote terms
+                # Compute entry sizing
                 order_amount = amount
+                futures_entry_size_contracts: float | None = None
                 if amount_mode == "quote":
                     ticker_info: dict[str, Any] = cast(dict[str, Any], exchange.fetch_ticker(market_symbol))
                     last = float(cast(float | int | str, ticker_info.get("last") or ticker_info.get("close") or 0.0))
@@ -388,13 +389,44 @@ class KucoinTraderNode(Base):
                     per_entry_fraction = (1.0 / max_scale_entries) if allow_scaling else 1.0
                     allocated_risk = risk_usd * per_entry_fraction
                     if trading_mode == "futures":
-                        # Margin (premium) targeting: position value = risk * leverage
-                        # Use effective leverage (contract-capped)
+                        # Margin (premium) targeting for futures (USDT-M): notional = risk * leverage
+                        # Convert to contracts using contractSize/multiplier so margin ~= risk_usd
                         try:
                             current_lev = eff_leverage  # type: ignore[name-defined]
                         except Exception:
                             current_lev = leverage
-                        order_amount = (allocated_risk * current_lev) / last
+                        target_notional_usdt = allocated_risk * float(current_lev)
+                        # Resolve contract size
+                        contract_size = 1.0
+                        try:
+                            entry_mkt_meta = markets_map.get(market_symbol) if markets_loaded else None
+                            if not entry_mkt_meta:
+                                exchange.load_markets()
+                                entry_mkt_meta = cast(dict[str, Any], exchange.market(market_symbol))
+                            if entry_mkt_meta:
+                                cs = entry_mkt_meta.get("contractSize") or (entry_mkt_meta.get("info", {}) or {}).get("multiplier")
+                                if cs:
+                                    contract_size = float(cs)
+                        except Exception:
+                            contract_size = 1.0
+                        # Contracts = notional / contract_size
+                        raw_contracts = max(0.0, target_notional_usdt / max(1e-12, contract_size))
+                        # Round contracts to exchange precision/step
+                        amt_prec = exchange.amount_to_precision(market_symbol, raw_contracts)
+                        futures_entry_size_contracts = float(amt_prec) if isinstance(amt_prec, str) else float(amt_prec)
+                        # Enforce exchange minimum contracts if available
+                        try:
+                            mkt_limits: dict[str, Any] = {}
+                            if markets_loaded:
+                                _m = markets_map.get(market_symbol)
+                                if isinstance(_m, dict):
+                                    mkt_limits = cast(dict[str, Any], _m.get("limits") or {})
+                            min_amt = (mkt_limits.get("amount") or {}).get("min") if mkt_limits else None
+                            if isinstance(min_amt, (int, float)) and min_amt and futures_entry_size_contracts < float(min_amt):
+                                futures_entry_size_contracts = float(min_amt)
+                        except Exception:
+                            pass
+                        order_amount = futures_entry_size_contracts
                     else:
                         order_amount = allocated_risk / last
 
@@ -423,6 +455,9 @@ class KucoinTraderNode(Base):
 
                 amt_prec = exchange.amount_to_precision(market_symbol, order_amount)
                 order_amount_num = float(amt_prec) if isinstance(amt_prec, str) else float(amt_prec)
+                # For Kucoin Futures, pass size (contracts) explicitly to ensure margin ~= risk_usd
+                if trading_mode == "futures":
+                    order_params["size"] = order_amount_num
                 # Create entry strictly sized by risk and leverage (contract-capped).
                 order: dict[str, Any] | Any = exchange.create_order(
                     market_symbol,
@@ -477,7 +512,7 @@ class KucoinTraderNode(Base):
                             raise ValueError("cannot determine entry price for bracket calc")
 
                         # Determine bracket quantity:
-                        # Futures: use current position size; Spot: use entry amount
+                        # Futures: use current position size; if none, use entry contracts; Spot: use entry amount
                         if trading_mode == "futures":
                             pos_size = 0.0
                             try:
@@ -495,7 +530,8 @@ class KucoinTraderNode(Base):
                                         break
                             except Exception:
                                 pos_size = 0.0
-                            qty_num = pos_size if pos_size > 0 else float(exchange.amount_to_precision(market_symbol, order_amount))
+                            fallback_entry = futures_entry_size_contracts if futures_entry_size_contracts is not None else order_amount
+                            qty_num = pos_size if pos_size > 0 else float(exchange.amount_to_precision(market_symbol, fallback_entry))
                         else:
                             qty_prec = exchange.amount_to_precision(market_symbol, order_amount)
                             qty_num = float(qty_prec) if isinstance(qty_prec, str) else float(qty_prec)
