@@ -6,15 +6,19 @@ from nodes.core.market.filters.base.base_filter_node import BaseFilter
 
 class DuplicateSymbolFilter(BaseFilter):
     """
-    Filters an OHLCV bundle to handle duplicate symbols.
+    Filters an OHLCV bundle to handle duplicate symbols with support for multi-input operations.
 
     Usage:
-    - Connect an OHLCV bundle input.
+    - Single input: Connect an OHLCV bundle to 'ohlcv_bundle' for standard deduplication.
+    - Multi input: Connect up to 3 inputs ('input_1', 'input_2', 'input_3') for set operations.
     - Choose how duplicates are handled (drop duplicates keeping first, or keep only duplicates).
     - Optionally choose the comparison key (ticker vs symbol string) and case sensitivity.
 
     Inputs:
-      - ohlcv_bundle: Dict[AssetSymbol, List[OHLCVBar]]
+      - ohlcv_bundle: Dict[AssetSymbol, List[OHLCVBar]] (for single-input mode)
+      - input_1: Dict[AssetSymbol, List[OHLCVBar]] (for multi-input operations)
+      - input_2: Dict[AssetSymbol, List[OHLCVBar]] (for multi-input operations)
+      - input_3: Dict[AssetSymbol, List[OHLCVBar]] (for multi-input operations)
 
     Outputs:
       - filtered_ohlcv_bundle: Dict[AssetSymbol, List[OHLCVBar]]
@@ -22,13 +26,14 @@ class DuplicateSymbolFilter(BaseFilter):
 
     CATEGORY = NodeCategory.MARKET
 
-    # Combined: support classic single-bundle AND optional pairwise bundles
+    # Combined: support classic single-bundle AND optional multi-bundle operations
     # Mark additional inputs as optional by allowing None
     ohlcv_tp = get_type("OHLCVBundle")
     inputs = {
         "ohlcv_bundle": ohlcv_tp | None,
-        "left_bundle": ohlcv_tp | None,
-        "right_bundle": ohlcv_tp | None,
+        "input_1": ohlcv_tp | None,
+        "input_2": ohlcv_tp | None,
+        "input_3": ohlcv_tp | None,
     }
     outputs = {"filtered_ohlcv_bundle": get_type("OHLCVBundle")}
 
@@ -39,12 +44,15 @@ class DuplicateSymbolFilter(BaseFilter):
         # compare by: 'ticker' (base symbol ticker) or 'symbol_string' (str(symbol))
         "compare_by": "ticker",  # "ticker" | "symbol_string"
         "case_insensitive": True,
-        # Pairwise comparison for two-input workflows (overrides global mode when active)
+        # Multi-input comparison modes (overrides global mode when active)
         # Options:
         #  - global: use global duplicate logic across all merged inputs (default)
         #  - intersection_1_2: keep only symbols present in both input 1 and input 2
-        #  - left_only_1_minus_2: keep symbols present in input 1 but not input 2
-        #  - right_only_2_minus_1: keep symbols present in input 2 but not input 1
+        #  - intersection_1_2_3: keep only symbols present in all three inputs (1, 2, and 3)
+        #  - only_1_minus_2: keep symbols present in input 1 but not input 2
+        #  - only_2_minus_1: keep symbols present in input 2 but not input 1
+        #  - only_3_minus_1_2: keep symbols present in input 3 but not in inputs 1 or 2
+        #  - union_1_2_minus_3: keep symbols present in inputs 1 or 2 but not in input 3
         "pair_mode": "global",
     }
 
@@ -80,11 +88,14 @@ class DuplicateSymbolFilter(BaseFilter):
             "options": [
                 "global",
                 "intersection_1_2",
-                "left_only_1_minus_2",
-                "right_only_2_minus_1",
+                "intersection_1_2_3",
+                "only_1_minus_2",
+                "only_2_minus_1",
+                "only_3_minus_1_2",
+                "union_1_2_minus_3",
             ],
-            "label": "Two-Input Mode",
-            "description": "Apply pairwise filtering between inputs 1 and 2 instead of global dedupe",
+            "label": "Multi-Input Mode",
+            "description": "Apply multi-input filtering operations instead of global dedupe",
         },
     ]
 
@@ -95,8 +106,29 @@ class DuplicateSymbolFilter(BaseFilter):
     async def _execute_impl(self, inputs: dict[str, Any]) -> dict[str, Any]:
         # Inputs
         single_bundle: dict[AssetSymbol, list[OHLCVBar]] = inputs.get("ohlcv_bundle", {}) or {}
-        left: dict[AssetSymbol, list[OHLCVBar]] = inputs.get("left_bundle", {}) or {}
-        right: dict[AssetSymbol, list[OHLCVBar]] = inputs.get("right_bundle", {}) or {}
+        input_1: dict[AssetSymbol, list[OHLCVBar]] = inputs.get("input_1", {}) or {}
+        input_2: dict[AssetSymbol, list[OHLCVBar]] = inputs.get("input_2", {}) or {}
+        input_3: dict[AssetSymbol, list[OHLCVBar]] = inputs.get("input_3", {}) or {}
+        # Back-compat: accept legacy port names if present (e.g., old graphs wired to left/right)
+        # Map left_bundle -> input_1, right_bundle -> input_2, third_bundle -> input_3
+        if not input_1:
+            legacy_left = inputs.get("left_bundle") or inputs.get("left")
+            if legacy_left:
+                input_1 = legacy_left or {}
+        if not input_2:
+            legacy_right = inputs.get("right_bundle") or inputs.get("right")
+            if legacy_right:
+                input_2 = legacy_right or {}
+        if not input_3:
+            legacy_third = inputs.get("third_bundle") or inputs.get("bundle_3") or inputs.get("third")
+            if legacy_third:
+                input_3 = legacy_third or {}
+        
+        # Debug logging
+        print(f"DuplicateSymbolFilter: input_1 has {len(input_1)} symbols")
+        print(f"DuplicateSymbolFilter: input_2 has {len(input_2)} symbols")
+        print(f"DuplicateSymbolFilter: input_3 has {len(input_3)} symbols")
+        print(f"DuplicateSymbolFilter: pair_mode = {self.params.get('pair_mode', 'global')}")
 
         compare_by = self.params.get("compare_by", "ticker")
         case_insensitive = bool(self.params.get("case_insensitive", True))
@@ -108,44 +140,84 @@ class DuplicateSymbolFilter(BaseFilter):
                 k = sym.ticker
             return k.lower() if case_insensitive else k
 
-        # Pairwise if either left or right provided
+        # Multi-input operations if any inputs are provided
         pair_mode = str(self.params.get("pair_mode", "global"))
-        if (left or right) and pair_mode != "global":
-            left_keys: Dict[str, list[AssetSymbol]] = {}
-            right_keys: Dict[str, list[AssetSymbol]] = {}
-            for s in left.keys():
-                left_keys.setdefault(make_key(s), []).append(s)
-            for s in right.keys():
-                right_keys.setdefault(make_key(s), []).append(s)
+        if (input_1 or input_2 or input_3) and pair_mode != "global":
+            # Build key mappings for each input
+            keys_1: Dict[str, list[AssetSymbol]] = {}
+            keys_2: Dict[str, list[AssetSymbol]] = {}
+            keys_3: Dict[str, list[AssetSymbol]] = {}
+            
+            for s in input_1.keys():
+                keys_1.setdefault(make_key(s), []).append(s)
+            for s in input_2.keys():
+                keys_2.setdefault(make_key(s), []).append(s)
+            for s in input_3.keys():
+                keys_3.setdefault(make_key(s), []).append(s)
 
             filtered: dict[AssetSymbol, list[OHLCVBar]] = {}
+            
             if pair_mode == "intersection_1_2":
-                keys_final = set(left_keys.keys()) & set(right_keys.keys())
+                keys_final = set(keys_1.keys()) & set(keys_2.keys())
                 for k in keys_final:
-                    s_left = left_keys[k][0]
-                    filtered[s_left] = left[s_left]
-            elif pair_mode == "left_only_1_minus_2":
-                keys_final = set(left_keys.keys()) - set(right_keys.keys())
+                    if k in keys_1:
+                        s = keys_1[k][0]
+                        filtered[s] = input_1[s]
+                        
+            elif pair_mode == "intersection_1_2_3":
+                keys_final = set(keys_1.keys()) & set(keys_2.keys()) & set(keys_3.keys())
+                print(f"DuplicateSymbolFilter: Found {len(keys_final)} symbols in all 3 inputs: {sorted(keys_final)}")
                 for k in keys_final:
-                    s_left = left_keys[k][0]
-                    filtered[s_left] = left[s_left]
-            elif pair_mode == "right_only_2_minus_1":
-                keys_final = set(right_keys.keys()) - set(left_keys.keys())
+                    if k in keys_1:
+                        s = keys_1[k][0]
+                        filtered[s] = input_1[s]
+                        
+            elif pair_mode == "only_1_minus_2":
+                keys_final = set(keys_1.keys()) - set(keys_2.keys())
                 for k in keys_final:
-                    s_right = right_keys[k][0]
-                    filtered[s_right] = right[s_right]
+                    if k in keys_1:
+                        s = keys_1[k][0]
+                        filtered[s] = input_1[s]
+                        
+            elif pair_mode == "only_2_minus_1":
+                keys_final = set(keys_2.keys()) - set(keys_1.keys())
+                for k in keys_final:
+                    if k in keys_2:
+                        s = keys_2[k][0]
+                        filtered[s] = input_2[s]
+                        
+            elif pair_mode == "only_3_minus_1_2":
+                keys_final = set(keys_3.keys()) - set(keys_1.keys()) - set(keys_2.keys())
+                for k in keys_final:
+                    if k in keys_3:
+                        s = keys_3[k][0]
+                        filtered[s] = input_3[s]
+                        
+            elif pair_mode == "union_1_2_minus_3":
+                keys_union = set(keys_1.keys()) | set(keys_2.keys())
+                keys_final = keys_union - set(keys_3.keys())
+                for k in keys_final:
+                    if k in keys_1:
+                        s = keys_1[k][0]
+                        filtered[s] = input_1[s]
+                    elif k in keys_2:
+                        s = keys_2[k][0]
+                        filtered[s] = input_2[s]
             else:
-                # Fallback to union unique across left/right
+                # Fallback to union unique across all inputs
                 merged: dict[str, AssetSymbol] = {}
-                for s in list(left.keys()) + list(right.keys()):
+                for s in list(input_1.keys()) + list(input_2.keys()) + list(input_3.keys()):
                     k = make_key(s)
                     if k not in merged:
                         merged[k] = s
                 for k, s in merged.items():
-                    if s in left:
-                        filtered[s] = left[s]
-                    elif s in right:
-                        filtered[s] = right[s]
+                    if s in input_1:
+                        filtered[s] = input_1[s]
+                    elif s in input_2:
+                        filtered[s] = input_2[s]
+                    elif s in input_3:
+                        filtered[s] = input_3[s]
+            print(f"DuplicateSymbolFilter: Returning {len(filtered)} symbols from multi-input mode")
             return {"filtered_ohlcv_bundle": filtered}
 
         # Otherwise, run global single-bundle duplicate logic
