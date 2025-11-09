@@ -1,11 +1,5 @@
 import { LGraph, LGraphNode } from '@comfyorg/litegraph';
-import { LiteGraph } from '@comfyorg/litegraph';
 
-interface NodePosition {
-    node: LGraphNode;
-    level: number;
-    index: number;
-}
 
 export class GraphAutoAlign {
     private static readonly HORIZONTAL_SPACING = 300; // Space between levels

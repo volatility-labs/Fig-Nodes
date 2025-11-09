@@ -7,6 +7,13 @@ export class NodeInteractions {
         this.node = node;
     }
 
+    /**
+     * Handles double-click events on the node's title.
+     * @param _event - The mouse event.
+     * @param pos - The position of the click.
+     * @param _canvas - The canvas.
+     * @returns True if the double-click was handled, false otherwise.
+     */
     onDblClick(_event: MouseEvent, pos: [number, number], _canvas: unknown): boolean {
         const bounds = this.getTitleTextBounds();
         if (!bounds) return false;
@@ -19,6 +26,10 @@ export class NodeInteractions {
         return false;
     }
 
+    /**
+     * Gets the bounds of the node's title text.
+     * @returns The bounds of the title text, or null if the bounds cannot be calculated.
+     */
     private getTitleTextBounds(): { x: number; y: number; width: number; height: number } | null {
         const fontSize = this.getTitleFontSize();
         const padLeft = LiteGraph.NODE_TITLE_HEIGHT;

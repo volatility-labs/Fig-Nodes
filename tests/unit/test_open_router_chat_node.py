@@ -60,6 +60,7 @@ async def test_execute_basic(chat_node: OpenRouterChat) -> None:
 
         mock_session = AsyncMock()
         mock_session.post = Mock(return_value=mock_response_context)
+        mock_session.get = Mock(return_value=create_mock_context_manager({}))
         mock_get_session.return_value = mock_session
 
         result = await chat_node.execute(inputs)
@@ -102,6 +103,7 @@ async def test_finish_reason_in_metrics(chat_node):
 
         mock_session = AsyncMock()
         mock_session.post = Mock(return_value=mock_response_context)
+        mock_session.get = Mock(return_value=create_mock_context_manager({}))
         mock_get_session.return_value = mock_session
 
         result = await chat_node.execute(inputs)
@@ -139,6 +141,7 @@ async def test_error_finish_reason_handling(chat_node):
 
         mock_session = AsyncMock()
         mock_session.post = Mock(return_value=mock_response_context)
+        mock_session.get = Mock(return_value=create_mock_context_manager({}))
         mock_get_session.return_value = mock_session
 
         result = await chat_node.execute(inputs)
@@ -176,6 +179,7 @@ async def test_temperature_and_seed(chat_node):
 
         mock_session = AsyncMock()
         mock_session.post = Mock(return_value=mock_response_context)
+        mock_session.get = Mock(return_value=create_mock_context_manager({}))
         mock_get_session.return_value = mock_session
 
         await chat_node.execute(inputs)
@@ -183,6 +187,8 @@ async def test_temperature_and_seed(chat_node):
         request_body = call_args.kwargs["json"]
         assert request_body["temperature"] == 0.8
         assert request_body["seed"] == 42
+        # Web search should always be enabled
+        assert request_body["model"].endswith(":online")
 
 
 @pytest.mark.asyncio
@@ -213,6 +219,7 @@ async def test_tool_choice_normalization(chat_node):
 
         mock_session = AsyncMock()
         mock_session.post = Mock(return_value=mock_response_context)
+        mock_session.get = Mock(return_value=create_mock_context_manager({}))
         mock_get_session.return_value = mock_session
 
         await chat_node.execute(inputs)
@@ -225,7 +232,6 @@ async def test_tool_choice_normalization(chat_node):
 @pytest.mark.asyncio
 async def test_tool_calling_with_finish_reason(chat_node):
     """Test tool calling with proper finish_reason handling."""
-    chat_node.params["max_tool_iters"] = 1
     inputs = {
         "messages": [{"role": "user", "content": "Use tool"}],
         "tools": [{"type": "function", "function": {"name": "test_tool", "parameters": {}}}],
@@ -283,6 +289,7 @@ async def test_tool_calling_with_finish_reason(chat_node):
 
         mock_session = AsyncMock()
         mock_session.post = Mock(side_effect=[first_response, second_response])
+        mock_session.get = Mock(return_value=create_mock_context_manager({}))
         mock_get_session.return_value = mock_session
 
         result = await chat_node.execute(inputs)
@@ -295,7 +302,6 @@ async def test_tool_calling_with_finish_reason(chat_node):
 @pytest.mark.asyncio
 async def test_tool_calling_without_finish_reason_but_with_tool_calls(chat_node):
     """Test that tool_calls presence takes precedence over finish_reason."""
-    chat_node.params["max_tool_iters"] = 1
     inputs = {
         "messages": [{"role": "user", "content": "Use tool"}],
         "tools": [{"type": "function", "function": {"name": "test_tool", "parameters": {}}}],
@@ -353,6 +359,7 @@ async def test_tool_calling_without_finish_reason_but_with_tool_calls(chat_node)
 
         mock_session = AsyncMock()
         mock_session.post = Mock(side_effect=[first_response, second_response])
+        mock_session.get = Mock(return_value=create_mock_context_manager({}))
         mock_get_session.return_value = mock_session
 
         result = await chat_node.execute(inputs)
@@ -363,7 +370,6 @@ async def test_tool_calling_without_finish_reason_but_with_tool_calls(chat_node)
 @pytest.mark.asyncio
 async def test_tool_calling_stops_on_error_finish_reason(chat_node):
     """Test that tool calling stops when finish_reason is error."""
-    chat_node.params["max_tool_iters"] = 2
     inputs = {
         "messages": [{"role": "user", "content": "Use tool"}],
         "tools": [{"type": "function", "function": {"name": "test_tool", "parameters": {}}}],
@@ -396,49 +402,13 @@ async def test_tool_calling_stops_on_error_finish_reason(chat_node):
 
         mock_session = AsyncMock()
         mock_session.post = Mock(return_value=error_response)
+        mock_session.get = Mock(return_value=create_mock_context_manager({}))
         mock_get_session.return_value = mock_session
 
         result = await chat_node.execute(inputs)
         # Should return early with error
         assert result["message"]["content"] == "API returned error"
         assert "error" in result["metrics"]
-
-
-@pytest.mark.asyncio
-async def test_json_mode(chat_node):
-    """Test JSON mode parsing."""
-    chat_node.params["json_mode"] = True
-    inputs = {"messages": [{"role": "user", "content": "Hello"}]}
-
-    with (
-        patch(
-            "nodes.core.llm.open_router_chat_node.OpenRouterChat._get_session"
-        ) as mock_get_session,
-        patch("core.api_key_vault.APIKeyVault.get") as mock_get,
-    ):
-        mock_get.return_value = "fake-api-key"
-
-        response_data = {
-            "id": "gen-123",
-            "model": "test-model",
-            "created": 1234567890,
-            "object": "chat.completion",
-            "choices": [
-                {
-                    "finish_reason": "stop",
-                    "message": {"role": "assistant", "content": '{"key": "value"}'},
-                }
-            ],
-            "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
-        }
-        mock_response_context = create_mock_context_manager(response_data)
-
-        mock_session = AsyncMock()
-        mock_session.post = Mock(return_value=mock_response_context)
-        mock_get_session.return_value = mock_session
-
-        result = await chat_node.execute(inputs)
-        assert result["message"]["content"] == {"key": "value"}
 
 
 @pytest.mark.asyncio
@@ -491,6 +461,7 @@ async def test_message_building(chat_node):
 
         mock_session = AsyncMock()
         mock_session.post = Mock(return_value=mock_response_context)
+        mock_session.get = Mock(return_value=create_mock_context_manager({}))
         mock_get_session.return_value = mock_session
 
         await chat_node.execute(inputs)
@@ -520,7 +491,6 @@ async def test_missing_api_key(chat_node):
 @pytest.mark.asyncio
 async def test_empty_tool_calls_list(chat_node):
     """Test handling of empty tool_calls list."""
-    chat_node.params["max_tool_iters"] = 1
     inputs = {
         "messages": [{"role": "user", "content": "Hello"}],
         "tools": [{"type": "function", "function": {"name": "test_tool", "parameters": {}}}],
@@ -552,6 +522,7 @@ async def test_empty_tool_calls_list(chat_node):
 
         mock_session = AsyncMock()
         mock_session.post = Mock(return_value=mock_response_context)
+        mock_session.get = Mock(return_value=create_mock_context_manager({}))
         mock_get_session.return_value = mock_session
 
         result = await chat_node.execute(inputs)
@@ -562,8 +533,7 @@ async def test_empty_tool_calls_list(chat_node):
 
 @pytest.mark.asyncio
 async def test_max_tool_iters_limit(chat_node):
-    """Test that max_tool_iters limit is respected."""
-    chat_node.params["max_tool_iters"] = 2
+    """Test that default max_tool_iters limit (10) is respected."""
     inputs = {
         "messages": [{"role": "user", "content": "Use tool"}],
         "tools": [{"type": "function", "function": {"name": "test_tool", "parameters": {}}}],
@@ -579,7 +549,7 @@ async def test_max_tool_iters_limit(chat_node):
         mock_get.return_value = "fake-api-key"
         mock_handler.return_value = AsyncMock(return_value={"result": "executed"})
 
-        # Multiple tool calling responses - need different IDs for each round
+        # Create 2 tool calling responses to test limit is respected
         tool_response_round1 = create_mock_context_manager(
             {
                 "id": "gen-123",
@@ -643,15 +613,15 @@ async def test_max_tool_iters_limit(chat_node):
             }
         )
 
-        # Should make max_tool_iters (2) calls during tool execution, plus 1 final call
         mock_session = AsyncMock()
         mock_session.post = Mock(
             side_effect=[tool_response_round1, tool_response_round2, final_response]
         )
+        mock_session.get = Mock(return_value=create_mock_context_manager({}))
         mock_get_session.return_value = mock_session
 
         result = await chat_node.execute(inputs)
-        # Should execute exactly 2 tool calls
+        # Should execute exactly 2 tool calls (within default limit of 10)
         assert len(result["tool_history"]) == 2
 
 
@@ -683,6 +653,7 @@ async def test_seed_mode_random(chat_node):
 
         mock_session = AsyncMock()
         mock_session.post = Mock(return_value=mock_response_context)
+        mock_session.get = Mock(return_value=create_mock_context_manager({}))
         mock_get_session.return_value = mock_session
 
         await chat_node.execute(inputs)
@@ -722,6 +693,7 @@ async def test_seed_mode_increment(chat_node):
 
         mock_session = AsyncMock()
         mock_session.post = Mock(return_value=mock_response_context)
+        mock_session.get = Mock(return_value=create_mock_context_manager({}))
         mock_get_session.return_value = mock_session
 
         # First call
@@ -791,6 +763,7 @@ async def test_empty_tools_handling(chat_node):
 
         mock_session = AsyncMock()
         mock_session.post = Mock(return_value=mock_response_context)
+        mock_session.get = Mock(return_value=create_mock_context_manager({}))
         mock_get_session.return_value = mock_session
 
         result = await chat_node.execute(inputs)
@@ -828,6 +801,7 @@ async def test_system_input_as_dict(chat_node):
 
         mock_session = AsyncMock()
         mock_session.post = Mock(return_value=mock_response_context)
+        mock_session.get = Mock(return_value=create_mock_context_manager({}))
         mock_get_session.return_value = mock_session
 
         await chat_node.execute(inputs)
@@ -841,15 +815,14 @@ async def test_system_input_as_dict(chat_node):
 
 @pytest.mark.asyncio
 async def test_tool_execution_timeout(chat_node):
-    """Test tool execution timeout handling."""
-    chat_node.params["max_tool_iters"] = 1
+    """Test tool execution timeout handling (default timeout is 120s)."""
     inputs = {
         "messages": [{"role": "user", "content": "Use tool"}],
         "tools": [{"type": "function", "function": {"name": "slow_tool", "parameters": {}}}],
     }
 
     async def slow_handler(args, ctx):
-        await asyncio.sleep(20)  # Simulate timeout
+        await asyncio.sleep(130)  # Simulate timeout (exceeds default 120s)
         return {"result": "never_reached"}
 
     with (
@@ -902,19 +875,20 @@ async def test_tool_execution_timeout(chat_node):
 
         mock_session = AsyncMock()
         mock_session.post = Mock(side_effect=[tool_response, final_response])
+        mock_session.get = Mock(return_value=create_mock_context_manager({}))
         mock_get_session.return_value = mock_session
 
         result = await chat_node.execute(inputs)
-        # Should have timeout error in tool history
+        # Should have timeout error in tool history (timeout after 120s default)
         assert len(result["tool_history"]) == 1
         assert "error" in result["tool_history"][0]["result"]
         assert "timeout" in result["tool_history"][0]["result"]["error"]
+        assert "120" in result["tool_history"][0]["result"]["message"]
 
 
 @pytest.mark.asyncio
 async def test_tool_execution_exception(chat_node):
     """Test tool execution exception handling."""
-    chat_node.params["max_tool_iters"] = 1
     inputs = {
         "messages": [{"role": "user", "content": "Use tool"}],
         "tools": [{"type": "function", "function": {"name": "error_tool", "parameters": {}}}],
@@ -973,6 +947,7 @@ async def test_tool_execution_exception(chat_node):
 
         mock_session = AsyncMock()
         mock_session.post = Mock(side_effect=[tool_response, final_response])
+        mock_session.get = Mock(return_value=create_mock_context_manager({}))
         mock_get_session.return_value = mock_session
 
         result = await chat_node.execute(inputs)
@@ -984,7 +959,6 @@ async def test_tool_execution_exception(chat_node):
 @pytest.mark.asyncio
 async def test_tool_arguments_as_string(chat_node):
     """Test tool arguments provided as JSON string."""
-    chat_node.params["max_tool_iters"] = 1
     inputs = {
         "messages": [{"role": "user", "content": "Use tool"}],
         "tools": [{"type": "function", "function": {"name": "test_tool", "parameters": {}}}],
@@ -1043,6 +1017,7 @@ async def test_tool_arguments_as_string(chat_node):
 
         mock_session = AsyncMock()
         mock_session.post = Mock(side_effect=[tool_response, final_response])
+        mock_session.get = Mock(return_value=create_mock_context_manager({}))
         mock_get_session.return_value = mock_session
 
         result = await chat_node.execute(inputs)
@@ -1052,9 +1027,8 @@ async def test_tool_arguments_as_string(chat_node):
 
 
 @pytest.mark.asyncio
-async def test_web_search_disabled(chat_node):
-    """Test web search disabled behavior."""
-    chat_node.params["web_search_enabled"] = False
+async def test_web_search_always_enabled(chat_node):
+    """Test that web search is always enabled (model always has :online suffix)."""
     inputs = {"messages": [{"role": "user", "content": "Hello"}]}
 
     with (
@@ -1079,13 +1053,14 @@ async def test_web_search_disabled(chat_node):
 
         mock_session = AsyncMock()
         mock_session.post = Mock(return_value=mock_response_context)
+        mock_session.get = Mock(return_value=create_mock_context_manager({}))
         mock_get_session.return_value = mock_session
 
         await chat_node.execute(inputs)
         call_args = mock_session.post.call_args
         request_body = call_args.kwargs["json"]
-        # Model should not have :online suffix
-        assert not request_body["model"].endswith(":online")
+        # Model should always have :online suffix (web search always enabled)
+        assert request_body["model"].endswith(":online")
 
 
 @pytest.mark.asyncio
@@ -1116,6 +1091,7 @@ async def test_model_already_has_online_suffix(chat_node):
 
         mock_session = AsyncMock()
         mock_session.post = Mock(return_value=mock_response_context)
+        mock_session.get = Mock(return_value=create_mock_context_manager({}))
         mock_get_session.return_value = mock_session
 
         await chat_node.execute(inputs)
@@ -1205,7 +1181,7 @@ async def test_generation_stats_with_cost(chat_node):
         }
         mock_response_context = create_mock_context_manager(response_data)
 
-        # Mock generation stats endpoint
+        # Mock generation stats endpoint - uses GET request
         gen_stats_response = create_mock_context_manager(
             {
                 "data": {

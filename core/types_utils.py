@@ -89,7 +89,7 @@ def detect_type(value: Any) -> str:
         value: The value to detect the type of
 
     Returns:
-        Canonical type name string (e.g., "OHLCVBar", "AssetSymbol", "list", "dict")
+        Canonical type name string (e.g., "OHLCVBundle", "AssetSymbol", "list", "dict")
     """
     if value is None:
         return "None"
@@ -105,12 +105,6 @@ def detect_type(value: Any) -> str:
     # IndicatorResult dataclass
     if isinstance(value, IndicatorResult):
         return "IndicatorResult"
-
-    # OHLCVBar - TypedDict with required keys
-    if isinstance(value, dict) and all(
-        key in value for key in {"timestamp", "open", "high", "low", "close", "volume"}
-    ):
-        return "OHLCVBar"
 
     # LLMChatMessage - has role and content
     if isinstance(value, dict) and "role" in value and "content" in value:
@@ -168,7 +162,7 @@ def infer_data_type(data: Any) -> str:
     """
     Infer a high-level data type name for metadata purposes.
 
-    Returns semantic names for common patterns (e.g., "OHLCV", "AssetSymbolList", "OHLCVBundle")
+    Returns semantic names for common patterns (e.g., "OHLCVBundle", "AssetSymbolList")
     """
     if data is None:
         return "None"
@@ -190,8 +184,6 @@ def infer_data_type(data: Any) -> str:
 
         if item_type == "AssetSymbol":
             return "AssetSymbolList"
-        if item_type == "OHLCVBar":
-            return "OHLCVBundle"
         if item_type == "LLMChatMessage":
             return "LLMChatMessageList"
         if item_type == "IndicatorResult":
@@ -203,7 +195,6 @@ def infer_data_type(data: Any) -> str:
         # Check if it's a registered TypedDict type
         detected = detect_type(data)
         if detected in {
-            "OHLCVBar",
             "LLMChatMessage",
             "LLMToolSpec",
             "LLMChatMetrics",
@@ -223,7 +214,10 @@ def infer_data_type(data: Any) -> str:
 
     # OHLCVBundle: dict[AssetSymbol, list[OHLCVBar]]
     if isinstance(first_key, AssetSymbol) and isinstance(first_value, list):
-        if first_value and detect_type(first_value[0]) == "OHLCVBar":
-            return "OHLCVBundle"
+        # Check if list items are OHLCV bar-like dicts
+        if first_value and isinstance(first_value[0], dict):
+            bar_keys = {"timestamp", "open", "high", "low", "close", "volume"}
+            if all(key in first_value[0] for key in bar_keys):
+                return "OHLCVBundle"
 
     return f"Dict[{detect_type(first_key)}, {detect_type(first_value)}]"

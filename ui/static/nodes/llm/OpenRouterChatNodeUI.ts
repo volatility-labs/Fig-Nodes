@@ -3,7 +3,7 @@ import BaseCustomNode from '../base/BaseCustomNode';
 export default class OpenRouterChatNodeUI extends BaseCustomNode {
     constructor(title: string, data: any, serviceRegistry: any) {
         super(title, data, serviceRegistry);
-        this.size = [320, 280];
+        this.size = [280, 200];
 
         // Add tooltip to system input slot
         const systemSlotIndex = this.inputs?.findIndex(inp => inp.name === 'system');
@@ -52,13 +52,8 @@ export default class OpenRouterChatNodeUI extends BaseCustomNode {
             text = JSON.stringify(result, null, 2);
         }
 
-        // Add web search indicator if enabled
-        const webSearchEnabled = this.properties?.web_search_enabled;
-        if (webSearchEnabled) {
-            const webSearchEngine = this.properties?.web_search_engine || 'exa';
-            const maxResults = this.properties?.web_search_max_results || 5;
-            text = `🔍 Web Search (${webSearchEngine}, ${maxResults} results)\n\n${text}`;
-        }
+        // Web search is always enabled
+        text = `🔍 Web Search\n\n${text}`;
 
         this.displayText = text || '';
         this.setDirtyCanvas(true, true);

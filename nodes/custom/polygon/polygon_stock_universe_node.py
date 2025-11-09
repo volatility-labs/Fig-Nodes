@@ -9,23 +9,19 @@ from nodes.base.base_node import Base
 from services.polygon_service import (
     massive_build_snapshot_tickers,
     massive_compute_closed_change_perc,
-    massive_fetch_filtered_tickers,
-    massive_fetch_filtered_tickers_for_list,
     massive_fetch_snapshot,
+    massive_fetch_ticker_types,
     massive_get_numeric_from_dict,
     massive_parse_ticker_for_market,
 )
 from services.time_utils import is_us_market_open
 
-# Type aliases for better readability
-TickerInfo = dict[str, Any]
-
 logger = logging.getLogger(__name__)
 
 
-class PolygonUniverse(Base):
+class PolygonStockUniverse(Base):
     """
-    A node that fetches symbols from the Massive.com API (formerly Polygon.io) and filters them
+    A node that fetches stock symbols from the Massive.com API (formerly Polygon.io) and filters them
     based on the provided parameters.
 
     Note: Polygon.io has rebranded to Massive.com. The API endpoints have been updated
@@ -38,14 +34,6 @@ class PolygonUniverse(Base):
     outputs = {"symbols": get_type("AssetSymbolList")}
     required_keys = ["POLYGON_API_KEY"]
     params_meta = [
-        {
-            "name": "market",
-            "type": "combo",
-            "default": "stocks",
-            "options": ["stocks", "crypto", "fx", "otc", "indices"],
-            "label": "Market Type",
-            "description": "Select the market type to fetch symbols from",
-        },
         {
             "name": "min_change_perc",
             "type": "number",
@@ -94,7 +82,7 @@ class PolygonUniverse(Base):
             "default": False,
             "options": [True, False],
             "label": "Include OTC",
-            "description": "Include over-the-counter symbols (stocks only)",
+            "description": "Include over-the-counter symbols",
         },
         {
             "name": "exclude_etfs",
@@ -110,7 +98,7 @@ class PolygonUniverse(Base):
             "default": "auto",
             "options": ["auto", "today", "prev_day"],
             "label": "Data Day",
-            "description": "Use intraday (today), previous day, or auto-select based on market hours",
+            "description": "Use intraday (today), previous day, or auto-select based on US market hours",
         },
     ]
     default_params = {}
@@ -121,7 +109,7 @@ class PolygonUniverse(Base):
             symbols = await self._fetch_symbols(filter_symbols)
             return {"symbols": symbols}
         except Exception as e:
-            logger.error(f"PolygonUniverse node {self.id} failed: {str(e)}", exc_info=True)
+            logger.error(f"PolygonStockUniverse node {self.id} failed: {str(e)}", exc_info=True)
             raise
 
     async def _fetch_symbols(
@@ -131,27 +119,23 @@ class PolygonUniverse(Base):
         if not api_key:
             raise ValueError("POLYGON_API_KEY is required but not set in vault")
 
-        market = self._get_market_param()
-        locale, markets = self._get_market_config(market)
+        market = "stocks"
+        locale, markets = "us", "stocks"
         exclude_etfs = self._get_bool_param("exclude_etfs", True)
-        needs_etf_filter = market in ["stocks", "otc"]
 
         filter_ticker_strings: list[str] | None = None
         if filter_symbols:
             filter_ticker_strings = massive_build_snapshot_tickers(filter_symbols)
 
         async with httpx.AsyncClient() as client:
-            if needs_etf_filter:
-                if filter_ticker_strings and market in ["stocks", "otc"]:
-                    filtered_ticker_set = await massive_fetch_filtered_tickers_for_list(
-                        client, api_key, market, exclude_etfs, filter_ticker_strings
-                    )
-                else:
-                    filtered_ticker_set = await massive_fetch_filtered_tickers(
-                        client, api_key, market, exclude_etfs
-                    )
+            if filter_ticker_strings:
+                filtered_ticker_set = await self._fetch_filtered_tickers_for_list(
+                    client, api_key, market, exclude_etfs, filter_ticker_strings
+                )
             else:
-                filtered_ticker_set = None
+                filtered_ticker_set = await self._fetch_filtered_tickers(
+                    client, api_key, market, exclude_etfs
+                )
 
             tickers_data = await massive_fetch_snapshot(
                 client,
@@ -171,20 +155,6 @@ class PolygonUniverse(Base):
             )
 
         return symbols
-
-    def _get_market_param(self) -> str:
-        """Extract and validate market parameter."""
-        market_raw = self.params.get("market", "stocks")
-        return market_raw if isinstance(market_raw, str) else "stocks"
-
-    def _get_market_config(self, market: str) -> tuple[str, str]:
-        """Get locale and markets string for API endpoint based on market type."""
-        if market in ["stocks", "otc"]:
-            return "us", "stocks"
-        elif market == "indices":
-            return "us", "indices"
-        else:
-            return "global", market
 
     def _get_bool_param(self, param_name: str, default: bool) -> bool:
         """Extract and validate boolean parameter."""
@@ -213,140 +183,6 @@ class PolygonUniverse(Base):
         if min_change_perc is not None and max_change_perc is not None:
             if min_change_perc > max_change_perc:
                 raise ValueError("min_change_perc cannot be greater than max_change_perc")
-
-    async def _fetch_etf_filtered_tickers(
-        self,
-        client: httpx.AsyncClient,
-        api_key: str,
-        market: str,
-        exclude_etfs: bool,
-        needs_etf_filter: bool,
-        limit_to_tickers: list[str] | None,
-    ) -> set[str] | None:
-        """Fetch filtered ticker set for ETF filtering if needed.
-
-        If limit_to_tickers is provided, only check those tickers via the reference endpoint
-        instead of paginating the entire catalog.
-        """
-        if not needs_etf_filter:
-            return None
-
-        self.report_progress(5.0, "Fetching ticker metadata...")
-        if limit_to_tickers:
-            filtered_ticker_set = await self._fetch_filtered_tickers_for_list(
-                client, api_key, market, exclude_etfs, limit_to_tickers
-            )
-        else:
-            filtered_ticker_set = await self._fetch_filtered_tickers(
-                client, api_key, market, exclude_etfs
-            )
-        self.report_progress(30.0, f"Found {len(filtered_ticker_set)} filtered tickers")
-        return filtered_ticker_set
-
-    async def _fetch_filtered_tickers_for_list(
-        self,
-        client: httpx.AsyncClient,
-        api_key: str,
-        market: str,
-        exclude_etfs: bool,
-        tickers: list[str],
-    ) -> set[str]:
-        """Fetch ETF classification for a limited list of tickers and filter accordingly."""
-        etf_types: set[str] = set()
-        if market in ["stocks", "otc"]:
-            etf_types = await self._fetch_ticker_types(client, api_key)
-
-        ref_market = "otc" if market == "otc" else market
-        allowed: set[str] = set()
-
-        for ticker in tickers:
-            # Build query for a single ticker
-            params: dict[str, Any] = {
-                "active": True,
-                "limit": 1,
-                "apiKey": api_key,
-            }
-            if market in ["stocks", "otc", "crypto", "fx", "indices"]:
-                params["market"] = ref_market
-            params["ticker"] = ticker
-
-            response = await client.get(
-                "https://api.massive.com/v3/reference/tickers", params=params
-            )
-            if response.status_code != 200:
-                # If the lookup fails, conservatively include the ticker
-                allowed.add(ticker)
-                continue
-
-            data = response.json()
-            results = data.get("results", [])
-            if not isinstance(results, list) or not results:
-                allowed.add(ticker)
-                continue
-            results_list: list[Any] = results
-            first_item_raw = results_list[0]
-            if not isinstance(first_item_raw, dict):
-                allowed.add(ticker)
-                continue
-            first_item: dict[str, Any] = first_item_raw
-            type_val: Any = first_item.get("type")
-            market_val: Any = first_item.get("market")
-            type_str = type_val if isinstance(type_val, str) else ""
-            market_str = market_val if isinstance(market_val, str) else ""
-
-            is_etf = (
-                (type_str in etf_types)
-                or ("etf" in type_str.lower())
-                or ("etn" in type_str.lower())
-                or ("etp" in type_str.lower())
-                or (market_str == "etp")
-            )
-
-            if exclude_etfs and is_etf:
-                # Exclude ETFs
-                continue
-            if not exclude_etfs and not is_etf:
-                # Include only ETFs
-                continue
-            allowed.add(ticker)
-
-        return allowed
-
-    async def _fetch_snapshot_data(
-        self,
-        client: httpx.AsyncClient,
-        api_key: str,
-        locale: str,
-        markets: str,
-        market: str,
-        filter_ticker_strings: list[str] | None,
-    ) -> list[dict[str, Any]]:
-        """Fetch snapshot data from Massive.com API."""
-        snapshot_url = (
-            f"https://api.massive.com/v2/snapshot/locale/{locale}/markets/{markets}/tickers"
-        )
-        snapshot_params: dict[str, Any] = {}
-
-        if market == "otc" or (market == "stocks" and self.params.get("include_otc", False)):
-            snapshot_params["include_otc"] = True
-
-        if filter_ticker_strings:
-            snapshot_params["tickers"] = ",".join(filter_ticker_strings)
-        # Standardize on apiKey param for auth across endpoints
-        snapshot_params["apiKey"] = api_key
-        self.report_progress(35.0, "Fetching snapshot data...")
-        response = await client.get(snapshot_url, params=snapshot_params)
-        if response.status_code != 200:
-            error_text = response.text if response.text else response.reason_phrase
-            raise ValueError(f"Failed to fetch snapshot: {response.status_code} - {error_text}")
-
-        data = response.json()
-        tickers_data = data.get("tickers", [])
-        total_tickers = len(tickers_data)
-
-        self.report_progress(40.0, f"Fetched {total_tickers} tickers from snapshot, processing...")
-
-        return tickers_data
 
     def _process_tickers(
         self,
@@ -390,7 +226,11 @@ class PolygonUniverse(Base):
     def _extract_ticker_data(
         self, ticker_item: dict[str, Any], market: str
     ) -> dict[str, Any] | None:
-        """Extract price, volume, and change percentage from ticker data."""
+        """Extract price, volume, and change percentage from ticker data.
+        
+        For stocks, uses US market hours logic to determine whether to use today's intraday
+        data or previous day's closing data.
+        """
         day_value = ticker_item.get("day")
         prev_day_value = ticker_item.get("prevDay")
         last_trade_value = ticker_item.get("lastTrade")
@@ -412,9 +252,9 @@ class PolygonUniverse(Base):
         if data_day_param == "today":
             use_prev_day = False
         elif data_day_param == "prev_day":
-            use_prev_day = market in ["stocks", "indices"]
+            use_prev_day = True
         else:  # auto
-            use_prev_day = (not market_is_open) and (market in ["stocks", "indices"])
+            use_prev_day = not market_is_open
 
         # Support pre/post-market change% by using lastTrade vs prevDay close when market is closed
         if use_prev_day:
@@ -480,13 +320,7 @@ class PolygonUniverse(Base):
         """Create AssetSymbol from ticker data."""
         base_ticker, quote_currency = massive_parse_ticker_for_market(ticker, market)
 
-        market_mapping = {
-            "crypto": AssetClass.CRYPTO,
-            "stocks": AssetClass.STOCKS,
-            "stock": AssetClass.STOCKS,
-            "otc": AssetClass.STOCKS,
-        }
-        asset_class = market_mapping.get(market.lower(), AssetClass.STOCKS)
+        asset_class = AssetClass.STOCKS
 
         metadata = {
             "original_ticker": ticker,
@@ -503,64 +337,73 @@ class PolygonUniverse(Base):
             metadata=metadata,
         )
 
-    # moved helpers to services.polygon_service
 
-    async def _fetch_ticker_types(self, client: httpx.AsyncClient, api_key: str) -> set[str]:
-        """
-        Fetch ticker types from Massive.com API (formerly Polygon.io) and identify ETF-related type codes.
+    async def _fetch_filtered_tickers_for_list(
+        self,
+        client: httpx.AsyncClient,
+        api_key: str,
+        market: str,
+        exclude_etfs: bool,
+        tickers: list[str],
+    ) -> set[str]:
+        """Fetch ETF classification for a limited list of tickers and filter accordingly."""
+        etf_types: set[str] = set()
+        etf_types = await massive_fetch_ticker_types(client, api_key)
 
-        Args:
-            client: httpx AsyncClient instance
-            api_key: Massive.com API key (POLYGON_API_KEY)
+        ref_market = market
+        allowed: set[str] = set()
 
-        Returns:
-            Set of type codes that represent ETFs/ETNs/ETPs
-        """
-        url = "https://api.massive.com/v3/reference/tickers/types"
-        params: dict[str, str] = {"apiKey": api_key}
+        for ticker in tickers:
+            # Build query for a single ticker
+            params: dict[str, Any] = {
+                "active": True,
+                "limit": 1,
+                "apiKey": api_key,
+                "market": ref_market,
+                "ticker": ticker,
+            }
 
-        try:
-            response = await client.get(url, params=params)
-            response.raise_for_status()
+            response = await client.get(
+                "https://api.massive.com/v3/reference/tickers", params=params
+            )
+            if response.status_code != 200:
+                # If the lookup fails, conservatively include the ticker
+                allowed.add(ticker)
+                continue
+
             data = response.json()
             results = data.get("results", [])
+            if not isinstance(results, list) or not results:
+                allowed.add(ticker)
+                continue
+            results_list: list[Any] = results
+            first_item_raw = results_list[0]
+            if not isinstance(first_item_raw, dict):
+                allowed.add(ticker)
+                continue
+            first_item: dict[str, Any] = first_item_raw
+            type_val: Any = first_item.get("type")
+            market_val: Any = first_item.get("market")
+            type_str = type_val if isinstance(type_val, str) else ""
+            market_str = market_val if isinstance(market_val, str) else ""
 
-            etf_type_codes: set[str] = set()
-            for item in results:
-                if not isinstance(item, dict):
-                    continue
+            is_etf = (
+                (type_str in etf_types)
+                or ("etf" in type_str.lower())
+                or ("etn" in type_str.lower())
+                or ("etp" in type_str.lower())
+                or (market_str == "etp")
+            )
 
-                # Extract code field with type guard - skip if missing or wrong type
-                if "code" not in item:
-                    continue
-                code_raw: Any = item["code"]
-                if not isinstance(code_raw, str):
-                    continue
-                code: str = code_raw
+            if exclude_etfs and is_etf:
+                # Exclude ETFs
+                continue
+            if not exclude_etfs and not is_etf:
+                # Include only ETFs
+                continue
+            allowed.add(ticker)
 
-                # Extract description field with type guard
-                description_raw: Any = item["description"] if "description" in item else None
-                description: str = (
-                    description_raw.lower() if isinstance(description_raw, str) else ""
-                )
-
-                type_code: str = code.lower()
-
-                # Identify ETF-related types
-                if (
-                    "etf" in type_code
-                    or "etn" in type_code
-                    or "etp" in type_code
-                    or "exchange traded" in description
-                ):
-                    etf_type_codes.add(code)
-
-            logger.debug(f"Identified ETF type codes: {etf_type_codes}")
-            return etf_type_codes
-        except Exception as e:
-            logger.warning(f"Failed to fetch ticker types: {e}, using fallback ETF detection")
-            # Fallback: common ETF type codes
-            return {"ETF", "ETN", "ETP"}
+        return allowed
 
     async def _fetch_filtered_tickers(
         self,
@@ -575,32 +418,25 @@ class PolygonUniverse(Base):
         Args:
             client: httpx AsyncClient instance
             api_key: Massive.com API key (POLYGON_API_KEY)
-            market: Market type (stocks, otc, etc.)
+            market: Market type (stocks)
             exclude_etfs: Whether to exclude ETFs
 
         Returns:
             Set of ticker symbols that pass the filters
         """
-        # Determine market parameter for reference endpoint
-        ref_market = "otc" if market == "otc" else market
-        needs_etf_filter = market in ["stocks", "otc"]
+        ref_market = market
 
         # Build query parameters
         ref_params: dict[str, Any] = {
             "active": True,
             "limit": 1000,
             "apiKey": api_key,
+            "market": ref_market,
         }
-
-        if market in ["stocks", "otc", "crypto", "fx", "indices"]:
-            ref_params["market"] = ref_market
 
         # Fetch ETF type codes if we need ETF filtering (either exclude or include only)
         etf_types: set[str] = set()
-        if needs_etf_filter:
-            etf_types = await self._fetch_ticker_types(client, api_key)
-            # We'll fetch all and filter client-side since Massive.com API doesn't support
-            # type exclusion, only inclusion
+        etf_types = await massive_fetch_ticker_types(client, api_key)
 
         ticker_set: set[str] = set()
         ref_url = "https://api.massive.com/v3/reference/tickers"
@@ -665,7 +501,7 @@ class PolygonUniverse(Base):
 
                 # Apply OTC filtering for stocks market
                 include_otc = self.params.get("include_otc", False)
-                if market == "stocks" and not include_otc:
+                if not include_otc:
                     if ticker_market == "otc" or ticker_market == "OTC":
                         continue
 
@@ -683,3 +519,4 @@ class PolygonUniverse(Base):
                 )
 
         return ticker_set
+
