@@ -8,7 +8,6 @@ from core.types_registry import AssetClass, AssetSymbol, get_type
 from nodes.base.base_node import Base
 from services.polygon_service import (
     massive_build_snapshot_tickers,
-    massive_compute_closed_change_perc,
     massive_fetch_snapshot,
     massive_fetch_ticker_types,
     massive_get_numeric_from_dict,
@@ -214,7 +213,7 @@ class PolygonStockUniverse(Base):
             symbols.append(symbol)
 
         self.report_progress(
-            95.0, f"Completed: {len(symbols)} symbols from {total_tickers} tickers"
+            100.0, f"Completed: {len(symbols)} symbols from {total_tickers} tickers"
         )
         return symbols
 
@@ -227,7 +226,7 @@ class PolygonStockUniverse(Base):
         self, ticker_item: dict[str, Any], market: str
     ) -> dict[str, Any] | None:
         """Extract price, volume, and change percentage from ticker data.
-        
+
         For stocks, uses US market hours logic to determine whether to use today's intraday
         data or previous day's closing data.
         """
@@ -237,11 +236,13 @@ class PolygonStockUniverse(Base):
 
         if not isinstance(day_value, dict):
             day: dict[str, Any] = {}
+            logger.warning(f"Invalid 'day' data for ticker {ticker_item.get('ticker')}")
         else:
             day = day_value
 
         if not isinstance(prev_day_value, dict):
             prev_day: dict[str, Any] = {}
+            logger.warning(f"Invalid 'prevDay' data for ticker {ticker_item.get('ticker')}")
         else:
             prev_day = prev_day_value
 
@@ -255,28 +256,51 @@ class PolygonStockUniverse(Base):
             use_prev_day = True
         else:  # auto
             use_prev_day = not market_is_open
+            if use_prev_day and not market_is_open:
+                # For auto-closed: treat as 'today' but label as lastTradingDay
+                use_prev_day = False
 
-        # Support pre/post-market change% by using lastTrade vs prevDay close when market is closed
-        if use_prev_day:
-            last_trade: dict[str, Any] = (
-                last_trade_value if isinstance(last_trade_value, dict) else {}
-            )
-            price, change_perc = massive_compute_closed_change_perc(prev_day, last_trade)
-            volume = massive_get_numeric_from_dict(prev_day, "v", 0.0)
+        # Extract todaysChangePerc (always available, reflects change since prevDay.c)
+        change_perc_raw = ticker_item.get("todaysChangePerc")
+        if isinstance(change_perc_raw, int | float):
+            todays_change_perc = float(change_perc_raw)
         else:
-            # During market hours, include tickers even if volume_day == 0 unless a min_volume filter is set
+            todays_change_perc = None
+            logger.warning(
+                f"Missing or invalid todaysChangePerc for ticker {ticker_item.get('ticker')}"
+            )
+
+        if use_prev_day:
+            # Explicit prev_day: Use prevDay bar fully, compute intra-day change %
+            price = massive_get_numeric_from_dict(prev_day, "c", 0.0)
+            volume = massive_get_numeric_from_dict(prev_day, "v", 0.0)
+            prev_open = massive_get_numeric_from_dict(prev_day, "o", 0.0)
+            if prev_open > 0:
+                change_perc = ((price - prev_open) / prev_open) * 100.0
+            else:
+                change_perc = None  # Skip filters if uncomputable
+            data_source = "prevDay_intra"
+        else:
+            # Today/open (or auto-closed: use day as last full day)
             price = massive_get_numeric_from_dict(day, "c", 0.0)
             volume = massive_get_numeric_from_dict(day, "v", 0.0)
-            change_perc_raw = ticker_item.get("todaysChangePerc")
-            if isinstance(change_perc_raw, int | float):
-                change_perc = float(change_perc_raw)
-            else:
-                change_perc = 0.0
+            change_perc = todays_change_perc  # API-provided, from prevDay to day.c
+            data_source = "day"
+            if data_day_param == "auto" and not market_is_open:
+                # Auto-closed: day is last full trading day
+                data_source = "lastTradingDay"
+            elif data_day_param == "today" and not market_is_open:
+                data_source = "lastTradingDay"
+
+        if price <= 0:
+            logger.warning(f"Invalid price (<=0) for ticker {ticker_item.get('ticker')}")
+            return None
 
         return {
             "price": price,
             "volume": volume,
             "change_perc": change_perc,
+            "data_source": data_source,  # For metadata
         }
 
     def _passes_filters(
@@ -322,12 +346,15 @@ class PolygonStockUniverse(Base):
 
         asset_class = AssetClass.STOCKS
 
+        data_source = ticker_data.get("data_source", "unknown")
+        change_available = ticker_data.get("change_perc") is not None
+
         metadata = {
             "original_ticker": ticker,
             "snapshot": ticker_item,
             "market": market,
-            "data_source": "prevDay" if ticker_data.get("change_perc") is None else "day",
-            "change_available": ticker_data.get("change_perc") is not None,
+            "data_source": data_source,
+            "change_available": change_available,
         }
 
         return AssetSymbol(
@@ -336,7 +363,6 @@ class PolygonStockUniverse(Base):
             quote_currency=quote_currency,
             metadata=metadata,
         )
-
 
     async def _fetch_filtered_tickers_for_list(
         self,
@@ -519,4 +545,3 @@ class PolygonStockUniverse(Base):
                 )
 
         return ticker_set
-

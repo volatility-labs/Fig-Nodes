@@ -25,9 +25,8 @@ class PolygonCryptoUniverse(Base):
     to use api.massive.com, but the API routes remain unchanged.
 
     Endpoint: https://api.massive.com/v2/snapshot/locale/global/markets/crypto/tickers
-    
-    Crypto markets operate 24/7, so data_day logic always uses today's intraday data
-    unless explicitly set to prev_day for historical analysis.
+
+    Crypto markets operate 24/7, always using current intraday data from the 'day' bar.
     """
 
     inputs = {"filter_symbols": get_type("AssetSymbolList") | None}
@@ -76,14 +75,6 @@ class PolygonCryptoUniverse(Base):
             "unit": "USD",
             "description": "Maximum closing price in USD",
         },
-        {
-            "name": "data_day",
-            "type": "combo",
-            "default": "auto",
-            "options": ["auto", "today", "prev_day"],
-            "label": "Data Day",
-            "description": "Use intraday (today), previous day, or auto-select. Crypto markets are 24/7, so auto defaults to today.",
-        },
     ]
     default_params = {}
 
@@ -124,9 +115,7 @@ class PolygonCryptoUniverse(Base):
             filter_params = self._extract_filter_params()
             self._validate_filter_params(filter_params)
 
-            symbols = self._process_tickers(
-                tickers_data, market, filter_params
-            )
+            symbols = self._process_tickers(tickers_data, market, filter_params)
 
         return symbols
 
@@ -192,55 +181,52 @@ class PolygonCryptoUniverse(Base):
         self, ticker_item: dict[str, Any], market: str
     ) -> dict[str, Any] | None:
         """Extract price, volume, and change percentage from ticker data.
-        
-        For crypto, markets are 24/7, so auto mode defaults to today's intraday data.
-        Only use prev_day if explicitly requested.
+
+        For crypto, markets are 24/7, always using current intraday data from the 'day' bar.
         """
         day_value = ticker_item.get("day")
         prev_day_value = ticker_item.get("prevDay")
 
         if not isinstance(day_value, dict):
             day: dict[str, Any] = {}
+            logger.warning(f"Invalid 'day' data for ticker {ticker_item.get('ticker')}")
         else:
             day = day_value
 
         if not isinstance(prev_day_value, dict):
             prev_day: dict[str, Any] = {}
+            logger.warning(f"Invalid 'prevDay' data for ticker {ticker_item.get('ticker')}")
         else:
             prev_day = prev_day_value
 
-        data_day_param_raw = self.params.get("data_day", "auto")
-        data_day_param = data_day_param_raw if isinstance(data_day_param_raw, str) else "auto"
+        # Always use current intraday data for crypto (24/7)
+        use_prev_day = False
 
-        # Crypto markets are 24/7, so auto defaults to today (intraday data)
-        if data_day_param == "prev_day":
-            use_prev_day = True
+        # Extract todaysChangePerc (always available, reflects change since prevDay.c)
+        change_perc_raw = ticker_item.get("todaysChangePerc")
+        if isinstance(change_perc_raw, (int, float)):
+            todays_change_perc = float(change_perc_raw)
         else:
-            # auto or today both use today's intraday data for crypto
-            use_prev_day = False
+            todays_change_perc = None
+            logger.warning(
+                f"Missing or invalid todaysChangePerc for ticker {ticker_item.get('ticker')}"
+            )
 
-        if use_prev_day:
-            price = massive_get_numeric_from_dict(prev_day, "c", 0.0)
-            volume = massive_get_numeric_from_dict(prev_day, "v", 0.0)
-            change_perc_raw = ticker_item.get("prevDayChangePerc")
-            if isinstance(change_perc_raw, int | float):
-                change_perc = float(change_perc_raw)
-            else:
-                change_perc = 0.0
-        else:
-            # Use today's intraday data (crypto markets are always open)
-            price = massive_get_numeric_from_dict(day, "c", 0.0)
-            volume = massive_get_numeric_from_dict(day, "v", 0.0)
-            change_perc_raw = ticker_item.get("todaysChangePerc")
-            if isinstance(change_perc_raw, int | float):
-                change_perc = float(change_perc_raw)
-            else:
-                change_perc = 0.0
+        # Today (always)
+        price = massive_get_numeric_from_dict(day, "c", 0.0)
+        volume = massive_get_numeric_from_dict(day, "v", 0.0)
+        change_perc = todays_change_perc  # API-provided, from prevDay to day.c
+        data_source = "day"
+
+        if price <= 0:
+            logger.warning(f"Invalid price (<=0) for ticker {ticker_item.get('ticker')}")
+            return None
 
         return {
             "price": price,
             "volume": volume,
             "change_perc": change_perc,
+            "data_source": data_source,  # For metadata
         }
 
     def _passes_filters(
@@ -286,12 +272,15 @@ class PolygonCryptoUniverse(Base):
 
         asset_class = AssetClass.CRYPTO
 
+        data_source = ticker_data.get("data_source", "unknown")
+        change_available = ticker_data.get("change_perc") is not None
+
         metadata = {
             "original_ticker": ticker,
             "snapshot": ticker_item,
             "market": market,
-            "data_source": "prevDay" if ticker_data.get("change_perc") is None else "day",
-            "change_available": ticker_data.get("change_perc") is not None,
+            "data_source": data_source,
+            "change_available": change_available,
         }
 
         return AssetSymbol(
@@ -300,7 +289,3 @@ class PolygonCryptoUniverse(Base):
             quote_currency=quote_currency,
             metadata=metadata,
         )
-
-
-
-
