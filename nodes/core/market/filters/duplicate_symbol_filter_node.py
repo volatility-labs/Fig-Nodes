@@ -29,6 +29,12 @@ class DuplicateSymbolFilter(BaseFilter):
         "ohlcv_bundle": ohlcv_tp | None,
         "left_bundle": ohlcv_tp | None,
         "right_bundle": ohlcv_tp | None,
+        # New optional third input for 3-way set operations
+        "third_bundle": ohlcv_tp | None,
+        # Numbered ports for compatibility with alternate UI/graphs
+        "input_1": ohlcv_tp | None,
+        "input_2": ohlcv_tp | None,
+        "input_3": ohlcv_tp | None,
     }
     outputs = {"filtered_ohlcv_bundle": get_type("OHLCVBundle")}
 
@@ -39,12 +45,15 @@ class DuplicateSymbolFilter(BaseFilter):
         # compare by: 'ticker' (base symbol ticker) or 'symbol_string' (str(symbol))
         "compare_by": "ticker",  # "ticker" | "symbol_string"
         "case_insensitive": True,
-        # Pairwise comparison for two-input workflows (overrides global mode when active)
+        # Comparison modes for multi-input workflows (overrides global mode when active)
         # Options:
-        #  - global: use global duplicate logic across all merged inputs (default)
-        #  - intersection_1_2: keep only symbols present in both input 1 and input 2
-        #  - left_only_1_minus_2: keep symbols present in input 1 but not input 2
-        #  - right_only_2_minus_1: keep symbols present in input 2 but not input 1
+        #  - global: use global duplicate logic across a single bundle (default)
+        #  - intersection_1_2: keep only symbols present in both left and right
+        #  - intersection_1_2_3: keep only symbols present in left, right, and third
+        #  - left_only_1_minus_2: keep symbols present in left but not right
+        #  - right_only_2_minus_1: keep symbols present in right but not left
+        #  - only_3_minus_1_2: keep symbols present in third but not in left or right
+        #  - union_1_2_minus_3: keep symbols present in left or right but not in third
         "pair_mode": "global",
     }
 
@@ -80,11 +89,14 @@ class DuplicateSymbolFilter(BaseFilter):
             "options": [
                 "global",
                 "intersection_1_2",
+                "intersection_1_2_3",
                 "left_only_1_minus_2",
                 "right_only_2_minus_1",
+                "only_3_minus_1_2",
+                "union_1_2_minus_3",
             ],
-            "label": "Two-Input Mode",
-            "description": "Apply pairwise filtering between inputs 1 and 2 instead of global dedupe",
+            "label": "Multi-Input Mode",
+            "description": "Apply multi-input set operations across left/right/third instead of global dedupe",
         },
     ]
 
@@ -97,6 +109,23 @@ class DuplicateSymbolFilter(BaseFilter):
         single_bundle: dict[AssetSymbol, list[OHLCVBar]] = inputs.get("ohlcv_bundle", {}) or {}
         left: dict[AssetSymbol, list[OHLCVBar]] = inputs.get("left_bundle", {}) or {}
         right: dict[AssetSymbol, list[OHLCVBar]] = inputs.get("right_bundle", {}) or {}
+        third: dict[AssetSymbol, list[OHLCVBar]] = inputs.get("third_bundle", {}) or {}
+        # Also accept numbered ports and merge if provided
+        n1: dict[AssetSymbol, list[OHLCVBar]] = inputs.get("input_1", {}) or {}
+        n2: dict[AssetSymbol, list[OHLCVBar]] = inputs.get("input_2", {}) or {}
+        n3: dict[AssetSymbol, list[OHLCVBar]] = inputs.get("input_3", {}) or {}
+        if n1:
+            tmp = dict(left)
+            tmp.update(n1)
+            left = tmp
+        if n2:
+            tmp = dict(right)
+            tmp.update(n2)
+            right = tmp
+        if n3:
+            tmp = dict(third)
+            tmp.update(n3)
+            third = tmp
 
         compare_by = self.params.get("compare_by", "ticker")
         case_insensitive = bool(self.params.get("case_insensitive", True))
@@ -108,15 +137,20 @@ class DuplicateSymbolFilter(BaseFilter):
                 k = sym.ticker
             return k.lower() if case_insensitive else k
 
-        # Pairwise if either left or right provided
+        # Pairwise / Multi-input if any provided and not in global mode
         pair_mode = str(self.params.get("pair_mode", "global"))
-        if (left or right) and pair_mode != "global":
+        if (left or right or third) and pair_mode != "global":
+            # Debug: show input sizes (after merging numbered ports)
+            print(f"DuplicateSymbolFilter: left={len(left)}, right={len(right)}, third={len(third)}, pair_mode={pair_mode}")
             left_keys: Dict[str, list[AssetSymbol]] = {}
             right_keys: Dict[str, list[AssetSymbol]] = {}
+            third_keys: Dict[str, list[AssetSymbol]] = {}
             for s in left.keys():
                 left_keys.setdefault(make_key(s), []).append(s)
             for s in right.keys():
                 right_keys.setdefault(make_key(s), []).append(s)
+            for s in third.keys():
+                third_keys.setdefault(make_key(s), []).append(s)
 
             filtered: dict[AssetSymbol, list[OHLCVBar]] = {}
             if pair_mode == "intersection_1_2":
@@ -124,6 +158,13 @@ class DuplicateSymbolFilter(BaseFilter):
                 for k in keys_final:
                     s_left = left_keys[k][0]
                     filtered[s_left] = left[s_left]
+                print(f"DuplicateSymbolFilter: intersection_1_2 -> {len(filtered)} symbols")
+            elif pair_mode == "intersection_1_2_3":
+                keys_final = set(left_keys.keys()) & set(right_keys.keys()) & set(third_keys.keys())
+                for k in keys_final:
+                    s_left = left_keys[k][0]
+                    filtered[s_left] = left[s_left]
+                print(f"DuplicateSymbolFilter: intersection_1_2_3 -> {len(filtered)} symbols")
             elif pair_mode == "left_only_1_minus_2":
                 keys_final = set(left_keys.keys()) - set(right_keys.keys())
                 for k in keys_final:
@@ -134,10 +175,25 @@ class DuplicateSymbolFilter(BaseFilter):
                 for k in keys_final:
                     s_right = right_keys[k][0]
                     filtered[s_right] = right[s_right]
+            elif pair_mode == "only_3_minus_1_2":
+                keys_final = set(third_keys.keys()) - set(left_keys.keys()) - set(right_keys.keys())
+                for k in keys_final:
+                    s_third = third_keys[k][0]
+                    filtered[s_third] = third[s_third]
+            elif pair_mode == "union_1_2_minus_3":
+                keys_union = set(left_keys.keys()) | set(right_keys.keys())
+                keys_final = keys_union - set(third_keys.keys())
+                for k in keys_final:
+                    if k in left_keys:
+                        s_left = left_keys[k][0]
+                        filtered[s_left] = left[s_left]
+                    elif k in right_keys:
+                        s_right = right_keys[k][0]
+                        filtered[s_right] = right[s_right]
             else:
-                # Fallback to union unique across left/right
+                # Fallback to union unique across left/right/third
                 merged: dict[str, AssetSymbol] = {}
-                for s in list(left.keys()) + list(right.keys()):
+                for s in list(left.keys()) + list(right.keys()) + list(third.keys()):
                     k = make_key(s)
                     if k not in merged:
                         merged[k] = s
@@ -146,6 +202,9 @@ class DuplicateSymbolFilter(BaseFilter):
                         filtered[s] = left[s]
                     elif s in right:
                         filtered[s] = right[s]
+                    elif s in third:
+                        filtered[s] = third[s]
+            print(f"DuplicateSymbolFilter: Returning {len(filtered)} symbols from multi-input mode")
             return {"filtered_ohlcv_bundle": filtered}
 
         # Otherwise, run global single-bundle duplicate logic

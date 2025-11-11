@@ -28,7 +28,6 @@ class PolygonBatchCustomBars(Base):
         "ohlcv_bundle": get_type("OHLCVBundle")
     }  # Changed from Dict[AssetSymbol, List[OHLCVBar]]
     default_params = {
-        "multiplier": 1,
         "timespan": "day",
         "lookback_period": "3 months",
         "adjusted": True,
@@ -38,12 +37,13 @@ class PolygonBatchCustomBars(Base):
         "rate_limit_per_second": 95,  # Stay under Polygon's recommended 100/sec
     }
     params_meta = [
-        {"name": "multiplier", "type": "number", "default": 1, "min": 1, "step": 1},
         {
             "name": "timespan",
             "type": "combo",
             "default": "day",
-            "options": ["minute", "hour", "day", "week", "month", "quarter", "year"],
+            "options": ["1 minute", "5 minutes", "15 minutes", "30 minutes", "hour", "day", "week", "month", "quarter", "year"],
+            "label": "Timespan",
+            "description": "Time interval for bars",
         },
         {
             "name": "lookback_period",
@@ -88,13 +88,30 @@ class PolygonBatchCustomBars(Base):
         if not symbols:
             return {"ohlcv_bundle": {}}
 
+        # Convert user-friendly timespan options to API format
+        params = self.params.copy()
+        timespan_raw = params.get("timespan", "day")
+
+        # Map user-friendly timespan options to API format
+        timespan_mapping = {
+            "1 minute": ("minute", 1),
+            "5 minutes": ("minute", 5),
+            "15 minutes": ("minute", 15),
+            "30 minutes": ("minute", 30),
+        }
+
+        if timespan_raw in timespan_mapping:
+            api_timespan, api_multiplier = timespan_mapping[timespan_raw]
+            params["timespan"] = api_timespan
+            params["multiplier"] = api_multiplier
+
         vault = APIKeyVault()
         api_key = vault.get("POLYGON_API_KEY")
         if not api_key:
             raise ValueError("Polygon API key not found in vault")
 
-        max_concurrent_raw = self.params.get("max_concurrent", 10)
-        rate_limit_raw = self.params.get("rate_limit_per_second", 95)
+        max_concurrent_raw = params.get("max_concurrent", 10)
+        rate_limit_raw = params.get("rate_limit_per_second", 95)
 
         # Type guards to ensure correct types
         if not isinstance(max_concurrent_raw, int):
@@ -121,7 +138,7 @@ class PolygonBatchCustomBars(Base):
             sym: AssetSymbol,
         ) -> tuple[AssetSymbol, list[OHLCVBar], dict[str, Any]] | None:
             """Worker function that fetches bars for a symbol."""
-            bars, metadata = await fetch_bars(sym, api_key, self.params)
+            bars, metadata = await fetch_bars(sym, api_key, params)
             if bars:
                 # Update status tracker and send incremental status update
                 data_status = metadata.get("data_status", "unknown")

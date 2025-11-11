@@ -22,8 +22,7 @@ class PriceDataFetching(Base):
     CATEGORY = "market"
     inputs = {"ohlcv_bundle": get_type("OHLCVBundle")}
     outputs = {
-        "formatted_output": str,  # Formatted string display
-        "csv_file": str  # Path to saved CSV file
+        "formatted_output": str  # Formatted display with prices and CSV save confirmation
     }
     default_params = {
         "scan_name": "default_scan",
@@ -57,8 +56,7 @@ class PriceDataFetching(Base):
         if not ohlcv_bundle:
             logger.warning("PriceDataFetching node received empty OHLCV bundle")
             return {
-                "formatted_output": "⚠️ No price data available - check if OHLCV bundle is connected",
-                "csv_file": ""
+                "formatted_output": "⚠️ No price data available - check if OHLCV bundle is connected"
             }
 
         scan_name = self.params.get("scan_name", "default_scan")
@@ -80,6 +78,21 @@ class PriceDataFetching(Base):
 
             # Get the most recent bar (last in the list)
             latest_bar = ohlcv_data[-1]
+            
+            # Debug logging to check bar timestamps
+            if len(ohlcv_data) > 1:
+                first_bar_ts = ohlcv_data[0].get("timestamp", 0)
+                last_bar_ts = ohlcv_data[-1].get("timestamp", 0)
+                logger.info(f"PriceDataFetching: {symbol} has {len(ohlcv_data)} bars")
+                logger.info(f"  First bar: {datetime.fromtimestamp(first_bar_ts/1000).strftime('%Y-%m-%d %H:%M:%S')}")
+                logger.info(f"  Last bar: {datetime.fromtimestamp(last_bar_ts/1000).strftime('%Y-%m-%d %H:%M:%S')}")
+                
+                # Check if bars are sorted ascending
+                if first_bar_ts > last_bar_ts:
+                    logger.warning(f"  ⚠️ Bars appear to be in descending order!")
+                    # For descending order, the most recent bar is first
+                    latest_bar = ohlcv_data[0]
+                    logger.info(f"  Using first bar as latest for {symbol}")
 
             # Extract price
             price = latest_bar.get("close", 0.0)
@@ -120,7 +133,6 @@ class PriceDataFetching(Base):
             })
 
         formatted_output = "\n".join(output_lines)
-        csv_file = ""
         
         # Save to CSV if enabled
         if save_to_csv and csv_rows:
@@ -141,7 +153,6 @@ class PriceDataFetching(Base):
                     writer.writeheader()
                     writer.writerows(csv_rows)
                 
-                csv_file = str(csv_path)
                 output_lines.append(f"\n✅ Saved to CSV: results/{filename}")
                 formatted_output = "\n".join(output_lines)
                 logger.info(f"PriceDataFetching saved scan '{scan_name}' to {csv_path}")
@@ -153,6 +164,5 @@ class PriceDataFetching(Base):
         logger.info(f"PriceDataFetching node extracted prices for {len(ohlcv_bundle)} symbols")
         
         return {
-            "formatted_output": formatted_output,
-            "csv_file": csv_file
+            "formatted_output": formatted_output
         }
