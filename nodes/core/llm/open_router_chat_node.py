@@ -6,7 +6,7 @@ import aiohttp
 from pydantic import BaseModel
 
 from core.api_key_vault import APIKeyVault
-from core.types_registry import LLMChatMessage, NodeCategory, get_type
+from core.types_registry import ConfigDict, NodeCategory, get_type
 from nodes.base.base_node import Base
 
 
@@ -71,11 +71,13 @@ class OpenRouterChatResponseModel(BaseModel):
 class OpenRouterChat(Base):
     """
     Node that connects to the OpenRouter API and allows for chat with LLMs. Web search is always enabled by default.
+    Supports multimodal inputs with images for vision-capable models.
 
     Inputs:
     - message_0 to message_4: LLMChatMessage (optional individual messages to include in chat history)
     - prompt: str (optional prompt to add to the chat as user message)
     - system: str or LLMChatMessage (optional system message to add to the chat)
+    - images: ConfigDict (optional dict of label to base64 data URL for images to attach to the user prompt)
 
     Outputs:
     - message: Dict[str, Any] (assistant message with role, content, etc.)
@@ -88,12 +90,14 @@ class OpenRouterChat(Base):
     - max_tokens: int (maximum number of tokens to generate)
     - seed: int (seed for the chat)
     - seed_mode: str (mode for the seed)
+    - use_vision: str (combo: "true" or "false" - automatically select vision-capable model if images provided)
     """
 
     inputs = {
         "prompt": str | None,
-        "system": str | LLMChatMessage | None,
-        **{f"message_{i}": LLMChatMessage | None for i in range(5)},
+        "system": str | dict[str, Any] | None,
+        "images": ConfigDict | None,
+        **{f"message_{i}": dict[str, Any] | None for i in range(5)},
     }
 
     outputs = {
@@ -111,11 +115,12 @@ class OpenRouterChat(Base):
     _DEFAULT_ASSISTANT_MESSAGE = {"role": "assistant", "content": ""}
 
     default_params = {
-        "model": "z-ai/glm-4.6",  # Default model
+        "model": "z-ai/glm-4.6",  # Default model (text-capable; will switch if use_vision)
         "temperature": 0.7,
         "max_tokens": 2048,
         "seed": 0,
         "seed_mode": "fixed",  # fixed | random | increment
+        "use_vision": "false",
     }
 
     params_meta = [
@@ -131,7 +136,7 @@ class OpenRouterChat(Base):
         {
             "name": "max_tokens",
             "type": "number",
-            "default": 1024,
+            "default": 20000,
             "min": 1,
             "step": 1,
             "precision": 0,
@@ -143,13 +148,20 @@ class OpenRouterChat(Base):
             "default": "fixed",
             "options": ["fixed", "random", "increment"],
         },
+        {
+            "name": "use_vision",
+            "type": "combo",
+            "default": "false",
+            "options": ["true", "false"],
+            "description": "Enable vision mode for image inputs (auto-switches to vision-capable model)",
+        },
     ]
 
     def __init__(
         self, id: int, params: dict[str, Any], graph_context: dict[str, Any] | None = None
     ):
         super().__init__(id, params, graph_context)
-        self.optional_inputs = ["prompt", "system"] + [f"message_{i}" for i in range(5)]
+        self.optional_inputs = ["prompt", "system", "images"] + [f"message_{i}" for i in range(5)]
         # Maintain seed state for increment mode
         self._seed_state: int | None = None
         self.vault = APIKeyVault()
@@ -190,18 +202,38 @@ class OpenRouterChat(Base):
 
     @staticmethod
     def _build_messages(
-        existing_messages: list[LLMChatMessage] | None,
+        existing_messages: list[dict[str, Any]] | None,
         prompt: str | None,
-        system_input: LLMChatMessage | str | None,
-    ) -> list[LLMChatMessage]:
-        result = list(existing_messages or [])
+        system_input: dict[str, Any] | str | None,
+        images: ConfigDict | None = None,
+    ) -> list[dict[str, Any]]:
+        result: list[dict[str, Any]] = list(existing_messages or []) if existing_messages else []
         if system_input and not any(m.get("role") == "system" for m in result):
             if isinstance(system_input, str):
                 result.insert(0, {"role": "system", "content": system_input})
             else:
                 result.insert(0, system_input)
-        if prompt:
-            result.append({"role": "user", "content": prompt})
+
+        # Build final user message with images if provided
+        text_content = prompt or ""
+        if text_content.strip() or images:
+            user_content: list[dict[str, Any]] = []
+            if text_content.strip():
+                user_content.append({"type": "text", "text": text_content})
+            else:
+                user_content.append({"type": "text", "text": ""})
+
+            if images:
+                # Append image parts (order: text first, then images)
+                for data_url in images.values():
+                    if isinstance(data_url, str) and data_url.startswith("data:image/"):
+                        user_content.append(
+                            {
+                                "type": "image_url",
+                                "image_url": {"url": data_url},  # Direct base64 data URL
+                            }
+                        )
+            result.append({"role": "user", "content": user_content})
         return result
 
     def _prepare_generation_options(self) -> dict[str, Any]:
@@ -245,22 +277,29 @@ class OpenRouterChat(Base):
         options["seed"] = int(effective_seed)
         return options
 
-    def _get_model_with_web_search(self, base_model: str) -> str:
-        """Get model name with web search suffix (always enabled)."""
+    def _get_model_with_web_search(self, base_model: str, use_vision: bool = False) -> str:
+        """Get model name with web search suffix (always enabled). Switch to vision model if needed."""
+        model = base_model
+        if use_vision:
+            # Map to a vision-capable model if the base isn't (customize as needed)
+            vision_models = ["google/gemini-2.0-flash-001", "openai/gpt-4o"]  # Examples
+            if not any(vm in model for vm in vision_models):
+                model = "google/gemini-2.0-flash-001"  # Default vision fallback
         # Add :online suffix to enable web search
-        if not base_model.endswith(":online"):
-            return f"{base_model}:online"
-        return base_model
+        if not model.endswith(":online"):
+            model = f"{model}:online"
+        return model
 
     async def _call_llm(
         self,
-        messages: list[LLMChatMessage],
+        messages: list[dict[str, Any]],
         options: dict[str, Any],
         api_key: str,
     ) -> OpenRouterChatResponseModel:
         """Single entry point for LLM API calls."""
+        use_vision_param = self._parse_bool_param("use_vision", False)
         base_model = str(self.params.get("model", "z-ai/glm-4.6"))
-        model_with_web_search = self._get_model_with_web_search(base_model)
+        model_with_web_search = self._get_model_with_web_search(base_model, use_vision_param)
 
         request_body = {
             "model": model_with_web_search,
@@ -292,11 +331,20 @@ class OpenRouterChat(Base):
             print(f"STOP_TRACE: HTTP request cancelled for node {self.id}")
             raise
 
+    def _parse_bool_param(self, param_name: str, default: bool = False) -> bool:
+        """Parse a combo boolean parameter that can be string 'true'/'false' or actual bool."""
+        value = self.params.get(param_name, default)
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            return value.lower() == "true"
+        return bool(value)
+
     def _ensure_assistant_role_inplace(self, message: dict[str, Any]) -> None:
         if "role" not in message:
             message["role"] = "assistant"
 
-    def _is_llm_chat_message(self, msg: Any) -> TypeGuard[LLMChatMessage]:
+    def _is_llm_chat_message(self, msg: Any) -> TypeGuard[dict[str, Any]]:
         """Type guard to validate LLMChatMessage structure."""
         return (
             isinstance(msg, dict)
@@ -308,9 +356,10 @@ class OpenRouterChat(Base):
 
     async def _execute_impl(self, inputs: dict[str, Any]) -> dict[str, Any]:
         prompt_text: str | None = inputs.get("prompt")
-        system_input: str | LLMChatMessage | None = inputs.get("system")
+        system_input: str | dict[str, Any] | None = inputs.get("system")
+        images: ConfigDict | None = inputs.get("images")
 
-        merged: list[LLMChatMessage] = []
+        merged: list[dict[str, Any]] = []
         for i in range(5):
             msg = inputs.get(f"message_{i}")
             if msg:
@@ -320,11 +369,11 @@ class OpenRouterChat(Base):
                     raise TypeError(f"Expected LLMChatMessage for message_{i}, got {type(msg)}")
 
         # Filter out empty messages
-        messages: list[LLMChatMessage] = [
+        filtered_messages: list[dict[str, Any]] = [
             m for m in merged if m and str(m.get("content") or "").strip()
         ]
 
-        messages = self._build_messages(messages, prompt_text, system_input)
+        messages = self._build_messages(filtered_messages, prompt_text, system_input, images)
 
         if not messages:
             return self._create_error_response(
@@ -339,6 +388,9 @@ class OpenRouterChat(Base):
             return error_resp
 
         options = self._prepare_generation_options()
+
+        # Enable vision if images present or param set
+        use_vision = self._parse_bool_param("use_vision", False) or bool(images and images)
 
         # Single LLM call with web search enabled via :online suffix
         resp_data_model = await self._call_llm(messages, options, api_key)
@@ -358,6 +410,7 @@ class OpenRouterChat(Base):
         metrics: dict[str, Any] = {
             "temperature": options.get("temperature"),
             "seed": options.get("seed"),
+            "use_vision": use_vision,
         }
 
         if resp_data_model:
@@ -403,6 +456,7 @@ class OpenRouterChat(Base):
                                     "native_tokens_completion",
                                     "latency",
                                     "generation_time",
+                                    "num_media_prompt",  # NEW: Include image count from generation stats
                                 ]:
                                     if key in gen_metrics:
                                         metrics[key] = gen_metrics[key]

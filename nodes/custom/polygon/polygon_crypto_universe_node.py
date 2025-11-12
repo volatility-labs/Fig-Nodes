@@ -1,7 +1,9 @@
 import logging
+from datetime import datetime
 from typing import Any
 
 import httpx
+import pytz
 
 from core.api_key_vault import APIKeyVault
 from core.types_registry import AssetClass, AssetSymbol, get_type
@@ -12,6 +14,7 @@ from services.polygon_service import (
     massive_get_numeric_from_dict,
     massive_parse_ticker_for_market,
 )
+from services.time_utils import utc_timestamp_flex_to_et_datetime
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +78,14 @@ class PolygonCryptoUniverse(Base):
             "unit": "USD",
             "description": "Maximum closing price in USD",
         },
+        {
+            "name": "max_snapshot_delay_minutes",
+            "type": "combo",
+            "default": "5min",
+            "label": "Max Snapshot Delay",
+            "description": "Maximum allowed delay in snapshot 'updated' timestamp; None = no filter",
+            "options": ["None (no filter)", "5min", "15min", "120min"],
+        },
     ]
     default_params = {}
 
@@ -122,16 +133,34 @@ class PolygonCryptoUniverse(Base):
     def _get_numeric_param(self, param_name: str) -> float | None:
         """Extract and validate numeric parameter."""
         param_raw = self.params.get(param_name)
-        return param_raw if isinstance(param_raw, int | float) else None
+        if isinstance(param_raw, int | float):
+            return float(param_raw)
+        return None
 
     def _extract_filter_params(self) -> dict[str, float | None]:
         """Extract all filter parameters."""
+        # Parse max_snapshot_delay_minutes from combo string
+        delay_raw = self.params.get("max_snapshot_delay_minutes")
+        max_snapshot_delay_minutes: float | None = None
+        if delay_raw == "None (no filter)":
+            max_snapshot_delay_minutes = None
+        elif isinstance(delay_raw, str):
+            if delay_raw.endswith("min"):
+                try:
+                    max_snapshot_delay_minutes = float(delay_raw[:-3])
+                except ValueError:
+                    logger.warning(f"Invalid delay string '{delay_raw}'; no filter applied")
+        # Fallback to old numeric if present (for compatibility)
+        elif isinstance(delay_raw, (int, float)):
+            max_snapshot_delay_minutes = float(delay_raw)
+
         return {
             "min_change_perc": self._get_numeric_param("min_change_perc"),
             "max_change_perc": self._get_numeric_param("max_change_perc"),
             "min_volume": self._get_numeric_param("min_volume"),
             "min_price": self._get_numeric_param("min_price"),
             "max_price": self._get_numeric_param("max_price"),
+            "max_snapshot_delay_minutes": max_snapshot_delay_minutes,
         }
 
     def _validate_filter_params(self, filter_params: dict[str, float | None]) -> None:
@@ -151,15 +180,49 @@ class PolygonCryptoUniverse(Base):
         """Process ticker data and apply filters to produce AssetSymbol list."""
         symbols: list[AssetSymbol] = []
         total_tickers = len(tickers_data)
+        filtered_stale = 0
+
+        current_utc = datetime.now(pytz.UTC)
 
         for ticker_item in tickers_data:
             ticker = self._extract_ticker(ticker_item)
             if not ticker:
                 continue
 
+            # Filter: Only include USD-quoted crypto pairs
+            if not self._is_usd_quoted(ticker, market):
+                continue
+
             ticker_data = self._extract_ticker_data(ticker_item, market)
             if not ticker_data:
                 continue
+
+            # New: Check snapshot update delay if filter enabled
+            max_delay_min = filter_params.get("max_snapshot_delay_minutes")
+            if max_delay_min is not None:
+                updated_raw = ticker_item.get("updated")
+                if isinstance(updated_raw, int):
+                    updated_et = utc_timestamp_flex_to_et_datetime(updated_raw)
+                    if updated_et is None:
+                        # Invalid parse: treat as stale
+                        filtered_stale += 1
+                        logger.warning(
+                            f"Filtered ticker {ticker} due to invalid 'updated' timestamp"
+                        )
+                        continue
+                    updated_utc = updated_et.astimezone(pytz.UTC)
+                    delay_minutes = (current_utc - updated_utc).total_seconds() / 60
+                    if delay_minutes > max_delay_min:
+                        filtered_stale += 1
+                        logger.info(
+                            f"Filtered stale snapshot for {ticker}: {delay_minutes:.1f} min delay"
+                        )
+                        continue
+                else:
+                    # No updated timestamp: treat as stale
+                    filtered_stale += 1
+                    logger.warning(f"Filtered ticker {ticker} due to missing 'updated' timestamp")
+                    continue
 
             if not self._passes_filters(ticker_data, filter_params):
                 continue
@@ -167,8 +230,10 @@ class PolygonCryptoUniverse(Base):
             symbol = self._create_asset_symbol(ticker, ticker_item, market, ticker_data)
             symbols.append(symbol)
 
+        # Update progress with stale filter info if applied
+        stale_msg = f"; filtered {filtered_stale} stale snapshots" if filtered_stale > 0 else ""
         self.report_progress(
-            95.0, f"Completed: {len(symbols)} symbols from {total_tickers} tickers"
+            95.0, f"Completed: {len(symbols)} symbols from {total_tickers} tickers{stale_msg}"
         )
         return symbols
 
@@ -176,6 +241,15 @@ class PolygonCryptoUniverse(Base):
         """Extract ticker string from ticker item."""
         ticker_value = ticker_item.get("ticker")
         return ticker_value if isinstance(ticker_value, str) else None
+
+    def _is_usd_quoted(self, ticker: str, market: str) -> bool:
+        """Check if ticker is USD-quoted (for crypto filtering)."""
+        if market != "crypto":
+            return True  # No filtering for non-crypto markets
+
+        _, quote_currency = massive_parse_ticker_for_market(ticker, market)
+        # Only include USD-quoted pairs; None means parsing failed, exclude for safety
+        return quote_currency == "USD"
 
     def _extract_ticker_data(
         self, ticker_item: dict[str, Any], market: str
@@ -185,32 +259,29 @@ class PolygonCryptoUniverse(Base):
         For crypto, markets are 24/7, always using current intraday data from the 'day' bar.
         """
         day_value = ticker_item.get("day")
-        prev_day_value = ticker_item.get("prevDay")
-
         if not isinstance(day_value, dict):
+            ticker_log = ticker_item.get("ticker")
+            if isinstance(ticker_log, str):
+                logger.warning(f"Invalid 'day' data for ticker {ticker_log}")
+            else:
+                logger.warning("Invalid 'day' data for ticker (invalid ticker key)")
             day: dict[str, Any] = {}
-            logger.warning(f"Invalid 'day' data for ticker {ticker_item.get('ticker')}")
         else:
             day = day_value
 
-        if not isinstance(prev_day_value, dict):
-            prev_day: dict[str, Any] = {}
-            logger.warning(f"Invalid 'prevDay' data for ticker {ticker_item.get('ticker')}")
-        else:
-            prev_day = prev_day_value
-
-        # Always use current intraday data for crypto (24/7)
-        use_prev_day = False
-
         # Extract todaysChangePerc (always available, reflects change since prevDay.c)
         change_perc_raw = ticker_item.get("todaysChangePerc")
-        if isinstance(change_perc_raw, (int, float)):
+        if isinstance(change_perc_raw, int | float):
             todays_change_perc = float(change_perc_raw)
         else:
+            ticker_log = ticker_item.get("ticker")
+            if isinstance(ticker_log, str):
+                logger.warning(f"Missing or invalid todaysChangePerc for ticker {ticker_log}")
+            else:
+                logger.warning(
+                    "Missing or invalid todaysChangePerc for ticker (invalid ticker key)"
+                )
             todays_change_perc = None
-            logger.warning(
-                f"Missing or invalid todaysChangePerc for ticker {ticker_item.get('ticker')}"
-            )
 
         # Today (always)
         price = massive_get_numeric_from_dict(day, "c", 0.0)
@@ -219,7 +290,11 @@ class PolygonCryptoUniverse(Base):
         data_source = "day"
 
         if price <= 0:
-            logger.warning(f"Invalid price (<=0) for ticker {ticker_item.get('ticker')}")
+            ticker_log = ticker_item.get("ticker")
+            if isinstance(ticker_log, str):
+                logger.warning(f"Invalid price (<=0) for ticker {ticker_log}")
+            else:
+                logger.warning("Invalid price (<=0) for ticker (invalid ticker key)")
             return None
 
         return {
@@ -233,9 +308,21 @@ class PolygonCryptoUniverse(Base):
         self, ticker_data: dict[str, Any], filter_params: dict[str, float | None]
     ) -> bool:
         """Check if ticker data passes all configured filters."""
-        price = ticker_data["price"]
-        volume = ticker_data["volume"]
-        change_perc = ticker_data["change_perc"]
+        # Type guards for ticker_data values
+        price_raw = ticker_data.get("price")
+        if not isinstance(price_raw, int | float):
+            return False
+        price = float(price_raw)
+
+        volume_raw = ticker_data.get("volume")
+        if not isinstance(volume_raw, int | float):
+            return False
+        volume = float(volume_raw)
+
+        change_perc_raw = ticker_data.get("change_perc")
+        change_perc: float | None = None
+        if isinstance(change_perc_raw, int | float):
+            change_perc = float(change_perc_raw)
 
         min_change_perc = filter_params["min_change_perc"]
         max_change_perc = filter_params["max_change_perc"]
@@ -272,8 +359,12 @@ class PolygonCryptoUniverse(Base):
 
         asset_class = AssetClass.CRYPTO
 
-        data_source = ticker_data.get("data_source", "unknown")
-        change_available = ticker_data.get("change_perc") is not None
+        # Type guards for metadata
+        data_source_raw = ticker_data.get("data_source")
+        data_source = data_source_raw if isinstance(data_source_raw, str) else "unknown"
+
+        change_perc_raw = ticker_data.get("change_perc")
+        change_available = isinstance(change_perc_raw, int | float)
 
         metadata = {
             "original_ticker": ticker,

@@ -1,6 +1,6 @@
 import base64
 import io
-from datetime import datetime, timezone
+import logging
 from typing import TYPE_CHECKING, Any
 
 import matplotlib
@@ -18,17 +18,26 @@ else:
     from matplotlib.patches import Rectangle
 
 from core.api_key_vault import APIKeyVault
-from core.types_registry import AssetSymbol, NodeCategory, NodeValidationError, OHLCVBar, get_type
+from core.types_registry import (
+    AssetClass,
+    AssetSymbol,
+    NodeCategory,
+    NodeValidationError,
+    OHLCVBar,
+    get_type,
+)
 from nodes.base.base_node import Base
 from services.indicator_calculators.ema_calculator import calculate_ema
 from services.indicator_calculators.sma_calculator import calculate_sma
 from services.indicator_calculators.vbp_calculator import calculate_vbp
 from services.polygon_service import fetch_bars
+from services.time_utils import convert_timestamps_to_datetimes
 
 # Constants
 MIN_BARS_REQUIRED = 10
 DAYS_PER_YEAR = 365.25
 PRICE_ROUNDING_PRECISION = 2
+DEFAULT_VBP_COLOR = "#FF6B35"
 
 
 def _encode_fig_to_data_url(fig: "Figure") -> str:
@@ -67,7 +76,9 @@ def _normalize_bars(bars: list[OHLCVBar]) -> list[tuple[int, float, float, float
     return cleaned
 
 
-def _find_significant_levels(histogram: list[dict[str, Any]], num_levels: int) -> list[dict[str, Any]]:
+def _find_significant_levels(
+    histogram: list[dict[str, Any]], num_levels: int
+) -> list[dict[str, Any]]:
     """Find the most significant volume levels from histogram."""
     if not histogram:
         return []
@@ -122,23 +133,21 @@ def _calculate_vbp_levels_from_weekly(
     vbp_levels: list[float] = []
     for level in significant_levels:
         price_level = level.get("priceLevel", 0.0)
-        if isinstance(price_level, (int, float)) and price_level > 0:
+        if isinstance(price_level, int | float) and price_level > 0:
             vbp_levels.append(float(price_level))
 
     return vbp_levels
 
 
-def _calculate_overlay(ohlcv_data: list[OHLCVBar], period: int, ma_type: str) -> list[float | None]:
-    """Calculate SMA or EMA overlay from OHLCV data."""
-    if not ohlcv_data or period <= 1:
+def _calculate_overlay(closes: list[float], period: int, ma_type: str) -> list[float | None]:
+    """Calculate SMA or EMA overlay from close prices."""
+    if not closes or period <= 1:
         return []
-
-    close_prices = [bar["close"] for bar in ohlcv_data]
     if ma_type == "SMA":
-        result = calculate_sma(close_prices, period=period)
+        result = calculate_sma(closes, period=period)
         return result.get("sma", [])
     elif ma_type == "EMA":
-        result = calculate_ema(close_prices, period=period)
+        result = calculate_ema(closes, period=period)
         return result.get("ema", [])
     else:
         return []
@@ -151,12 +160,15 @@ def _plot_candles(
     vbp_levels: list[float] | None = None,
     vbp_color: str = "#FF6B35",
     vbp_style: str = "dashed",
+    asset_class: AssetClass | None = None,
 ) -> None:
     """Plot candlesticks with optional overlay lines and VBP levels."""
 
     if not series:
         ax.set_axis_off()
         return
+
+    logger = logging.getLogger(__name__)
 
     for i, (_ts, o, h, low_price, c) in enumerate(series):
         color = "#26a69a" if c >= o else "#ef5350"  # teal for up, red for down
@@ -169,17 +181,17 @@ def _plot_candles(
 
     # Plot overlay lines (SMA/EMA)
     if overlays:
+        logger.debug(f"Attempting to plot {len(overlays)} overlays for series len {len(series)}")
         for overlay_values, overlay_label, overlay_color in overlays:
             if overlay_values and len(overlay_values) == len(series):
                 # Filter out None values for plotting
                 valid_indices: list[int] = []
                 valid_values: list[float] = []
-
                 for i, val in enumerate(overlay_values):
                     if val is not None:
                         valid_indices.append(i)
                         valid_values.append(val)
-
+                logger.debug(f"  {overlay_label}: plotting {len(valid_values)} points")
                 if valid_indices and valid_values:
                     ax.plot(  # pyright: ignore
                         valid_indices,
@@ -189,6 +201,10 @@ def _plot_candles(
                         label=overlay_label,
                         alpha=0.8,
                     )
+            else:
+                logger.warning(
+                    f"  {overlay_label}: length mismatch {len(overlay_values)} != {len(series)}, skipping plot"
+                )
 
     ax.set_xlim(-1, len(series))
     # Nice y padding - consider overlay values too
@@ -244,72 +260,90 @@ def _plot_candles(
     # Add equal-spaced month labels on X-axis (timezone-aware)
     if len(series) >= 10:  # Only show labels if enough data points
         timestamps_ms: list[int] = [bar[0] for bar in series]
-        # First convert to UTC
-        utc_dates: list[datetime] = [
-            datetime.fromtimestamp(ts / 1000, tz=timezone.utc) for ts in timestamps_ms
-        ]
+        logger.debug(f"Processing {len(timestamps_ms)} timestamps for month labels")
 
-        # Convert to local timezone (user's system timezone)
-        try:
-            import zoneinfo
+        # Use consolidated time conversion utility with asset class awareness
+        # Default to CRYPTO if asset_class not provided (for backward compatibility)
+        effective_asset_class = asset_class if asset_class is not None else AssetClass.CRYPTO
+        logger.debug(f"Using asset_class: {effective_asset_class} for timezone conversion")
 
-            local_tz = zoneinfo.ZoneInfo(matplotlib.rcParams.get("timezone", "UTC"))
-        except Exception:
-            # Fallback if rcParams not set or zoneinfo unavailable
-            local_tz = None
+        local_dates = convert_timestamps_to_datetimes(timestamps_ms, effective_asset_class)
+        logger.debug(f"Converted to {len(local_dates)} datetime objects")
 
-        local_dates: list[datetime] = [
-            d.astimezone(local_tz) if local_tz else d.replace(tzinfo=None) for d in utc_dates
-        ]
-
-        # Find month boundaries (first bar of each month in LOCAL timezone)
+        # Find month boundaries (first bar of each month)
         month_changes: list[int] = [0]  # Start with first bar
         prev_ym: tuple[int, int] | None = None
         for i, d in enumerate(local_dates):
             cur_ym: tuple[int, int] = (d.year, d.month)
             if prev_ym is not None and cur_ym != prev_ym:
                 month_changes.append(i)  # First bar of new month
+                logger.debug(f"Month boundary detected at bar index {i}: {prev_ym} -> {cur_ym}")
             prev_ym = cur_ym
 
         month_changes.append(len(series))  # One-past-the-end
+        logger.debug(f"Found {len(month_changes)} month boundaries: {month_changes}")
 
         # Draw vertical month separators at exact bar boundaries
         for idx in month_changes[1:-1]:  # Skip first and last
-            ax.axvline(
-                x=idx - 0.5, color="gray", linestyle="--", linewidth=0.7, alpha=0.5
-            )  # pyright: ignore
+            ax.axvline(x=idx - 0.5, color="gray", linestyle="--", linewidth=0.7, alpha=0.5)  # pyright: ignore
 
-        # Place label in the exact center of each month block (skip partial months)
+        # Place labels at evenly spaced calendar positions, not at bar count centers
         if len(month_changes) >= 3:  # At least two full months
             positions: list[float] = []
             labels: list[str] = []
+
+            # Calculate total calendar time span
+            first_date = local_dates[0]
+            last_date = local_dates[-1]
+            # Use date() to normalize to midnight for accurate day counting
+            total_days = (last_date.date() - first_date.date()).days + 1
+            logger.debug(
+                f"Time span: {first_date.date()} to {last_date.date()} = {total_days} days, "
+                f"{len(series)} bars"
+            )
 
             for i in range(len(month_changes) - 1):
                 start = month_changes[i]
                 end = month_changes[i + 1]
                 num_bars = end - start
 
-                # Skip months with fewer than 10 bars (partial months like Jun with only 3 bars)
+                # Skip months with fewer than 10 bars (partial months)
                 if num_bars < 10:
+                    logger.debug(f"Skipping month {i}: only {num_bars} bars (partial month)")
                     continue
 
-                # Center index (float for precise positioning)
-                centre_idx = (start + end - 1) / 2.0
-                positions.append(centre_idx)
+                # Get the actual date at the start of this month
+                month_start_date = local_dates[start]
+                # Calculate days from first bar to this month start
+                days_from_start = (month_start_date.date() - first_date.date()).days
+                # Calculate position as fraction of total time span, then map to bar indices
+                time_fraction = days_from_start / total_days if total_days > 0 else 0
+                # Map to bar index range (0 to len(series)-1)
+                position = time_fraction * (len(series) - 1)
+                positions.append(position)
 
-                # Month abbreviation from the middle bar
-                mid_idx = int((start + end - 1) // 2)
-                labels.append(local_dates[mid_idx].strftime("%b"))
+                # Month abbreviation from the start of the month
+                month_label = month_start_date.strftime("%b")
+                labels.append(month_label)
+                logger.debug(
+                    f"Month {i}: {month_start_date.date()}, {num_bars} bars, "
+                    f"days_from_start={days_from_start}, time_fraction={time_fraction:.3f}, "
+                    f"position={position:.2f}, label={month_label}"
+                )
 
             if positions:  # Only set ticks if we have labels to show
+                logger.debug(f"Setting {len(positions)} month labels at positions: {positions}")
                 ax.set_xticks(positions)  # pyright: ignore
                 ax.set_xticklabels(labels, fontsize=7, ha="center")  # pyright: ignore
             else:
+                logger.debug("No valid month positions found, hiding labels")
                 ax.set_xticks([])  # pyright: ignore
         else:
             # Not enough months - hide labels
+            logger.debug(f"Not enough months ({len(month_changes)}), hiding labels")
             ax.set_xticks([])  # pyright: ignore
     else:
+        logger.debug(f"Not enough bars ({len(series)} < 10), hiding month labels")
         ax.set_xticks([])  # pyright: ignore
 
     ax.grid(False)  # pyright: ignore
@@ -348,7 +382,6 @@ class OHLCVPlotEnhanced(Base):
         "vbp_lookback_years": 2,
         "vbp_use_dollar_weighted": False,
         "vbp_use_close_only": False,
-        "vbp_color": "#FF6B35",
         "vbp_style": "dashed",
     }
 
@@ -362,10 +395,24 @@ class OHLCVPlotEnhanced(Base):
             "max": 5000,
             "step": 10,
         },
-        {"name": "overlay1_period", "type": "number", "default": 20, "min": 2, "max": 200, "step": 1},
         {"name": "overlay1_type", "type": "combo", "default": "SMA", "options": ["SMA", "EMA"]},
-        {"name": "overlay2_period", "type": "number", "default": 50, "min": 2, "max": 200, "step": 1},
+        {
+            "name": "overlay1_period",
+            "type": "number",
+            "default": 20,
+            "min": 2,
+            "max": 200,
+            "step": 1,
+        },
         {"name": "overlay2_type", "type": "combo", "default": "SMA", "options": ["SMA", "EMA"]},
+        {
+            "name": "overlay2_period",
+            "type": "number",
+            "default": 50,
+            "min": 2,
+            "max": 200,
+            "step": 1,
+        },
         {"name": "show_vbp_levels", "type": "combo", "default": True, "options": [True, False]},
         {"name": "vbp_bins", "type": "number", "default": 50, "min": 10, "max": 200, "step": 5},
         {"name": "vbp_num_levels", "type": "number", "default": 5, "min": 1, "max": 20, "step": 1},
@@ -384,8 +431,12 @@ class OHLCVPlotEnhanced(Base):
             "options": [True, False],
         },
         {"name": "vbp_use_close_only", "type": "combo", "default": False, "options": [True, False]},
-        {"name": "vbp_color", "type": "text", "default": "#FF6B35"},
-        {"name": "vbp_style", "type": "combo", "default": "dashed", "options": ["solid", "dashed", "dotted"]},
+        {
+            "name": "vbp_style",
+            "type": "combo",
+            "default": "dashed",
+            "options": ["solid", "dashed", "dotted"],
+        },
     ]
 
     def _get_int_param(self, key: str, default: int) -> int:
@@ -401,6 +452,7 @@ class OHLCVPlotEnhanced(Base):
         return bool(raw) if raw is not None else default
 
     async def _execute_impl(self, inputs: dict[str, Any]) -> dict[str, Any]:
+        logger = logging.getLogger(__name__)
         bundle: dict[AssetSymbol, list[OHLCVBar]] | None = inputs.get("ohlcv_bundle")
         single_bundle: dict[AssetSymbol, list[OHLCVBar]] | None = inputs.get("ohlcv")
 
@@ -428,7 +480,11 @@ class OHLCVPlotEnhanced(Base):
             period_raw = self.params.get(f"overlay{i}_period", 20 if i == 1 else 50)
             ma_type_raw = self.params.get(f"overlay{i}_type", "SMA")
 
-            if isinstance(period_raw, (int, float)) and isinstance(ma_type_raw, str) and ma_type_raw in ["SMA", "EMA"]:
+            if (
+                isinstance(period_raw, int | float)
+                and isinstance(ma_type_raw, str)
+                and ma_type_raw in ["SMA", "EMA"]
+            ):
                 overlay_configs.append((int(period_raw), ma_type_raw))
 
         # VBP parameters
@@ -438,7 +494,7 @@ class OHLCVPlotEnhanced(Base):
         vbp_lookback_years = self._get_int_param("vbp_lookback_years", 2)
         vbp_use_dollar_weighted = self._get_bool_param("vbp_use_dollar_weighted", False)
         vbp_use_close_only = self._get_bool_param("vbp_use_close_only", False)
-        vbp_color = str(self.params.get("vbp_color", "#FF6B35"))
+        vbp_color = DEFAULT_VBP_COLOR  # Use default color instead of reading from params
         vbp_style = str(self.params.get("vbp_style", "dashed"))
 
         # Get API key for fetching weekly bars
@@ -463,28 +519,12 @@ class OHLCVPlotEnhanced(Base):
 
             items = list(bundle.items())[:max_syms]
             for sym, bars in items:
-                # Calculate overlays on full data (before trimming to lookback)
-                plot_overlays: list[tuple[list[float | None], str, str]] = []
-                colors = ["#2196F3", "#FF9800"]  # Blue, Orange
-
-                for i, (period, ma_type) in enumerate(overlay_configs):
-                    # Calculate on full data with warmup
-                    overlay_values_full = _calculate_overlay(bars, period, ma_type)
-                    if overlay_values_full:
-                        # Trim overlay to match the lookback window
-                        if lookback is not None and lookback > 0:
-                            overlay_values = overlay_values_full[-lookback:]
-                        else:
-                            overlay_values = overlay_values_full
-                        label = f"{ma_type} {period}"
-                        color = colors[i % len(colors)]
-                        plot_overlays.append((overlay_values, label, color))
-
-                # Fetch weekly bars and calculate VBP levels
                 vbp_levels_for_sym: list[float] | None = None
                 if show_vbp and api_key:
                     try:
-                        weekly_bars = await _fetch_weekly_bars_for_vbp(sym, api_key, vbp_lookback_years)
+                        weekly_bars = await _fetch_weekly_bars_for_vbp(
+                            sym, api_key, vbp_lookback_years
+                        )
                         if weekly_bars:
                             vbp_levels_for_sym = _calculate_vbp_levels_from_weekly(
                                 weekly_bars,
@@ -494,31 +534,34 @@ class OHLCVPlotEnhanced(Base):
                                 vbp_use_close_only,
                             )
                     except Exception as e:
-                        # If fetching fails, continue without VBP levels
-                        import logging
-
                         logger = logging.getLogger(__name__)
-                        logger.warning(f"Failed to fetch weekly bars for VBP calculation for {sym}: {e}")
+                        logger.warning(
+                            f"Failed to fetch weekly bars for VBP calculation for {sym}: {e}"
+                        )
 
                 # Normalize and trim bars for display (daily bars from input)
                 norm = _normalize_bars(bars)
                 if lookback is not None and lookback > 0:
                     norm = norm[-lookback:]
 
-                # Trim overlays to match normalized bars length
-                if plot_overlays:
-                    trimmed_overlays: list[tuple[list[float | None], str, str]] = []
-                    for overlay_values, label, color in plot_overlays:
-                        if len(overlay_values) == len(bars):
-                            # Need to trim overlay to match norm length
-                            if lookback is not None and lookback > 0:
-                                trimmed_overlay = overlay_values[-lookback:]
-                            else:
-                                trimmed_overlay = overlay_values
-                            trimmed_overlays.append((trimmed_overlay, label, color))
-                    plot_overlays = trimmed_overlays
+                # Calculate overlays on the normalized and trimmed data
+                plot_overlays: list[tuple[list[float | None], str, str]] = []
+                if overlay_configs:
+                    close_prices = [bar[4] for bar in norm]
+                    colors = ["#2196F3", "#FF9800"]
+                    for i, (period, ma_type) in enumerate(overlay_configs):
+                        overlay_values = _calculate_overlay(close_prices, period, ma_type)
+                        non_none_count = sum(1 for v in overlay_values if v is not None)
+                        logging.getLogger(__name__).info(
+                            f"Computed {ma_type}({period}) for {sym}: {len(overlay_values)} total, "
+                            f"{non_none_count} non-None in plot of {len(norm)} bars"
+                        )
+                        label = f"{ma_type} {period}"
+                        color = colors[i % len(colors)]
+                        plot_overlays.append((overlay_values, label, color))
 
                 fig, ax = plt.subplots(figsize=(3.2, 2.2))  # pyright: ignore
+                logger.debug(f"Plotting {sym} ({sym.asset_class}) with {len(norm)} bars")
                 _plot_candles(
                     ax,
                     norm,
@@ -526,10 +569,10 @@ class OHLCVPlotEnhanced(Base):
                     vbp_levels_for_sym if show_vbp else None,
                     vbp_color,
                     vbp_style,
+                    asset_class=sym.asset_class,  # Pass asset_class for timezone handling
                 )
                 ax.set_title(str(sym), fontsize=8)  # pyright: ignore
                 ax.tick_params(labelsize=7)  # pyright: ignore
                 images[str(sym)] = _encode_fig_to_data_url(fig)
 
         return {"images": images}
-

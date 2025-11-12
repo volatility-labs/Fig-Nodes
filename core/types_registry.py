@@ -161,7 +161,7 @@ ParamScalar = str | int | float | bool
 ParamValue = ParamScalar | None | list[ParamScalar] | dict[str, Any]
 
 # UI param type tags used by the frontend
-ParamType = Literal["text", "textarea", "number", "integer", "int", "float", "combo"]
+ParamType = Literal["text", "textarea", "number", "integer", "int", "float", "combo", "boolean"]
 
 
 class ParamMeta(TypedDict, total=False):

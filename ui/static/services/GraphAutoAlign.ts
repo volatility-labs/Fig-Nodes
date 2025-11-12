@@ -1,12 +1,12 @@
 import { LGraph, LGraphNode } from '@comfyorg/litegraph';
 
-
 export class GraphAutoAlign {
-    private static readonly HORIZONTAL_SPACING = 300; // Space between levels
-    private static readonly VERTICAL_SPACING = 100; // Space between nodes in same level
+    private static readonly LEVEL_SPACING = 250; // Space between topological levels (horizontal)
+    private static readonly NODE_SPACING = 120; // Space between nodes in same level (vertical)
+    private static readonly MIN_NODE_SPACING = 150; // Minimum spacing to prevent overlap (vertical)
     private static readonly START_X = 100; // Starting X position
     private static readonly START_Y = 100; // Starting Y position
-    private static readonly ESTIMATED_CANVAS_HEIGHT = 800; // Fallback if no canvas info; can be overridden
+    private static readonly COMPONENT_SPACING = 400; // Vertical spacing between disconnected components
 
     /**
      * Auto-aligns all nodes in the graph based on flow topology
@@ -28,7 +28,6 @@ export class GraphAutoAlign {
         const serializedNodes = serialized.nodes || [];
 
         // Build node ID to node map
-        // Since asSerialisable with sortNodes: true preserves order, we can match by index
         const nodeMap = new Map<number, LGraphNode>();
         
         serializedNodes.forEach((serializedNode: any) => {
@@ -67,11 +66,20 @@ export class GraphAutoAlign {
             }
         });
 
-        // Topological sort to assign levels
-        const nodeLevels = this.topologicalLevels(nodeMap, inEdges, outEdges);
+        // Detect disconnected components
+        const components = this.detectComponents(nodeMap, inEdges, outEdges);
 
-        // Position nodes
-        this.positionNodes(nodeLevels, nodeMap);
+        // Topological sort to assign levels for each component
+        const nodeLevels = new Map<number, number>();
+        components.forEach((componentNodes, componentIndex) => {
+            const componentLevels = this.topologicalLevels(componentNodes, inEdges, outEdges);
+            componentLevels.forEach((level, nodeId) => {
+                nodeLevels.set(nodeId, level);
+            });
+        });
+
+        // Position nodes with component awareness
+        this.positionNodes(nodeLevels, nodeMap, components);
 
         // Redraw canvas
         const canvas = graph.list_of_graphcanvas?.[0];
@@ -80,8 +88,49 @@ export class GraphAutoAlign {
         }
     }
 
-    private static topologicalLevels(
+    /**
+     * Detects disconnected components in the graph
+     */
+    private static detectComponents(
         nodeMap: Map<number, LGraphNode>,
+        inEdges: Map<number, number[]>,
+        outEdges: Map<number, number[]>
+    ): Map<number, Set<number>> {
+        const visited = new Set<number>();
+        const components = new Map<number, Set<number>>();
+        let componentIndex = 0;
+
+        const dfs = (nodeId: number, component: Set<number>) => {
+            if (visited.has(nodeId)) return;
+            visited.add(nodeId);
+            component.add(nodeId);
+
+            // Visit all neighbors (both incoming and outgoing)
+            const neighbors = [
+                ...(inEdges.get(nodeId) || []),
+                ...(outEdges.get(nodeId) || [])
+            ];
+            
+            neighbors.forEach(neighborId => {
+                if (!visited.has(neighborId)) {
+                    dfs(neighborId, component);
+                }
+            });
+        };
+
+        nodeMap.forEach((_, nodeId) => {
+            if (!visited.has(nodeId)) {
+                const component = new Set<number>();
+                dfs(nodeId, component);
+                components.set(componentIndex++, component);
+            }
+        });
+
+        return components;
+    }
+
+    private static topologicalLevels(
+        componentNodes: Set<number>,
         inEdges: Map<number, number[]>,
         outEdges: Map<number, number[]>
     ): Map<number, number> {
@@ -89,9 +138,9 @@ export class GraphAutoAlign {
         const queue: Array<{ id: number; level: number }> = [];
         const inDegree = new Map<number, number>();
 
-        // Calculate in-degree for each node
-        nodeMap.forEach((_, nodeId) => {
-            const degree = inEdges.get(nodeId)?.length || 0;
+        // Calculate in-degree for each node in component
+        componentNodes.forEach((nodeId) => {
+            const degree = inEdges.get(nodeId)?.filter(id => componentNodes.has(id)).length || 0;
             inDegree.set(nodeId, degree);
             if (degree === 0) {
                 queue.push({ id: nodeId, level: 0 });
@@ -105,8 +154,8 @@ export class GraphAutoAlign {
 
             nodeLevels.set(id, level);
 
-            // Process outgoing edges
-            const neighbors = outEdges.get(id) || [];
+            // Process outgoing edges (only within component)
+            const neighbors = (outEdges.get(id) || []).filter(nid => componentNodes.has(nid));
             neighbors.forEach(neighborId => {
                 const currentDegree = inDegree.get(neighborId) || 0;
                 inDegree.set(neighborId, currentDegree - 1);
@@ -117,8 +166,8 @@ export class GraphAutoAlign {
             });
         }
 
-        // Handle disconnected nodes (assign to level 0)
-        nodeMap.forEach((_, nodeId) => {
+        // Handle disconnected nodes within component (assign to level 0)
+        componentNodes.forEach((nodeId) => {
             if (!nodeLevels.has(nodeId)) {
                 nodeLevels.set(nodeId, 0);
             }
@@ -126,10 +175,10 @@ export class GraphAutoAlign {
 
         // After processing, detect cycles (unprocessed nodes with inDegree > 0)
         const processedCount = nodeLevels.size;
-        if (processedCount < nodeMap.size) {
-            console.warn(`Cycle detected: ${nodeMap.size - processedCount} nodes in cycle(s). Grouping at max level + 1.`);
+        if (processedCount < componentNodes.size) {
+            console.warn(`Cycle detected in component: ${componentNodes.size - processedCount} nodes in cycle(s). Grouping at max level + 1.`);
             let maxLevel = Math.max(...Array.from(nodeLevels.values()), 0);
-            nodeMap.forEach((_, nodeId) => {
+            componentNodes.forEach((nodeId) => {
                 if (!nodeLevels.has(nodeId)) {
                     nodeLevels.set(nodeId, maxLevel + 1);
                 }
@@ -140,56 +189,115 @@ export class GraphAutoAlign {
 
     private static positionNodes(
         nodeLevels: Map<number, number>,
-        nodeMap: Map<number, LGraphNode>
+        nodeMap: Map<number, LGraphNode>,
+        components: Map<number, Set<number>>
     ): void {
-        const nodesByLevel = new Map<number, LGraphNode[]>();
-
-        nodeLevels.forEach((level, nodeId) => {
-            const node = nodeMap.get(nodeId);
-            if (node) {
-                if (!nodesByLevel.has(level)) {
-                    nodesByLevel.set(level, []);
+        // Group nodes by component and level
+        const componentLevels = new Map<number, Map<number, LGraphNode[]>>();
+        
+        components.forEach((componentNodes, componentIndex) => {
+            const levels = new Map<number, LGraphNode[]>();
+            componentNodes.forEach((nodeId) => {
+                const level = nodeLevels.get(nodeId) ?? 0;
+                const node = nodeMap.get(nodeId);
+                if (node) {
+                    if (!levels.has(level)) {
+                        levels.set(level, []);
+                    }
+                    levels.get(level)!.push(node);
                 }
-                nodesByLevel.get(level)!.push(node);
-            }
+            });
+            componentLevels.set(componentIndex, levels);
         });
 
-        const sortedLevels = Array.from(nodesByLevel.keys()).sort((a, b) => a - b);
+        // Calculate component bounds for layout
+        const componentBounds = new Map<number, { width: number; height: number; maxLevel: number }>();
+        componentLevels.forEach((levels, componentIndex) => {
+            const sortedLevels = Array.from(levels.keys()).sort((a, b) => a - b);
+            const maxLevel = sortedLevels.length > 0 ? Math.max(...sortedLevels) : 0;
+            
+            // Calculate total width (horizontal span)
+            let totalWidth = 0;
+            sortedLevels.forEach((level, i) => {
+                const levelNodes = levels.get(level) || [];
+                const levelWidth = Math.max(...levelNodes.map(n => n.size?.[0] ?? 200), 200);
+                if (i > 0) totalWidth += this.LEVEL_SPACING;
+                totalWidth += levelWidth;
+            });
+            
+            // Calculate max height across all levels (vertical span per level, take max)
+            let maxHeight = 0;
+            levels.forEach((levelNodes) => {
+                let levelHeight = 0;
+                levelNodes.forEach((node, i) => {
+                    const h = node.size?.[1] ?? 100;
+                    if (i > 0) levelHeight += this.NODE_SPACING;
+                    levelHeight += h;
+                });
+                maxHeight = Math.max(maxHeight, levelHeight);
+            });
+            
+            componentBounds.set(componentIndex, { width: totalWidth, height: maxHeight, maxLevel });
+        });
 
-        // For disconnected components at level 0, offset them horizontally if multiple groups
-        if (nodesByLevel.has(0)) {
-            const level0Nodes = nodesByLevel.get(0)!;
-            // Simple grouping: sort by original X to cluster
-            level0Nodes.sort((a, b) => (a.pos?.[0] ?? 0) - (b.pos?.[0] ?? 0));
-        }
+        // Position components vertically (disconnected components top to bottom)
+        let currentComponentY = this.START_Y;
+        const componentYOffsets = new Map<number, number>();
+        
+        // Sort components by size (largest first) for better layout
+        const sortedComponents = Array.from(components.keys()).sort((a, b) => {
+            const boundsA = componentBounds.get(a)!;
+            const boundsB = componentBounds.get(b)!;
+            // Sort by number of nodes (larger components first)
+            return components.get(b)!.size - components.get(a)!.size;
+        });
 
-        sortedLevels.forEach((level, levelIndex) => {
-            let levelNodes = nodesByLevel.get(level) || [];
+        sortedComponents.forEach((componentIndex) => {
+            componentYOffsets.set(componentIndex, currentComponentY);
+            const bounds = componentBounds.get(componentIndex)!;
+            // Move to next component position with spacing
+            currentComponentY += bounds.height + this.COMPONENT_SPACING;
+        });
+
+        // Position nodes within each component
+        componentLevels.forEach((levels, componentIndex) => {
+            const componentYOffset = componentYOffsets.get(componentIndex) ?? this.START_Y;
+            const sortedLevels = Array.from(levels.keys()).sort((a, b) => a - b);
             
-            // Sort within level by original Y position for consistency
-            levelNodes = levelNodes.sort((a, b) => (a.pos?.[1] ?? 0) - (b.pos?.[1] ?? 0));
-            
-            // Dynamic horizontal spacing: add extra based on max width in previous level
-            let x = this.START_X + (level * this.HORIZONTAL_SPACING);
-            if (level > 0) {
-                const prevLevelNodes = nodesByLevel.get(sortedLevels[levelIndex - 1]) || [];
-                const maxPrevWidth = Math.max(...prevLevelNodes.map(n => (n.size?.[0] ?? 200)), 200);
-                x += maxPrevWidth / 2;
-            }
-            
-            // Calculate total height for centering
-            const totalHeight = levelNodes.reduce((sum, node) => {
-                return sum + ((node.size && node.size[1]) ? node.size[1] : 100) + this.VERTICAL_SPACING;
-            }, 0) - this.VERTICAL_SPACING;
-            
-            // Center vertically using estimated canvas height
-            let currentY = this.START_Y + (this.ESTIMATED_CANVAS_HEIGHT - totalHeight) / 2;
-            
-            levelNodes.forEach(node => {
-                const nodeHeight = (node.size && node.size[1]) ? node.size[1] : 100;
-                node.pos = [x, currentY];
-                node.setDirtyCanvas(true, true);
-                currentY += nodeHeight + this.VERTICAL_SPACING;
+            let currentX = this.START_X;
+
+            sortedLevels.forEach((level) => {
+                let levelNodes = levels.get(level) || [];
+                
+                // Sort within level by original Y position for consistency
+                levelNodes = levelNodes.sort((a, b) => (a.pos?.[1] ?? 0) - (b.pos?.[1] ?? 0));
+                
+                // Level X is currentX
+                const levelX = currentX;
+                
+                // Position nodes vertically with spacing
+                let currentY = componentYOffset;
+                let lastNodeBottom = componentYOffset;
+                let maxWidthInLevel = 0;
+
+                levelNodes.forEach((node, nodeIndex) => {
+                    const nodeWidth = node.size?.[0] ?? 200;
+                    const nodeHeight = node.size?.[1] ?? 100;
+
+                    if (nodeIndex > 0) {
+                        currentY = lastNodeBottom + this.NODE_SPACING;
+                        currentY = Math.max(currentY, lastNodeBottom + this.MIN_NODE_SPACING);
+                    }
+
+                    node.pos = [levelX, currentY];
+                    node.setDirtyCanvas(true, true);
+                    
+                    lastNodeBottom = currentY + nodeHeight;
+                    maxWidthInLevel = Math.max(maxWidthInLevel, nodeWidth);
+                });
+                
+                // Update currentX for next level
+                currentX = levelX + maxWidthInLevel + this.LEVEL_SPACING;
             });
         });
     }
