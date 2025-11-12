@@ -414,19 +414,23 @@ if "PYTEST_CURRENT_TEST" not in os.environ:
         ),
         name="examples",
     )
-    app.mount(
-        "/static",
-        StaticFiles(directory=os.path.join(os.path.dirname(__file__), "..", "ui", "static/dist")),
-        name="static",
-    )
-    app.mount(
-        "/",
-        StaticFiles(
-            directory=os.path.join(os.path.dirname(__file__), "..", "ui", "static", "dist"),
-            html=True,
-        ),
-        name="root_static",
-    )
+    # Only mount dist directory if it exists (for production builds)
+    # In dev mode, Vite serves files directly, so dist doesn't exist
+    dist_dir = os.path.join(os.path.dirname(__file__), "..", "ui", "static", "dist")
+    if os.path.exists(dist_dir):
+        app.mount(
+            "/static",
+            StaticFiles(directory=dist_dir),
+            name="static",
+        )
+        app.mount(
+            "/",
+            StaticFiles(
+                directory=dist_dir,
+                html=True,
+            ),
+            name="root_static",
+        )
 
 
 # ============================================================================
