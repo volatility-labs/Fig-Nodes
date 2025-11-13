@@ -4,6 +4,7 @@ import math
 from datetime import date, datetime, timedelta
 from typing import Any
 
+import numpy as np
 import pandas as pd
 import pytz
 
@@ -40,6 +41,8 @@ class OrbFilter(BaseIndicatorFilter):
         "rel_vol_threshold": 100.0,
         "direction": "both",  # 'bullish', 'bearish', 'both'
         "avg_period": 14,
+        "filter_above_orh": "false",  # Filter for price above Opening Range High
+        "filter_below_orl": "false",  # Filter for price below Opening Range Low
         "max_concurrent": 10,  # For concurrency limiting
         "rate_limit_per_second": 95,  # Stay under Polygon's recommended 100/sec
     }
@@ -54,13 +57,25 @@ class OrbFilter(BaseIndicatorFilter):
             "options": ["bullish", "bearish", "both"],
         },
         {"name": "avg_period", "type": "number", "default": 14, "min": 1, "step": 1},
+        {
+            "name": "filter_above_orh",
+            "type": "combo",
+            "default": "false",
+            "options": ["true", "false"],
+        },
+        {
+            "name": "filter_below_orl",
+            "type": "combo",
+            "default": "false",
+            "options": ["true", "false"],
+        },
     ]
 
     def __init__(
         self, id: int, params: dict[str, Any], graph_context: dict[str, Any] | None = None
     ):
         super().__init__(id, params, graph_context)
-        self.workers: list[asyncio.Task[NodeOutputs]] = []
+        self.workers: list[asyncio.Task[None]] = []
         self._max_safe_concurrency = 5
 
     def force_stop(self):
@@ -76,6 +91,8 @@ class OrbFilter(BaseIndicatorFilter):
         or_minutes = self.params["or_minutes"]
         rel_vol_threshold = self.params["rel_vol_threshold"]
         avg_period = self.params["avg_period"]
+        filter_above_orh = self.params.get("filter_above_orh", "false")
+        filter_below_orl = self.params.get("filter_below_orl", "false")
 
         if not isinstance(or_minutes, int | float) or or_minutes <= 0:
             raise ValueError("Opening range minutes must be positive")
@@ -83,6 +100,10 @@ class OrbFilter(BaseIndicatorFilter):
             raise ValueError("Relative volume threshold cannot be negative")
         if not isinstance(avg_period, int | float) or avg_period <= 0:
             raise ValueError("Average period must be positive")
+        if not isinstance(filter_above_orh, str) or filter_above_orh not in ["true", "false"]:
+            raise ValueError('filter_above_orh must be "true" or "false"')
+        if not isinstance(filter_below_orl, str) or filter_below_orl not in ["true", "false"]:
+            raise ValueError('filter_below_orl must be "true" or "false"')
 
     async def _calculate_orb_indicator(self, symbol: AssetSymbol, api_key: str) -> IndicatorResult:
         avg_period_raw = self.params["avg_period"]
@@ -127,16 +148,17 @@ class OrbFilter(BaseIndicatorFilter):
                 params=self.params,
                 error="No bars fetched",
             )
-        
+
         # Log bar details for delay analysis
         if bars:
             from services.time_utils import utc_timestamp_ms_to_et_datetime
+
             current_time_et = datetime.now(pytz.timezone("US/Eastern"))
             first_bar_time = utc_timestamp_ms_to_et_datetime(bars[0]["timestamp"])
             last_bar_time = utc_timestamp_ms_to_et_datetime(bars[-1]["timestamp"])
             time_diff = current_time_et - last_bar_time
             delay_minutes = time_diff.total_seconds() / 60
-            
+
             logger.info("=" * 80)
             logger.info(f"ORB_FILTER: Bars received for {symbol.ticker}")
             logger.info(f"ORB_FILTER: Total bars: {len(bars)}")
@@ -144,13 +166,17 @@ class OrbFilter(BaseIndicatorFilter):
             logger.info(f"ORB_FILTER: Last bar timestamp (ET): {last_bar_time}")
             logger.info(f"ORB_FILTER: Current time (ET): {current_time_et}")
             logger.info(f"ORB_FILTER: Delay from last bar: {delay_minutes:.2f} minutes")
-            
+
             if delay_minutes < 5:
                 logger.info(f"ORB_FILTER: ✅ Data appears REAL-TIME for {symbol.ticker}")
             elif delay_minutes < 15:
-                logger.warning(f"ORB_FILTER: ⚠️ Data appears SLIGHTLY DELAYED for {symbol.ticker} ({delay_minutes:.2f} min)")
+                logger.warning(
+                    f"ORB_FILTER: ⚠️ Data appears SLIGHTLY DELAYED for {symbol.ticker} ({delay_minutes:.2f} min)"
+                )
             else:
-                logger.warning(f"ORB_FILTER: ⚠️ Data appears SIGNIFICANTLY DELAYED for {symbol.ticker} ({delay_minutes:.2f} min)")
+                logger.warning(
+                    f"ORB_FILTER: ⚠️ Data appears SIGNIFICANTLY DELAYED for {symbol.ticker} ({delay_minutes:.2f} min)"
+                )
             logger.info("=" * 80)
 
         # Use the calculator to calculate ORB indicators
@@ -167,6 +193,8 @@ class OrbFilter(BaseIndicatorFilter):
 
         rel_vol_raw = result.get("rel_vol")
         direction = result.get("direction", "doji")
+        or_high = result.get("or_high")
+        or_low = result.get("or_low")
 
         # Type guard: ensure rel_vol is a number
         if not isinstance(rel_vol_raw, int | float):
@@ -177,7 +205,22 @@ class OrbFilter(BaseIndicatorFilter):
         # Get the latest timestamp from bars for the result
         latest_timestamp = bars[-1]["timestamp"] if bars else 0
 
-        values = IndicatorValue(lines={"rel_vol": rel_vol}, series=[{"direction": direction}])
+        # Get current price from the latest bar
+        current_price = bars[-1]["close"] if bars else np.nan
+
+        # Convert None values to np.nan for type compatibility
+        or_high_float = or_high if or_high is not None else np.nan
+        or_low_float = or_low if or_low is not None else np.nan
+
+        values = IndicatorValue(
+            lines={
+                "rel_vol": rel_vol,
+                "or_high": or_high_float,
+                "or_low": or_low_float,
+                "current_price": current_price,
+            },
+            series=[{"direction": direction}],
+        )
 
         return IndicatorResult(
             indicator_type=IndicatorType.ORB,
@@ -211,9 +254,34 @@ class OrbFilter(BaseIndicatorFilter):
             return False
 
         param_dir = self.params["direction"]
-        if param_dir == "both":
-            return True
-        return direction == param_dir
+        if param_dir != "both" and direction != param_dir:
+            return False
+
+        # Additional price-based filters
+        lines = indicator_result.values.lines
+        current_price = lines.get("current_price", np.nan)
+        or_high = lines.get("or_high", np.nan)
+        or_low = lines.get("or_low", np.nan)
+
+        # Check filter_above_orh (convert string "true"/"false" to boolean)
+        filter_above_orh_str = self.params.get("filter_above_orh", "false")
+        filter_above_orh = filter_above_orh_str == "true"
+        if filter_above_orh:
+            if math.isnan(current_price) or math.isnan(or_high):
+                return False
+            if not (current_price > or_high):
+                return False
+
+        # Check filter_below_orl (convert string "true"/"false" to boolean)
+        filter_below_orl_str = self.params.get("filter_below_orl", "false")
+        filter_below_orl = filter_below_orl_str == "true"
+        if filter_below_orl:
+            if math.isnan(current_price) or math.isnan(or_low):
+                return False
+            if not (current_price < or_low):
+                return False
+
+        return True
 
     def _get_target_date_for_orb(
         self, symbol: AssetSymbol, today_date: date, df: pd.DataFrame
@@ -324,9 +392,10 @@ class OrbFilter(BaseIndicatorFilter):
 
         # Enforce a conservative upper bound for concurrency to maintain fairness and predictable timing
         effective_concurrency = min(max_concurrent, self._max_safe_concurrency)
-        self.workers = [
+        self.workers.clear()
+        self.workers.extend(
             asyncio.create_task(worker(i)) for i in range(min(effective_concurrency, total_symbols))
-        ]
+        )
 
         # Gather workers: swallow regular exceptions to allow partial success, but
         # propagate cancellations to honor caller's intent.

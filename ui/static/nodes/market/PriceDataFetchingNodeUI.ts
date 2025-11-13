@@ -4,7 +4,6 @@ export default class PriceDataFetchingNodeUI extends BaseCustomNode {
     constructor(title: string, data: any, serviceRegistry: any) {
         super(title, data, serviceRegistry);
         
-        // Set appropriate size for displaying formatted price data
         this.size = [500, 300];
         
         // Enable default text display

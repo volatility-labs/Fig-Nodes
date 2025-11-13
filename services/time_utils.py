@@ -167,15 +167,15 @@ def utc_timestamp_flex_to_et_datetime(ts: int) -> datetime | None:
 def get_timezone_for_asset_class(asset_class: Any) -> pytz.BaseTzInfo:
     """
     Get the appropriate timezone for an asset class.
-    
+
     Args:
         asset_class: AssetClass enum (CRYPTO or STOCKS)
-    
+
     Returns:
         pytz timezone object:
         - UTC for crypto (bars are at UTC midnight)
         - US/Eastern for stocks (bars are at market open/close ET)
-    
+
     Example:
         >>> from core.types_registry import AssetClass
         >>> get_timezone_for_asset_class(AssetClass.CRYPTO)
@@ -184,17 +184,18 @@ def get_timezone_for_asset_class(asset_class: Any) -> pytz.BaseTzInfo:
         <DstTzInfo 'US/Eastern' ...>
     """
     import logging
+
     from core.types_registry import AssetClass
-    
+
     logger = logging.getLogger(__name__)
-    
+
     if asset_class == AssetClass.CRYPTO:
         tz = pytz.timezone("UTC")
-        logger.debug(f"Using UTC timezone for CRYPTO asset class")
+        logger.debug("Using UTC timezone for CRYPTO asset class")
         return tz
     elif asset_class == AssetClass.STOCKS:
         tz = pytz.timezone("US/Eastern")
-        logger.debug(f"Using US/Eastern timezone for STOCKS asset class")
+        logger.debug("Using US/Eastern timezone for STOCKS asset class")
         return tz
     else:
         # Default to UTC for unknown asset classes
@@ -203,19 +204,18 @@ def get_timezone_for_asset_class(asset_class: Any) -> pytz.BaseTzInfo:
 
 
 def utc_timestamp_ms_to_datetime(
-    timestamp_ms: int, 
-    target_tz: pytz.BaseTzInfo | None = None
+    timestamp_ms: int, target_tz: pytz.BaseTzInfo | None = None
 ) -> datetime:
     """
     Convert UTC timestamp in milliseconds to datetime in target timezone.
-    
+
     Args:
         timestamp_ms: UTC timestamp in milliseconds
         target_tz: Target timezone (defaults to UTC if None)
-    
+
     Returns:
         Datetime object in target timezone
-    
+
     Example:
         >>> tz = pytz.timezone("US/Eastern")
         >>> utc_timestamp_ms_to_datetime(1729954200000, tz)
@@ -233,14 +233,14 @@ def convert_timestamps_to_datetimes(
 ) -> list[datetime]:
     """
     Convert list of UTC timestamps (ms) to datetimes in appropriate timezone.
-    
+
     Args:
         timestamps_ms: List of UTC timestamps in milliseconds
         asset_class: AssetClass enum (CRYPTO or STOCKS)
-    
+
     Returns:
         List of datetime objects in appropriate timezone
-    
+
     Example:
         >>> from core.types_registry import AssetClass
         >>> timestamps = [1729954200000, 1730040600000]
@@ -248,19 +248,18 @@ def convert_timestamps_to_datetimes(
         [datetime.datetime(2025, 10, 26, 0, 0, tzinfo=<UTC>), ...]
     """
     import logging
+
     logger = logging.getLogger(__name__)
-    
+
     target_tz = get_timezone_for_asset_class(asset_class)
     logger.debug(f"Converting {len(timestamps_ms)} timestamps to {target_tz} timezone")
-    
-    result = [
-        utc_timestamp_ms_to_datetime(ts, target_tz) for ts in timestamps_ms
-    ]
-    
+
+    result = [utc_timestamp_ms_to_datetime(ts, target_tz) for ts in timestamps_ms]
+
     if result:
         logger.debug(
             f"First timestamp: {timestamps_ms[0]} -> {result[0]}, "
             f"Last timestamp: {timestamps_ms[-1]} -> {result[-1]}"
         )
-    
+
     return result

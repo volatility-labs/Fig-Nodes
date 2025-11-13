@@ -91,6 +91,7 @@ class OpenRouterChat(Base):
     - seed: int (seed for the chat)
     - seed_mode: str (mode for the seed)
     - use_vision: str (combo: "true" or "false" - automatically select vision-capable model if images provided)
+    - inject_graph_context: str (combo: "true" or "false" - inject graph structure into first user message)
     """
 
     inputs = {
@@ -121,6 +122,7 @@ class OpenRouterChat(Base):
         "seed": 0,
         "seed_mode": "fixed",  # fixed | random | increment
         "use_vision": "false",
+        "inject_graph_context": "false",
     }
 
     params_meta = [
@@ -154,6 +156,13 @@ class OpenRouterChat(Base):
             "default": "false",
             "options": ["true", "false"],
             "description": "Enable vision mode for image inputs (auto-switches to vision-capable model)",
+        },
+        {
+            "name": "inject_graph_context",
+            "type": "combo",
+            "default": "false",
+            "options": ["true", "false"],
+            "description": "Inject graph context (nodes and data flow) into the first user message",
         },
     ]
 
@@ -340,6 +349,140 @@ class OpenRouterChat(Base):
             return value.lower() == "true"
         return bool(value)
 
+    def _format_graph_context_for_llm(self) -> str:
+        """Format graph context into a concise, LLM-friendly text representation."""
+        if not self.graph_context:
+            return ""
+
+        nodes = self.graph_context.get("nodes", [])
+        links = self.graph_context.get("links", [])
+        current_node_id = self.graph_context.get("current_node_id")
+
+        if not nodes:
+            return ""
+
+        lines: list[str] = []
+        lines.append("=== Graph Context ===")
+        lines.append(f"This node (ID: {current_node_id}) is part of a data processing pipeline.")
+        lines.append("")
+
+        # Build node lookup for easier reference
+        node_lookup: dict[int, dict[str, Any]] = {
+            node.get("id"): node for node in nodes if node.get("id") is not None
+        }
+
+        # Build a concise node summary with inputs/outputs
+        lines.append("Workflow Nodes:")
+        for node in nodes:
+            node_id = node.get("id")
+            node_type = node.get("type", "Unknown")
+            properties = node.get("properties", {})
+            inputs_raw = node.get("inputs", [])
+            outputs_raw = node.get("outputs", [])
+            inputs: list[Any] = inputs_raw if isinstance(inputs_raw, list) else []
+            outputs: list[Any] = outputs_raw if isinstance(outputs_raw, list) else []
+
+            # Extract key properties (filter out None values and UI-specific fields)
+            key_props: dict[str, Any] = {}
+            for key, value in properties.items():
+                if value is not None and key not in ("pos", "size", "flags", "order", "mode"):
+                    # Truncate long values
+                    if isinstance(value, str) and len(value) > 80:
+                        key_props[key] = value[:80] + "..."
+                    else:
+                        key_props[key] = value
+
+            # Build node description
+            node_desc = f"[{node_id}] {node_type}"
+            if node_id == current_node_id:
+                node_desc += " ⭐ (current node)"
+
+            if key_props:
+                props_str = ", ".join(f"{k}={v}" for k, v in list(key_props.items())[:5])
+                if len(key_props) > 5:
+                    props_str += f" ... (+{len(key_props) - 5} more)"
+                node_desc += f"\n    Config: {props_str}"
+
+            # Show simplified I/O
+            input_names: list[str] = []
+            for inp_raw in inputs:
+                if isinstance(inp_raw, dict):
+                    inp: dict[str, Any] = inp_raw
+                    name = inp.get("name")
+                    if isinstance(name, str):
+                        input_names.append(name)
+
+            output_names: list[str] = []
+            for out_raw in outputs:
+                if isinstance(out_raw, dict):
+                    out: dict[str, Any] = out_raw
+                    name = out.get("name")
+                    if isinstance(name, str):
+                        output_names.append(name)
+
+            if input_names:
+                node_desc += f"\n    Inputs: {', '.join(input_names[:3])}"
+                if len(input_names) > 3:
+                    node_desc += f" ... (+{len(input_names) - 3} more)"
+            if output_names:
+                node_desc += f"\n    Outputs: {', '.join(output_names[:3])}"
+                if len(output_names) > 3:
+                    node_desc += f" ... (+{len(output_names) - 3} more)"
+
+            lines.append(f"  {node_desc}")
+
+        lines.append("")
+
+        # Build data flow representation with type information
+        if links:
+            lines.append("Data Flow (connections):")
+            # Group links by origin node
+            links_by_origin: dict[int, list[dict[str, Any]]] = {}
+            for link in links:
+                origin_id = link.get("origin_id")
+                if origin_id is not None:
+                    if origin_id not in links_by_origin:
+                        links_by_origin[origin_id] = []
+                    links_by_origin[origin_id].append(link)
+
+            for origin_id in sorted(links_by_origin.keys()):
+                origin_node = node_lookup.get(origin_id, {})
+                origin_type = origin_node.get("type", "Unknown")
+                origin_links = links_by_origin[origin_id]
+
+                for link in origin_links:
+                    target_id = link.get("target_id")
+                    target_node = node_lookup.get(target_id, {}) if target_id is not None else {}
+                    target_type = target_node.get("type", "Unknown")
+                    data_type = link.get("type", "data")
+
+                    lines.append(
+                        f"  [{origin_id}] {origin_type} → [{target_id}] {target_type} ({data_type})"
+                    )
+
+        lines.append("")
+        lines.append(
+            "Use this context to understand the workflow structure and provide relevant responses."
+        )
+        lines.append("===")
+        return "\n".join(lines)
+
+    def _inject_graph_context_into_prompt(self, prompt: str | None) -> str:
+        """Inject graph context into prompt if enabled."""
+        inject_enabled = self._parse_bool_param("inject_graph_context", False)
+
+        if not inject_enabled:
+            return prompt or ""
+
+        context_text = self._format_graph_context_for_llm()
+        if not context_text:
+            return prompt or ""
+
+        if prompt:
+            return f"{context_text}\n\n{prompt}"
+        else:
+            return context_text
+
     def _ensure_assistant_role_inplace(self, message: dict[str, Any]) -> None:
         if "role" not in message:
             message["role"] = "assistant"
@@ -358,6 +501,9 @@ class OpenRouterChat(Base):
         prompt_text: str | None = inputs.get("prompt")
         system_input: str | dict[str, Any] | None = inputs.get("system")
         images: ConfigDict | None = inputs.get("images")
+
+        # Inject graph context into prompt if enabled
+        prompt_text = self._inject_graph_context_into_prompt(prompt_text)
 
         merged: list[dict[str, Any]] = []
         for i in range(5):
