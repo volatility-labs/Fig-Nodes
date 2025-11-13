@@ -49,6 +49,129 @@ export class EditorInitializer {
             const graph = new LGraph();
             const canvasElement = container.querySelector('#litegraph-canvas') as HTMLCanvasElement;
             const canvas = new LGraphCanvas(canvasElement, graph);
+            
+            // Configure LiteGraph to make nodes MUCH darker and more visible
+            // Override default node colors to be very dark with strong borders
+            try {
+                // Set lighter blue default node colors
+                const originalCreateNode = LiteGraph.createNode;
+                LiteGraph.createNode = function(type: string, options?: any) {
+                    const node = originalCreateNode.call(this, type, options);
+                    // Force lighter blue colors on all nodes
+                    if (node) {
+                        // Lighter blue-gray background
+                        node.bgcolor = '#1a2a3a'; // Lighter blue-gray
+                        node.color = '#2a3a4a'; // Lighter blue-gray for title bar
+                        // Add border color for better visibility
+                        (node as any).boxcolor = '#5a6a7a'; // Lighter gray-blue border
+                        (node as any).shape = LiteGraph.BOX_SHAPE;
+                    }
+                    return node;
+                };
+            } catch (e) {
+                console.warn('Could not override LiteGraph.createNode:', e);
+            }
+            
+            // Override canvas rendering to make ALL nodes lighter blue
+            try {
+                const originalDraw = (canvas as any).draw;
+                if (originalDraw) {
+                    (canvas as any).draw = function(...args: any[]) {
+                        // Force lighter blue colors on all nodes before drawing
+                        if (this.graph && this.graph._nodes) {
+                            this.graph._nodes.forEach((node: any) => {
+                                // Force lighter blue on all nodes
+                                node.bgcolor = '#1a2a3a'; // Lighter blue-gray
+                                node.color = '#2a3a4a'; // Lighter blue-gray for title bar
+                                // Add visible border
+                                if (!(node as any).boxcolor) {
+                                    (node as any).boxcolor = '#5a6a7a'; // Lighter gray-blue border
+                                }
+                                // Ensure node has a visible shape
+                                if (!(node as any).shape) {
+                                    (node as any).shape = LiteGraph.BOX_SHAPE;
+                                }
+                            });
+                        }
+                        // Call original draw
+                        return originalDraw.apply(this, args);
+                    };
+                }
+            } catch (e) {
+                console.warn('Could not override canvas.draw:', e);
+            }
+            
+            // Function to apply dark styling to a node
+            const applyDarkStyling = (node: any) => {
+                if (!node) return;
+                
+                // Lighter blue shade for nodes
+                node.bgcolor = '#1a2a3a'; // Lighter blue-gray
+                node.color = '#2a3a4a'; // Lighter blue-gray for title bar
+                (node as any).boxcolor = '#5a6a7a'; // Lighter gray-blue border
+                
+                // Override onDrawBackground to ensure lighter blue rendering
+                const originalOnDrawBackground = node.onDrawBackground;
+                node.onDrawBackground = function(ctx: CanvasRenderingContext2D, canvas: any, pos: [number, number]) {
+                    // Draw lighter blue background FIRST
+                    ctx.save();
+                    ctx.fillStyle = '#1a2a3a'; // Lighter blue-gray background
+                    ctx.fillRect(0, 0, this.size[0], this.size[1]);
+                    
+                    // Draw lighter blue title bar
+                    ctx.fillStyle = '#2a3a4a';
+                    ctx.fillRect(0, 0, this.size[0], LiteGraph.NODE_TITLE_HEIGHT);
+                    
+                    // Draw visible border
+                    ctx.strokeStyle = '#5a6a7a'; // Lighter gray-blue border
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(0, 0, this.size[0], this.size[1]);
+                    
+                    ctx.restore();
+                    
+                    // Call original AFTER our dark background (so it can draw on top if needed)
+                    if (originalOnDrawBackground && originalOnDrawBackground !== node.onDrawBackground) {
+                        try {
+                            originalOnDrawBackground.call(this, ctx, canvas, pos);
+                        } catch (e) {
+                            // Ignore errors from original
+                        }
+                    }
+                };
+            };
+            
+            // Apply dark styling to any existing nodes
+            try {
+                if (graph._nodes) {
+                    graph._nodes.forEach(applyDarkStyling);
+                }
+            } catch (e) {
+                console.warn('Could not apply dark styling to existing nodes:', e);
+            }
+            
+            // Set LiteGraph canvas background to darker center color for better node visibility
+            try {
+                // Set to darker center color so nodes are more visible
+                (canvas as any).background_color = '#0a0f1a'; // Very dark center color
+                
+                // Try to override clearRect to use our gradient color
+                const ctx = canvasElement.getContext('2d');
+                if (ctx) {
+                    const originalClearRect = ctx.clearRect;
+                    ctx.clearRect = function(...args: any[]) {
+                        // Instead of clearing, fill with darker center color
+                        const savedFill = this.fillStyle;
+                        this.fillStyle = '#0a0f1a'; // Very dark center color
+                        this.fillRect(...args);
+                        this.fillStyle = savedFill;
+                    };
+                }
+            } catch (e) {
+                // Fallback: set background color to dark center
+                (canvas as any).background_color = '#0a0f1a';
+            }
+            
+            // PixiJS renderer disabled - using CSS-only glassmorphism enhancements instead
             // Suppress native search UI with correctly typed no-op
             canvas.showSearchBox = function (event: MouseEvent, _searchOptions?: unknown): HTMLDivElement {
                 event?.preventDefault?.();
@@ -101,6 +224,51 @@ export class EditorInitializer {
             // Proactively warm up node metadata cache so '/nodes' is fetched even if UIModuleLoader is mocked
             try { await this.appState.getNodeMetadata(); } catch { /* ignore in init flow */ }
             const { allItems } = await uiModuleLoader.registerNodes();
+            
+            // Force VERY dark colors on all existing nodes in the graph (after registration)
+            try {
+                if (graph._nodes) {
+                    graph._nodes.forEach(applyDarkStyling);
+                }
+            } catch (e) {
+                console.warn('Could not darken existing nodes:', e);
+            }
+            
+            // Hook into graph node addition to force dark colors on new nodes
+            try {
+                const originalAdd = graph.add;
+                graph.add = function(node: any) {
+                    const result = originalAdd.call(this, node);
+                    // Apply dark styling to new node
+                    applyDarkStyling(node);
+                    return result;
+                };
+            } catch (e) {
+                console.warn('Could not override graph.add:', e);
+            }
+            
+            // Set up periodic check to ensure all nodes stay dark (in case colors get reset)
+            try {
+                setInterval(() => {
+                    if (graph._nodes) {
+                        graph._nodes.forEach((node: any) => {
+                            // Force lighter blue colors if they've been changed
+                            if (node.bgcolor !== '#1a2a3a' && 
+                                (node.bgcolor === '#333' || 
+                                 node.bgcolor === '#353535' ||
+                                 node.bgcolor === '#fff' ||
+                                 node.bgcolor === '#ffffff' ||
+                                 node.bgcolor === '#0a0a1a' ||
+                                 !node.bgcolor)) {
+                                applyDarkStyling(node);
+                            }
+                        });
+                    }
+                }, 1000); // Check every second
+            } catch (e) {
+                console.warn('Could not set up periodic node darkening:', e);
+            }
+            
             const palette = this.setupPalette(allItems, canvas as any, graph as any);
 
             // Set up event listeners
@@ -516,6 +684,7 @@ export class EditorInitializer {
                 }
             });
             footerCenter.appendChild(autoAlignBtn);
+
         }
     }
 
