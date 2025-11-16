@@ -22,7 +22,7 @@ export default defineConfig({
       '@utils': path.resolve(__dirname, './utils'),
       '@tests': path.resolve(__dirname, './tests'),
       '@': path.resolve(__dirname, './'),
-      '@fig-node/litegraph': path.resolve(__dirname, '../fignode-litegraph.js')
+      '@fig-node/litegraph': path.resolve(__dirname, './fignode-litegraph.js')
     },
   },
   test: {

@@ -30,7 +30,7 @@ from typing import List, Optional, Tuple
 REPO_ROOT = Path(__file__).resolve().parent
 UI_DIR = REPO_ROOT / "frontend"
 DIST_DIR = UI_DIR / "dist"
-LITEGRAPH_DIR = REPO_ROOT / "fignode-litegraph.js"
+LITEGRAPH_DIR = UI_DIR / "fignode-litegraph.js"
 LITEGRAPH_DIST_DIR = LITEGRAPH_DIR / "dist"
 
 

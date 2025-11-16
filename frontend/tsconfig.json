@@ -44,7 +44,7 @@
                 "./*"
             ],
             "@fig-node/litegraph/*": [
-                "../fignode-litegraph.js/*"
+                "./fignode-litegraph.js/*"
             ]
         }
     },
