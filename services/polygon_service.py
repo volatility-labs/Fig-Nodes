@@ -42,6 +42,40 @@ async def fetch_bars(
     adjusted = params.get("adjusted", True)
     sort = params.get("sort", "asc")
     limit = params.get("limit", 5000)
+    
+    # Massive.com aggregates API has a hard cap of 5000 bars per request
+    # Even if you request more, API will only return max 5000
+    # Use the actual API limit for our checks, not the requested limit
+    ACTUAL_API_LIMIT = 5000
+    effective_limit = min(limit, ACTUAL_API_LIMIT)
+    
+    # For crypto with long lookback periods, fetch newest first to avoid hitting API limits
+    # This ensures we get the most recent data even if we hit the 5000 bar limit
+    # We'll reverse the results to get chronological order (oldest first)
+    fetch_newest_first = False
+    if symbol.asset_class == AssetClass.CRYPTO:
+        # Estimate number of bars needed
+        parts = lookback_period.split()
+        if len(parts) == 2:
+            amount = int(parts[0])
+            unit = parts[1].lower()
+            if timespan == "hour":
+                # For hourly bars, estimate bars needed
+                if unit in ("month", "months"):
+                    estimated_bars = amount * 30 * 24  # ~30 days/month * 24 hours/day
+                elif unit in ("day", "days"):
+                    estimated_bars = amount * 24
+                elif unit in ("week", "weeks"):
+                    estimated_bars = amount * 7 * 24
+                else:
+                    estimated_bars = 0
+                
+                # If we might hit the ACTUAL API limit, fetch newest first
+                # Use effective_limit (capped at 5000) for the check
+                if estimated_bars > effective_limit * 0.8:  # If >80% of actual limit, fetch newest first
+                    fetch_newest_first = True
+                    sort = "desc"  # Override sort to get newest first
+                    logger.warning(f"POLYGON_SERVICE: 🔄 Large lookback ({lookback_period}, ~{estimated_bars} bars) for {symbol.ticker}, fetching NEWEST first to avoid missing recent data (effective_limit={effective_limit}, requested_limit={limit})")
 
     # Calculate date range (copied from PolygonCustomBarsNode._calculate_date_range)
     now = datetime.now()
@@ -99,7 +133,7 @@ async def fetch_bars(
             if response is None:
                 raise RuntimeError("No response received from Massive aggregates endpoint")
 
-        logger.info(f"POLYGON_SERVICE: HTTP response status: {response.status_code}")
+        logger.warning(f"POLYGON_SERVICE: HTTP response status: {response.status_code}")
 
         if response.status_code != 200:
             logger.error(f"POLYGON_SERVICE: HTTP error {response.status_code} for {symbol.ticker}")
@@ -109,7 +143,7 @@ async def fetch_bars(
         api_status = data.get("status")
         results_count = data.get("resultsCount", 0)
 
-        logger.info(f"POLYGON_SERVICE: API Response Status: {api_status}, Results: {results_count}")
+        logger.warning(f"POLYGON_SERVICE: API Response Status: {api_status}, Results: {results_count}, Limit requested: {limit}")
 
         # Log raw API response details for debugging delay issues
         if logger.isEnabledFor(logging.DEBUG):
@@ -156,6 +190,21 @@ async def fetch_bars(
         }
 
         results = data.get("results", [])
+        
+        # Check if we hit the API limit (API might cap at 5000 even if we request more)
+        actual_results = len(results)
+        if actual_results >= limit and results_count >= limit:
+            logger.warning(
+                f"POLYGON_SERVICE: Hit API limit for {symbol.ticker}: "
+                f"requested {limit} bars, got {actual_results} bars. "
+                f"Some data may be missing. Consider using shorter lookback period or fetching in chunks."
+            )
+        
+        # If we fetched newest first, reverse to get chronological order (oldest first)
+        if fetch_newest_first and results:
+            results = list(reversed(results))
+            logger.warning(f"POLYGON_SERVICE: 🔄 Reversed {len(results)} bars to chronological order (oldest first)")
+        
         bars: list[OHLCVBar] = []
 
         # Track if we need to append current bar from snapshot
@@ -189,9 +238,10 @@ async def fetch_bars(
                         f"POLYGON_SERVICE: Snapshot fallback error for {symbol.ticker}: {e}"
                     )
         else:
-            # Check if the latest bar is too old for crypto (more than 30 minutes)
+            # Check if the latest bar is too old (more than 30 minutes)
             # We'll fill in missing intervals with snapshot data to keep bars recent
-            if results and symbol.asset_class == AssetClass.CRYPTO and timespan == "minute":
+            # Apply to crypto with minute OR hour timespans (hourly bars can also be stale)
+            if results and symbol.asset_class == AssetClass.CRYPTO and timespan in ["minute", "hour"]:
                 # Determine which bar is most recent based on sort order
                 sort_order = params.get("sort", "asc")
                 if sort_order == "desc":
@@ -210,28 +260,38 @@ async def fetch_bars(
 
                     if age_minutes > 30:  # If latest bar is more than 30 minutes old
                         logger.warning(
-                            f"POLYGON_SERVICE: Latest bar for {symbol.ticker} is {age_minutes:.1f} minutes old, using snapshot"
+                            f"POLYGON_SERVICE: Latest bar for {symbol.ticker} is {age_minutes:.1f} minutes old, fetching current snapshot"
                         )
 
                         try:
                             # Get current price from snapshot
+                            logger.warning(f"POLYGON_SERVICE: Fetching snapshot for {symbol.ticker}...")
+                            logger.warning(f"POLYGON_SERVICE: Symbol details - ticker={symbol.ticker}, asset_class={symbol.asset_class}")
                             current_price, snapshot_metadata = await fetch_current_snapshot(
                                 symbol, api_key
                             )
+                            logger.warning(f"POLYGON_SERVICE: Snapshot fetch returned: price={current_price}, metadata={snapshot_metadata}")
 
                             if current_price is not None:
-                                # Calculate interval based on multiplier (1min, 5min, 15min, 30min)
-                                interval_minutes = multiplier
-
-                                # Round current time down to the nearest interval
-                                # e.g., if it's 5:37 PM and using 5min bars, round to 5:35 PM
-                                current_minute = current_time_utc.minute
-                                rounded_minute = (
-                                    current_minute // interval_minutes
-                                ) * interval_minutes
-                                rounded_time = current_time_utc.replace(
-                                    minute=rounded_minute, second=0, microsecond=0
-                                )
+                                logger.warning(f"POLYGON_SERVICE: ✅ Snapshot fetch successful for {symbol.ticker}, price=${current_price:.4f}")
+                                # For hourly bars, use hour-based rounding instead of minute-based
+                                if timespan == "hour":
+                                    # Round to the current hour
+                                    rounded_time = current_time_utc.replace(
+                                        minute=0, second=0, microsecond=0
+                                    )
+                                else:
+                                    # Calculate interval based on multiplier (1min, 5min, 15min, 30min)
+                                    interval_minutes = multiplier
+                                    # Round current time down to the nearest interval
+                                    # e.g., if it's 5:37 PM and using 5min bars, round to 5:35 PM
+                                    current_minute = current_time_utc.minute
+                                    rounded_minute = (
+                                        current_minute // interval_minutes
+                                    ) * interval_minutes
+                                    rounded_time = current_time_utc.replace(
+                                        minute=rounded_minute, second=0, microsecond=0
+                                    )
 
                                 # Create bar at the rounded interval timestamp
                                 current_bar_dict = {
@@ -243,9 +303,13 @@ async def fetch_bars(
                                     "volume": 0.0,
                                 }
                                 needs_current_bar = True
+                                logger.warning(
+                                    f"POLYGON_SERVICE: ✅ Created current bar for {symbol.ticker} at timestamp {current_bar_dict['timestamp']} "
+                                    f"({rounded_time}) with price ${current_price:.4f}"
+                                )
                             else:
                                 logger.warning(
-                                    f"POLYGON_SERVICE: Could not get current price for {symbol.ticker} from snapshot"
+                                    f"POLYGON_SERVICE: Snapshot fetch returned None for {symbol.ticker} - using stale bars"
                                 )
                         except Exception as e:
                             logger.error(
@@ -277,14 +341,18 @@ async def fetch_bars(
 
             # Append current bar from snapshot if latest aggregate bar is too old
             if needs_current_bar and current_bar_dict:
-                # Determine correct position based on sort order
+                # IMPORTANT: After reversal (if fetch_newest_first), bars are ALWAYS in chronological order (oldest first)
+                # So we should ALWAYS append the snapshot bar to make it the newest (last)
+                # Only prepend if we didn't reverse AND sort_order is "desc"
                 sort_order = params.get("sort", "asc")
-                if sort_order == "desc":
-                    # For descending sort, prepend to make it the newest (first)
+                if not fetch_newest_first and sort_order == "desc":
+                    # For descending sort WITHOUT reversal, prepend to make it the newest (first)
                     bars.insert(0, current_bar_dict)
+                    logger.warning(f"POLYGON_SERVICE: Prepended snapshot bar for {symbol.ticker} (desc sort, no reversal)")
                 else:
-                    # For ascending sort, append to make it the newest (last)
+                    # For ascending sort OR after reversal, append to make it the newest (last)
                     bars.append(current_bar_dict)
+                    logger.warning(f"POLYGON_SERVICE: Appended snapshot bar for {symbol.ticker} (asc sort or after reversal)")
 
                 # Include appended bar timestamp in analysis if present
                 if needs_current_bar and current_bar_dict:
@@ -657,9 +725,11 @@ async def fetch_current_snapshot(
 
     client = httpx.AsyncClient(timeout=httpx.Timeout(5.0))
     try:
+        logger.debug(f"POLYGON_SERVICE: Calling massive_fetch_snapshot for ticker={ticker}, locale={locale}, markets={markets}")
         snapshots = await massive_fetch_snapshot(
             client, api_key, locale, markets, str(symbol.asset_class).lower(), [ticker], False
         )
+        logger.debug(f"POLYGON_SERVICE: massive_fetch_snapshot returned {len(snapshots) if snapshots else 0} snapshots")
         if snapshots:
             # Try lastTrade first, fallback to day's open/high/low/close
             last_trade = snapshots[0].get("lastTrade", {})

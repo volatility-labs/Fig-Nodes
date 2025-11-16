@@ -17,6 +17,101 @@ export default class OpenRouterChatNodeUI extends BaseCustomNode {
             this.inputs[systemSlotIndex]!.tooltip = 'Accepts string or LLMChatMessage with role="system"';
         }
 
+        // Ensure temperature widget properly handles decimal values
+        // Do this after widgets are created but ensure options are set correctly
+        if (this.widgets && Array.isArray(data?.params)) {
+            data.params.forEach((param: any, index: number) => {
+                const widget = this.widgets && index < this.widgets.length ? this.widgets[index] : null;
+                if (!widget || widget.type !== 'number') return;
+
+                // Specifically handle temperature parameter to ensure decimals work
+                if (param.name === 'temperature') {
+                    // Ensure all options are properly set - this is critical for decimal support
+                    widget.options = widget.options || {};
+                    if (param.step !== undefined) {
+                        widget.options.step = param.step;
+                    }
+                    if (param.precision !== undefined) {
+                        widget.options.precision = param.precision;
+                    }
+                    if (param.min !== undefined) {
+                        widget.options.min = param.min;
+                    }
+                    if (param.max !== undefined) {
+                        widget.options.max = param.max;
+                    }
+                    
+                    // Ensure the initial value is set correctly
+                    const initialValue = this.properties[param.name];
+                    if (typeof initialValue === 'number' && !isNaN(initialValue)) {
+                        widget.value = initialValue;
+                    }
+                    
+                    // Replace the callback completely to ensure decimal values are preserved
+                    // The original callback might be doing integer rounding or other transformations
+                    const originalCallback = widget.callback;
+                    if (originalCallback) {
+                        widget.callback = (v: unknown) => {
+                            // Convert to number if needed, preserving decimals
+                            let numValue: number;
+                            if (typeof v === 'number') {
+                                numValue = v;
+                            } else if (typeof v === 'string') {
+                                const trimmed = v.trim();
+                                // Don't update on empty or just "."
+                                if (trimmed === '' || trimmed === '.') {
+                                    return;
+                                }
+                                numValue = parseFloat(trimmed);
+                            } else {
+                                numValue = Number(v);
+                            }
+                            
+                            // Validate range
+                            if (!isNaN(numValue) && isFinite(numValue) && numValue >= 0 && numValue <= 2) {
+                                // CRITICAL: Update property and widget.value ourselves
+                                // Don't call originalCallback as it might be doing integer rounding
+                                this.properties[param.name] = numValue;
+                                widget.value = numValue;
+                                
+                                // Also update the HTML input element directly (the popup reads from this)
+                                // Find the input element associated with this widget
+                                setTimeout(() => {
+                                    const nodeEl = document.querySelector(`[data-node-id="${this.id}"]`);
+                                    if (nodeEl) {
+                                        const inputs = nodeEl.querySelectorAll('input[type="number"]');
+                                        inputs.forEach((inp: Element) => {
+                                            const htmlInp = inp as HTMLInputElement;
+                                            const widgetValue = typeof widget.value === 'number' ? widget.value : parseFloat(String(widget.value || '0'));
+                                            // Check if this is the temperature input by comparing widget name/value
+                                            if (Math.abs(parseFloat(htmlInp.value || '0') - widgetValue) < 0.01 || 
+                                                htmlInp.getAttribute('data-widget-name') === widget.name) {
+                                                htmlInp.value = String(numValue);
+                                                htmlInp.setAttribute('value', String(numValue));
+                                            }
+                                        });
+                                    }
+                                }, 0);
+                                
+                                // Force canvas update
+                                this.setDirtyCanvas(true, true);
+                                
+                                // Debug logging
+                                console.log(`[Temperature Widget] Set ${param.name} to ${numValue} (property: ${this.properties[param.name]}, widget.value: ${widget.value})`);
+                            } else {
+                                // Invalid value - restore previous value
+                                const prevValue = this.properties[param.name];
+                                if (typeof prevValue === 'number' && !isNaN(prevValue)) {
+                                    widget.value = prevValue;
+                                    console.log(`[Temperature Widget] Invalid input ${v}, restored to ${prevValue}`);
+                                }
+                            }
+                        };
+                    }
+                }
+            });
+        }
+
         // Customize model dropdown to position near mouse click
         const modelParamName = 'model';
         const widget = this.widgetManager.findWidgetByParamName(modelParamName) as any;
@@ -69,6 +164,55 @@ export default class OpenRouterChatNodeUI extends BaseCustomNode {
 
         // Fetch available models and populate combos
         this.fetchModels();
+    }
+
+    // Called when node is added to graph - HTML elements are created at this point
+    onAdded(graph: any) {
+        super.onAdded?.(graph);
+        
+        // After node is added, ensure temperature widget's HTML input element is configured correctly
+        // This ensures the input element's step/min/max attributes are set for decimal support
+        setTimeout(() => {
+            const tempWidget = this.widgetManager.findWidgetByParamName('temperature') as any;
+            if (tempWidget && tempWidget.type === 'number') {
+                // Find the actual HTML input element
+                const widgetElement = (tempWidget as any).last_y ? 
+                    document.querySelector(`input[type="number"][data-widget-name="${tempWidget.name}"]`) as HTMLInputElement :
+                    null;
+                
+                // Also try finding by widget's DOM element if available
+                let inputEl: HTMLInputElement | null = null;
+                if ((tempWidget as any).computeSize) {
+                    // Widget might have a DOM reference
+                    const nodeEl = document.querySelector(`[data-node-id="${this.id}"]`);
+                    if (nodeEl) {
+                        const inputs = nodeEl.querySelectorAll('input[type="number"]');
+                        // Find the one that corresponds to temperature widget
+                        inputs.forEach((inp: Element) => {
+                            const htmlInp = inp as HTMLInputElement;
+                            // Check if this input's value matches our widget value
+                            if (Math.abs(parseFloat(htmlInp.value || '0') - (tempWidget.value || 0)) < 0.01) {
+                                inputEl = htmlInp;
+                            }
+                        });
+                    }
+                }
+                
+                // Configure the input element if found
+                if (inputEl || widgetElement) {
+                    const input = inputEl || widgetElement;
+                    if (input) {
+                        input.step = '0.05';
+                        input.min = '0';
+                        input.max = '2';
+                        // Ensure it accepts decimal values
+                        input.setAttribute('step', '0.05');
+                        input.setAttribute('min', '0');
+                        input.setAttribute('max', '2');
+                    }
+                }
+            }
+        }, 100); // Small delay to ensure DOM is ready
     }
 
     private async fetchModels() {
@@ -137,13 +281,31 @@ export default class OpenRouterChatNodeUI extends BaseCustomNode {
         }
     }
 
-    // Override to handle use_vision property changes
-    onPropertyChanged(name: string, _value: unknown, _prev_value?: unknown): boolean {
+    // Override to handle use_vision property changes and sync temperature widget
+    onPropertyChanged(name: string, value: unknown, _prev_value?: unknown): boolean {
         if (name === 'use_vision') {
             // Update model combo when vision mode is toggled
             this.updateModelCombo();
+        } else if (name === 'temperature') {
+            // Ensure temperature widget value stays in sync with property
+            const tempWidget = this.widgetManager.findWidgetByParamName('temperature') as any;
+            if (tempWidget && typeof value === 'number' && !isNaN(value)) {
+                tempWidget.value = value;
+                // Debug logging to verify stored value
+                console.log(`[Temperature Property Changed] Property: ${value}, Widget.value: ${tempWidget.value}`);
+                this.setDirtyCanvas(true, true);
+            }
         }
         return true; // Return true to indicate property change was handled
+    }
+    
+    // Method to verify the actual stored temperature value (for debugging)
+    getTemperatureValue(): number {
+        const temp = this.properties.temperature;
+        if (typeof temp === 'number') {
+            return temp;
+        }
+        return 0.7; // default
     }
 
     updateDisplay(result: any) {

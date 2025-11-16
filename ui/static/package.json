@@ -18,7 +18,8 @@
   "type": "module",
   "dependencies": {
     "@comfyorg/litegraph": "^0.16.18",
-    "canvas": "^2.11.2"
+    "canvas": "^2.11.2",
+    "pixi.js": "^8.14.1"
   },
   "devDependencies": {
     "@types/jsdom": "^27.0.0",

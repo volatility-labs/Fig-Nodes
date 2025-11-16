@@ -488,6 +488,43 @@ export class EditorInitializer {
             // Update mouse position for widget interactions
             this.dialogManager.setLastMouseEvent(e);
         });
+
+        // Handle mouse wheel events for node scrolling (e.g., LoggingNodeUI)
+        // Works with both mouse wheel and trackpad gestures
+        canvasElement.addEventListener('wheel', (e: WheelEvent) => {
+            const node = findNodeUnderEvent(e);
+            console.log('[EditorInitializer] Wheel event', { 
+                nodeTitle: node?.title || 'none', 
+                hasOnMouseWheel: node && typeof (node as any).onMouseWheel === 'function',
+                deltaY: e.deltaY,
+                deltaMode: e.deltaMode,
+                shiftKey: e.shiftKey,
+                altKey: e.altKey,
+                ctrlKey: e.ctrlKey,
+                metaKey: e.metaKey
+            });
+            
+            if (node && typeof (node as any).onMouseWheel === 'function') {
+                try {
+                    const canvasPos = canvas.convertEventToCanvasOffset(e) as number[];
+                    if (!canvasPos || !Array.isArray(canvasPos) || canvasPos.length < 2) {
+                        console.log('[EditorInitializer] Invalid canvas position');
+                        return;
+                    }
+                    const localPos: [number, number] = [canvasPos[0]! - (node.pos?.[0] ?? 0), canvasPos[1]! - (node.pos?.[1] ?? 0)];
+                    console.log('[EditorInitializer] Calling onMouseWheel', { nodeTitle: node.title, localPos });
+                    const handled = (node as any).onMouseWheel(e, localPos, canvas);
+                    console.log('[EditorInitializer] onMouseWheel returned:', handled);
+                    if (handled) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        e.stopImmediatePropagation();
+                    }
+                } catch (err) {
+                    console.error('Error handling wheel event on node:', err);
+                }
+            }
+        }, { passive: false, capture: true });
     }
 
     private setupResize(canvasElement: HTMLCanvasElement, canvas: any) {

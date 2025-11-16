@@ -1,3 +1,4 @@
+import './style.css';
 import { EditorInitializer } from './services/EditorInitializer';
 
 async function createEditor(container: HTMLElement) {

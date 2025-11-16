@@ -1,10 +1,10 @@
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
+from typing import Any
 
 import numpy as np
-import pytz
 
-from core.types_registry import IndicatorResult, IndicatorType, IndicatorValue, OHLCVBar
+from core.types_registry import AssetSymbol, IndicatorResult, IndicatorType, IndicatorValue, OHLCVBar
 from nodes.core.market.filters.base.base_indicator_filter_node import BaseIndicatorFilter
 from services.indicator_calculators.ema_calculator import calculate_ema
 from services.indicator_calculators.sma_calculator import calculate_sma
@@ -13,28 +13,57 @@ logger = logging.getLogger(__name__)
 
 
 class MovingAverageFilter(BaseIndicatorFilter):
-    default_params = {"period": 200, "prior_days": 1, "ma_type": "SMA"}
+    default_params = {"period": 200, "prior_bars": 1, "ma_type": "SMA", "require_price_above_ma": "true"}
     params_meta = [
         {"name": "period", "type": "number", "default": 200, "min": 2, "step": 1},
-        {"name": "prior_days", "type": "number", "default": 1, "min": 0, "step": 1},
+        {"name": "prior_bars", "type": "number", "default": 1, "min": 0, "step": 1, "description": "Number of bars to look back for slope calculation (works with any interval: 15min, 1hr, daily, etc.)"},
         {"name": "ma_type", "type": "combo", "default": "SMA", "options": ["SMA", "EMA"]},
+        {"name": "require_price_above_ma", "type": "combo", "default": "true", "options": ["true", "false"], "description": "If true, requires price > MA. If false, only checks for rising MA slope."},
     ]
 
     def _validate_indicator_params(self):
         period_value = self.params.get("period", 200)
-        prior_days_value = self.params.get("prior_days", 1)
+        prior_bars_value = self.params.get("prior_bars", 1)
         ma_type_value = self.params.get("ma_type", "SMA")
+        require_price_above_ma_value = self.params.get("require_price_above_ma", "true")
 
-        if not isinstance(period_value, int):
+        # Convert period to integer if it's a string or float
+        try:
+            if isinstance(period_value, str):
+                period_value = int(float(period_value))
+            elif isinstance(period_value, float):
+                period_value = int(period_value)
+            elif not isinstance(period_value, int):
+                raise ValueError("period must be an integer")
+        except (ValueError, TypeError):
             raise ValueError("period must be an integer")
-        if not isinstance(prior_days_value, int):
-            raise ValueError("prior_days must be an integer")
+        
+        # Convert prior_bars to integer if it's a string or float
+        try:
+            if isinstance(prior_bars_value, str):
+                prior_bars_value = int(float(prior_bars_value))
+            elif isinstance(prior_bars_value, float):
+                prior_bars_value = int(prior_bars_value)
+            elif not isinstance(prior_bars_value, int):
+                raise ValueError("prior_bars must be an integer")
+        except (ValueError, TypeError):
+            raise ValueError("prior_bars must be an integer")
+        
         if ma_type_value not in ["SMA", "EMA"]:
             raise ValueError("ma_type must be 'SMA' or 'EMA'")
+        
+        # Convert string "true"/"false" to boolean
+        if isinstance(require_price_above_ma_value, str):
+            require_price_above_ma_value = require_price_above_ma_value.lower() == "true"
+        elif isinstance(require_price_above_ma_value, bool):
+            pass  # Already a boolean
+        else:
+            raise ValueError("require_price_above_ma must be 'true' or 'false'")
 
         self.period = period_value
-        self.prior_days = prior_days_value
+        self.prior_bars = prior_bars_value
         self.ma_type = ma_type_value
+        self.require_price_above_ma = require_price_above_ma_value
 
     def _get_indicator_type(self) -> IndicatorType:
         return IndicatorType.SMA if self.ma_type == "SMA" else IndicatorType.EMA
@@ -92,8 +121,8 @@ class MovingAverageFilter(BaseIndicatorFilter):
                 error=f"Unable to compute current {self.ma_type}",
             )
 
-        # Handle prior_days = 0 case (no slope requirement)
-        if self.prior_days == 0:
+        # Handle prior_bars = 0 case (no slope requirement)
+        if self.prior_bars == 0:
             current_price = ohlcv_data[-1]["close"]
             values = IndicatorValue(
                 lines={"current": current_ma, "previous": np.nan, "price": current_price}
@@ -105,14 +134,30 @@ class MovingAverageFilter(BaseIndicatorFilter):
                 params={"period": self.period, "ma_type": self.ma_type},
             )
 
-        # Use calendar-aware date calculation instead of hardcoded milliseconds
-        # Convert UTC timestamp to datetime, subtract days, convert back to milliseconds
-        last_dt = datetime.fromtimestamp(last_ts / 1000, tz=pytz.UTC)
-        cutoff_dt = last_dt - timedelta(days=self.prior_days)
-        cutoff_ts: int = int(cutoff_dt.timestamp() * 1000)
+        # Use bar-based lookback instead of calendar days
+        # This works correctly with any interval: 15min, 1hr, daily, etc.
+        # prior_bars=2 means compare current MA (at last bar) to MA from 2 bars ago
+        # If we have bars [0, 1, 2, ..., N-1], and prior_bars=2:
+        #   - Current MA is at bar N-1 (last bar)
+        #   - Previous MA should be at bar N-3 (2 bars before last)
+        #   - So we need data up to and including bar N-3
+        lookback_index = len(ohlcv_data) - self.prior_bars
+        
+        # Ensure we have enough data for the lookback
+        if lookback_index < self.period:
+            current_price = ohlcv_data[-1]["close"]
+            return IndicatorResult(
+                indicator_type=indicator_type,
+                timestamp=last_ts,
+                values=IndicatorValue(
+                    lines={"current": np.nan, "previous": np.nan, "price": current_price}
+                ),
+                error=f"Insufficient data for {self.prior_bars} bar lookback with {self.period} period MA",
+            )
 
-        # Filter previous data manually by timestamp
-        previous_data: list[OHLCVBar] = [bar for bar in ohlcv_data if bar["timestamp"] < cutoff_ts]
+        # Get previous data up to (and including) the lookback point
+        # This gives us bars [0, 1, ..., lookback_index-1] which is exactly prior_bars bars before the end
+        previous_data: list[OHLCVBar] = ohlcv_data[:lookback_index]
 
         if len(previous_data) < self.period:
             current_price = ohlcv_data[-1]["close"]
@@ -146,6 +191,32 @@ class MovingAverageFilter(BaseIndicatorFilter):
             )
 
         current_price = ohlcv_data[-1]["close"]
+        
+        # Debug logging to verify calculation
+        current_bar_index = len(ohlcv_data) - 1
+        previous_bar_index = lookback_index - 1
+        
+        # Get timestamps for better debugging
+        current_ts = ohlcv_data[current_bar_index]["timestamp"]
+        previous_ts = ohlcv_data[previous_bar_index]["timestamp"] if previous_bar_index >= 0 else 0
+        current_dt = datetime.fromtimestamp(current_ts / 1000) if current_ts else "N/A"
+        previous_dt = datetime.fromtimestamp(previous_ts / 1000) if previous_ts else "N/A"
+        
+        # Calculate bars difference for clarity
+        bars_difference = current_bar_index - previous_bar_index
+        
+        # Get symbol from context if available (set by _execute_impl override)
+        symbol_str = getattr(self, '_current_symbol', 'UNKNOWN')
+        
+        logger.warning(
+            f"📊 MA Filter [{symbol_str}]: period={self.period}, prior_bars={self.prior_bars}, "
+            f"current_MA@{current_bar_index}({current_dt})={current_ma:.4f}, "
+            f"previous_MA@{previous_bar_index}({previous_dt})={previous_ma:.4f}, "
+            f"bars_diff={bars_difference}, "
+            f"slope={'POSITIVE' if current_ma > previous_ma else 'NEGATIVE'}, "
+            f"price={current_price:.4f}, diff={current_ma - previous_ma:.6f}"
+        )
+        
         values = IndicatorValue(
             lines={"current": current_ma, "previous": previous_ma, "price": current_price}
         )
@@ -157,24 +228,116 @@ class MovingAverageFilter(BaseIndicatorFilter):
         )
 
     def _should_pass_filter(self, indicator_result: IndicatorResult) -> bool:
+        # Get symbol from context if available (set by _execute_impl override)
+        symbol_str = getattr(self, '_current_symbol', 'UNKNOWN')
+        
         if indicator_result.error:
+            logger.warning(f"❌ MA Filter [{symbol_str}]: Failed due to error: {indicator_result.error}")
             return False
         lines: dict[str, float] = indicator_result.values.lines
         current_ma: float = lines.get("current", np.nan)
         current_price: float = lines.get("price", np.nan)
 
-        # Always require price > current MA
+        # Check for NaN values
         if np.isnan(current_price) or np.isnan(current_ma):
-            return False
-        if not (current_price > current_ma):
+            logger.warning(f"❌ MA Filter [{symbol_str}]: Failed - NaN values (price={current_price}, MA={current_ma})")
             return False
 
-        # If prior_days is 0, no slope requirement beyond price > MA
-        if self.prior_days == 0:
+        # If require_price_above_ma is True, check price > MA
+        if self.require_price_above_ma:
+            if not (current_price > current_ma):
+                logger.warning(f"❌ MA Filter [{symbol_str}]: Failed - price {current_price:.4f} <= MA {current_ma:.4f}")
+                return False
+
+        # If prior_bars is 0, only check price > MA (if required) or just pass if only slope is needed
+        if self.prior_bars == 0:
+            if self.require_price_above_ma:
+                logger.warning(f"✅ MA Filter [{symbol_str}]: Passed - price {current_price:.4f} > MA {current_ma:.4f} (no slope check)")
+            else:
+                logger.warning(f"✅ MA Filter [{symbol_str}]: Passed - no price/MA requirement and no slope check (prior_bars=0)")
             return True
 
-        # For prior_days > 0, also check that current MA > previous MA (upward slope)
+        # For prior_bars > 0, check that current MA > previous MA (upward slope)
         previous: float = lines.get("previous", np.nan)
         if np.isnan(previous):
+            logger.warning(f"❌ MA Filter [{symbol_str}]: Failed - previous MA is NaN")
             return False
-        return current_ma > previous
+        
+        slope_positive = current_ma > previous
+        slope_diff = current_ma - previous
+        
+        if slope_positive:
+            if self.require_price_above_ma:
+                logger.warning(f"✅ MA Filter [{symbol_str}]: Passed - price {current_price:.4f} > MA {current_ma:.4f}, slope POSITIVE ({current_ma:.4f} > {previous:.4f}, diff={slope_diff:.6f})")
+            else:
+                logger.warning(f"✅ MA Filter [{symbol_str}]: Passed - slope POSITIVE ({current_ma:.4f} > {previous:.4f}, diff={slope_diff:.6f}), price={current_price:.4f}, MA={current_ma:.4f}")
+        else:
+            if self.require_price_above_ma:
+                logger.warning(f"❌ MA Filter [{symbol_str}]: Failed - price {current_price:.4f} > MA {current_ma:.4f}, but slope NEGATIVE ({current_ma:.4f} <= {previous:.4f}, diff={slope_diff:.6f})")
+            else:
+                logger.warning(f"❌ MA Filter [{symbol_str}]: Failed - slope NEGATIVE ({current_ma:.4f} <= {previous:.4f}, diff={slope_diff:.6f}), price={current_price:.4f}, MA={current_ma:.4f}")
+        
+        return slope_positive
+    
+    async def _execute_impl(self, inputs: dict[str, Any]) -> dict[str, Any]:
+        """Override to set current symbol context for logging."""
+        ohlcv_bundle: dict[AssetSymbol, list[OHLCVBar]] = inputs.get("ohlcv_bundle", {})
+
+        if not ohlcv_bundle:
+            return {"filtered_ohlcv_bundle": {}}
+
+        filtered_bundle = {}
+        total_symbols = len(ohlcv_bundle)
+        processed_symbols = 0
+
+        # Initial progress signal
+        try:
+            self.report_progress(0.0, f"0/{total_symbols}")
+        except Exception:
+            pass
+
+        for symbol, ohlcv_data in ohlcv_bundle.items():
+            # Set current symbol for logging context
+            self._current_symbol = str(symbol)
+            
+            if not ohlcv_data:
+                processed_symbols += 1
+                try:
+                    progress = (processed_symbols / max(1, total_symbols)) * 100.0
+                    self.report_progress(progress, f"{processed_symbols}/{total_symbols}")
+                except Exception:
+                    pass
+                continue
+
+            try:
+                indicator_result = self._calculate_indicator(ohlcv_data)
+
+                if self._should_pass_filter(indicator_result):
+                    filtered_bundle[symbol] = ohlcv_data
+
+            except Exception as e:
+                logger.warning(f"Failed to process indicator for {symbol}: {e}")
+                # Progress should still advance even on failure
+                processed_symbols += 1
+                try:
+                    progress = (processed_symbols / max(1, total_symbols)) * 100.0
+                    self.report_progress(progress, f"{processed_symbols}/{total_symbols}")
+                except Exception:
+                    pass
+                continue
+
+            # Advance progress after successful processing
+            processed_symbols += 1
+            try:
+                progress = (processed_symbols / max(1, total_symbols)) * 100.0
+                self.report_progress(progress, f"{processed_symbols}/{total_symbols}")
+            except Exception:
+                pass
+        
+        # Clear symbol context
+        if hasattr(self, '_current_symbol'):
+            delattr(self, '_current_symbol')
+
+        return {
+            "filtered_ohlcv_bundle": filtered_bundle,
+        }

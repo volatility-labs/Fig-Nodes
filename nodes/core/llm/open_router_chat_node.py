@@ -1,12 +1,13 @@
 import asyncio
 import random
+from datetime import datetime
 from typing import Any, Literal, NotRequired, TypedDict, TypeGuard
 
 import aiohttp
 from pydantic import BaseModel
 
 from core.api_key_vault import APIKeyVault
-from core.types_registry import ConfigDict, NodeCategory, get_type
+from core.types_registry import ConfigDict, NodeCategory, OHLCVBundle, get_type
 from nodes.base.base_node import Base
 
 
@@ -78,6 +79,9 @@ class OpenRouterChat(Base):
     - prompt: str (optional prompt to add to the chat as user message)
     - system: str or LLMChatMessage (optional system message to add to the chat)
     - images: ConfigDict (optional dict of label to base64 data URL for images to attach to the user prompt)
+    - hurst_data: ConfigDict (optional Hurst spectral analysis data from HurstPlot node)
+    - ohlcv_bundle: OHLCVBundle (optional OHLCV bars bundle from HurstPlot node)
+    - mesa_data: ConfigDict (optional MESA Stochastic data from HurstPlot node)
 
     Outputs:
     - message: Dict[str, Any] (assistant message with role, content, etc.)
@@ -97,6 +101,9 @@ class OpenRouterChat(Base):
         "prompt": str | None,
         "system": str | dict[str, Any] | None,
         "images": ConfigDict | None,
+        "hurst_data": ConfigDict | None,
+        "ohlcv_bundle": OHLCVBundle | None,
+        "mesa_data": ConfigDict | None,
         **{f"message_{i}": dict[str, Any] | None for i in range(5)},
     }
 
@@ -132,6 +139,7 @@ class OpenRouterChat(Base):
             "min": 0.0,
             "max": 2.0,
             "step": 0.05,
+            "precision": 2,
         },
         {
             "name": "max_tokens",
@@ -161,7 +169,7 @@ class OpenRouterChat(Base):
         self, id: int, params: dict[str, Any], graph_context: dict[str, Any] | None = None
     ):
         super().__init__(id, params, graph_context)
-        self.optional_inputs = ["prompt", "system", "images"] + [f"message_{i}" for i in range(5)]
+        self.optional_inputs = ["prompt", "system", "images", "hurst_data", "ohlcv_bundle", "mesa_data"] + [f"message_{i}" for i in range(5)]
         # Maintain seed state for increment mode
         self._seed_state: int | None = None
         self.vault = APIKeyVault()
@@ -240,9 +248,24 @@ class OpenRouterChat(Base):
         options: dict[str, Any] = {}
         temperature_raw = self.params.get("temperature")
         if temperature_raw is not None:
-            options["temperature"] = (
-                float(temperature_raw) if isinstance(temperature_raw, str) else temperature_raw
-            )
+            try:
+                temp_value: float
+                if isinstance(temperature_raw, str):
+                    temp_value = float(temperature_raw)
+                elif isinstance(temperature_raw, (int, float)):
+                    temp_value = float(temperature_raw)
+                else:
+                    temp_value = 0.7  # default fallback
+                
+                # Ensure temperature is within valid range
+                if temp_value < 0.0:
+                    options["temperature"] = 0.0
+                elif temp_value > 2.0:
+                    options["temperature"] = 2.0
+                else:
+                    options["temperature"] = temp_value
+            except (ValueError, TypeError):
+                options["temperature"] = 0.7  # default fallback
         # Inline parsing for max_tokens with type check
         max_tokens_raw = self.params.get("max_tokens")
         if max_tokens_raw is not None and isinstance(max_tokens_raw, int | float | str):
@@ -354,10 +377,223 @@ class OpenRouterChat(Base):
             and msg["role"] in ("system", "user", "assistant", "tool")
         )
 
+    def _format_hurst_data(self, hurst_data: ConfigDict) -> str:
+        """Format Hurst spectral analysis data into readable text for LLM analysis."""
+        if not hurst_data:
+            return ""
+        
+        lines: list[str] = []
+        lines.append("\n=== HURST SPECTRAL ANALYSIS DATA ===\n")
+        
+        for symbol, data in hurst_data.items():
+            if not isinstance(data, dict):
+                continue
+                
+            lines.append(f"\n--- {symbol} ---")
+            
+            # Metadata
+            metadata = data.get("metadata", {})
+            if metadata:
+                lines.append(f"Analysis Parameters:")
+                lines.append(f"  Source: {metadata.get('source', 'N/A')}")
+                lines.append(f"  Bandwidth: {metadata.get('bandwidth', 'N/A')}")
+                lines.append(f"  Periods: {metadata.get('periods', 'N/A')}")
+                lines.append(f"  Total Bars: {metadata.get('total_bars', 'N/A')}")
+                lines.append(f"  Display Bars: {metadata.get('display_bars', 'N/A')}")
+            
+            # Composite oscillator
+            composite = data.get("composite", [])
+            if composite:
+                # Show last 20 values and summary stats
+                valid_composite = [v for v in composite if v is not None]
+                if valid_composite:
+                    recent_composite = valid_composite[-20:] if len(valid_composite) > 20 else valid_composite
+                    lines.append(f"\nComposite Oscillator (last {len(recent_composite)} values):")
+                    for i, val in enumerate(recent_composite):
+                        lines.append(f"  [{len(valid_composite) - len(recent_composite) + i}]: {val:.6f}")
+                    if len(valid_composite) > 20:
+                        lines.append(f"  ... ({len(valid_composite) - 20} more values)")
+                    lines.append(f"  Current: {valid_composite[-1]:.6f}")
+                    lines.append(f"  Min: {min(valid_composite):.6f}, Max: {max(valid_composite):.6f}")
+            
+            # Bandpasses
+            bandpasses = data.get("bandpasses", {})
+            if bandpasses:
+                lines.append(f"\nBandpass Waves:")
+                for period_name, values in bandpasses.items():
+                    if isinstance(values, list):
+                        valid_values = [v for v in values if v is not None]
+                        if valid_values:
+                            recent_values = valid_values[-10:] if len(valid_values) > 10 else valid_values
+                            lines.append(f"  {period_name} (last {len(recent_values)} values):")
+                            for i, val in enumerate(recent_values):
+                                lines.append(f"    [{len(valid_values) - len(recent_values) + i}]: {val:.6f}")
+                            if len(valid_values) > 10:
+                                lines.append(f"    ... ({len(valid_values) - 10} more values)")
+                            lines.append(f"    Current: {valid_values[-1]:.6f}")
+            
+            # Peaks and troughs
+            peaks = data.get("peaks", [])
+            troughs = data.get("troughs", [])
+            if peaks:
+                lines.append(f"\nRecent Peaks: {len(peaks)} total")
+                for peak in peaks[-5:]:  # Last 5 peaks
+                    if isinstance(peak, dict):
+                        idx = peak.get("index", "N/A")
+                        val = peak.get("value", "N/A")
+                        lines.append(f"  Peak at index {idx}: {val}")
+            if troughs:
+                lines.append(f"\nRecent Troughs: {len(troughs)} total")
+                for trough in troughs[-5:]:  # Last 5 troughs
+                    if isinstance(trough, dict):
+                        idx = trough.get("index", "N/A")
+                        val = trough.get("value", "N/A")
+                        lines.append(f"  Trough at index {idx}: {val}")
+            
+            # Wavelength and amplitude
+            wavelength = data.get("wavelength")
+            amplitude = data.get("amplitude")
+            if wavelength is not None:
+                lines.append(f"\nWavelength: {wavelength}")
+            if amplitude is not None:
+                lines.append(f"Amplitude: {amplitude}")
+        
+        return "\n".join(lines)
+
+    def _format_mesa_data(self, mesa_data: ConfigDict) -> str:
+        """Format MESA Stochastic data into readable text for LLM analysis."""
+        if not mesa_data:
+            return ""
+        
+        lines: list[str] = []
+        lines.append("\n=== MESA STOCHASTIC MULTI LENGTH DATA ===\n")
+        
+        for symbol, data in mesa_data.items():
+            if not isinstance(data, dict):
+                continue
+                
+            lines.append(f"\n--- {symbol} ---")
+            
+            # Metadata
+            metadata = data.get("metadata", {})
+            if metadata:
+                lines.append(f"MESA Stochastic Parameters:")
+                lines.append(f"  Length 1: {metadata.get('length1', 'N/A')}")
+                lines.append(f"  Length 2: {metadata.get('length2', 'N/A')}")
+                lines.append(f"  Length 3: {metadata.get('length3', 'N/A')}")
+                lines.append(f"  Length 4: {metadata.get('length4', 'N/A')}")
+                lines.append(f"  Trigger Length: {metadata.get('trigger_length', 'N/A')}")
+                lines.append(f"  Total Bars: {metadata.get('total_bars', 'N/A')}")
+                lines.append(f"  Display Bars: {metadata.get('display_bars', 'N/A')}")
+            
+            # MESA Stochastic values (mesa1, mesa2, mesa3, mesa4)
+            for mesa_key in ["mesa1", "mesa2", "mesa3", "mesa4"]:
+                mesa_values = data.get(mesa_key, [])
+                if isinstance(mesa_values, list) and mesa_values:
+                    valid_values = [v for v in mesa_values if v is not None and isinstance(v, (int, float))]
+                    if valid_values:
+                        recent_values = valid_values[-20:] if len(valid_values) > 20 else valid_values
+                        lines.append(f"\n{mesa_key.upper()} (last {len(recent_values)} values):")
+                        for i, val in enumerate(recent_values):
+                            lines.append(f"  [{len(valid_values) - len(recent_values) + i}]: {val:.6f}")
+                        if len(valid_values) > 20:
+                            lines.append(f"  ... ({len(valid_values) - 20} more values)")
+                        lines.append(f"  Current: {valid_values[-1]:.6f}")
+                        lines.append(f"  Min: {min(valid_values):.6f}, Max: {max(valid_values):.6f}")
+                        lines.append(f"  Mean: {sum(valid_values) / len(valid_values):.6f}")
+        
+        return "\n".join(lines)
+
+    def _format_ohlcv_bundle(self, ohlcv_bundle: ConfigDict) -> str:
+        """Format OHLCV bars bundle into readable text for LLM analysis."""
+        if not ohlcv_bundle:
+            return ""
+        
+        lines: list[str] = []
+        lines.append("\n=== OHLCV PRICE DATA ===\n")
+        
+        for symbol, bars in ohlcv_bundle.items():
+            if not isinstance(bars, list):
+                continue
+            
+            lines.append(f"\n--- {symbol} ---")
+            lines.append(f"Total Bars: {len(bars)}")
+            
+            if not bars:
+                continue
+            
+            # Show first and last few bars
+            preview_count = min(5, len(bars))
+            lines.append(f"\nFirst {preview_count} bars:")
+            for i, bar in enumerate(bars[:preview_count]):
+                if isinstance(bar, dict) and all(k in bar for k in ("timestamp", "open", "high", "low", "close", "volume")):
+                    ts = bar["timestamp"]
+                    dt = datetime.fromtimestamp(ts / 1000) if isinstance(ts, (int, float)) else "N/A"
+                    lines.append(
+                        f"  [{i}] {dt}: O={bar['open']:.4f} H={bar['high']:.4f} "
+                        f"L={bar['low']:.4f} C={bar['close']:.4f} V={bar['volume']:.2f}"
+                    )
+            
+            if len(bars) > preview_count * 2:
+                lines.append(f"\n... ({len(bars) - preview_count * 2} bars) ...\n")
+            
+            # Show last few bars
+            if len(bars) > preview_count:
+                lines.append(f"Last {preview_count} bars:")
+                for i, bar in enumerate(bars[-preview_count:]):
+                    if isinstance(bar, dict) and all(k in bar for k in ("timestamp", "open", "high", "low", "close", "volume")):
+                        ts = bar["timestamp"]
+                        dt = datetime.fromtimestamp(ts / 1000) if isinstance(ts, (int, float)) else "N/A"
+                        idx = len(bars) - preview_count + i
+                        lines.append(
+                            f"  [{idx}] {dt}: O={bar['open']:.4f} H={bar['high']:.4f} "
+                            f"L={bar['low']:.4f} C={bar['close']:.4f} V={bar['volume']:.2f}"
+                        )
+            
+            # Summary stats
+            if bars:
+                closes = [float(bar["close"]) for bar in bars if isinstance(bar, dict) and "close" in bar]
+                if closes:
+                    lines.append(f"\nPrice Summary:")
+                    lines.append(f"  First Close: ${closes[0]:.4f}")
+                    lines.append(f"  Last Close: ${closes[-1]:.4f}")
+                    lines.append(f"  Min: ${min(closes):.4f}, Max: ${max(closes):.4f}")
+                    if len(closes) > 1:
+                        change_pct = ((closes[-1] - closes[0]) / closes[0]) * 100
+                        lines.append(f"  Change: {change_pct:+.2f}%")
+        
+        return "\n".join(lines)
+
     async def _execute_impl(self, inputs: dict[str, Any]) -> dict[str, Any]:
         prompt_text: str | None = inputs.get("prompt")
         system_input: str | dict[str, Any] | None = inputs.get("system")
         images: ConfigDict | None = inputs.get("images")
+        hurst_data: ConfigDict | None = inputs.get("hurst_data")
+        ohlcv_bundle: ConfigDict | None = inputs.get("ohlcv_bundle")
+        mesa_data: ConfigDict | None = inputs.get("mesa_data")
+
+        # Combine prompt with formatted Hurst data, MESA data, and OHLCV bars
+        combined_prompt_parts: list[str] = []
+        if prompt_text:
+            combined_prompt_parts.append(prompt_text)
+        
+        if hurst_data:
+            hurst_text = self._format_hurst_data(hurst_data)
+            if hurst_text:
+                combined_prompt_parts.append(hurst_text)
+        
+        if mesa_data:
+            mesa_text = self._format_mesa_data(mesa_data)
+            if mesa_text:
+                combined_prompt_parts.append(mesa_text)
+        
+        if ohlcv_bundle:
+            ohlcv_text = self._format_ohlcv_bundle(ohlcv_bundle)
+            if ohlcv_text:
+                combined_prompt_parts.append(ohlcv_text)
+        
+        # Use combined prompt if we have any content
+        final_prompt: str | None = "\n".join(combined_prompt_parts) if combined_prompt_parts else None
 
         merged: list[dict[str, Any]] = []
         for i in range(5):
@@ -373,7 +609,7 @@ class OpenRouterChat(Base):
             m for m in merged if m and str(m.get("content") or "").strip()
         ]
 
-        messages = self._build_messages(filtered_messages, prompt_text, system_input, images)
+        messages = self._build_messages(filtered_messages, final_prompt, system_input, images)
 
         if not messages:
             return self._create_error_response(

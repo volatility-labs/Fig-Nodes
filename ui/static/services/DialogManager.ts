@@ -123,7 +123,18 @@ export class DialogManager {
             if (numericOnly) {
                 const n = Number(input.value);
                 if (!Number.isFinite(n)) return;
-                callback(String(Math.floor(n)));
+                // Preserve decimal values - check if input has decimal point
+                // If the string contains a decimal point, preserve it (it's a float)
+                // Otherwise, use Math.floor for integers
+                const inputStr = input.value.trim();
+                const hasDecimal = inputStr.includes('.');
+                if (hasDecimal) {
+                    // Preserve decimal value
+                    callback(String(n));
+                } else {
+                    // Integer value - use Math.floor to ensure it's an integer
+                    callback(String(Math.floor(n)));
+                }
             } else {
                 callback(input.value);
             }

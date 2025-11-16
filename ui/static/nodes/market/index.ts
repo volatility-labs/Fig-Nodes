@@ -4,7 +4,7 @@ export { default as AtrXIndicatorNodeUI } from './AtrXIndicatorNodeUI';
 export { default as LodFilterNodeUI } from './LodFilterNodeUI';
 export { default as OHLCVPlotNodeUI } from './OHLCVPlotNodeUI';
 export { default as OHLCVPlotEnhancedNodeUI } from './OHLCVPlotEnhancedNodeUI';
-export { default as ImageDisplayNodeUI } from './ImageDisplayNodeUI';
+export { default as HurstPlotNodeUI } from './HurstPlotNodeUI';
 export { default as PolygonBatchCustomBarsNodeUI } from './PolygonBatchCustomBarsNodeUI';
 export { default as PolygonCustomBarsNodeUI } from './PolygonCustomBarsNodeUI';
 export { default as PolygonUniverseNodeUI } from './PolygonUniverseNodeUI';

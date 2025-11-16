@@ -1,9 +1,13 @@
 
 import BaseCustomNode from '../base/BaseCustomNode';
+import { LiteGraph } from '@comfyorg/litegraph';
 
 export default class LoggingNodeUI extends BaseCustomNode {
     private copyButton: any = null;
     private copyFeedbackTimeout: number | null = null;
+    private scrollOffset: number = 0;
+    private maxVisibleHeight: number = 400; // Maximum visible height in pixels
+    private lineHeight: number = 15;
 
     constructor(title: string, data: any, serviceRegistry: any) {
         super(title, data, serviceRegistry);
@@ -122,6 +126,7 @@ export default class LoggingNodeUI extends BaseCustomNode {
 
     reset() {
         this.displayText = '';
+        this.scrollOffset = 0;
         this.setDirtyCanvas(true, true);
     }
 
@@ -138,12 +143,17 @@ export default class LoggingNodeUI extends BaseCustomNode {
         const formatted = this.tryFormat(result);
         this.displayText = formatted;
         console.log('displayText set to:', this.displayText);
+        // Reset scroll to top when new content arrives
+        this.scrollOffset = 0;
         this.setDirtyCanvas(true, true);
     }
 
     onStreamUpdate(result: any) {
         let chunk: string = '';
         const format = this.getSelectedFormat();
+
+        // Check if we're at the bottom before updating
+        const wasAtBottom = this.isAtBottom();
 
         if (result.done) {
             // For final, format the full message
@@ -190,7 +200,54 @@ export default class LoggingNodeUI extends BaseCustomNode {
                 }
             }
         }
+
+        // Auto-scroll to bottom if user was already at bottom
+        if (wasAtBottom) {
+            this.scrollToBottom();
+        }
+
         this.setDirtyCanvas(true, true);
+    }
+
+    private isAtBottom(): boolean {
+        const nodeWithFlags = this as { flags?: { collapsed?: boolean }; size: [number, number] };
+        if (!this.displayText) return true;
+
+        const tempCanvas = document.createElement('canvas');
+        const tempCtx = tempCanvas.getContext('2d');
+        if (!tempCtx) return true;
+
+        tempCtx.font = '12px Arial';
+        const lines = this.wrapText(this.displayText, nodeWithFlags.size[0] - 20, tempCtx);
+        const totalContentHeight = lines.length * this.lineHeight;
+
+        const startY = LiteGraph.NODE_TITLE_HEIGHT + 4 + (this.progress >= 0 ? 9 : 0) + 
+                       (this.widgets ? this.widgets.length * LiteGraph.NODE_WIDGET_HEIGHT : 0) + 10;
+        const contentAreaHeight = nodeWithFlags.size[1] - startY - 10;
+        const maxScroll = Math.max(0, totalContentHeight - contentAreaHeight);
+
+        // Consider at bottom if within 5 pixels of bottom
+        return Math.abs(this.scrollOffset - maxScroll) < 5;
+    }
+
+    private scrollToBottom() {
+        const nodeWithFlags = this as { flags?: { collapsed?: boolean }; size: [number, number] };
+        if (!this.displayText) return;
+
+        const tempCanvas = document.createElement('canvas');
+        const tempCtx = tempCanvas.getContext('2d');
+        if (!tempCtx) return;
+
+        tempCtx.font = '12px Arial';
+        const lines = this.wrapText(this.displayText, nodeWithFlags.size[0] - 20, tempCtx);
+        const totalContentHeight = lines.length * this.lineHeight;
+
+        const startY = LiteGraph.NODE_TITLE_HEIGHT + 4 + (this.progress >= 0 ? 9 : 0) + 
+                       (this.widgets ? this.widgets.length * LiteGraph.NODE_WIDGET_HEIGHT : 0) + 10;
+        const contentAreaHeight = nodeWithFlags.size[1] - startY - 10;
+        const maxScroll = Math.max(0, totalContentHeight - contentAreaHeight);
+
+        this.scrollOffset = maxScroll;
     }
 
     // Clean up timeouts when node is destroyed
@@ -200,5 +257,174 @@ export default class LoggingNodeUI extends BaseCustomNode {
             this.copyFeedbackTimeout = null;
         }
         super.onRemoved?.();
+    }
+
+    // Override onDrawForeground to add scrolling support
+    onDrawForeground(ctx: CanvasRenderingContext2D) {
+        // Draw progress bar and highlight first
+        this.drawProgressBar(ctx);
+        this.renderer['drawHighlight'](ctx);
+        
+        // Draw scrollable content
+        this.drawScrollableContent(ctx);
+        
+        // Draw error if any
+        this.renderer['drawError'](ctx);
+    }
+
+    private drawScrollableContent(ctx: CanvasRenderingContext2D) {
+        const nodeWithFlags = this as { flags?: { collapsed?: boolean }; size: [number, number] };
+        if (nodeWithFlags.flags?.collapsed || !this.displayResults || !this.displayText) {
+            return;
+        }
+
+        const maxWidth = nodeWithFlags.size[0] - 20;
+
+        // Create temp canvas for text measurement
+        const tempCanvas = document.createElement('canvas');
+        const tempCtx = tempCanvas.getContext('2d');
+        if (!tempCtx) return;
+
+        tempCtx.font = '12px Arial';
+        const lines = this.wrapText(this.displayText, maxWidth, tempCtx);
+
+        // Calculate starting Y position (after title, progress bar, widgets)
+        let startY = LiteGraph.NODE_TITLE_HEIGHT + 4 + (this.progress >= 0 ? 9 : 0);
+        if (this.widgets) {
+            startY += this.widgets.length * LiteGraph.NODE_WIDGET_HEIGHT;
+        }
+        startY += 10; // Padding
+
+        // Calculate visible area
+        const nodeHeight = nodeWithFlags.size[1];
+        const contentAreaHeight = nodeHeight - startY - 10; // 10px bottom padding
+        const maxVisibleLines = Math.floor(contentAreaHeight / this.lineHeight);
+
+        // Calculate total content height
+        const totalContentHeight = lines.length * this.lineHeight;
+        
+        // Clamp scroll offset
+        const maxScroll = Math.max(0, totalContentHeight - contentAreaHeight);
+        this.scrollOffset = Math.max(0, Math.min(maxScroll, this.scrollOffset));
+
+        // Calculate which lines to draw
+        const startLine = Math.floor(this.scrollOffset / this.lineHeight);
+        const endLine = Math.min(lines.length, startLine + maxVisibleLines + 1); // +1 for partial line
+
+        // Set fixed node height if content exceeds visible area
+        if (totalContentHeight > contentAreaHeight) {
+            const fixedHeight = startY + contentAreaHeight + 10;
+            if (Math.abs(nodeWithFlags.size[1] - fixedHeight) > 1) {
+                nodeWithFlags.size[1] = fixedHeight;
+                this.setDirtyCanvas(true, true);
+                return; // Redraw with new size
+            }
+        } else {
+            // Auto-size if content fits
+            const neededHeight = startY + totalContentHeight + 10;
+            if (Math.abs(nodeWithFlags.size[1] - neededHeight) > 1) {
+                nodeWithFlags.size[1] = neededHeight;
+                this.setDirtyCanvas(true, true);
+                return;
+            }
+        }
+
+        // Draw visible lines
+        ctx.font = '12px Arial';
+        ctx.fillStyle = '#ffffff';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'top';
+
+        // Clip to content area
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(10, startY, maxWidth, contentAreaHeight);
+        ctx.clip();
+
+        // Calculate Y offset for partial line scrolling
+        const lineOffset = (this.scrollOffset % this.lineHeight) / this.lineHeight;
+        const yOffset = -lineOffset * this.lineHeight;
+
+        for (let i = startLine; i < endLine; i++) {
+            const lineY = startY + (i - startLine) * this.lineHeight + yOffset;
+            ctx.fillText(lines[i], 10, lineY);
+        }
+
+        ctx.restore();
+
+        // Draw scrollbar if content exceeds visible area
+        if (totalContentHeight > contentAreaHeight) {
+            this.drawScrollbar(ctx, nodeWithFlags.size[0], startY, contentAreaHeight, totalContentHeight);
+        }
+    }
+
+    private drawScrollbar(ctx: CanvasRenderingContext2D, nodeWidth: number, startY: number, visibleHeight: number, totalHeight: number) {
+        const scrollbarWidth = 8;
+        const scrollbarX = nodeWidth - scrollbarWidth - 2;
+        const scrollbarHeight = visibleHeight;
+        
+        // Scrollbar track
+        ctx.fillStyle = 'rgba(100, 100, 100, 0.3)';
+        ctx.fillRect(scrollbarX, startY, scrollbarWidth, scrollbarHeight);
+
+        // Scrollbar thumb
+        const maxScroll = Math.max(0, totalHeight - visibleHeight);
+        if (maxScroll <= 0) return; // No scrolling needed
+        
+        const thumbHeight = Math.max(20, (visibleHeight / totalHeight) * scrollbarHeight);
+        const scrollRatio = maxScroll > 0 ? this.scrollOffset / maxScroll : 0;
+        const thumbY = startY + scrollRatio * (scrollbarHeight - thumbHeight);
+        
+        ctx.fillStyle = 'rgba(150, 150, 150, 0.7)';
+        ctx.fillRect(scrollbarX, thumbY, scrollbarWidth, thumbHeight);
+    }
+
+    // Handle mouse wheel events for scrolling (works with both mouse and trackpad)
+    onMouseWheel(event: WheelEvent, pos: [number, number], canvas: any): boolean {
+        const nodeWithFlags = this as { flags?: { collapsed?: boolean }; size: [number, number] };
+        if (nodeWithFlags.flags?.collapsed || !this.displayResults || !this.displayText) {
+            return false;
+        }
+
+        // Check if mouse is over the content area
+        const startY = LiteGraph.NODE_TITLE_HEIGHT + 4 + (this.progress >= 0 ? 9 : 0) + 
+                       (this.widgets ? this.widgets.length * LiteGraph.NODE_WIDGET_HEIGHT : 0) + 10;
+        const contentAreaHeight = nodeWithFlags.size[1] - startY - 10;
+
+        // Check if mouse is within node bounds
+        if (pos[0] < 0 || pos[0] > nodeWithFlags.size[0] || pos[1] < startY || pos[1] > nodeWithFlags.size[1]) {
+            return false;
+        }
+
+        // Calculate total content height
+        const tempCanvas = document.createElement('canvas');
+        const tempCtx = tempCanvas.getContext('2d');
+        if (!tempCtx) return false;
+        
+        tempCtx.font = '12px Arial';
+        const lines = this.wrapText(this.displayText, nodeWithFlags.size[0] - 20, tempCtx);
+        const totalContentHeight = lines.length * this.lineHeight;
+        const maxScroll = Math.max(0, totalContentHeight - contentAreaHeight);
+        
+        if (maxScroll <= 0) return false; // No scrolling needed
+
+        // Handle different delta modes (pixel, line, page)
+        // Trackpads typically use deltaMode = 0 (pixels), mouse wheels use deltaMode = 1 (lines)
+        let scrollAmount: number;
+        if (event.deltaMode === 0) {
+            // Pixel mode (trackpad) - use deltaY directly with slight scaling
+            scrollAmount = event.deltaY * 0.8;
+        } else if (event.deltaMode === 1) {
+            // Line mode (mouse wheel) - convert to pixels
+            scrollAmount = event.deltaY * this.lineHeight;
+        } else {
+            // Page mode - scroll by page height
+            scrollAmount = event.deltaY * contentAreaHeight;
+        }
+
+        this.scrollOffset = Math.max(0, Math.min(maxScroll, this.scrollOffset + scrollAmount));
+
+        this.setDirtyCanvas(true, true);
+        return true; // Event handled
     }
 }
