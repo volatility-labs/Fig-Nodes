@@ -42,20 +42,9 @@ uv run python main.py --dev
 
 The default graph should load. Press `Execute` at the bottom right of the canvas. 
 
-## (Optional) Setup Ollama
+## Litegraph
 
-For local LLM inference nodes, Fig Nodes *require* a local Ollama installation. Please see [Ollama installation instructions here](https://github.com/ollama/ollama).
-
-After installing Ollama on your local computer, download models by
-
-```bash
-ollama pull qwen3:8b
-```
-
-You can find a library of all the models supported by Ollama [here](https://ollama.com/library).
-
-For optimal results, consider the model size vs your local machine's available VRAM and GPU. 
-
+The code base runs in a forked version of [ComfyOrg's Litegraph](https://github.com/Comfy-Org/litegraph.js).
 
 ## Testing
 

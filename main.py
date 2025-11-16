@@ -7,7 +7,7 @@ Usage examples:
 
 Dev mode:
   - Starts Uvicorn (backend) on port 8000
-  - Starts Vite dev server in ui/static (default port 5173) with proxy to backend
+  - Starts Vite dev server in frontend (default port 5173) with proxy to backend
 
 Prod mode:
   - Optionally builds the frontend (if --build or dist missing)
@@ -28,8 +28,10 @@ from typing import List, Optional, Tuple
 
 
 REPO_ROOT = Path(__file__).resolve().parent
-UI_DIR = REPO_ROOT / "ui" / "static"
+UI_DIR = REPO_ROOT / "frontend"
 DIST_DIR = UI_DIR / "dist"
+LITEGRAPH_DIR = REPO_ROOT / "fignode-litegraph.js"
+LITEGRAPH_DIST_DIR = LITEGRAPH_DIR / "dist"
 
 
 def _which(cmd: str) -> Optional[str]:
@@ -110,6 +112,10 @@ def _terminate_process(proc: subprocess.Popen, sig: int = signal.SIGTERM, timeou
 
 
 def run_dev(host: str, backend_port: int, vite_port: int) -> int:
+    # Ensure fignode-litegraph.js is built before starting dev servers
+    if _needs_litegraph_build():
+        _build_litegraph()
+
     # Backend (Uvicorn) with auto-reload
     backend_cmd = [
         sys.executable,
@@ -140,7 +146,7 @@ def run_dev(host: str, backend_port: int, vite_port: int) -> int:
 
     print(f"\nDev servers starting:")
     print(f"- Backend:    http://{host}:{backend_port}")
-    print(f"- Frontend:   http://localhost:{vite_port}/static/  (Vite dev)")
+    print(f"- Frontend:   http://localhost:{vite_port}/  (Vite dev)")
     print("Press Ctrl+C to stop both.")
 
     exit_code = 0
@@ -174,8 +180,33 @@ def run_dev(host: str, backend_port: int, vite_port: int) -> int:
     return exit_code
 
 
+def _needs_litegraph_build() -> bool:
+    """Check if fignode-litegraph.js needs to be built."""
+    if not LITEGRAPH_DIST_DIR.exists():
+        return True
+    if not (LITEGRAPH_DIST_DIR / "litegraph.es.js").exists():
+        return True
+    if not (LITEGRAPH_DIST_DIR / "litegraph.d.ts").exists():
+        return True
+    return False
+
+
 def _needs_build() -> bool:
     return not DIST_DIR.exists() or not (DIST_DIR / "index.html").exists()
+
+
+def _build_litegraph() -> None:
+    """Build the fignode-litegraph.js package."""
+    pm_cmd, pm_name = _select_node_pm(LITEGRAPH_DIR)
+    if pm_name == "yarn":
+        build_cmd = pm_cmd + ["build"]
+    elif pm_name == "npm":
+        build_cmd = pm_cmd + ["run", "build"]
+    else:  # npx fallback
+        build_cmd = pm_cmd + ["vite", "build"]
+
+    print("Building fignode-litegraph.js...")
+    subprocess.check_call(build_cmd, cwd=str(LITEGRAPH_DIR))
 
 
 def _build_frontend() -> None:
@@ -192,6 +223,10 @@ def _build_frontend() -> None:
 
 
 def run_prod(host: str, backend_port: int, force_build: bool) -> int:
+    # Always ensure fignode-litegraph.js is built before building frontend
+    if force_build or _needs_litegraph_build():
+        _build_litegraph()
+
     if force_build or _needs_build():
         _build_frontend()
 

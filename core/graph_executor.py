@@ -81,6 +81,12 @@ class GraphExecutor:
             s_link: SerialisedLink = link
             from_id = s_link["origin_id"]
             to_id = s_link["target_id"]
+            if from_id not in self._id_to_idx:
+                logger.warning(f"Link {s_link.get('id', 'unknown')} references non-existent origin node {from_id}, skipping")
+                continue
+            if to_id not in self._id_to_idx:
+                logger.warning(f"Link {s_link.get('id', 'unknown')} references non-existent target node {to_id}, skipping")
+                continue
             self.dag.add_edge(self._id_to_idx[from_id], self._id_to_idx[to_id], None)
 
         if not _rx_is_dag(self.dag):

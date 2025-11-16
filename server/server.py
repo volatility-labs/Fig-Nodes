@@ -292,15 +292,8 @@ async def _handle_stop_message(
 def read_root():
     """Serve the main application UI."""
     return FileResponse(
-        os.path.join(os.path.dirname(__file__), "..", "ui", "static/dist", "index.html")
+        os.path.join(os.path.dirname(__file__), "..", "frontend", "dist", "index.html")
     )
-
-
-@app.get("/style.css")
-def serve_style():
-    """Serve the main stylesheet."""
-    css_path = os.path.join(os.path.dirname(__file__), "..", "ui", "static", "style.css")
-    return FileResponse(css_path, media_type="text/css")
 
 
 @app.websocket("/execute")
@@ -408,22 +401,10 @@ async def execute_endpoint(websocket: WebSocket):
 
 if "PYTEST_CURRENT_TEST" not in os.environ:
     app.mount(
-        "/examples",
-        StaticFiles(
-            directory=os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "examples"))
-        ),
-        name="examples",
-    )
-    app.mount(
-        "/static",
-        StaticFiles(directory=os.path.join(os.path.dirname(__file__), "..", "ui", "static/dist")),
-        name="static",
-    )
-    app.mount(
         "/",
         StaticFiles(
-            directory=os.path.join(os.path.dirname(__file__), "..", "ui", "static", "dist"),
-            html=True,
+            directory=os.path.join(os.path.dirname(__file__), "..", "frontend", "dist"),
+            html=True,  # SPA fallback: serves index.html for client routes
         ),
         name="root_static",
     )
