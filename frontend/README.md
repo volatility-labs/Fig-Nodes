@@ -1,28 +1,5 @@
-# UI/Static Frontend
-
 ## Overview
-This directory contains the TypeScript frontend for the node-based editor, built with LiteGraph and Vite.
-
-## Structure
-- `app.ts`: Main entry point.
-- `components/`: Reusable UI components (e.g., NodeList.ts).
-- `nodes/`: Custom node UI classes (extend BaseCustomNode.ts).
-- `services/`: Core services (APIKeyManager, FileManager, etc.).
-- `tests/`: Vitest tests.
-- `types.ts`: Type handling.
-- `resultTypes.ts`: Execution result type definitions.
-- `websocketType.ts`: WebSocket message type definitions.
-- `websocket.ts`: WebSocket communication handler.
-- `style.css`: Styles.
-- `index.html`: HTML template.
-
-## Development
-- Install: `yarn install`
-- Run: `yarn dev`
-- Build: `yarn build`
-- Test: `yarn test`
-- Lint: `yarn lint`
-- Format: `yarn format`
+This directory contains the frontend code for Fig node. 
 
 ## Adding a New Node UI
 1. Create `nodes/{category}/{BackendClassName}NodeUI.ts` extending BaseCustomNode.ts.
