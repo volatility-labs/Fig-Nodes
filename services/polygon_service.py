@@ -36,7 +36,16 @@ async def fetch_bars(
         - api_status: "OK" or "DELAYED" from API response
         - market_open: bool indicating if US market is open
     """
-    multiplier = params.get("multiplier", 1)
+    multiplier_raw = params.get("multiplier", 1)
+    # Convert multiplier to integer - API requires integer in URL path
+    # Handle both int and float types, and ensure it's a valid integer
+    if isinstance(multiplier_raw, (int, float)):
+        multiplier = int(round(multiplier_raw))
+        if multiplier < 1:
+            multiplier = 1
+    else:
+        multiplier = 1
+    
     timespan = params.get("timespan", "day")
     lookback_period = params.get("lookback_period", "3 months")
     adjusted = params.get("adjusted", True)
@@ -70,6 +79,9 @@ async def fetch_bars(
     # Add "X:" prefix for crypto tickers as required by Massive.com API
     if symbol.asset_class == AssetClass.CRYPTO:
         ticker = f"X:{ticker}"
+    
+    # Ensure multiplier is definitely an integer for URL construction
+    multiplier = int(multiplier)
     url = f"https://api.massive.com/v2/aggs/ticker/{ticker}/range/{multiplier}/{timespan}/{from_ms}/{to_ms}"
     query_params = {
         "adjusted": str(adjusted).lower(),

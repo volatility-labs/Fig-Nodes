@@ -66,6 +66,18 @@ class PolygonCustomBars(Base):
         {"name": "limit", "type": "number", "default": 5000, "min": 1, "max": 50000, "step": 1},
     ]
 
+    def __init__(
+        self, id: int, params: dict[str, Any], graph_context: dict[str, Any] | None = None
+    ):
+        super().__init__(id, params, graph_context)
+        # Ensure multiplier is always an integer (API requirement)
+        if "multiplier" in self.params:
+            multiplier_raw = self.params["multiplier"]
+            if isinstance(multiplier_raw, (int, float)):
+                self.params["multiplier"] = max(1, int(round(multiplier_raw)))
+            else:
+                self.params["multiplier"] = 1
+
     async def _execute_impl(
         self, inputs: dict[str, Any]
     ) -> dict[str, dict[AssetSymbol, list[OHLCVBar]]]:

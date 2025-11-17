@@ -78,6 +78,13 @@ class PolygonBatchCustomBars(Base):
         self, id: int, params: dict[str, Any], graph_context: dict[str, Any] | None = None
     ):
         super().__init__(id, params, graph_context)
+        # Ensure multiplier is always an integer (API requirement)
+        if "multiplier" in self.params:
+            multiplier_raw = self.params["multiplier"]
+            if isinstance(multiplier_raw, (int, float)):
+                self.params["multiplier"] = max(1, int(round(multiplier_raw)))
+            else:
+                self.params["multiplier"] = 1
         # Conservative cap to avoid event loop thrashing and ensure predictable batching in tests
         self._max_safe_concurrency = 5
 
