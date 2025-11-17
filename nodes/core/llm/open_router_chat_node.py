@@ -6,7 +6,7 @@ import aiohttp
 from pydantic import BaseModel
 
 from core.api_key_vault import APIKeyVault
-from core.types_registry import ConfigDict, NodeCategory, get_type
+from core.types_registry import ConfigDict, NodeCategory, OHLCVBundle, get_type
 from nodes.base.base_node import Base
 
 
@@ -78,13 +78,10 @@ class OpenRouterChat(Base):
     - prompt: str (optional prompt to add to the chat as user message)
     - system: str or LLMChatMessage (optional system message to add to the chat)
     - images: ConfigDict (optional dict of label to base64 data URL for images to attach to the user prompt)
-<<<<<<< Updated upstream
-=======
     - hurst_data: ConfigDict (optional Hurst spectral analysis data from HurstPlot node)
     - ohlcv_bundle: OHLCVBundle (optional OHLCV bars bundle from HurstPlot node)
     - mesa_data: ConfigDict (optional MESA Stochastic data from HurstPlot node)
     - cco_data: ConfigDict (optional Cycle Channel Oscillator data from HurstPlot node)
->>>>>>> Stashed changes
 
     Outputs:
     - message: Dict[str, Any] (assistant message with role, content, etc.)
@@ -104,15 +101,11 @@ class OpenRouterChat(Base):
         "prompt": str | None,
         "system": str | dict[str, Any] | None,
         "images": ConfigDict | None,
-<<<<<<< Updated upstream
-        **{f"message_{i}": dict[str, Any] | None for i in range(5)},
-=======
         "hurst_data": ConfigDict | None,
         "ohlcv_bundle": OHLCVBundle | None,
         "mesa_data": ConfigDict | None,
         "cco_data": ConfigDict | None,
         **{f"message_{i}": dict[str, Any] | None for i in range(4)},
->>>>>>> Stashed changes
     }
 
     outputs = {
@@ -176,11 +169,7 @@ class OpenRouterChat(Base):
         self, id: int, params: dict[str, Any], graph_context: dict[str, Any] | None = None
     ):
         super().__init__(id, params, graph_context)
-<<<<<<< Updated upstream
-        self.optional_inputs = ["prompt", "system", "images"] + [f"message_{i}" for i in range(5)]
-=======
         self.optional_inputs = ["prompt", "system", "images", "hurst_data", "ohlcv_bundle", "mesa_data", "cco_data"] + [f"message_{i}" for i in range(4)]
->>>>>>> Stashed changes
         # Maintain seed state for increment mode
         self._seed_state: int | None = None
         self.vault = APIKeyVault()
@@ -373,8 +362,6 @@ class OpenRouterChat(Base):
             and msg["role"] in ("system", "user", "assistant", "tool")
         )
 
-<<<<<<< Updated upstream
-=======
     def _format_hurst_data(self, hurst_data: ConfigDict) -> str:
         """Format Hurst spectral analysis data into readable text for LLM analysis."""
         if not hurst_data:
@@ -644,13 +631,10 @@ class OpenRouterChat(Base):
         
         return "\n".join(lines)
 
->>>>>>> Stashed changes
     async def _execute_impl(self, inputs: dict[str, Any]) -> dict[str, Any]:
         prompt_text: str | None = inputs.get("prompt")
         system_input: str | dict[str, Any] | None = inputs.get("system")
         images: ConfigDict | None = inputs.get("images")
-<<<<<<< Updated upstream
-=======
         hurst_data: ConfigDict | None = inputs.get("hurst_data")
         ohlcv_bundle: ConfigDict | None = inputs.get("ohlcv_bundle")
         mesa_data: ConfigDict | None = inputs.get("mesa_data")
@@ -683,7 +667,6 @@ class OpenRouterChat(Base):
         
         # Use combined prompt if we have any content
         final_prompt: str | None = "\n".join(combined_prompt_parts) if combined_prompt_parts else None
->>>>>>> Stashed changes
 
         merged: list[dict[str, Any]] = []
         for i in range(4):

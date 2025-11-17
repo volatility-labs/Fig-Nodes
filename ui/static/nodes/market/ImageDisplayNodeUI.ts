@@ -218,11 +218,6 @@ export default class ImageDisplayNodeUI extends BaseCustomNode {
         // Compute grid for multiple images
         const cols = Math.ceil(Math.sqrt(labels.length));
         const rows = Math.ceil(labels.length / cols);
-<<<<<<< Updated upstream
-        const cellSpacing = 4;
-        const cellW = Math.floor((w - (cols - 1) * cellSpacing) / cols);
-        const cellH = Math.floor((h - (rows - 1) * cellSpacing) / rows);
-=======
         const cellSpacing = 2; // Small uniform spacing between images
         // Apply zoom to grid cell sizes for multi-image grids
         const baseCellW = Math.floor((w - (cols - 1) * cellSpacing) / cols);
@@ -246,7 +241,6 @@ export default class ImageDisplayNodeUI extends BaseCustomNode {
         if (scrollableWidth > 0) {
             this.gridScrollOffsetX = ((this.gridScrollOffsetX % scrollableWidth) + scrollableWidth) % scrollableWidth;
         }
->>>>>>> Stashed changes
 
         // Draw each image into a cell
         let idx = 0;
@@ -260,52 +254,24 @@ export default class ImageDisplayNodeUI extends BaseCustomNode {
                 const cx = x0 + c * (cellW + cellSpacing);
                 const cy = y0 + r * (cellH + cellSpacing);
 
-<<<<<<< Updated upstream
-                // Image - fit preserving aspect ratio
+                // Skip drawing if cell is completely outside visible area
+                if (cy + cellH < y0 || cy > y0 + h || cx + cellW < x0 || cx > x0 + w) continue;
+
+                // Image - stretch to fill entire cell for uniform grid appearance
                 if (img) {
-                    const imageArea = this.fitImageToBounds(img.width, img.height, cellW - 2, cellH - 2);
+                    // Stretch image to fill cell completely (ignore aspect ratio for grid uniformity)
                     ctx.drawImage(
                         img,
-                        cx + 1 + imageArea.x,
-                        cy + 1 + imageArea.y,
-                        imageArea.width,
-                        imageArea.height
+                        cx,
+                        cy,
+                        cellW,
+                        cellH
                     );
-=======
-                        const cx = baseX + c * (cellW + cellSpacing);
-                        const cy = baseY + r * (cellH + cellSpacing);
-
-                        // Skip drawing if cell is completely outside visible area
-                        if (cy + cellH < y0 || cy > y0 + h || cx + cellW < x0 || cx > x0 + w) continue;
-
-                        // Image - stretch to fill entire cell for uniform grid appearance
-                        if (img) {
-                            // Stretch image to fill cell completely (ignore aspect ratio for grid uniformity)
-                            ctx.drawImage(
-                                img,
-                                cx,
-                                cy,
-                                cellW,
-                                cellH
-                            );
-                        }
-                        // No borders - seamless grid appearance
-                    }
->>>>>>> Stashed changes
                 }
-
-                // Very subtle border
-                ctx.strokeStyle = 'rgba(75, 85, 99, 0.18)';
-                ctx.lineWidth = 1;
-                ctx.strokeRect(cx + 0.5, cy + 0.5, cellW - 1, cellH - 1);
+                // No borders - seamless grid appearance
             }
         }
         
-        ctx.restore();
-<<<<<<< Updated upstream
-=======
-        
-        // Restore the initial clipping save
         ctx.restore();
     }
 
