@@ -8,7 +8,7 @@ export default class OpenRouterChatNodeUI extends BaseCustomNode {
 
     constructor(title: string, data: any, serviceRegistry: any) {
         super(title, data, serviceRegistry);
-        this.size = [280, 200];
+        this.size = [280, 240];
         this.serviceRegistry = serviceRegistry;
 
         // Add tooltip to system input slot
