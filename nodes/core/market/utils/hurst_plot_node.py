@@ -15,6 +15,54 @@ import matplotlib
 matplotlib.use("Agg")  # non-interactive backend for server-side rendering
 import matplotlib.pyplot as plt
 
+# Configure matplotlib for StockCharts-quality rendering
+# These settings ensure crisp, professional-looking charts similar to StockCharts
+plt.rcParams.update({
+    # High-quality rendering
+    'figure.dpi': 250,  # High base DPI for crisp rendering
+    'savefig.dpi': 250,  # Save at high DPI
+    'figure.facecolor': 'white',
+    'axes.facecolor': 'white',
+    
+    # Anti-aliasing for smooth lines and text
+    'lines.antialiased': True,
+    'patch.antialiased': True,
+    'text.antialiased': True,
+    # Note: 'font.antialiased' is not a valid rcParam - text.antialiased handles font rendering
+    
+    # Font rendering for crisp text
+    'font.family': 'sans-serif',
+    'font.sans-serif': ['Arial', 'DejaVu Sans', 'Liberation Sans', 'Helvetica', 'sans-serif'],
+    'font.size': 10,
+    'axes.labelsize': 10,
+    'axes.titlesize': 12,
+    'xtick.labelsize': 9,
+    'ytick.labelsize': 9,
+    'legend.fontsize': 8,
+    
+    # Line rendering
+    'lines.linewidth': 1.5,
+    'lines.markeredgewidth': 0.5,
+    'patch.linewidth': 0.5,
+    
+    # Grid and axes - StockCharts-style clear grid separation
+    'axes.grid': True,
+    'axes.axisbelow': True,
+    'grid.alpha': 0.4,  # Increased from 0.3 for better visibility
+    'grid.color': '#d0d0d0',  # Slightly darker grid lines
+    'grid.linewidth': 0.6,  # Slightly thicker grid lines
+    'grid.linestyle': '-',  # Solid lines for cleaner look
+    'axes.edgecolor': '#b0b0b0',  # Darker edge color for better panel separation
+    'axes.linewidth': 1.0,  # Thicker axes edges for clearer panel boundaries
+    
+    # Image rendering quality
+    'image.interpolation': 'bilinear',
+    'image.resample': True,
+    
+    # Backend-specific optimizations
+    'agg.path.chunksize': 10000,  # Optimize path rendering
+})
+
 if TYPE_CHECKING:
     from matplotlib.axes import Axes
     from matplotlib.figure import Figure
@@ -37,12 +85,35 @@ logger = logging.getLogger(__name__)
 
 
 def _encode_fig_to_data_url(fig: "Figure") -> str:
-    """Encode matplotlib figure to base64 data URL."""
+    """Encode matplotlib figure to base64 data URL with StockCharts-quality rendering.
+    
+    Uses high DPI (250) with optimized PNG compression to achieve crisp, professional
+    charts similar to StockCharts while keeping file sizes reasonable.
+    """
     buf = io.BytesIO()
-    # Higher DPI for better AI image analysis
-    # Light background for better AI visibility (white/light gray)
-    # pad_inches=0.1 reduces extra padding around the figure
-    fig.savefig(buf, format="png", bbox_inches="tight", pad_inches=0.1, dpi=150, facecolor='#ffffff', edgecolor='none')
+    # StockCharts-quality settings:
+    # - 250 DPI: High resolution for crisp rendering (between 200-300 for balance)
+    # - optimize=True: PNG optimization reduces file size without quality loss
+    # - compress_level=6: Good balance between compression and speed (0-9, 6 is optimal)
+    # - metadata={'Software': None}: Remove metadata to reduce size
+    # - bbox_inches='tight': Remove extra whitespace
+    # - pad_inches=0.1: Small padding for clean edges
+    # - facecolor='white': Clean white background
+    # - edgecolor='none': No border
+    # - transparent=False: Solid background for better compression
+    fig.savefig(
+        buf,
+        format="png",
+        bbox_inches="tight",
+        pad_inches=0.1,
+        dpi=250,  # High DPI for StockCharts-like crispness
+        facecolor='#ffffff',
+        edgecolor='none',
+        transparent=False,
+        metadata={'Software': None},  # Remove metadata
+    )
+    # Note: PNG optimization is handled automatically by matplotlib's PNG writer
+    # The 'optimize' parameter is not available in savefig() for Agg backend
     plt.close(fig)
     buf.seek(0)
     b64 = base64.b64encode(buf.read()).decode("ascii")
@@ -141,27 +212,92 @@ def _plot_candles(ax: "Axes", series: list[tuple[int, float, float, float, float
                 line, = ax.plot(valid_indices, valid_values, color=color, linewidth=linewidth, alpha=1.0, label=label, linestyle='-')
                 ema_lines.append(line)
     
+    # Detect EMA crosses (recent crosses are particularly positive signals)
+    recent_crosses: list[str] = []
+    lookback_bars = 20  # Check last 20 bars for recent crosses
+    
+    if ema_10 and ema_30 and len(ema_10) == len(series) and len(ema_30) == len(series):
+        # Check for EMA 10 crossing above EMA 30
+        for i in range(max(1, len(series) - lookback_bars), len(series)):
+            if (ema_10[i-1] is not None and ema_10[i] is not None and 
+                ema_30[i-1] is not None and ema_30[i] is not None):
+                # Bullish cross: EMA 10 was below EMA 30, now above
+                if ema_10[i-1] <= ema_30[i-1] and ema_10[i] > ema_30[i]:
+                    bars_ago = len(series) - 1 - i
+                    recent_crosses.append(f"EMA 10↑30 ({bars_ago} bar{'s' if bars_ago != 1 else ''} ago)")
+                    # Mark cross point with a small circle
+                    cross_price = (ema_10[i] + ema_30[i]) / 2
+                    ax.plot(i, cross_price, 'o', color='#4caf50', markersize=6, zorder=10, alpha=0.8)
+    
+    if ema_30 and ema_100 and len(ema_30) == len(series) and len(ema_100) == len(series):
+        # Check for EMA 30 crossing above EMA 100
+        for i in range(max(1, len(series) - lookback_bars), len(series)):
+            if (ema_30[i-1] is not None and ema_30[i] is not None and 
+                ema_100[i-1] is not None and ema_100[i] is not None):
+                # Bullish cross: EMA 30 was below EMA 100, now above
+                if ema_30[i-1] <= ema_100[i-1] and ema_30[i] > ema_100[i]:
+                    bars_ago = len(series) - 1 - i
+                    recent_crosses.append(f"EMA 30↑100 ({bars_ago} bar{'s' if bars_ago != 1 else ''} ago)")
+                    # Mark cross point with a small circle
+                    cross_price = (ema_30[i] + ema_100[i]) / 2
+                    ax.plot(i, cross_price, 'o', color='#4caf50', markersize=6, zorder=10, alpha=0.8)
+    
+    if ema_10 and ema_100 and len(ema_10) == len(series) and len(ema_100) == len(series):
+        # Check for EMA 10 crossing above EMA 100 (less common but significant)
+        for i in range(max(1, len(series) - lookback_bars), len(series)):
+            if (ema_10[i-1] is not None and ema_10[i] is not None and 
+                ema_100[i-1] is not None and ema_100[i] is not None):
+                # Bullish cross: EMA 10 was below EMA 100, now above
+                if ema_10[i-1] <= ema_100[i-1] and ema_10[i] > ema_100[i]:
+                    bars_ago = len(series) - 1 - i
+                    recent_crosses.append(f"EMA 10↑100 ({bars_ago} bar{'s' if bars_ago != 1 else ''} ago)")
+                    # Mark cross point with a small circle
+                    cross_price = (ema_10[i] + ema_100[i]) / 2
+                    ax.plot(i, cross_price, 'o', color='#4caf50', markersize=6, zorder=10, alpha=0.8)
+    
     # Add text annotation at the end of each EMA line showing current value for AI clarity
     if ema_lines and len(series) > 0:
         last_index = len(series) - 1
+        annotation_y_offset = 0
+        annotation_spacing = 14  # Vertical spacing between EMA annotations
+        
         for ema_values, color, label, _linewidth in ema_data:
             if ema_values and len(ema_values) == len(series) and ema_values[last_index] is not None:
                 ema_value = ema_values[last_index]
                 # Ensure ema_value is not None (already checked above, but type checker needs this)
                 if isinstance(ema_value, (int, float)):
                     # Position annotation to the right of the last bar
+                    # Increased fontsize from 8 to 10 and padding for better AI readability
                     ax.annotate(
                         f"{label}: ${ema_value:.2f}",
                         xy=(last_index, float(ema_value)),
-                        xytext=(5, 0),
+                        xytext=(8, annotation_y_offset),
                         textcoords="offset points",
-                        fontsize=8,
+                        fontsize=10,  # Increased from 8 to 10 for better AI readability
                         color=color,
                         fontweight='bold',
-                        bbox=dict(boxstyle="round,pad=0.3", facecolor='white', edgecolor=color, alpha=0.9, linewidth=1.5),
+                        bbox=dict(boxstyle="round,pad=0.4", facecolor='white', edgecolor=color, alpha=0.95, linewidth=2.0),  # Thicker border, more padding
                         ha='left',
                         va='center'
                     )
+                    annotation_y_offset -= annotation_spacing  # Move next annotation down
+        
+        # Add recent crosses annotation if any detected
+        if recent_crosses:
+            # Position crosses annotation below EMA annotations
+            crosses_text = "Recent Crosses: " + ", ".join(recent_crosses[:3])  # Show up to 3 most recent
+            ax.annotate(
+                crosses_text,
+                xy=(last_index, min(closes) if closes else 0),
+                xytext=(8, annotation_y_offset - 5),
+                textcoords="offset points",
+                fontsize=9,
+                color='#4caf50',
+                fontweight='bold',
+                bbox=dict(boxstyle="round,pad=0.4", facecolor='#e8f5e9', edgecolor='#4caf50', alpha=0.95, linewidth=1.5),
+                ha='left',
+                va='top'
+            )
     
     # Get price range for volume scaling
     all_prices = lows + highs
@@ -169,12 +305,31 @@ def _plot_candles(ax: "Axes", series: list[tuple[int, float, float, float, float
     price_max = max(all_prices) if all_prices else 1
     price_range = price_max - price_min if price_max > price_min else 1
     
+    # Track volume MA line for legend
+    volume_ma_line = None
+    
     # Plot volume bars at bottom if provided
     if volumes and len(volumes) == len(series):
+        # Calculate volume moving average (20-period)
+        volume_ma_period = 20
+        volume_ma: list[float | None] = []
+        for i in range(len(volumes)):
+            if i < volume_ma_period - 1:
+                volume_ma.append(None)
+            else:
+                ma_value = sum(volumes[i - volume_ma_period + 1:i + 1]) / volume_ma_period
+                volume_ma.append(ma_value)
+        
         # Scale volume to fit in bottom 20% of price chart
         max_volume = max(volumes) if volumes else 1
         volume_scale = (price_range * 0.20) / max_volume if max_volume > 0 else 0
         volume_bottom = price_min
+        
+        # Plot volume moving average line
+        if volume_ma and any(v is not None for v in volume_ma):
+            valid_ma_indices = [i for i, v in enumerate(volume_ma) if v is not None]
+            valid_ma_values = [volume_ma[i] * volume_scale + volume_bottom for i in valid_ma_indices]
+            volume_ma_line, = ax.plot(valid_ma_indices, valid_ma_values, color='#ff9800', linewidth=1.5, alpha=0.7, linestyle='--', label='Vol MA(20)')
         
         for i, volume in enumerate(volumes):
             volume_height = volume * volume_scale
@@ -191,13 +346,54 @@ def _plot_candles(ax: "Axes", series: list[tuple[int, float, float, float, float
                 linewidth=0.5,
             )
             ax.add_patch(volume_rect)
+        
+        # Annotate current volume relative to average (only if meaningful)
+        if len(volumes) > 0 and volume_ma and volume_ma[-1] is not None:
+            current_volume = volumes[-1]
+            avg_volume = volume_ma[-1]
+            if avg_volume > 0 and current_volume >= 0:
+                volume_ratio = current_volume / avg_volume
+                
+                # Only show annotation if ratio is meaningful (not essentially zero)
+                # Hide if ratio is less than 0.001 (essentially zero or rounding error)
+                if volume_ratio >= 0.001:
+                    # Format volume annotation with appropriate precision
+                    if volume_ratio < 1.0:
+                        # Less than average - show 2 decimal places
+                        volume_text = f"Vol: {volume_ratio:.2f}x avg"
+                    elif volume_ratio < 10.0:
+                        # Normal range - show 2 decimal places
+                        volume_text = f"Vol: {volume_ratio:.2f}x avg"
+                    else:
+                        # Very high ratio - show 1 decimal place
+                        volume_text = f"Vol: {volume_ratio:.1f}x avg"
+                    
+                    # Position volume annotation above volume bars, near the price area for better visibility
+                    # Use a position that's above the volume bars but below price annotations
+                    volume_annotation_y = volume_bottom + (price_range * 0.25)  # Position in lower 25% of price range
+                    ax.annotate(
+                        volume_text,
+                        xy=(len(series) - 1, volume_annotation_y),
+                        xytext=(8, 0),
+                        textcoords="offset points",
+                        fontsize=9,
+                        color='#ff9800',
+                        fontweight='bold',
+                        bbox=dict(boxstyle="round,pad=0.3", facecolor='white', edgecolor='#ff9800', alpha=0.95, linewidth=1.5),
+                        ha='left',
+                        va='center'
+                    )
     
-    # Plot wicks - thicker for better visibility
+    # Plot wicks - StockCharts-style crisp rendering
+    # Use solid lines with full opacity for sharp, professional appearance
     for i, (high, low) in enumerate(zip(highs, lows)):
         color = "#26a69a" if closes[i] >= opens[i] else "#ef5350"
-        ax.plot([i, i], [low, high], color=color, linewidth=1.0, alpha=0.9)
+        # StockCharts uses crisp, well-defined wicks with full opacity
+        # linewidth 1.5 provides good visibility while maintaining sharpness
+        ax.plot([i, i], [low, high], color=color, linewidth=1.5, alpha=1.0, solid_capstyle='round', solid_joinstyle='round')
     
-    # Plot bodies - thicker borders for AI visibility
+    # Plot bodies - StockCharts-style crisp candlesticks
+    # StockCharts candlesticks have sharp edges, solid colors, and clear definition
     for i, (open, close, high, low) in enumerate(zip(opens, closes, highs, lows)):
         body_low = min(open, close)
         body_high = max(open, close)
@@ -206,44 +402,62 @@ def _plot_candles(ax: "Axes", series: list[tuple[int, float, float, float, float
         color = "#26a69a" if close >= open else "#ef5350"
         
         from matplotlib.patches import Rectangle
+        # StockCharts-style rendering:
+        # - Width 0.75 provides good visibility without crowding
+        # - Full opacity (alpha=1.0) for solid, crisp appearance
+        # - Edge color matches body for clean look (no visible border)
+        # - Sharp corners for professional appearance
         rect = Rectangle(
-            (i - 0.35, body_low),
-            0.7,
+            (i - 0.375, body_low),
+            0.75,
             body_height if body_height > 0 else 0.01,
             facecolor=color,
-            edgecolor=color,
-            alpha=0.9,
-            linewidth=0.5,
+            edgecolor=color,  # Match edge to body for clean StockCharts look
+            alpha=1.0,  # Full opacity for crisp appearance
+            linewidth=0.0,  # No border for clean StockCharts style
         )
         ax.add_patch(rect)
     
-    ax.set_xlim(-0.5, len(series) - 0.5)
+    # Add generous padding on the right to ensure the last candle is fully visible
+    # Last candle is at index len(series) - 1, with body extending to (len(series) - 1) + 0.35
+    # Increased padding from 0.5 to 1.5 for better visibility and AI analysis
+    # This ensures the last candle and price annotation are clearly visible
+    ax.set_xlim(-0.5, len(series) + 1.5)
     
     # Annotate current price - use fresh snapshot if provided, otherwise use last bar's close
     if show_current_price and len(closes) > 0:
         # Use fresh price if provided, otherwise use last bar's close
         current_price = current_price_override if current_price_override is not None else closes[-1]
         current_index = len(closes) - 1
+        # Increased fontsize and padding for better visibility of current price
         ax.annotate(
             f"${current_price:.2f}",
             xy=(current_index, current_price),
-            xytext=(5, 10),
+            xytext=(8, 12),  # Increased from (5, 10) for more space from candle
             textcoords="offset points",
-            bbox=dict(boxstyle="round,pad=0.3", facecolor="yellow", alpha=0.8),
-            fontsize=10,
+            bbox=dict(boxstyle="round,pad=0.4", facecolor="yellow", alpha=0.9, linewidth=2.0),  # Thicker border, more padding
+            fontsize=12,  # Increased from 10 to 12 for better AI readability
             fontweight="bold",
             color="black",
             ha="left",
             va="bottom"
         )
     
-    # Add grid for better readability (darker for light background)
-    ax.grid(True, alpha=0.3, linestyle='--', linewidth=0.8, color='#cccccc')
+    # StockCharts-style grid - clearer but still subtle
+    ax.grid(True, alpha=0.4, linestyle='-', linewidth=0.6, color='#d0d0d0', zorder=0)
     ax.set_axisbelow(True)
+    # Enhance axes edges for better panel separation
+    for spine in ax.spines.values():
+        spine.set_color('#b0b0b0')
+        spine.set_linewidth(1.0)
     
-    # Add legend for EMAs if any were plotted
-    if ema_lines:
-        ax.legend(handles=ema_lines, loc='upper left', fontsize=8, framealpha=0.9, fancybox=False, shadow=False, frameon=True)
+    # Add legend for EMAs and volume MA if any were plotted
+    legend_handles = list(ema_lines) if ema_lines else []
+    if volume_ma_line:
+        legend_handles.append(volume_ma_line)
+    
+    if legend_handles:
+        ax.legend(handles=legend_handles, loc='upper left', fontsize=8, framealpha=0.9, fancybox=False, shadow=False, frameon=True)
     
     # Light background color
     ax.set_facecolor('#ffffff')
@@ -296,17 +510,17 @@ def _plot_hurst_waves(
                     # Check if wave has meaningful amplitude (not just noise)
                     wave_range = max(valid_values) - min(valid_values) if valid_values else 0
                     
-                    # TradingView-style thin, elegant lines
-                    # Shorter cycles get slightly thicker lines for visibility
+                    # Thicker lines for better AI visibility and analysis
+                    # Increased linewidths for optimal clarity in AI image analysis
                     if period_name in ["5_day", "10_day"]:
-                        linewidth = 1.2  # Thin but visible
-                        alpha = 0.9  # Slightly transparent for elegance
+                        linewidth = 1.8  # Increased from 1.2 for better visibility
+                        alpha = 0.95  # Increased opacity for better contrast
                     elif period_name in ["20_day", "40_day", "80_day"]:
-                        linewidth = 1.0  # Standard thin line
-                        alpha = 0.85
+                        linewidth = 1.5  # Increased from 1.0 for better visibility
+                        alpha = 0.9  # Increased opacity
                     else:
-                        linewidth = 0.9  # Even thinner for longer cycles
-                        alpha = 0.8
+                        linewidth = 1.3  # Increased from 0.9 for better visibility
+                        alpha = 0.85  # Increased opacity
                     
                     # Plot all waves - don't filter by amplitude (let user see even small waves)
                     # TradingView shows all waves, even if they're small
@@ -316,13 +530,33 @@ def _plot_hurst_waves(
                     if wave_range < 1e-6:
                         logger.debug(f"{period_name} has very small amplitude (range: {wave_range:.9f}) - may be hard to see")
     
-    # Plot composite (slightly thicker than individual waves, but still elegant)
+    # Plot composite - thicker for better AI visibility
     if show_composite and composite:
         valid_indices = [i for i, v in enumerate(composite) if v is not None]
         valid_values = [composite[i] for i in valid_indices]
         valid_x = [x_indices[i] for i in valid_indices]
         if valid_x:
-            ax.plot(valid_x, valid_values, color="#ff6600", linewidth=1.5, alpha=0.95, label="Composite", zorder=10)
+            # Increased linewidth from 1.5 to 2.0 for optimal AI analysis
+            ax.plot(valid_x, valid_values, color="#ff6600", linewidth=2.0, alpha=0.95, label="Composite", zorder=10)
+            
+            # Add numeric annotation for composite oscillator current value
+            if valid_indices:
+                last_composite_idx = valid_indices[-1]
+                last_index = len(x_indices) - 1
+                composite_value = composite[last_composite_idx]
+                if composite_value is not None:
+                    ax.annotate(
+                        f"Composite: {composite_value:.6f}",
+                        xy=(last_index, float(composite_value)),
+                        xytext=(8, 8),
+                        textcoords="offset points",
+                        fontsize=9,
+                        color="#ff6600",
+                        fontweight='bold',
+                        bbox=dict(boxstyle="round,pad=0.3", facecolor='white', edgecolor="#ff6600", alpha=0.95, linewidth=1.5),
+                        ha='left',
+                        va='bottom'
+                    )
     
     # Set Y-axis scale for better wave visibility
     # symlog (symmetric log) is best for values near zero - shows small oscillations clearly
@@ -342,9 +576,13 @@ def _plot_hurst_waves(
     # Plot zero line
     ax.axhline(y=0, color="#888888", linestyle="--", linewidth=0.5, alpha=0.5)
     
-    # Subtle grid for better readability (TradingView style)
-    ax.grid(True, alpha=0.25, linestyle='-', linewidth=0.5, color='#e0e0e0')
+    # StockCharts-style grid - clearer but still subtle
+    ax.grid(True, alpha=0.4, linestyle='-', linewidth=0.6, color='#d0d0d0', zorder=0)
     ax.set_axisbelow(True)  # Grid behind data
+    # Enhance axes edges for better panel separation
+    for spine in ax.spines.values():
+        spine.set_color('#b0b0b0')
+        spine.set_linewidth(1.0)
     
     if selected_periods or show_composite:
         # TradingView-style compact legend - top left to avoid covering recent data
@@ -375,11 +613,12 @@ def _plot_mesa_stochastic(
         "mesa4": "#f44336",  # red
     }
     
-    # Plot each MESA Stochastic line
+    # Plot each MESA Stochastic line - thicker for better AI visibility
     for key, values in mesa_values.items():
         if len(values) == len(timestamps):
             color = mesa_colors.get(key, "#888888")
-            ax.plot(x_indices, values, color=color, linewidth=1.0, alpha=0.85, label=key.upper())
+            # Increased linewidth from 1.0 to 1.5 and alpha from 0.85 to 0.9 for better AI analysis
+            ax.plot(x_indices, values, color=color, linewidth=1.5, alpha=0.9, label=key.upper())
             
             # Calculate and plot trigger (SMA of MESA Stochastic)
             if trigger_length > 0 and len(values) >= trigger_length:
@@ -390,7 +629,71 @@ def _plot_mesa_stochastic(
                         trigger.append(np.mean(values[i - trigger_length + 1:i + 1]))
                     else:
                         trigger.append(values[i])
-                ax.plot(x_indices, trigger, color="#2962ff", linewidth=1.0, alpha=0.7, linestyle="--", label=f"{key} Trigger")
+                # Increased linewidth and alpha for better AI visibility
+                ax.plot(x_indices, trigger, color="#2962ff", linewidth=1.3, alpha=0.8, linestyle="--", label=f"{key} Trigger")
+    
+    # Add numeric annotations for MESA Stochastic values and triggers - current values at rightmost bar
+    if x_indices and mesa_values:
+        last_index = len(x_indices) - 1
+        annotation_y_offset = 0
+        annotation_spacing = 14  # Vertical spacing between annotations (increased to fit MESA + trigger)
+        
+        # Iterate in order: MESA1, MESA2, MESA3, MESA4 for consistent annotation placement
+        for key in ["mesa1", "mesa2", "mesa3", "mesa4"]:
+            if key in mesa_values:
+                values = mesa_values[key]
+                if len(values) == len(x_indices) and last_index < len(values):
+                    mesa_value = values[last_index]
+                    if mesa_value is not None:
+                        color = mesa_colors.get(key, "#888888")
+                        
+                        # Calculate trigger value if trigger_length > 0
+                        trigger_value: float | None = None
+                        if trigger_length > 0 and len(values) >= trigger_length:
+                            import numpy as np
+                            trigger_values = []
+                            for i in range(len(values)):
+                                if i >= trigger_length - 1:
+                                    trigger_values.append(np.mean(values[i - trigger_length + 1:i + 1]))
+                                else:
+                                    trigger_values.append(values[i])
+                            if last_index < len(trigger_values):
+                                trigger_value = trigger_values[last_index]
+                        
+                        # Annotate MESA value with trigger if available
+                        if trigger_value is not None:
+                            diff = mesa_value - trigger_value
+                            diff_symbol = "↑" if diff > 0 else "↓" if diff < 0 else "="
+                            # Highlight extreme conditions (>1.0 or <0.0)
+                            extreme_note = ""
+                            if mesa_value >= 1.0:
+                                extreme_note = " [OB]"
+                            elif mesa_value <= 0.0:
+                                extreme_note = " [OS]"
+                            mesa_text = f"{key.upper()}: {mesa_value:.4f}{extreme_note} (Trig: {trigger_value:.4f} {diff_symbol}{abs(diff):.4f})"
+                        else:
+                            # Still check for extremes even without trigger
+                            extreme_note = ""
+                            if mesa_value >= 1.0:
+                                extreme_note = " [OB]"
+                            elif mesa_value <= 0.0:
+                                extreme_note = " [OS]"
+                            mesa_text = f"{key.upper()}: {mesa_value:.4f}{extreme_note}"
+                        
+                        # Annotate MESA value - position annotations vertically to avoid overlap
+                        ax.annotate(
+                            mesa_text,
+                            xy=(last_index, float(mesa_value)),
+                            xytext=(8, annotation_y_offset),
+                            textcoords="offset points",
+                            fontsize=8,
+                            color=color,
+                            fontweight='bold',
+                            bbox=dict(boxstyle="round,pad=0.3", facecolor='white', edgecolor=color, alpha=0.95, linewidth=1.5),
+                            ha='left',
+                            va='center'
+                        )
+                        annotation_y_offset -= annotation_spacing  # Move next annotation down
     
     # Set Y-axis limits (0 to 1 for stochastic)
     ax.set_ylim(-0.1, 1.1)
@@ -400,9 +703,13 @@ def _plot_mesa_stochastic(
     ax.axhline(y=0.5, color="#888888", linestyle="--", linewidth=0.5, alpha=0.5)
     ax.axhline(y=1, color="#888888", linestyle="--", linewidth=0.5, alpha=0.5)
     
-    # Subtle grid
-    ax.grid(True, alpha=0.25, linestyle='-', linewidth=0.5, color='#e0e0e0')
+    # StockCharts-style grid - clearer but still subtle
+    ax.grid(True, alpha=0.4, linestyle='-', linewidth=0.6, color='#d0d0d0', zorder=0)
     ax.set_axisbelow(True)
+    # Enhance axes edges for better panel separation
+    for spine in ax.spines.values():
+        spine.set_color('#b0b0b0')
+        spine.set_linewidth(1.0)
     
     # Legend - top left to avoid covering recent data
     ax.legend(loc='upper left', fontsize=8, framealpha=0.9, fancybox=False, shadow=False, frameon=True, ncol=2, columnspacing=0.5)
@@ -472,9 +779,91 @@ def _plot_cco(
     # Set Y-axis limits (0 to 1 for oscillator, with some padding for extremes)
     ax.set_ylim(-0.2, 1.4)
     
-    # Subtle grid
-    ax.grid(True, alpha=0.25, linestyle='-', linewidth=0.5, color='#e0e0e0')
+    # Add numeric annotations for AI analysis - current values at rightmost bar
+    if valid_fast_indices and valid_slow_indices:
+        last_index = len(x_indices) - 1
+        
+        # Get current values and previous values for trend detection
+        last_fast_idx = valid_fast_indices[-1] if valid_fast_indices else None
+        last_slow_idx = valid_slow_indices[-1] if valid_slow_indices else None
+        
+        # Find previous valid indices for trend detection
+        prev_fast_idx = valid_fast_indices[-2] if len(valid_fast_indices) >= 2 else None
+        prev_slow_idx = valid_slow_indices[-2] if len(valid_slow_indices) >= 2 else None
+        
+        if last_fast_idx is not None and fast_osc[last_fast_idx] is not None:
+            fast_value = fast_osc[last_fast_idx]
+            
+            # Detect trend (compare with previous value)
+            fast_trend = ""
+            if prev_fast_idx is not None and fast_osc[prev_fast_idx] is not None:
+                prev_fast = fast_osc[prev_fast_idx]
+                if fast_value > prev_fast:
+                    fast_trend = " ↑"
+                elif fast_value < prev_fast:
+                    fast_trend = " ↓"
+            
+            # Highlight extreme conditions
+            extreme_note = ""
+            if fast_value >= 1.0:
+                extreme_note = " [OB]"
+            elif fast_value <= 0.0:
+                extreme_note = " [OS]"
+            
+            # Annotate Fast Osc value - red color to match line
+            ax.annotate(
+                f"FastOsc: {fast_value:.4f}{extreme_note}{fast_trend}",
+                xy=(last_index, float(fast_value)),
+                xytext=(8, 8),
+                textcoords="offset points",
+                fontsize=9,
+                color='red',
+                fontweight='bold',
+                bbox=dict(boxstyle="round,pad=0.3", facecolor='white', edgecolor='red', alpha=0.95, linewidth=1.5),
+                ha='left',
+                va='bottom'
+            )
+        
+        if last_slow_idx is not None and slow_osc[last_slow_idx] is not None:
+            slow_value = slow_osc[last_slow_idx]
+            
+            # Detect trend (compare with previous value)
+            slow_trend = ""
+            if prev_slow_idx is not None and slow_osc[prev_slow_idx] is not None:
+                prev_slow = slow_osc[prev_slow_idx]
+                if slow_value > prev_slow:
+                    slow_trend = " ↑"
+                elif slow_value < prev_slow:
+                    slow_trend = " ↓"
+            
+            # Highlight extreme conditions
+            extreme_note = ""
+            if slow_value >= 1.0:
+                extreme_note = " [OB]"
+            elif slow_value <= 0.0:
+                extreme_note = " [OS]"
+            
+            # Annotate Slow Osc value - green color to match line
+            ax.annotate(
+                f"SlowOsc: {slow_value:.4f}{extreme_note}{slow_trend}",
+                xy=(last_index, float(slow_value)),
+                xytext=(8, -8),
+                textcoords="offset points",
+                fontsize=9,
+                color='green',
+                fontweight='bold',
+                bbox=dict(boxstyle="round,pad=0.3", facecolor='white', edgecolor='green', alpha=0.95, linewidth=1.5),
+                ha='left',
+                va='top'
+            )
+    
+    # StockCharts-style grid - clearer but still subtle
+    ax.grid(True, alpha=0.4, linestyle='-', linewidth=0.6, color='#d0d0d0', zorder=0)
     ax.set_axisbelow(True)
+    # Enhance axes edges for better panel separation
+    for spine in ax.spines.values():
+        spine.set_color('#b0b0b0')
+        spine.set_linewidth(1.0)
     
     # Legend - top left to avoid covering recent data
     ax.legend(loc='upper left', fontsize=8, framealpha=0.9, fancybox=False, shadow=False, frameon=True, ncol=1, columnspacing=0.5)
@@ -1346,18 +1735,38 @@ class HurstPlot(Base):
             if show_cco:
                 num_subplots += 1
             
+            # Increased figure sizes for better detail and AI analysis
+            # Larger width (12 vs 10) provides more horizontal space for last candle visibility
+            # Maintain aspect ratios but with more pixels for sharper rendering
+            # StockCharts-style spacing: increased hspace and better panel separation
             if num_subplots == 2:
-                fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 5.5), sharex=True)
-                fig.subplots_adjust(hspace=0.08, top=0.97, bottom=0.05, left=0.08, right=0.97)
+                fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 6.5), sharex=True)
+                fig.subplots_adjust(hspace=0.20, top=0.95, bottom=0.07, left=0.08, right=0.95)  # More spacing for clearer separation
             elif num_subplots == 3:
                 if show_mesa:
-                    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(10, 7.5), sharex=True)
+                    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(12, 8.5), sharex=True)
                 else:  # show_cco
-                    fig, (ax1, ax2, ax4) = plt.subplots(3, 1, figsize=(10, 7.5), sharex=True)
-                fig.subplots_adjust(hspace=0.08, top=0.97, bottom=0.05, left=0.08, right=0.97)
+                    fig, (ax1, ax2, ax4) = plt.subplots(3, 1, figsize=(12, 8.5), sharex=True)
+                fig.subplots_adjust(hspace=0.18, top=0.95, bottom=0.07, left=0.08, right=0.95)  # More spacing for clearer separation
             else:  # num_subplots == 4 (both MESA and CCO)
-                fig, (ax1, ax2, ax3, ax4) = plt.subplots(4, 1, figsize=(10, 9.5), sharex=True)
-                fig.subplots_adjust(hspace=0.08, top=0.97, bottom=0.05, left=0.08, right=0.97)
+                fig, (ax1, ax2, ax3, ax4) = plt.subplots(4, 1, figsize=(12, 10.5), sharex=True)
+                fig.subplots_adjust(hspace=0.15, top=0.95, bottom=0.07, left=0.08, right=0.95)  # More spacing for clearer separation
+            
+            # Apply StockCharts-style panel separation to all axes
+            all_axes = [ax1, ax2]
+            if ax3:
+                all_axes.append(ax3)
+            if ax4:
+                all_axes.append(ax4)
+            
+            for ax in all_axes:
+                # Enhance panel boundaries with clearer edges
+                for spine in ax.spines.values():
+                    spine.set_color('#b0b0b0')
+                    spine.set_linewidth(1.0)
+                # Ensure grid is visible and consistent
+                ax.grid(True, alpha=0.4, linestyle='-', linewidth=0.6, color='#d0d0d0', zorder=0)
+                ax.set_axisbelow(True)
 
             # Get Y-axis scale parameter BEFORE plotting
             y_axis_scale_raw = self.params.get("y_axis_scale", "linear")  # Default to linear
@@ -1513,7 +1922,10 @@ class HurstPlot(Base):
             _plot_hurst_waves(ax2, timestamps, bandpasses, composite, show_periods, show_composite, y_axis_scale)
             ax2.set_title(f"{str(sym)} Hurst Spectral Analysis Oscillator", fontsize=12, fontweight='bold', pad=10)
             ax2.set_ylabel("Hurst Oscillator", fontsize=10)
-            ax2.set_xlabel("Bar Index", fontsize=10)
+            # Only set xlabel if this is the bottom panel (no MESA or CCO below)
+            if num_subplots == 2:
+                ax2.set_xlabel("Bar Index", fontsize=10)
+            # Otherwise, xlabel is set on the bottommost panel to avoid overlap
             ax2.tick_params(labelsize=9)
             
             # Auto-scale Y-axis to show all waves clearly
@@ -1584,7 +1996,10 @@ class HurstPlot(Base):
                         _plot_mesa_stochastic(ax3, timestamps, display_mesa, mesa_trigger_length)
                         ax3.set_title(f"{str(sym)} MESA Stochastic Multi Length", fontsize=12, fontweight='bold', pad=10)
                         ax3.set_ylabel("MESA Stochastic", fontsize=10)
-                        ax3.set_xlabel("Bar Index", fontsize=10)
+                        # Don't set xlabel here if CCO is below - it's shared with bottom panel and would overlap with title
+                        # Only set xlabel if this is the bottom panel (no CCO)
+                        if not show_cco:
+                            ax3.set_xlabel("Bar Index", fontsize=10)
                         ax3.tick_params(labelsize=9)
                     
                 except Exception as e:
@@ -1643,6 +2058,7 @@ class HurstPlot(Base):
                         _plot_cco(cco_ax, timestamps, display_fast_osc, display_slow_osc)
                         cco_ax.set_title(f"{str(sym)} Cycle Channel Oscillator (CCO)", fontsize=12, fontweight='bold', pad=10)
                         cco_ax.set_ylabel("CCO", fontsize=10)
+                        # This is always the bottom panel, so set xlabel here
                         cco_ax.set_xlabel("Bar Index", fontsize=10)
                         cco_ax.tick_params(labelsize=9)
                     

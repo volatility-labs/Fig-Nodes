@@ -291,8 +291,15 @@ async def _handle_stop_message(
 @app.get("/")
 def read_root():
     """Serve the main application UI."""
-    return FileResponse(
-        os.path.join(os.path.dirname(__file__), "..", "ui", "static/dist", "index.html")
+    index_path = os.path.join(os.path.dirname(__file__), "..", "ui", "static/dist", "index.html")
+    if os.path.exists(index_path):
+        return FileResponse(index_path)
+    # If dist doesn't exist, return a helpful message (dev mode)
+    return JSONResponse(
+        content={
+            "message": "Frontend not built. Run 'python main.py --dev' for development mode or build the frontend first."
+        },
+        status_code=404,
     )
 
 
@@ -414,19 +421,22 @@ if "PYTEST_CURRENT_TEST" not in os.environ:
         ),
         name="examples",
     )
-    app.mount(
-        "/static",
-        StaticFiles(directory=os.path.join(os.path.dirname(__file__), "..", "ui", "static/dist")),
-        name="static",
-    )
-    app.mount(
-        "/",
-        StaticFiles(
-            directory=os.path.join(os.path.dirname(__file__), "..", "ui", "static", "dist"),
-            html=True,
-        ),
-        name="root_static",
-    )
+    # Only mount dist directory if it exists (frontend has been built)
+    dist_dir = os.path.join(os.path.dirname(__file__), "..", "ui", "static", "dist")
+    if os.path.exists(dist_dir) and os.path.isdir(dist_dir):
+        app.mount(
+            "/static",
+            StaticFiles(directory=dist_dir),
+            name="static",
+        )
+        app.mount(
+            "/",
+            StaticFiles(
+                directory=dist_dir,
+                html=True,
+            ),
+            name="root_static",
+        )
 
 
 # ============================================================================
