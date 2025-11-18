@@ -2,9 +2,9 @@
 
 Fig Nodes makes it easy to build agentic finance and trading workflows.  
 
-1. Intuitive plug and play UI to build asset universe scanning, trading, visualization, position management, and data services logic. 
-2. Modular node design allowing any developer to build new nodes with custom logic with plug and play architecture. 
-3. Lightweight design.
+1. Integrated Node UI + editor to build asset universe scanning, trading, visualization, position management, and data services logic. 
+2. Plug and play node design with custom extensibility
+3. Blazing fast with rustworkx network supporting graphs with 10k+ nodes
 
 Created by Volatility Labs Inc. 
 
@@ -44,7 +44,7 @@ The default graph should load. Press `Execute` at the bottom right of the canvas
 
 ## Litegraph
 
-The code base runs in a forked version of [ComfyOrg's Litegraph](https://github.com/Comfy-Org/litegraph.js). 
+The code base runs in a forked version of [ComfyOrg's Litegraph](https://github.com/Comfy-Org/litegraph.js) in the frontend directory. 
 
 ## Testing
 
@@ -53,10 +53,5 @@ To run the unit tests:
 ```bash
 uv run pytest tests/unit/
 ``` 
-
-## TODO
-- Canvas grouping square for visual grouping of nodes on canvas
-- OHLCV charting nodes
-
 ## License
 Fig Nodes is licensed under the Apache License 2.0. See [LICENSE](LICENSE) for details.
