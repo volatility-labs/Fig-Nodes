@@ -44,7 +44,7 @@ The default graph should load. Press `Execute` at the bottom right of the canvas
 
 ## Litegraph
 
-The code base runs in a forked version of [ComfyOrg's Litegraph](https://github.com/Comfy-Org/litegraph.js).
+The code base runs in a forked version of [ComfyOrg's Litegraph](https://github.com/Comfy-Org/litegraph.js). 
 
 ## Testing
 
