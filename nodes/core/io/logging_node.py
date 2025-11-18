@@ -1,6 +1,6 @@
 import json
 import logging
-from typing import Any, TypeGuard
+from typing import Any, Optional, TypeGuard
 
 from core.types_utils import detect_type, infer_data_type
 from nodes.base.base_node import Base
@@ -29,7 +29,7 @@ class Logging(Base):
         self.last_content_length = 0
         self.logger = logging.getLogger(f"LoggingNode-{self.id}")
 
-    inputs = {"input": Any}
+    inputs = {"input": Optional[Any]}  # Optional to handle cases where upstream nodes fail
     outputs = {"output": str}
 
     # Allow UI to select how to display/parse the output text
@@ -57,6 +57,25 @@ class Logging(Base):
     async def _execute_impl(self, inputs: dict[str, Any]) -> dict[str, Any]:
         value = inputs.get("input")
         selected_format = str(self.params.get("format") or "auto").strip()
+        
+        # Handle missing/None input gracefully (e.g., when upstream node fails)
+        if value is None:
+            text = "(No input received - upstream node may have failed)"
+            await self._safe_print(f"LoggingNode {self.id}: {text}")
+            return {"output": text}
+        
+        # Handle error dicts from upstream nodes (when graph executor returns {"error": "..."})
+        if isinstance(value, dict) and "error" in value and len(value) == 1:
+            error_msg = value.get("error", "Unknown error")
+            # Extract the detailed message part (remove "Node X: " prefix if present for cleaner display)
+            if isinstance(error_msg, str) and error_msg.startswith("Node ") and ": " in error_msg:
+                # Extract just the message part after "Node X: "
+                detailed_msg = error_msg.split(": ", 1)[1] if ": " in error_msg else error_msg
+                text = f"❌ Upstream Node Error: {detailed_msg}"
+            else:
+                text = f"❌ Upstream Node Error: {error_msg}"
+            await self._safe_print(f"LoggingNode {self.id}: {text}")
+            return {"output": text}
 
         # Use type detection utilities
         detected_type = detect_type(value)

@@ -188,7 +188,16 @@ class GraphExecutor:
                     f"ERROR_TRACE: Original exception: {type(e.original_exc).__name__}: {str(e.original_exc)}"
                 )
             logger.error(f"Node {node_id} failed: {str(e)}")
-            return node_id, {"error": str(e)}
+            # Include detailed error message - use the exception's message which already includes details
+            # The message format is "Node {id}: {message}" where message contains the actual error details
+            error_msg = str(e)
+            # If there's an original_exc with more details, append it for better debugging
+            if hasattr(e, "original_exc") and e.original_exc:
+                original_msg = str(e.original_exc)
+                # Only append if it adds meaningful information (not just a duplicate)
+                if original_msg and original_msg not in error_msg:
+                    error_msg = f"{error_msg} ({original_msg})"
+            return node_id, {"error": error_msg}
         except asyncio.CancelledError:
             print("STOP_TRACE: Caught CancelledError in node.execute await in GraphExecutor")
             self.force_stop()
@@ -220,9 +229,19 @@ class GraphExecutor:
                 continue
 
             output_key = pred_outputs[output_slot]
-            if pred_id not in results or output_key not in results[pred_id]:
+            if pred_id not in results:
                 continue
-            value = results[pred_id][output_key]
+            
+            # If upstream node failed and returned {"error": "..."}, pass the error to downstream nodes
+            # even if the specific output slot doesn't exist
+            if output_key not in results[pred_id]:
+                if "error" in results[pred_id] and len(results[pred_id]) == 1:
+                    # Upstream node failed - pass the error as the value
+                    value = {"error": results[pred_id]["error"]}
+                else:
+                    continue
+            else:
+                value = results[pred_id][output_key]
 
             node_inputs: list[str] = self.input_names.get(
                 node_id, [str(k) for k in self.nodes[node_id].inputs.keys()]

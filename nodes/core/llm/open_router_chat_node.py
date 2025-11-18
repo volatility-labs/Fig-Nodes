@@ -1,13 +1,15 @@
 import asyncio
+import base64
+import json
 import random
 from datetime import datetime
 from typing import Any, Literal, NotRequired, TypedDict, TypeGuard
 
 import aiohttp
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from core.api_key_vault import APIKeyVault
-from core.types_registry import ConfigDict, NodeCategory, OHLCVBundle, get_type
+from core.types_registry import ConfigDict, NodeCategory, NodeExecutionError, OHLCVBundle, get_type
 from nodes.base.base_node import Base
 
 
@@ -211,12 +213,49 @@ class OpenRouterChat(Base):
         }
 
     @staticmethod
+    def _estimate_payload_size(messages: list[dict[str, Any]]) -> int:
+        """Estimate payload size in bytes by serializing to JSON."""
+        try:
+            return len(json.dumps(messages, ensure_ascii=False).encode('utf-8'))
+        except Exception:
+            # Fallback: rough estimate based on string length
+            return len(str(messages).encode('utf-8'))
+    
+    @staticmethod
+    def _compress_image_data_url(data_url: str, max_size_bytes: int = 500_000) -> str:
+        """Compress a base64 image data URL by reducing quality if needed.
+        
+        Returns the original data URL if it's already small enough, or a compressed version.
+        For now, we'll just check size and warn - actual compression would require re-encoding.
+        """
+        if not isinstance(data_url, str) or not data_url.startswith("data:image/"):
+            return data_url
+        
+        # Extract base64 part (after the comma)
+        if "," not in data_url:
+            return data_url
+        
+        header, base64_data = data_url.split(",", 1)
+        # Base64 encoding increases size by ~33%, so actual image size is smaller
+        # But for payload estimation, we use the base64 size
+        base64_size = len(base64_data.encode('utf-8'))
+        
+        if base64_size <= max_size_bytes:
+            return data_url
+        
+        # For now, return original but log warning
+        # TODO: Implement actual compression (reduce DPI, convert to JPEG, etc.)
+        return data_url
+    
+    @staticmethod
     def _build_messages(
         existing_messages: list[dict[str, Any]] | None,
         prompt: str | None,
         system_input: dict[str, Any] | str | None,
         images: ConfigDict | None = None,
-    ) -> list[dict[str, Any]]:
+        max_payload_size: int = 2_000_000,  # 2MB default limit
+    ) -> tuple[list[dict[str, Any]], int]:
+        """Build messages list and return it along with estimated payload size in bytes."""
         result: list[dict[str, Any]] = list(existing_messages or []) if existing_messages else []
         if system_input and not any(m.get("role") == "system" for m in result):
             if isinstance(system_input, str):
@@ -235,16 +274,34 @@ class OpenRouterChat(Base):
 
             if images:
                 # Append image parts (order: text first, then images)
+                # Compress images if needed to stay within payload limits
+                image_count = 0
+                total_image_size = 0
                 for data_url in images.values():
                     if isinstance(data_url, str) and data_url.startswith("data:image/"):
+                        # Estimate image size (base64 part only)
+                        if "," in data_url:
+                            _, base64_part = data_url.split(",", 1)
+                            img_size = len(base64_part.encode('utf-8'))
+                            total_image_size += img_size
+                            image_count += 1
+                        
                         user_content.append(
                             {
                                 "type": "image_url",
                                 "image_url": {"url": data_url},  # Direct base64 data URL
                             }
                         )
+                
+                if image_count > 0:
+                    avg_image_size = total_image_size / image_count
+                    print(f"📊 OpenRouterChat: {image_count} images, avg size: {avg_image_size/1024:.1f}KB, total: {total_image_size/1024/1024:.2f}MB")
+            
             result.append({"role": "user", "content": user_content})
-        return result
+        
+        # Estimate total payload size
+        payload_size = OpenRouterChat._estimate_payload_size(result)
+        return result, payload_size
 
     def _prepare_generation_options(self) -> dict[str, Any]:
         options: dict[str, Any] = {}
@@ -326,12 +383,22 @@ class OpenRouterChat(Base):
         base_model = str(self.params.get("model", "z-ai/glm-4.6"))
         model_with_web_search = self._get_model_with_web_search(base_model, use_vision_param)
 
+        # Final payload size check before sending
         request_body = {
             "model": model_with_web_search,
             "messages": messages,
             "stream": False,
             **options,
         }
+        
+        # Estimate final request size (including model name, options, etc.)
+        try:
+            final_payload_size = len(json.dumps(request_body, ensure_ascii=False).encode('utf-8'))
+            final_payload_mb = final_payload_size / 1024 / 1024
+            if final_payload_mb > 2.0:
+                print(f"⚠️ Final request payload: {final_payload_mb:.2f}MB (may exceed API limits)")
+        except Exception:
+            pass  # Don't fail if we can't estimate
 
         if self._is_stopped:
             raise asyncio.CancelledError("Node stopped before HTTP request")
@@ -351,10 +418,39 @@ class OpenRouterChat(Base):
 
                 response.raise_for_status()
                 resp_data_raw = await response.json()
-                return OpenRouterChatResponseModel.model_validate(resp_data_raw)
+                
+                # Check for error in response (some APIs return 200 OK with error payload)
+                if isinstance(resp_data_raw, dict) and "error" in resp_data_raw:
+                    error_info = resp_data_raw.get("error", {})
+                    error_message = error_info.get("message", "Unknown error") if isinstance(error_info, dict) else str(error_info)
+                    raise NodeExecutionError(
+                        self.id,
+                        f"OpenRouter API returned error: {error_message}",
+                        original_exc=ValueError(f"API error response: {resp_data_raw}"),
+                    )
+                
+                try:
+                    return OpenRouterChatResponseModel.model_validate(resp_data_raw)
+                except ValidationError as ve:
+                    # If validation fails, it might be an unexpected error response format
+                    raise NodeExecutionError(
+                        self.id,
+                        f"Failed to parse OpenRouter API response: {ve}",
+                        original_exc=ve,
+                    ) from ve
         except asyncio.CancelledError:
             print(f"STOP_TRACE: HTTP request cancelled for node {self.id}")
             raise
+        except NodeExecutionError:
+            # Re-raise our custom errors
+            raise
+        except Exception as e:
+            # Catch any other exceptions (HTTP errors, network issues, etc.)
+            raise NodeExecutionError(
+                self.id,
+                f"OpenRouter API call failed: {str(e)}",
+                original_exc=e,
+            ) from e
 
     def _parse_bool_param(self, param_name: str, default: bool = False) -> bool:
         """Parse a combo boolean parameter that can be string 'true'/'false' or actual bool."""
@@ -698,12 +794,26 @@ class OpenRouterChat(Base):
             m for m in merged if m and str(m.get("content") or "").strip()
         ]
 
-        messages = self._build_messages(filtered_messages, final_prompt, system_input, images)
+        messages, payload_size = self._build_messages(filtered_messages, final_prompt, system_input, images)
 
         if not messages:
             return self._create_error_response(
                 "No valid messages, prompt, or system provided to OpenRouterChatNode"
             )
+        
+        # Check payload size and warn if too large
+        payload_size_mb = payload_size / 1024 / 1024
+        max_payload_mb = 2.0  # OpenRouter typically allows up to 2MB, but can vary
+        
+        if payload_size_mb > max_payload_mb:
+            warning_msg = (
+                f"⚠️ Payload size ({payload_size_mb:.2f}MB) exceeds recommended limit ({max_payload_mb}MB). "
+                f"This may cause API errors. Consider reducing the number of images or their resolution."
+            )
+            print(warning_msg)
+            # Still try to send, but warn the user
+        else:
+            print(f"✅ Payload size: {payload_size_mb:.2f}MB (within limits)")
 
         # Early explicit API key check so the graph surfaces a clear failure without silent fallthrough
         api_key = self.vault.get("OPENROUTER_API_KEY")

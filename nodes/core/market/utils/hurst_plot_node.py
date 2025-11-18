@@ -84,17 +84,20 @@ from services.polygon_service import fetch_current_snapshot
 logger = logging.getLogger(__name__)
 
 
-def _encode_fig_to_data_url(fig: "Figure") -> str:
+def _encode_fig_to_data_url(fig: "Figure", dpi: int = 250) -> str:
     """Encode matplotlib figure to base64 data URL with StockCharts-quality rendering.
     
-    Uses high DPI (250) with optimized PNG compression to achieve crisp, professional
-    charts similar to StockCharts while keeping file sizes reasonable.
+    Uses configurable DPI (default 250) with optimized PNG compression to achieve crisp, 
+    professional charts similar to StockCharts while keeping file sizes reasonable.
+    
+    Args:
+        fig: Matplotlib figure to encode
+        dpi: DPI for image rendering (default 250). Lower values (150-200) reduce file size
+             for API calls, higher values (250-300) provide better quality for display.
     """
     buf = io.BytesIO()
     # StockCharts-quality settings:
-    # - 250 DPI: High resolution for crisp rendering (between 200-300 for balance)
-    # - optimize=True: PNG optimization reduces file size without quality loss
-    # - compress_level=6: Good balance between compression and speed (0-9, 6 is optimal)
+    # - Configurable DPI: 250 default for high quality, can be reduced to 150-200 for API calls
     # - metadata={'Software': None}: Remove metadata to reduce size
     # - bbox_inches='tight': Remove extra whitespace
     # - pad_inches=0.1: Small padding for clean edges
@@ -106,7 +109,7 @@ def _encode_fig_to_data_url(fig: "Figure") -> str:
         format="png",
         bbox_inches="tight",
         pad_inches=0.1,
-        dpi=250,  # High DPI for StockCharts-like crispness
+        dpi=dpi,  # Configurable DPI (default 250 for quality, can reduce to 150-200 for API)
         facecolor='#ffffff',
         edgecolor='none',
         transparent=False,
@@ -255,49 +258,22 @@ def _plot_candles(ax: "Axes", series: list[tuple[int, float, float, float, float
                     cross_price = (ema_10[i] + ema_100[i]) / 2
                     ax.plot(i, cross_price, 'o', color='#4caf50', markersize=6, zorder=10, alpha=0.8)
     
-    # Add text annotation at the end of each EMA line showing current value for AI clarity
-    if ema_lines and len(series) > 0:
+    # Add recent crosses annotation if any detected (keep this on chart)
+    if ema_lines and len(series) > 0 and recent_crosses:
         last_index = len(series) - 1
-        annotation_y_offset = 0
-        annotation_spacing = 14  # Vertical spacing between EMA annotations
-        
-        for ema_values, color, label, _linewidth in ema_data:
-            if ema_values and len(ema_values) == len(series) and ema_values[last_index] is not None:
-                ema_value = ema_values[last_index]
-                # Ensure ema_value is not None (already checked above, but type checker needs this)
-                if isinstance(ema_value, (int, float)):
-                    # Position annotation to the right of the last bar
-                    # Increased fontsize from 8 to 10 and padding for better AI readability
-                    ax.annotate(
-                        f"{label}: ${ema_value:.2f}",
-                        xy=(last_index, float(ema_value)),
-                        xytext=(8, annotation_y_offset),
-                        textcoords="offset points",
-                        fontsize=10,  # Increased from 8 to 10 for better AI readability
-                        color=color,
-                        fontweight='bold',
-                        bbox=dict(boxstyle="round,pad=0.4", facecolor='white', edgecolor=color, alpha=0.95, linewidth=2.0),  # Thicker border, more padding
-                        ha='left',
-                        va='center'
-                    )
-                    annotation_y_offset -= annotation_spacing  # Move next annotation down
-        
-        # Add recent crosses annotation if any detected
-        if recent_crosses:
-            # Position crosses annotation below EMA annotations
-            crosses_text = "Recent Crosses: " + ", ".join(recent_crosses[:3])  # Show up to 3 most recent
-            ax.annotate(
-                crosses_text,
-                xy=(last_index, min(closes) if closes else 0),
-                xytext=(8, annotation_y_offset - 5),
-                textcoords="offset points",
-                fontsize=9,
-                color='#4caf50',
-                fontweight='bold',
-                bbox=dict(boxstyle="round,pad=0.4", facecolor='#e8f5e9', edgecolor='#4caf50', alpha=0.95, linewidth=1.5),
-                ha='left',
-                va='top'
-            )
+        crosses_text = "Recent Crosses: " + ", ".join(recent_crosses[:3])  # Show up to 3 most recent
+        ax.annotate(
+            crosses_text,
+            xy=(last_index, min(closes) if closes else 0),
+            xytext=(8, -15),
+            textcoords="offset points",
+            fontsize=9,
+            color='#4caf50',
+            fontweight='bold',
+            bbox=dict(boxstyle="round,pad=0.4", facecolor='#e8f5e9', edgecolor='#4caf50', alpha=0.95, linewidth=1.5),
+            ha='left',
+            va='top'
+        )
     
     # Get price range for volume scaling
     all_prices = lows + highs
@@ -346,7 +322,7 @@ def _plot_candles(ax: "Axes", series: list[tuple[int, float, float, float, float
                 linewidth=0.5,
             )
             ax.add_patch(volume_rect)
-        
+    
         # Annotate current volume relative to average (only if meaningful)
         if len(volumes) > 0 and volume_ma and volume_ma[-1] is not None:
             current_volume = volumes[-1]
@@ -452,12 +428,34 @@ def _plot_candles(ax: "Axes", series: list[tuple[int, float, float, float, float
         spine.set_linewidth(1.0)
     
     # Add legend for EMAs and volume MA if any were plotted
+    # Note: EMA values are already included in legend labels from the code above
     legend_handles = list(ema_lines) if ema_lines else []
+    legend_labels = []
+    
+    # Get EMA labels (already updated with values above)
+    if ema_lines and len(series) > 0:
+        last_index = len(series) - 1
+        for ema_values, color, label, _linewidth in ema_data:
+            if ema_values and len(ema_values) == len(series) and ema_values[last_index] is not None:
+                ema_value = ema_values[last_index]
+                if isinstance(ema_value, (int, float)):
+                    legend_labels.append(f"{label}: ${ema_value:.2f}")
+                else:
+                    legend_labels.append(label)
+            else:
+                legend_labels.append(label)
+    
+    # Add volume MA to legend
     if volume_ma_line:
         legend_handles.append(volume_ma_line)
+        legend_labels.append('Vol MA(20)')
     
     if legend_handles:
-        ax.legend(handles=legend_handles, loc='upper left', fontsize=8, framealpha=0.9, fancybox=False, shadow=False, frameon=True)
+        # Use updated labels if we have them, otherwise use default
+        if legend_labels and len(legend_labels) == len(legend_handles):
+            ax.legend(handles=legend_handles, labels=legend_labels, loc='upper left', fontsize=8, framealpha=0.9, fancybox=False, shadow=False, frameon=True)
+        else:
+            ax.legend(handles=legend_handles, loc='upper left', fontsize=8, framealpha=0.9, fancybox=False, shadow=False, frameon=True)
     
     # Light background color
     ax.set_facecolor('#ffffff')
@@ -904,6 +902,7 @@ class HurstPlot(Base):
         "show_current_price": True,  # Annotate current price on chart
         "source": "hl2",
         "bandwidth": 0.025,
+        "dpi": 250,  # Image DPI: 250 for high quality (default), reduce to 150-200 for smaller API payloads
         # Show individual waves (all 11 cycles)
         # Default: Show first 5 cycles for good visibility without clutter
         "show_5_day": True,
@@ -988,6 +987,15 @@ class HurstPlot(Base):
                    "default": True,
                    "options": [True, False],
                    "description": "Annotate current price on chart for better visibility",
+               },
+               {
+                   "name": "dpi",
+                   "type": "number",
+                   "default": 250,
+                   "min": 100,
+                   "max": 300,
+                   "step": 50,
+                   "description": "Image DPI (dots per inch): 250 for high quality (default), reduce to 150-200 for smaller API payloads when sending many charts",
                },
         {
             "name": "source",
@@ -2067,7 +2075,9 @@ class HurstPlot(Base):
                     # If CCO fails, still create the image without it
                     pass
 
-            images[str(sym)] = _encode_fig_to_data_url(fig)
+            # Get DPI from params (default 250)
+            dpi = int(self.params.get("dpi", self.default_params.get("dpi", 250)))
+            images[str(sym)] = _encode_fig_to_data_url(fig, dpi=dpi)
 
         return {
             "images": images,

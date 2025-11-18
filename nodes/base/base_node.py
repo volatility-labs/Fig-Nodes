@@ -205,6 +205,9 @@ class Base(ABC):
             self._validate_outputs(result)
             self._emit_progress(ProgressState.DONE, 100.0, "")
             return result
+        except NodeExecutionError:
+            # Re-raise NodeExecutionError as-is to preserve detailed error messages
+            raise
         except Exception as e:
             self._emit_progress(ProgressState.ERROR, 100.0, f"error: {type(e).__name__}: {str(e)}")
             raise NodeExecutionError(self.id, "Execution failed", original_exc=e) from e
