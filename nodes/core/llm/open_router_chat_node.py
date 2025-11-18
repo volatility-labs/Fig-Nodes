@@ -75,13 +75,14 @@ class OpenRouterChat(Base):
     Supports multimodal inputs with images for vision-capable models.
 
     Inputs:
-    - message_0 to message_4: LLMChatMessage (optional individual messages to include in chat history)
+    - message_0 to message_3: LLMChatMessage (optional individual messages to include in chat history)
     - prompt: str (optional prompt to add to the chat as user message)
     - system: str or LLMChatMessage (optional system message to add to the chat)
     - images: ConfigDict (optional dict of label to base64 data URL for images to attach to the user prompt)
     - hurst_data: ConfigDict (optional Hurst spectral analysis data from HurstPlot node)
     - ohlcv_bundle: OHLCVBundle (optional OHLCV bars bundle from HurstPlot node)
     - mesa_data: ConfigDict (optional MESA Stochastic data from HurstPlot node)
+    - cco_data: ConfigDict (optional Cycle Channel Oscillator data from HurstPlot node)
 
     Outputs:
     - message: Dict[str, Any] (assistant message with role, content, etc.)
@@ -104,7 +105,8 @@ class OpenRouterChat(Base):
         "hurst_data": ConfigDict | None,
         "ohlcv_bundle": OHLCVBundle | None,
         "mesa_data": ConfigDict | None,
-        **{f"message_{i}": dict[str, Any] | None for i in range(5)},
+        "cco_data": ConfigDict | None,
+        **{f"message_{i}": dict[str, Any] | None for i in range(4)},
     }
 
     outputs = {
@@ -169,7 +171,7 @@ class OpenRouterChat(Base):
         self, id: int, params: dict[str, Any], graph_context: dict[str, Any] | None = None
     ):
         super().__init__(id, params, graph_context)
-        self.optional_inputs = ["prompt", "system", "images", "hurst_data", "ohlcv_bundle", "mesa_data"] + [f"message_{i}" for i in range(5)]
+        self.optional_inputs = ["prompt", "system", "images", "hurst_data", "ohlcv_bundle", "mesa_data", "cco_data"] + [f"message_{i}" for i in range(4)]
         # Maintain seed state for increment mode
         self._seed_state: int | None = None
         self.vault = APIKeyVault()
@@ -564,6 +566,87 @@ class OpenRouterChat(Base):
         
         return "\n".join(lines)
 
+    def _format_cco_data(self, cco_data: ConfigDict) -> str:
+        """Format Cycle Channel Oscillator (CCO) data into readable text for LLM analysis."""
+        if not cco_data:
+            return ""
+        
+        lines: list[str] = []
+        lines.append("\n=== CYCLE CHANNEL OSCILLATOR (CCO) DATA ===\n")
+        
+        for symbol, data in cco_data.items():
+            if not isinstance(data, dict):
+                continue
+                
+            lines.append(f"\n--- {symbol} ---")
+            
+            # Metadata
+            metadata = data.get("metadata", {})
+            if metadata:
+                lines.append(f"CCO Parameters:")
+                lines.append(f"  Short Cycle Length: {metadata.get('short_cycle_length', 'N/A')}")
+                lines.append(f"  Medium Cycle Length: {metadata.get('medium_cycle_length', 'N/A')}")
+                lines.append(f"  Short Cycle Multiplier: {metadata.get('short_cycle_multiplier', 'N/A')}")
+                lines.append(f"  Medium Cycle Multiplier: {metadata.get('medium_cycle_multiplier', 'N/A')}")
+                lines.append(f"  Total Bars: {metadata.get('total_bars', 'N/A')}")
+                lines.append(f"  Display Bars: {metadata.get('display_bars', 'N/A')}")
+            
+            # Fast oscillator (oshort)
+            fast_osc = data.get("fast_osc", [])
+            if isinstance(fast_osc, list) and fast_osc:
+                valid_fast = [v for v in fast_osc if v is not None and isinstance(v, (int, float))]
+                if valid_fast:
+                    recent_fast = valid_fast[-20:] if len(valid_fast) > 20 else valid_fast
+                    lines.append(f"\nFast Oscillator (FastOsc) - Price location within medium-term channel (last {len(recent_fast)} values):")
+                    for i, val in enumerate(recent_fast):
+                        lines.append(f"  [{len(valid_fast) - len(recent_fast) + i}]: {val:.6f}")
+                    if len(valid_fast) > 20:
+                        lines.append(f"  ... ({len(valid_fast) - 20} more values)")
+                    lines.append(f"  Current: {valid_fast[-1]:.6f}")
+                    lines.append(f"  Min: {min(valid_fast):.6f}, Max: {max(valid_fast):.6f}")
+                    lines.append(f"  Mean: {sum(valid_fast) / len(valid_fast):.6f}")
+            
+            # Slow oscillator (omed)
+            slow_osc = data.get("slow_osc", [])
+            valid_slow: list[float] = []
+            if isinstance(slow_osc, list) and slow_osc:
+                valid_slow = [v for v in slow_osc if v is not None and isinstance(v, (int, float))]
+                if valid_slow:
+                    recent_slow = valid_slow[-20:] if len(valid_slow) > 20 else valid_slow
+                    lines.append(f"\nSlow Oscillator (SlowOsc) - Short-term midline location within medium-term channel (last {len(recent_slow)} values):")
+                    for i, val in enumerate(recent_slow):
+                        lines.append(f"  [{len(valid_slow) - len(recent_slow) + i}]: {val:.6f}")
+                    if len(valid_slow) > 20:
+                        lines.append(f"  ... ({len(valid_slow) - 20} more values)")
+                    lines.append(f"  Current: {valid_slow[-1]:.6f}")
+                    lines.append(f"  Min: {min(valid_slow):.6f}, Max: {max(valid_slow):.6f}")
+                    lines.append(f"  Mean: {sum(valid_slow) / len(valid_slow):.6f}")
+            
+            # Interpretation notes
+            valid_fast: list[float] = []
+            if isinstance(fast_osc, list) and fast_osc:
+                valid_fast = [v for v in fast_osc if v is not None and isinstance(v, (int, float))]
+            
+            if valid_fast and valid_slow:
+                current_fast = valid_fast[-1]
+                current_slow = valid_slow[-1]
+                lines.append(f"\nInterpretation:")
+                if current_fast >= 1.0:
+                    lines.append(f"  Fast Oscillator >= 1.0: Price is above medium-term channel (overbought)")
+                elif current_fast <= 0.0:
+                    lines.append(f"  Fast Oscillator <= 0.0: Price is below medium-term channel (oversold)")
+                else:
+                    lines.append(f"  Fast Oscillator: {current_fast:.2%} of way through medium-term channel")
+                
+                if current_slow >= 1.0:
+                    lines.append(f"  Slow Oscillator >= 1.0: Short-term midline is above medium-term channel")
+                elif current_slow <= 0.0:
+                    lines.append(f"  Slow Oscillator <= 0.0: Short-term midline is below medium-term channel")
+                else:
+                    lines.append(f"  Slow Oscillator: {current_slow:.2%} of way through medium-term channel")
+        
+        return "\n".join(lines)
+
     async def _execute_impl(self, inputs: dict[str, Any]) -> dict[str, Any]:
         prompt_text: str | None = inputs.get("prompt")
         system_input: str | dict[str, Any] | None = inputs.get("system")
@@ -571,8 +654,9 @@ class OpenRouterChat(Base):
         hurst_data: ConfigDict | None = inputs.get("hurst_data")
         ohlcv_bundle: ConfigDict | None = inputs.get("ohlcv_bundle")
         mesa_data: ConfigDict | None = inputs.get("mesa_data")
+        cco_data: ConfigDict | None = inputs.get("cco_data")
 
-        # Combine prompt with formatted Hurst data, MESA data, and OHLCV bars
+        # Combine prompt with formatted Hurst data, MESA data, CCO data, and OHLCV bars
         combined_prompt_parts: list[str] = []
         if prompt_text:
             combined_prompt_parts.append(prompt_text)
@@ -587,6 +671,11 @@ class OpenRouterChat(Base):
             if mesa_text:
                 combined_prompt_parts.append(mesa_text)
         
+        if cco_data:
+            cco_text = self._format_cco_data(cco_data)
+            if cco_text:
+                combined_prompt_parts.append(cco_text)
+        
         if ohlcv_bundle:
             ohlcv_text = self._format_ohlcv_bundle(ohlcv_bundle)
             if ohlcv_text:
@@ -596,7 +685,7 @@ class OpenRouterChat(Base):
         final_prompt: str | None = "\n".join(combined_prompt_parts) if combined_prompt_parts else None
 
         merged: list[dict[str, Any]] = []
-        for i in range(5):
+        for i in range(4):
             msg = inputs.get(f"message_{i}")
             if msg:
                 if self._is_llm_chat_message(msg):

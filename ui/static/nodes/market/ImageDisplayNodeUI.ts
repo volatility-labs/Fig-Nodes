@@ -103,7 +103,7 @@ export default class ImageDisplayNodeUI extends BaseCustomNode {
             const avgAspectRatio = aspectRatios.reduce((sum, ar) => sum + ar, 0) / aspectRatios.length;
             
             // Calculate cell dimensions based on average aspect ratio
-            const cellSpacing = 4;
+            const cellSpacing = 2; // Small uniform spacing for clean grid
             
             // Target: fit cells with proper aspect ratio
             const targetCellWidth = Math.max(150, Math.min(250, 200));
@@ -180,14 +180,9 @@ export default class ImageDisplayNodeUI extends BaseCustomNode {
         ctx.rect(x0, y0, w, h);
         ctx.clip();
 
-        // Minimal flat background
-        ctx.fillStyle = '#0f1419';
+        // White background for uniform appearance
+        ctx.fillStyle = '#ffffff';
         ctx.fillRect(x0, y0, w, h);
-        
-        // Subtle rounded inner border
-        ctx.strokeStyle = 'rgba(75, 85, 99, 0.2)';
-        ctx.lineWidth = 1;
-        ctx.strokeRect(x0 + 0.5, y0 + 0.5, w - 1, h - 1);
 
         if (!labels.length) {
             // Minimal empty state
@@ -256,7 +251,7 @@ export default class ImageDisplayNodeUI extends BaseCustomNode {
         // Compute grid for multiple images
         const cols = Math.ceil(Math.sqrt(labels.length));
         const rows = Math.ceil(labels.length / cols);
-        const cellSpacing = 4;
+        const cellSpacing = 2; // Small uniform spacing between images
         // Apply zoom to grid cell sizes for multi-image grids
         const baseCellW = Math.floor((w - (cols - 1) * cellSpacing) / cols);
         const baseCellH = Math.floor((h - (rows - 1) * cellSpacing) / rows);
@@ -316,22 +311,18 @@ export default class ImageDisplayNodeUI extends BaseCustomNode {
                         // Skip drawing if cell is completely outside visible area
                         if (cy + cellH < y0 || cy > y0 + h || cx + cellW < x0 || cx > x0 + w) continue;
 
-                        // Image - fit preserving aspect ratio
+                        // Image - stretch to fill entire cell for uniform grid appearance
                         if (img) {
-                            const imageArea = this.fitImageToBounds(img.width, img.height, cellW - 2, cellH - 2);
+                            // Stretch image to fill cell completely (ignore aspect ratio for grid uniformity)
                             ctx.drawImage(
                                 img,
-                                cx + 1 + imageArea.x,
-                                cy + 1 + imageArea.y,
-                                imageArea.width,
-                                imageArea.height
+                                cx,
+                                cy,
+                                cellW,
+                                cellH
                             );
                         }
-
-                        // Very subtle border
-                        ctx.strokeStyle = 'rgba(75, 85, 99, 0.18)';
-                        ctx.lineWidth = 1;
-                        ctx.strokeRect(cx + 0.5, cy + 0.5, cellW - 1, cellH - 1);
+                        // No borders - seamless grid appearance
                     }
                 }
             }
@@ -373,7 +364,6 @@ export default class ImageDisplayNodeUI extends BaseCustomNode {
                 // Reduced sensitivity for smoother, more controlled zooming
                 const zoomSpeed = event.deltaMode === 0 ? 0.03 : 0.01; // Reduced sensitivity for both trackpad and mouse wheel
                 const zoomDelta = -event.deltaY * zoomSpeed; // Negative so scroll up zooms in
-                const oldZoom = this.zoomLevel;
                 // Limit zoom: minimum 1.0 (original size), maximum 5.0 (500% zoom)
                 this.zoomLevel = Math.max(1.0, Math.min(5.0, this.zoomLevel + zoomDelta));
                 
@@ -409,7 +399,7 @@ export default class ImageDisplayNodeUI extends BaseCustomNode {
             // Multi-image grid scrolling with infinite scroll
             const cols = Math.ceil(Math.sqrt(labels.length));
             const rows = Math.ceil(labels.length / cols);
-            const cellSpacing = 4;
+            const cellSpacing = 2; // Small uniform spacing between images
             const baseCellW = Math.floor((contentWidth - (cols - 1) * cellSpacing) / cols);
             const baseCellH = Math.floor((contentHeight - (rows - 1) * cellSpacing) / rows);
             const cellW = baseCellW * this.zoomLevel;
