@@ -7,8 +7,8 @@
 
 body {
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    background: #1a1a1a;
-    color: #ffffff;
+    background: #0d1117;
+    color: #c9d1d9;
     overflow: hidden;
 }
 
@@ -28,18 +28,18 @@ body {
 #litegraph-canvas {
     width: 100%;
     height: 100%;
-    background: #2a2a2a;
+    background: #0d1117;
     cursor: crosshair;
 }
 
 /* Footer Controls - Bloomberg Terminal Style */
 #footer {
-    background: #1a1a1a;
+    background: #0d1117;
     padding: 0 16px;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    border-top: 1px solid #2a2a2a;
+    border-top: 1px solid #30363d;
     height: 36px;
     font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
     font-size: 11px;
@@ -121,7 +121,7 @@ body {
 }
 
 .graph-name {
-    color: #aaa;
+    color: #768390;
     font-size: 11px;
     font-weight: 500;
     letter-spacing: 0.2px;
@@ -170,54 +170,54 @@ body {
 
 .file-controls {
     padding-left: 8px;
-    border-left: 1px solid #333;
+    border-left: 1px solid #30363d;
 }
 
 .execution-controls {
     padding-left: 8px;
-    border-left: 1px solid #333;
+    border-left: 1px solid #30363d;
 }
 
 #footer button {
-    color: #ccc;
-    border: 1px solid #333;
+    color: #adbac7;
+    border: 1px solid #373e47;
     padding: 4px 10px;
     border-radius: 2px;
     cursor: pointer;
     font-size: 11px;
     font-weight: 500;
     transition: all 0.15s ease;
-    background: #252525;
+    background: #1c2128;
     letter-spacing: 0.3px;
     text-transform: uppercase;
     font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
 }
 
 #footer button:hover {
-    background: #2a2a2a;
-    border-color: #444;
-    color: #fff;
+    background: #22272e;
+    border-color: #545d68;
+    color: #cdd9e5;
 }
 
 .btn-primary {
-    background: #1a4d7a;
-    border-color: #2a5d8a;
+    background: #1f6feb;
+    border-color: #316dca;
     color: #fff;
 }
 
 .btn-primary:hover {
-    background: #215d8f;
-    border-color: #3a7daf;
+    background: #388bfd;
+    border-color: #4493f8;
 }
 
 .btn-secondary {
-    background: #252525;
-    border-color: #333;
+    background: #1c2128;
+    border-color: #373e47;
 }
 
 .btn-secondary:hover {
-    background: #2a2a2a;
-    border-color: #444;
+    background: #22272e;
+    border-color: #545d68;
 }
 
 .btn-stop {

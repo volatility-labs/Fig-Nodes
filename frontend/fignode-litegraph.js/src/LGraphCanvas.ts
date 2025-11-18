@@ -234,32 +234,32 @@ export class LGraphCanvas implements CustomEventDispatcher<LGraphCanvasEventMap>
 
   static DEFAULT_BACKGROUND_IMAGE = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGQAAABkCAIAAAD/gAIDAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAQBJREFUeNrs1rEKwjAUhlETUkj3vP9rdmr1Ysammk2w5wdxuLgcMHyptfawuZX4pJSWZTnfnu/lnIe/jNNxHHGNn//HNbbv+4dr6V+11uF527arU7+u63qfa/bnmh8sWLBgwYJlqRf8MEptXPBXJXa37BSl3ixYsGDBMliwFLyCV/DeLIMFCxYsWLBMwSt4Be/NggXLYMGCBUvBK3iNruC9WbBgwYJlsGApeAWv4L1ZBgsWLFiwYJmCV/AK3psFC5bBggULloJX8BpdwXuzYMGCBctgwVLwCl7Be7MMFixYsGDBsu8FH1FaSmExVfAxBa/gvVmwYMGCZbBg/W4vAQYA5tRF9QYlv/QAAAAASUVORK5CYII="
 
-  static DEFAULT_EVENT_LINK_COLOR = "#A86"
+  static DEFAULT_EVENT_LINK_COLOR = "#f85149"
 
   /** Link type to colour dictionary. */
   static link_type_colors: Dictionary<string> = {
     "-1": LGraphCanvas.DEFAULT_EVENT_LINK_COLOR,
-    "number": "#AAA",
-    "node": "#DCA",
+    "number": "#316dca",
+    "node": "#3fb950",
   }
 
   static gradients: Record<string, CanvasGradient> = {}
 
   static search_limit = -1
   static node_colors: Record<string, ColorOption> = {
-    red: { color: "#322", bgcolor: "#533", groupcolor: "#A88" },
-    brown: { color: "#332922", bgcolor: "#593930", groupcolor: "#b06634" },
-    green: { color: "#232", bgcolor: "#353", groupcolor: "#8A8" },
-    blue: { color: "#223", bgcolor: "#335", groupcolor: "#88A" },
+    red: { color: "#3d130f", bgcolor: "#67060c", groupcolor: "#f85149" },
+    brown: { color: "#2d200b", bgcolor: "#4a3719", groupcolor: "#d29922" },
+    green: { color: "#0e4429", bgcolor: "#1a7f37", groupcolor: "#3fb950" },
+    blue: { color: "#0c2d6b", bgcolor: "#1c4ed8", groupcolor: "#58a6ff" },
     pale_blue: {
-      color: "#2a363b",
-      bgcolor: "#3f5159",
-      groupcolor: "#3f789e",
+      color: "#1c2128",
+      bgcolor: "#22272e",
+      groupcolor: "#316dca",
     },
-    cyan: { color: "#233", bgcolor: "#355", groupcolor: "#8AA" },
-    purple: { color: "#323", bgcolor: "#535", groupcolor: "#a1309b" },
-    yellow: { color: "#432", bgcolor: "#653", groupcolor: "#b58b2a" },
-    black: { color: "#222", bgcolor: "#000", groupcolor: "#444" },
+    cyan: { color: "#0b2942", bgcolor: "#0969da", groupcolor: "#79c0ff" },
+    purple: { color: "#352160", bgcolor: "#6f42c1", groupcolor: "#a371f7" },
+    yellow: { color: "#3d2e00", bgcolor: "#9e6a03", groupcolor: "#d29922" },
+    black: { color: "#0d1117", bgcolor: "#161b22", groupcolor: "#30363d" },
   }
 
   /**
@@ -735,10 +735,10 @@ export class LGraphCanvas implements CustomEventDispatcher<LGraphCanvasEventMap>
     this.node_title_color = LiteGraph.NODE_TITLE_COLOR
     this.default_link_color = LiteGraph.LINK_COLOR
     this.default_connection_color = {
-      input_off: "#778",
-      input_on: "#7F7",
-      output_off: "#778",
-      output_on: "#7F7",
+      input_off: "#545d68",
+      input_on: "#3fb950",
+      output_off: "#545d68",
+      output_on: "#316dca",
     }
     this.default_connection_color_byType = {
       /* number: "#7F7",
@@ -758,7 +758,7 @@ export class LGraphCanvas implements CustomEventDispatcher<LGraphCanvasEventMap>
     this.editor_alpha = 1
     this.pause_rendering = false
     this.clear_background = true
-    this.clear_background_color = "#222"
+    this.clear_background_color = "#161b22"
 
     this.render_only_selected = true
     this.show_info = true
@@ -4532,12 +4532,12 @@ export class LGraphCanvas implements CustomEventDispatcher<LGraphCanvasEventMap>
       ctx.save()
       this.ds.toCanvasContext(ctx)
 
-      // render BG
+      // render BG - always render at full opacity regardless of zoom
       if (
-        this.ds.scale < 1.5 &&
         !bg_already_painted &&
         this.clear_background_color
       ) {
+        ctx.globalAlpha = 1.0
         ctx.fillStyle = this.clear_background_color
         ctx.fillRect(
           this.visible_area[0],

@@ -8,6 +8,7 @@ import { FileManager } from './FileManager';
 import { UIModuleLoader } from './UIModuleLoader';
 import { ServiceRegistry } from './ServiceRegistry';
 import { registerExecutionStatusService } from './ExecutionStatusService';
+import { ThemeManager } from './ThemeManager';
 
 export function updateStatus(status: 'connected' | 'disconnected' | 'loading' | 'executing', message?: string) {
     const sr: ServiceRegistry | undefined = (window as any).serviceRegistry;
@@ -24,6 +25,7 @@ export interface EditorInstance {
     fileManager: FileManager;
     dialogManager: DialogManager;
     apiKeyManager: APIKeyManager;
+    themeManager: ThemeManager;
     serviceRegistry: ServiceRegistry;
 }
 
@@ -32,6 +34,7 @@ export class EditorInitializer {
     private serviceRegistry: ServiceRegistry;
     private dialogManager: DialogManager;
     private apiKeyManager: APIKeyManager;
+    private themeManager: ThemeManager;
     private linkModeManager!: LinkModeManager;
 
     constructor() {
@@ -39,6 +42,7 @@ export class EditorInitializer {
         this.serviceRegistry = new ServiceRegistry();
         this.dialogManager = new DialogManager(this.serviceRegistry);
         this.apiKeyManager = new APIKeyManager();
+        this.themeManager = new ThemeManager();
     }
 
     async createEditor(container: HTMLElement): Promise<EditorInstance> {
@@ -82,6 +86,9 @@ export class EditorInitializer {
             const uiModuleLoader = new UIModuleLoader(this.serviceRegistry);
             this.linkModeManager = linkModeManager;
 
+            // Apply theme (must be done after canvas creation)
+            this.themeManager.applyTheme(canvas, graph);
+
             // Register services in ServiceRegistry
             this.serviceRegistry.register('graph', graph as any);
             this.serviceRegistry.register('canvas', canvas as any);
@@ -89,6 +96,7 @@ export class EditorInitializer {
             this.serviceRegistry.register('fileManager', fileManager);
             this.serviceRegistry.register('dialogManager', this.dialogManager);
             this.serviceRegistry.register('apiKeyManager', this.apiKeyManager);
+            this.serviceRegistry.register('themeManager', this.themeManager);
             this.serviceRegistry.register('appState', this.appState);
 
             // Set up app state
@@ -118,6 +126,9 @@ export class EditorInitializer {
 
             // Add footer buttons
             this.addFooterButtons();
+            
+            // Set up theme selector
+            this.setupThemeSelector(canvas, graph);
 
             // Expose services globally for debugging if needed (avoid relying on globals in production code)
             ; (window as any).serviceRegistry = this.serviceRegistry;
@@ -152,6 +163,7 @@ export class EditorInitializer {
                 fileManager,
                 dialogManager: this.dialogManager,
                 apiKeyManager: this.apiKeyManager,
+                themeManager: this.themeManager,
                 serviceRegistry: this.serviceRegistry
             };
         } catch (error) {
@@ -517,6 +529,72 @@ export class EditorInitializer {
             });
             footerCenter.appendChild(autoAlignBtn);
         }
+    }
+
+    private setupThemeSelector(canvas: LGraphCanvas, graph: LGraph): void {
+        const footerLeft = document.querySelector('.footer-left');
+        if (!footerLeft) return;
+
+        // Create theme selector container
+        const themeContainer = document.createElement('div');
+        themeContainer.className = 'theme-selector';
+        themeContainer.style.marginLeft = '12px';
+        themeContainer.style.paddingLeft = '12px';
+        themeContainer.style.borderLeft = '1px solid var(--theme-border, #30363d)';
+        themeContainer.style.display = 'flex';
+        themeContainer.style.alignItems = 'center';
+        themeContainer.style.gap = '6px';
+
+        const themeLabel = document.createElement('span');
+        themeLabel.textContent = 'Theme:';
+        themeLabel.style.color = 'var(--theme-text-secondary, #768390)';
+        themeLabel.style.fontSize = '11px';
+        themeLabel.style.fontFamily = "'Consolas', 'Monaco', 'Courier New', monospace";
+
+        const themeSelect = document.createElement('select');
+        themeSelect.id = 'theme-selector';
+        themeSelect.className = 'theme-select';
+        themeSelect.style.background = 'var(--theme-bg, #1c2128)';
+        themeSelect.style.border = '1px solid var(--theme-border, #373e47)';
+        themeSelect.style.color = 'var(--theme-text, #adbac7)';
+        themeSelect.style.padding = '4px 8px';
+        themeSelect.style.borderRadius = '2px';
+        themeSelect.style.fontSize = '11px';
+        themeSelect.style.fontFamily = "'Consolas', 'Monaco', 'Courier New', monospace";
+        themeSelect.style.cursor = 'pointer';
+        themeSelect.style.outline = 'none';
+
+        // Add theme options
+        const themes = this.themeManager.getAvailableThemes();
+        themes.forEach(theme => {
+            const option = document.createElement('option');
+            option.value = theme.name;
+            option.textContent = theme.displayName;
+            themeSelect.appendChild(option);
+        });
+
+        // Set current theme
+        themeSelect.value = this.themeManager.getCurrentTheme().name;
+
+        // Handle theme change
+        themeSelect.addEventListener('change', (e) => {
+            const themeName = (e.target as HTMLSelectElement).value;
+            this.themeManager.setTheme(themeName);
+        });
+
+        // Add hover styles via JavaScript (since CSS variables are dynamic)
+        themeSelect.addEventListener('mouseenter', () => {
+            themeSelect.style.borderColor = 'var(--theme-text-secondary, #545d68)';
+            themeSelect.style.background = 'var(--theme-bg, #22272e)';
+        });
+        themeSelect.addEventListener('mouseleave', () => {
+            themeSelect.style.borderColor = 'var(--theme-border, #373e47)';
+            themeSelect.style.background = 'var(--theme-bg, #1c2128)';
+        });
+
+        themeContainer.appendChild(themeLabel);
+        themeContainer.appendChild(themeSelect);
+        footerLeft.appendChild(themeContainer);
     }
 
     private async loadDefaultGraph(graph: LGraph, canvas: LGraphCanvas): Promise<void> {

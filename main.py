@@ -116,6 +116,17 @@ def run_dev(host: str, backend_port: int, vite_port: int) -> int:
     if _needs_litegraph_build():
         _build_litegraph()
 
+    # Start LiteGraph watch process (rebuilds on source changes)
+    litegraph_pm_cmd, litegraph_pm_name = _select_node_pm(LITEGRAPH_DIR)
+    if litegraph_pm_name == "yarn":
+        litegraph_watch_cmd = litegraph_pm_cmd + ["watch"]
+    elif litegraph_pm_name == "npm":
+        litegraph_watch_cmd = litegraph_pm_cmd + ["run", "watch"]
+    else:  # npx fallback
+        litegraph_watch_cmd = litegraph_pm_cmd + ["vite", "build", "--watch"]
+
+    litegraph_watch_proc = _start_process(litegraph_watch_cmd, cwd=LITEGRAPH_DIR)
+
     # Backend (Uvicorn) with auto-reload
     backend_cmd = [
         sys.executable,
@@ -145,36 +156,43 @@ def run_dev(host: str, backend_port: int, vite_port: int) -> int:
     frontend_proc = _start_process(fe_cmd, cwd=UI_DIR, env=env)
 
     print(f"\nDev servers starting:")
+    print(f"- LiteGraph:  Watching for changes (auto-rebuild)")
     print(f"- Backend:    http://{host}:{backend_port}")
     print(f"- Frontend:   http://localhost:{vite_port}/  (Vite dev)")
-    print("Press Ctrl+C to stop both.")
+    print("Press Ctrl+C to stop all.")
 
     exit_code = 0
     try:
-        # Wait on either process to exit
+        # Wait on any process to exit
         while True:
+            if litegraph_watch_proc.poll() is not None:
+                exit_code = litegraph_watch_proc.returncode or 0
+                print("LiteGraph watch process exited; shutting down other processes...")
+                break
             if backend_proc.poll() is not None:
                 exit_code = backend_proc.returncode or 0
-                print("Backend process exited; shutting down frontend...")
+                print("Backend process exited; shutting down other processes...")
                 break
             if frontend_proc.poll() is not None:
                 exit_code = frontend_proc.returncode or 0
-                print("Frontend process exited; shutting down backend...")
+                print("Frontend process exited; shutting down other processes...")
                 break
             time.sleep(0.25)
     except KeyboardInterrupt:
         print("\nStopping dev servers...")
     finally:
-        # Ensure both processes are terminated, even if interrupted
+        # Ensure all processes are terminated, even if interrupted
+        try:
+            _terminate_process(litegraph_watch_proc)
+        except KeyboardInterrupt:
+            pass
         try:
             _terminate_process(frontend_proc)
         except KeyboardInterrupt:
-            # If interrupted during frontend termination, still try backend
             pass
         try:
             _terminate_process(backend_proc)
         except KeyboardInterrupt:
-            # If interrupted during backend termination, at least we tried
             pass
 
     return exit_code
