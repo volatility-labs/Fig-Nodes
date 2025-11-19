@@ -1,7 +1,7 @@
 """
 Hurst Spectral Analysis Oscillator Plot Node
 
-Creates combined chart with price candlesticks and Hurst bandpass waves.
+Creates combined chart with price OHLC bars and Hurst bandpass waves.
 """
 
 import base64
@@ -45,15 +45,17 @@ plt.rcParams.update({
     'lines.markeredgewidth': 0.5,
     'patch.linewidth': 0.5,
     
-    # Grid and axes - StockCharts-style clear grid separation
+    # Grid and axes - StockCharts-style clean grid (clearly visible)
     'axes.grid': True,
     'axes.axisbelow': True,
-    'grid.alpha': 0.4,  # Increased from 0.3 for better visibility
-    'grid.color': '#d0d0d0',  # Slightly darker grid lines
-    'grid.linewidth': 0.6,  # Slightly thicker grid lines
-    'grid.linestyle': '-',  # Solid lines for cleaner look
-    'axes.edgecolor': '#b0b0b0',  # Darker edge color for better panel separation
-    'axes.linewidth': 1.0,  # Thicker axes edges for clearer panel boundaries
+    'grid.alpha': 0.7,  # More visible grid
+    'grid.color': '#c0c0c0',  # Darker gray for better visibility
+    'grid.linewidth': 0.8,  # Thicker grid lines
+    'grid.linestyle': '-',  # Solid lines
+    'axes.edgecolor': '#cccccc',  # Lighter edge color for subtle panel separation
+    'axes.linewidth': 0.8,  # Thinner axes edges
+    'xtick.color': '#666666',  # Clean tick colors
+    'ytick.color': '#666666',
     
     # Image rendering quality
     'image.interpolation': 'bilinear',
@@ -172,7 +174,7 @@ def _normalize_bars(bars: list[OHLCVBar]) -> tuple[list[tuple[int, float, float,
 
 
 def _plot_candles(ax: "Axes", series: list[tuple[int, float, float, float, float]], volumes: list[float] | None = None, ema_10: list[float | None] | None = None, ema_30: list[float | None] | None = None, ema_100: list[float | None] | None = None, show_current_price: bool = True, current_price_override: float | None = None) -> None:
-    """Plot candlesticks, volume bars, and EMAs on the given axes.
+    """Plot OHLC bars, volume bars, and EMAs on the given axes.
     
     Args:
         ax: Matplotlib axes to plot on
@@ -198,9 +200,9 @@ def _plot_candles(ax: "Axes", series: list[tuple[int, float, float, float, float
     # Plot EMAs (10, 30, 100 periods) if provided (pre-calculated with warm-up)
     # Use thicker, more distinct lines with higher contrast for better AI vision model accuracy
     ema_data = [
-        (ema_10, '#2196f3', 'EMA 10', 2.0),      # Blue - thicker line
-        (ema_30, '#ff9800', 'EMA 30', 2.0),      # Orange - thicker line
-        (ema_100, '#9c27b0', 'EMA 100', 2.5)     # Purple - thickest line (most important reference)
+        (ema_10, '#1565c0', 'EMA 10', 2.0),      # Darker blue
+        (ema_30, '#ef5350', 'EMA 30', 2.0),      # Red
+        (ema_100, '#4caf50', 'EMA 100', 2.5)     # Green - thickest line (most important reference)
     ]
     ema_lines = []
     
@@ -266,14 +268,14 @@ def _plot_candles(ax: "Axes", series: list[tuple[int, float, float, float, float
             crosses_text,
             xy=(last_index, min(closes) if closes else 0),
             xytext=(8, -15),
-            textcoords="offset points",
+                        textcoords="offset points",
             fontsize=9,
             color='#4caf50',
-            fontweight='bold',
+                        fontweight='bold',
             bbox=dict(boxstyle="round,pad=0.4", facecolor='#e8f5e9', edgecolor='#4caf50', alpha=0.95, linewidth=1.5),
-            ha='left',
+                        ha='left',
             va='top'
-                    )
+        )
     
     # Get price range for volume scaling
     all_prices = lows + highs
@@ -309,16 +311,15 @@ def _plot_candles(ax: "Axes", series: list[tuple[int, float, float, float, float
         
         for i, volume in enumerate(volumes):
             volume_height = volume * volume_scale
-            color = "#26a69a" if closes[i] >= opens[i] else "#ef5350"
-            # Draw volume bar
+            # StockCharts style: gray volume bars (not color-coded by price direction)
             from matplotlib.patches import Rectangle
             volume_rect = Rectangle(
                 (i - 0.4, volume_bottom),
                 0.8,
                 volume_height,
-                facecolor=color,
-                edgecolor=color,
-                alpha=0.3,  # Semi-transparent volume bars
+                facecolor="#808080",  # Gray color for StockCharts style
+                edgecolor="#808080",
+                alpha=0.4,  # Semi-transparent gray volume bars
                 linewidth=0.5,
             )
             ax.add_patch(volume_rect)
@@ -358,46 +359,32 @@ def _plot_candles(ax: "Axes", series: list[tuple[int, float, float, float, float
                         bbox=dict(boxstyle="round,pad=0.3", facecolor='white', edgecolor='#ff9800', alpha=0.95, linewidth=1.5),
                         ha='left',
                         va='center'
-                    )
-    
-    # Plot wicks - StockCharts-style crisp rendering
-    # Use solid lines with full opacity for sharp, professional appearance
-    for i, (high, low) in enumerate(zip(highs, lows)):
-        color = "#26a69a" if closes[i] >= opens[i] else "#ef5350"
-        # StockCharts uses crisp, well-defined wicks with full opacity
-        # linewidth 1.5 provides good visibility while maintaining sharpness
-        ax.plot([i, i], [low, high], color=color, linewidth=1.5, alpha=1.0, solid_capstyle='round', solid_joinstyle='round')
-    
-    # Plot bodies - StockCharts-style crisp candlesticks
-    # StockCharts candlesticks have sharp edges, solid colors, and clear definition
-    for i, (open, close, high, low) in enumerate(zip(opens, closes, highs, lows)):
-        body_low = min(open, close)
-        body_high = max(open, close)
-        body_height = body_high - body_low
-        
-        color = "#26a69a" if close >= open else "#ef5350"
-        
-        from matplotlib.patches import Rectangle
-        # StockCharts-style rendering:
-        # - Width 0.75 provides good visibility without crowding
-        # - Full opacity (alpha=1.0) for solid, crisp appearance
-        # - Edge color matches body for clean look (no visible border)
-        # - Sharp corners for professional appearance
-        rect = Rectangle(
-            (i - 0.375, body_low),
-            0.75,
-            body_height if body_height > 0 else 0.01,
-            facecolor=color,
-            edgecolor=color,  # Match edge to body for clean StockCharts look
-            alpha=1.0,  # Full opacity for crisp appearance
-            linewidth=0.0,  # No border for clean StockCharts style
         )
-        ax.add_patch(rect)
     
-    # Add generous padding on the right to ensure the last candle is fully visible
-    # Last candle is at index len(series) - 1, with body extending to (len(series) - 1) + 0.35
+    # Plot OHLC bars - StockCharts style: vertical line with horizontal ticks
+    # Vertical line: high to low
+    # Left tick: open
+    # Right tick: close
+    # StockCharts color scheme: black for up (close >= open), red for down (close < open)
+    tick_length = 0.15  # Length of horizontal ticks for open/close
+    
+    for i, (open, close, high, low) in enumerate(zip(opens, closes, highs, lows)):
+        # StockCharts style: black for up bars, red for down bars
+        color = "black" if close >= open else "#ef5350"  # Black for up, red for down
+        
+        # Plot vertical line (high to low)
+        ax.plot([i, i], [low, high], color=color, linewidth=1.5, alpha=1.0, solid_capstyle='round', solid_joinstyle='round')
+        
+        # Plot left tick (open)
+        ax.plot([i - tick_length, i], [open, open], color=color, linewidth=1.5, alpha=1.0, solid_capstyle='round', solid_joinstyle='round')
+        
+        # Plot right tick (close)
+        ax.plot([i, i + tick_length], [close, close], color=color, linewidth=1.5, alpha=1.0, solid_capstyle='round', solid_joinstyle='round')
+    
+    # Add generous padding on the right to ensure the last OHLC bar is fully visible
+    # Last bar is at index len(series) - 1, with tick extending to (len(series) - 1) + tick_length
     # Increased padding from 0.5 to 1.5 for better visibility and AI analysis
-    # This ensures the last candle and price annotation are clearly visible
+    # This ensures the last bar and price annotation are clearly visible
     ax.set_xlim(-0.5, len(series) + 1.5)
     
     # Annotate current price - use fresh snapshot if provided, otherwise use last bar's close
@@ -405,11 +392,23 @@ def _plot_candles(ax: "Axes", series: list[tuple[int, float, float, float, float
         # Use fresh price if provided, otherwise use last bar's close
         current_price = current_price_override if current_price_override is not None else closes[-1]
         current_index = len(closes) - 1
+        
+        # Draw horizontal dotted line at current price for better visibility
+        ax.axhline(
+            y=current_price,
+            color='#ef5350',  # Red color for price line
+            linestyle='--',  # Dotted line
+            linewidth=1.5,
+            alpha=0.7,
+            zorder=5,  # Above grid but below OHLC bars/EMAs
+            label=None  # Don't add to legend
+        )
+        
         # Increased fontsize and padding for better visibility of current price
         ax.annotate(
-            f"${current_price:.2f}",
+            f"${current_price:.4f}",
             xy=(current_index, current_price),
-            xytext=(8, 12),  # Increased from (5, 10) for more space from candle
+            xytext=(8, 12),  # Increased from (5, 10) for more space from OHLC bar
             textcoords="offset points",
             bbox=dict(boxstyle="round,pad=0.4", facecolor="yellow", alpha=0.9, linewidth=2.0),  # Thicker border, more padding
             fontsize=12,  # Increased from 10 to 12 for better AI readability
@@ -420,12 +419,12 @@ def _plot_candles(ax: "Axes", series: list[tuple[int, float, float, float, float
         )
     
     # StockCharts-style grid - clearer but still subtle
-    ax.grid(True, alpha=0.4, linestyle='-', linewidth=0.6, color='#d0d0d0', zorder=0)
+    ax.grid(True, alpha=0.7, linestyle='-', linewidth=0.8, color='#c0c0c0', zorder=0)
     ax.set_axisbelow(True)
     # Enhance axes edges for better panel separation
     for spine in ax.spines.values():
-        spine.set_color('#b0b0b0')
-        spine.set_linewidth(1.0)
+        spine.set_color('#cccccc')
+        spine.set_linewidth(0.8)
     
     # Add legend for EMAs and volume MA if any were plotted
     # Note: EMA values are already included in legend labels from the code above
@@ -439,7 +438,7 @@ def _plot_candles(ax: "Axes", series: list[tuple[int, float, float, float, float
             if ema_values and len(ema_values) == len(series) and ema_values[last_index] is not None:
                 ema_value = ema_values[last_index]
                 if isinstance(ema_value, (int, float)):
-                    legend_labels.append(f"{label}: ${ema_value:.2f}")
+                    legend_labels.append(f"{label}: ${ema_value:.4f}")
                 else:
                     legend_labels.append(label)
             else:
@@ -554,7 +553,7 @@ def _plot_hurst_waves(
                         bbox=dict(boxstyle="round,pad=0.3", facecolor='white', edgecolor="#ff6600", alpha=0.95, linewidth=1.5),
                         ha='left',
                         va='bottom'
-                    )
+        )
     
     # Set Y-axis scale for better wave visibility
     # symlog (symmetric log) is best for values near zero - shows small oscillations clearly
@@ -575,12 +574,12 @@ def _plot_hurst_waves(
     ax.axhline(y=0, color="#888888", linestyle="--", linewidth=0.5, alpha=0.5)
     
     # StockCharts-style grid - clearer but still subtle
-    ax.grid(True, alpha=0.4, linestyle='-', linewidth=0.6, color='#d0d0d0', zorder=0)
+    ax.grid(True, alpha=0.7, linestyle='-', linewidth=0.8, color='#c0c0c0', zorder=0)
     ax.set_axisbelow(True)  # Grid behind data
     # Enhance axes edges for better panel separation
     for spine in ax.spines.values():
-        spine.set_color('#b0b0b0')
-        spine.set_linewidth(1.0)
+        spine.set_color('#cccccc')
+        spine.set_linewidth(0.8)
     
     if selected_periods or show_composite:
         # TradingView-style compact legend - top left to avoid covering recent data
@@ -690,7 +689,7 @@ def _plot_mesa_stochastic(
                             bbox=dict(boxstyle="round,pad=0.3", facecolor='white', edgecolor=color, alpha=0.95, linewidth=1.5),
                             ha='left',
                             va='center'
-                        )
+            )
                         annotation_y_offset -= annotation_spacing  # Move next annotation down
     
     # Set Y-axis limits (0 to 1 for stochastic)
@@ -702,12 +701,12 @@ def _plot_mesa_stochastic(
     ax.axhline(y=1, color="#888888", linestyle="--", linewidth=0.5, alpha=0.5)
     
     # StockCharts-style grid - clearer but still subtle
-    ax.grid(True, alpha=0.4, linestyle='-', linewidth=0.6, color='#d0d0d0', zorder=0)
+    ax.grid(True, alpha=0.7, linestyle='-', linewidth=0.8, color='#c0c0c0', zorder=0)
     ax.set_axisbelow(True)
     # Enhance axes edges for better panel separation
     for spine in ax.spines.values():
-        spine.set_color('#b0b0b0')
-        spine.set_linewidth(1.0)
+        spine.set_color('#cccccc')
+        spine.set_linewidth(0.8)
     
     # Legend - top left to avoid covering recent data
     ax.legend(loc='upper left', fontsize=8, framealpha=0.9, fancybox=False, shadow=False, frameon=True, ncol=2, columnspacing=0.5)
@@ -856,12 +855,12 @@ def _plot_cco(
             )
     
     # StockCharts-style grid - clearer but still subtle
-    ax.grid(True, alpha=0.4, linestyle='-', linewidth=0.6, color='#d0d0d0', zorder=0)
+    ax.grid(True, alpha=0.7, linestyle='-', linewidth=0.8, color='#c0c0c0', zorder=0)
     ax.set_axisbelow(True)
     # Enhance axes edges for better panel separation
     for spine in ax.spines.values():
-        spine.set_color('#b0b0b0')
-        spine.set_linewidth(1.0)
+        spine.set_color('#cccccc')
+        spine.set_linewidth(0.8)
     
     # Legend - top left to avoid covering recent data
     ax.legend(loc='upper left', fontsize=8, framealpha=0.9, fancybox=False, shadow=False, frameon=True, ncol=1, columnspacing=0.5)
@@ -872,7 +871,7 @@ class HurstPlot(Base):
     Renders OHLCV data with Hurst Spectral Analysis Oscillator waves.
     
     Creates a combined chart with:
-    - Top panel: Price candlesticks
+    - Top panel: Price OHLC bars
     - Bottom panel: Hurst bandpass waves (selected periods + composite)
     
     Inputs: 'ohlcv_bundle' (Dict[AssetSymbol, List[OHLCVBar]])
@@ -1747,18 +1746,20 @@ class HurstPlot(Base):
             # Larger width (12 vs 10) provides more horizontal space for last candle visibility
             # Maintain aspect ratios but with more pixels for sharper rendering
             # StockCharts-style spacing: increased hspace and better panel separation
+            # Price chart (ax1) is 50% bigger than indicator panels for better visibility
+            # Top spacing increased significantly to accommodate titles above charts (completely outside)
             if num_subplots == 2:
-                fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 6.5), sharex=True)
-                fig.subplots_adjust(hspace=0.20, top=0.95, bottom=0.07, left=0.08, right=0.95)  # More spacing for clearer separation
+                fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 7.5), sharex=True, height_ratios=[1.5, 1.0])
+                fig.subplots_adjust(hspace=0.20, top=0.88, bottom=0.07, left=0.08, right=0.95)  # More top space for titles
             elif num_subplots == 3:
                 if show_mesa:
-                    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(12, 8.5), sharex=True)
+                    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(12, 9.5), sharex=True, height_ratios=[1.5, 1.0, 1.0])
                 else:  # show_cco
-                    fig, (ax1, ax2, ax4) = plt.subplots(3, 1, figsize=(12, 8.5), sharex=True)
-                fig.subplots_adjust(hspace=0.18, top=0.95, bottom=0.07, left=0.08, right=0.95)  # More spacing for clearer separation
+                    fig, (ax1, ax2, ax4) = plt.subplots(3, 1, figsize=(12, 9.5), sharex=True, height_ratios=[1.5, 1.0, 1.0])
+                fig.subplots_adjust(hspace=0.18, top=0.88, bottom=0.07, left=0.08, right=0.95)  # More top space for titles
             else:  # num_subplots == 4 (both MESA and CCO)
-                fig, (ax1, ax2, ax3, ax4) = plt.subplots(4, 1, figsize=(12, 10.5), sharex=True)
-                fig.subplots_adjust(hspace=0.15, top=0.95, bottom=0.07, left=0.08, right=0.95)  # More spacing for clearer separation
+                fig, (ax1, ax2, ax3, ax4) = plt.subplots(4, 1, figsize=(12, 11.5), sharex=True, height_ratios=[1.5, 1.0, 1.0, 1.0])
+                fig.subplots_adjust(hspace=0.15, top=0.88, bottom=0.07, left=0.08, right=0.95)  # More top space for titles
             
             # Apply StockCharts-style panel separation to all axes
             all_axes = [ax1, ax2]
@@ -1768,12 +1769,12 @@ class HurstPlot(Base):
                 all_axes.append(ax4)
             
             for ax in all_axes:
-                # Enhance panel boundaries with clearer edges
+                # StockCharts-style clean panel boundaries
                 for spine in ax.spines.values():
-                    spine.set_color('#b0b0b0')
-                    spine.set_linewidth(1.0)
-                # Ensure grid is visible and consistent
-                ax.grid(True, alpha=0.4, linestyle='-', linewidth=0.6, color='#d0d0d0', zorder=0)
+                    spine.set_color('#cccccc')
+                    spine.set_linewidth(0.8)
+                # Ensure grid is clearly visible and consistent
+                ax.grid(True, alpha=0.7, linestyle='-', linewidth=0.8, color='#c0c0c0', zorder=0)
                 ax.set_axisbelow(True)
 
             # Get Y-axis scale parameter BEFORE plotting
@@ -2039,7 +2040,7 @@ class HurstPlot(Base):
                         length2=mesa_length2,
                         length3=mesa_length3,
                         length4=mesa_length4,
-                    )
+        )
                     
                     # Store full MESA data for AI analysis
                     mesa_data_by_symbol[str(sym)] = {
@@ -2098,7 +2099,7 @@ class HurstPlot(Base):
                         medium_cycle_length=cco_medium_cycle_length,
                         short_cycle_multiplier=cco_short_cycle_multiplier,
                         medium_cycle_multiplier=cco_medium_cycle_multiplier,
-                    )
+        )
                     
                     # Store full CCO data for AI analysis
                     cco_data_by_symbol[str(sym)] = {
@@ -2140,6 +2141,47 @@ class HurstPlot(Base):
                     # If CCO fails, still create the image without it
                     pass
 
+            # Add visual separation between symbols - StockCharts-style borders and spacing
+            # Add border around entire figure to clearly separate each symbol's chart group
+            fig.patch.set_edgecolor('#d0d0d0')  # Medium gray border for clear separation
+            fig.patch.set_linewidth(3.0)  # 3px border for better visibility
+            fig.patch.set_facecolor('#ffffff')  # White background (charts have white axes backgrounds)
+            
+            # Make all titles more prominent with background boxes - positioned COMPLETELY OUTSIDE chart area
+            # Use figure coordinates to position titles well above the chart panels, ensuring no overlap
+            # Price chart title (most important - make it stand out)
+            ax1_title = ax1.get_title()
+            if ax1_title:
+                ax1.set_title('')  # Clear default title
+                # Position title well above the chart using figure coordinates
+                # Get the position of ax1 in figure coordinates
+                ax1_pos = ax1.get_position()
+                # Position title significantly above ax1, in the top margin space (completely outside chart area)
+                # Use y1 (top of axis) + larger offset to ensure it's well outside
+                title_y = min(ax1_pos.y1 + 0.035, 0.96)  # Position well above, cap at 0.96 to stay in figure
+                fig.text(0.5, title_y, ax1_title,
+                        fontsize=14, fontweight='bold', ha='center', va='bottom',
+                        bbox=dict(boxstyle='round,pad=0.6', facecolor='white', 
+                                 edgecolor='#b0b0b0', linewidth=2.0, alpha=0.98),
+                        zorder=100)
+            
+            # Make other panel titles also more visible - positioned completely outside chart area
+            for ax in [ax2, ax3, ax4]:
+                if ax is not None:
+                    ax_title = ax.get_title()
+                    if ax_title:
+                        ax.set_title('')  # Clear default title
+                        # Position title above the chart using figure coordinates
+                        ax_pos = ax.get_position()
+                        # Position title well above this axis, in the margin space between panels
+                        # Use larger offset to ensure it's completely outside the chart area
+                        title_y = min(ax_pos.y1 + 0.025, 0.96)  # Position well above, cap at 0.96
+                        fig.text(0.5, title_y, ax_title,
+                               fontsize=12, fontweight='bold', ha='center', va='bottom',
+                               bbox=dict(boxstyle='round,pad=0.4', facecolor='white',
+                                        edgecolor='#d0d0d0', linewidth=1.5, alpha=0.95),
+                               zorder=100)
+            
             # Get DPI from params (default 250)
             dpi = int(self.params.get("dpi", self.default_params.get("dpi", 250)))
             images[str(sym)] = _encode_fig_to_data_url(fig, dpi=dpi)

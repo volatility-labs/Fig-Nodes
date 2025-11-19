@@ -293,19 +293,35 @@ async def fetch_bars(
                                         minute=rounded_minute, second=0, microsecond=0
                                     )
 
-                                # Create bar at the rounded interval timestamp
+                                # Get the last completed bar's close to use as open for the snapshot bar
+                                # This creates a proper OHLC candle instead of a full-body single-price candle
+                                snapshot_open = current_price  # Default to current price if no previous bar
+                                if bars:
+                                    # Use the last bar's close as the open for the current bar
+                                    # This represents the price at the start of the current hour/interval
+                                    last_bar = bars[-1]
+                                    snapshot_open = last_bar.get("close", current_price)
+                                    logger.warning(
+                                        f"POLYGON_SERVICE: Using last bar close ${snapshot_open:.4f} as open for snapshot bar"
+                                    )
+
+                                # Create proper OHLC bar: open from last bar's close, high/low/close from current price
+                                # This ensures the candle accurately represents price movement during the current period
+                                snapshot_high = max(snapshot_open, current_price)
+                                snapshot_low = min(snapshot_open, current_price)
+                                
                                 current_bar_dict = {
                                     "timestamp": int(rounded_time.timestamp() * 1000),
-                                    "open": current_price,
-                                    "high": current_price,
-                                    "low": current_price,
-                                    "close": current_price,
+                                    "open": snapshot_open,  # Price at start of hour (last bar's close)
+                                    "high": snapshot_high,  # Highest price seen (max of open and current)
+                                    "low": snapshot_low,    # Lowest price seen (min of open and current)
+                                    "close": current_price, # Current price (end of hour so far)
                                     "volume": 0.0,
                                 }
                                 needs_current_bar = True
                                 logger.warning(
-                                    f"POLYGON_SERVICE: ✅ Created current bar for {symbol.ticker} at timestamp {current_bar_dict['timestamp']} "
-                                    f"({rounded_time}) with price ${current_price:.4f}"
+                                    f"POLYGON_SERVICE: ✅ Created OHLC bar for {symbol.ticker} at timestamp {current_bar_dict['timestamp']} "
+                                    f"({rounded_time}) with OHLC: O=${snapshot_open:.4f}, H=${snapshot_high:.4f}, L=${snapshot_low:.4f}, C=${current_price:.4f}"
                                 )
                             else:
                                 logger.warning(
