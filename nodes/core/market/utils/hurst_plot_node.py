@@ -273,7 +273,7 @@ def _plot_candles(ax: "Axes", series: list[tuple[int, float, float, float, float
             bbox=dict(boxstyle="round,pad=0.4", facecolor='#e8f5e9', edgecolor='#4caf50', alpha=0.95, linewidth=1.5),
             ha='left',
             va='top'
-        )
+                    )
     
     # Get price range for volume scaling
     all_prices = lows + highs
@@ -1821,12 +1821,58 @@ class HurstPlot(Base):
             
             # Calculate EMAs efficiently: use display bars + warm-up for longest EMA period
             # This ensures EMAs are initialized and visible from the start of displayed chart
+            # IMPORTANT: StockCharts calculates EMAs on completed bars only
+            # For hourly bars: if current time is 15:55, the last completed bar is 14:00-15:00 (timestamp 15:00:00)
+            # The snapshot bar (if it exists) represents the current hour 15:00-16:00 and should NOT be used for EMA
             longest_ema_period = 100
             ema_warmup_bars = len(display_norm) + longest_ema_period  # Display bars + warm-up (e.g., 300 + 100 = 400)
-            ema_calculation_bars = min(ema_warmup_bars, len(full_norm))
             
-            # Get the last N bars for EMA calculation (includes warm-up + display)
-            ema_calc_norm = full_norm[-ema_calculation_bars:] if len(full_norm) > ema_calculation_bars else full_norm
+            # Determine the last completed bar timestamp
+            # StockCharts convention: For hourly bars, a bar with timestamp 15:00:00 represents hour 14:00-15:00 (completed at 15:00)
+            # If current time is 15:55, the snapshot bar has timestamp 15:00:00 but represents the CURRENT hour (15:00-16:00) which is NOT completed
+            # The last COMPLETED bar would be timestamp 14:00:00 (representing 13:00-14:00, completed at 14:00)
+            # OR if the last API bar has timestamp 15:00:00, it might be the completed bar for 14:00-15:00
+            # We need to check: if current time is within an hour (e.g., 15:55), bars with timestamp >= current_hour_start are NOT completed
+            
+            current_time = datetime.now()
+            current_hour_start = current_time.replace(minute=0, second=0, microsecond=0)
+            current_hour_start_ts = int(current_hour_start.timestamp() * 1000)
+            
+            # For hourly bars: if current time is 15:55 (within hour 15:00-16:00)
+            # - Bars with timestamp 15:00:00 could be EITHER:
+            #   1. Completed bar for 14:00-15:00 (if it came from API)
+            #   2. Snapshot bar for current hour 15:00-16:00 (if it's a snapshot)
+            # - We need to exclude snapshot bars (which are always the last bar if they exist)
+            # - The safest approach: exclude the last bar if it has the same timestamp as current hour start
+            #   AND if there are multiple bars with that timestamp, exclude all but the first one
+            
+            # Find completed bars: exclude bars that are clearly for future hours
+            # AND exclude the last bar if it's a snapshot (has timestamp matching current hour start)
+            completed_bars = []
+            last_bar_ts = full_norm[-1][0] if len(full_norm) > 0 else None
+            
+            for i, bar in enumerate(full_norm):
+                bar_ts = bar[0]
+                # Exclude bars for future hours
+                if bar_ts > current_hour_start_ts:
+                    break
+                
+                # If this is the last bar AND it has timestamp matching current hour start, it's likely a snapshot
+                # Exclude it from EMA calculation (StockCharts doesn't use intra-bar prices for EMA)
+                if i == len(full_norm) - 1 and bar_ts == current_hour_start_ts:
+                    # This is the snapshot bar - exclude it
+                    break
+                
+                completed_bars.append(bar)
+            
+            # Fallback: if no bars found, use all bars except the last one
+            if len(completed_bars) == 0:
+                completed_bars = full_norm[:-1] if len(full_norm) > 1 else full_norm
+            
+            ema_calculation_bars = min(ema_warmup_bars, len(completed_bars))
+            
+            # Get the last N completed bars for EMA calculation
+            ema_calc_norm = completed_bars[-ema_calculation_bars:] if len(completed_bars) > ema_calculation_bars else completed_bars
             ema_calc_closes = [bar[4] for bar in ema_calc_norm]
             
             # Calculate EMAs on this subset
@@ -1838,10 +1884,29 @@ class HurstPlot(Base):
             calc_ema_100 = ema_100_result.get("ema", [])
             
             # Slice EMAs to match display_norm (take last len(display_norm) values)
+            # Since EMAs are calculated on completed bars (excluding snapshot), we need to handle the snapshot bar
+            # StockCharts behavior: EMA stays at last completed bar's value until bar closes
             if len(display_norm) > 0:
-                display_ema_10 = calc_ema_10[-len(display_norm):] if len(calc_ema_10) >= len(display_norm) else []
-                display_ema_30 = calc_ema_30[-len(display_norm):] if len(calc_ema_30) >= len(display_norm) else []
-                display_ema_100 = calc_ema_100[-len(display_norm):] if len(calc_ema_100) >= len(display_norm) else []
+                # Get EMA values for completed bars that match display_norm (excluding snapshot)
+                completed_display_norm = display_norm[:-1] if len(display_norm) > 1 else []
+                completed_display_count = len(completed_display_norm)
+                
+                if completed_display_count > 0:
+                    # Get EMA values for the completed bars in display range
+                    display_ema_10_completed = calc_ema_10[-completed_display_count:] if len(calc_ema_10) >= completed_display_count else []
+                    display_ema_30_completed = calc_ema_30[-completed_display_count:] if len(calc_ema_30) >= completed_display_count else []
+                    display_ema_100_completed = calc_ema_100[-completed_display_count:] if len(calc_ema_100) >= completed_display_count else []
+                    
+                    # Extend EMAs to include snapshot bar position (use last EMA value for snapshot bar)
+                    # This matches StockCharts behavior: EMA stays at last completed bar's value until bar closes
+                    display_ema_10 = display_ema_10_completed + ([display_ema_10_completed[-1]] if display_ema_10_completed else [None])
+                    display_ema_30 = display_ema_30_completed + ([display_ema_30_completed[-1]] if display_ema_30_completed else [None])
+                    display_ema_100 = display_ema_100_completed + ([display_ema_100_completed[-1]] if display_ema_100_completed else [None])
+                else:
+                    # No completed bars in display range, use empty lists
+                    display_ema_10 = []
+                    display_ema_30 = []
+                    display_ema_100 = []
             else:
                 display_ema_10 = []
                 display_ema_30 = []
