@@ -444,8 +444,29 @@ class OpenRouterChat(Base):
         except NodeExecutionError:
             # Re-raise our custom errors
             raise
+        except aiohttp.ClientResponseError as e:
+            # Handle HTTP errors with specific messages for common status codes
+            if e.status == 429:
+                raise NodeExecutionError(
+                    self.id,
+                    f"OpenRouter API rate limit exceeded (429 Too Many Requests). "
+                    f"Please wait before retrying. Consider reducing the number of images or request frequency.",
+                    original_exc=e,
+                ) from e
+            elif e.status == 503:
+                raise NodeExecutionError(
+                    self.id,
+                    f"OpenRouter API service temporarily unavailable (503). Please try again later.",
+                    original_exc=e,
+                ) from e
+            else:
+                raise NodeExecutionError(
+                    self.id,
+                    f"OpenRouter API call failed with HTTP {e.status}: {e.message}",
+                    original_exc=e,
+                ) from e
         except Exception as e:
-            # Catch any other exceptions (HTTP errors, network issues, etc.)
+            # Catch any other exceptions (network issues, etc.)
             raise NodeExecutionError(
                 self.id,
                 f"OpenRouter API call failed: {str(e)}",
