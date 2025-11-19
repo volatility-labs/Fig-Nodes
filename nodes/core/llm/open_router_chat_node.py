@@ -446,17 +446,76 @@ class OpenRouterChat(Base):
             raise
         except aiohttp.ClientResponseError as e:
             # Handle HTTP errors with specific messages for common status codes
-            if e.status == 429:
+            if e.status == 400:
+                raise NodeExecutionError(
+                    self.id,
+                    f"OpenRouter API bad request (400). Invalid request format or parameters. "
+                    f"Check your prompt, images, or model selection.",
+                    original_exc=e,
+                ) from e
+            elif e.status == 401:
+                raise NodeExecutionError(
+                    self.id,
+                    f"OpenRouter API authentication failed (401 Unauthorized). "
+                    f"Please check your API key in the API Key Vault.",
+                    original_exc=e,
+                ) from e
+            elif e.status == 402:
+                raise NodeExecutionError(
+                    self.id,
+                    f"OpenRouter API payment required (402). Your account or API key has insufficient credits. "
+                    f"Please add credits to your OpenRouter account.",
+                    original_exc=e,
+                ) from e
+            elif e.status == 403:
+                raise NodeExecutionError(
+                    self.id,
+                    f"OpenRouter API forbidden (403). Your input may be flagged by moderation, "
+                    f"or your API key may not have permission for this model or operation.",
+                    original_exc=e,
+                ) from e
+            elif e.status == 404:
+                raise NodeExecutionError(
+                    self.id,
+                    f"OpenRouter API endpoint not found (404). The model or endpoint may not exist.",
+                    original_exc=e,
+                ) from e
+            elif e.status == 408:
+                raise NodeExecutionError(
+                    self.id,
+                    f"OpenRouter API request timeout (408). Your request took too long to process. "
+                    f"Consider reducing payload size or number of images.",
+                    original_exc=e,
+                ) from e
+            elif e.status == 429:
                 raise NodeExecutionError(
                     self.id,
                     f"OpenRouter API rate limit exceeded (429 Too Many Requests). "
                     f"Please wait before retrying. Consider reducing the number of images or request frequency.",
                     original_exc=e,
                 ) from e
+            elif e.status == 500:
+                raise NodeExecutionError(
+                    self.id,
+                    f"OpenRouter API internal server error (500). This is a server-side issue. Please try again later.",
+                    original_exc=e,
+                ) from e
+            elif e.status == 502:
+                raise NodeExecutionError(
+                    self.id,
+                    f"OpenRouter API bad gateway (502). The API gateway is experiencing issues. Please try again later.",
+                    original_exc=e,
+                ) from e
             elif e.status == 503:
                 raise NodeExecutionError(
                     self.id,
                     f"OpenRouter API service temporarily unavailable (503). Please try again later.",
+                    original_exc=e,
+                ) from e
+            elif e.status == 504:
+                raise NodeExecutionError(
+                    self.id,
+                    f"OpenRouter API gateway timeout (504). The request took too long. Consider reducing payload size or retrying.",
                     original_exc=e,
                 ) from e
             else:
