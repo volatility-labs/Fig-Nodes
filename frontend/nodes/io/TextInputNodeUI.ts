@@ -48,6 +48,25 @@ export default class TextInputNodeUI extends BaseCustomNode {
         // Show textarea when selected
         this.syncTextarea();
         this.setDirtyCanvas(true, true);
+        
+        // Always try to focus textarea after selection
+        // Use multiple timeouts to ensure it happens after LiteGraph's event handling
+        // and DOM updates
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                setTimeout(() => {
+                    if (this.textareaEl && this.textareaEl.style.display !== 'none') {
+                        this.isTextareaFocused = true;
+                        // Ensure pointer-events are enabled
+                        this.textareaEl.style.pointerEvents = 'auto';
+                        // Focus and place cursor at end
+                        this.textareaEl.focus();
+                        const textLength = this.textareaEl.value.length;
+                        this.textareaEl.setSelectionRange(textLength, textLength);
+                    }
+                }, 10);
+            });
+        });
     }
 
     onResize(_size: [number, number]) {
@@ -68,12 +87,12 @@ export default class TextInputNodeUI extends BaseCustomNode {
         const w = Math.max(0, this.size[0] - padding * 2);
         const h = Math.max(0, this.size[1] - LiteGraph.NODE_TITLE_HEIGHT - padding * 2);
 
-        // Background
-        ctx.fillStyle = '#2a2a2a';
+        // Use theme-aware widget colors (set by ThemeManager)
+        ctx.fillStyle = LiteGraph.WIDGET_BGCOLOR;
         ctx.fillRect(x, y, w, h);
 
-        // Border to match app theme
-        ctx.strokeStyle = '#555';
+        // Border using theme widget outline color
+        ctx.strokeStyle = LiteGraph.WIDGET_OUTLINE_COLOR;
         ctx.lineWidth = 1;
         ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
 
@@ -97,8 +116,14 @@ export default class TextInputNodeUI extends BaseCustomNode {
         const text = String(this.properties.value || '');
         if (!text.trim()) return;
 
+        // Save canvas context state to restore after drawing
+        const savedFillStyle = ctx.fillStyle;
+        const savedTextAlign = ctx.textAlign;
+        const savedTextBaseline = ctx.textBaseline;
+
         ctx.font = '12px monospace';
-        ctx.fillStyle = '#ffffff';
+        // Use theme-aware widget text color (set by ThemeManager)
+        ctx.fillStyle = LiteGraph.WIDGET_TEXT_COLOR;
         ctx.textAlign = 'left';
         ctx.textBaseline = 'top';
 
@@ -138,9 +163,62 @@ export default class TextInputNodeUI extends BaseCustomNode {
         if (lines.length > maxLines) {
             ctx.fillText('...', textX, textY + maxLines * lineHeight);
         }
+
+        // Restore canvas context state to prevent affecting output slot label positioning
+        ctx.fillStyle = savedFillStyle;
+        ctx.textAlign = savedTextAlign;
+        ctx.textBaseline = savedTextBaseline;
     }
 
-    // Do not override mouse handling; textarea will capture events itself
+    // Override mouse handling to immediately focus textarea when clicking in textarea area
+    onMouseDown(_e: any, pos: [number, number], _canvas: any): boolean {
+        const padding = 8;
+        const x = padding;
+        const y = LiteGraph.NODE_TITLE_HEIGHT + padding;
+        const w = Math.max(0, this.size[0] - padding * 2);
+        const h = Math.max(0, this.size[1] - LiteGraph.NODE_TITLE_HEIGHT - padding * 2);
+
+        // Check if click is within the textarea area (excluding title bar)
+        // pos is relative to node position: [canvasX - node.pos[0], canvasY - node.pos[1]]
+        const clickX = pos[0];
+        const clickY = pos[1];
+
+        if (clickX >= x && clickX <= x + w && clickY >= y && clickY <= y + h) {
+            // Ensure textarea exists and is ready
+            this.ensureTextarea();
+            
+            if (this.textareaEl) {
+                // Mark as focused to keep it visible
+                this.isTextareaFocused = true;
+                
+                // Sync value and position immediately
+                const current = String(this.properties.value ?? '');
+                if (this.textareaEl.value !== current) {
+                    this.textareaEl.value = current;
+                }
+                
+                // Position synchronously
+                this.positionTextarea(x, y, w, h);
+                
+                // Focus the textarea immediately
+                // Use requestAnimationFrame to ensure DOM is ready
+                requestAnimationFrame(() => {
+                    if (this.textareaEl && this.textareaEl.style.display !== 'none') {
+                        this.textareaEl.focus();
+                        const textLength = this.textareaEl.value.length;
+                        this.textareaEl.setSelectionRange(textLength, textLength);
+                    }
+                });
+            }
+            
+            // Return false to allow normal node selection behavior
+            // The textarea will be focused via requestAnimationFrame
+            return false;
+        }
+
+        // Not in textarea area - allow default behavior
+        return false;
+    }
 
     private schedulePositionUpdate(x: number, y: number, w: number, h: number) {
         if (this.positionUpdateId !== null) return;
@@ -196,6 +274,17 @@ export default class TextInputNodeUI extends BaseCustomNode {
                 this.setDirtyCanvas(true, true);
             });
             
+            ta.addEventListener('mousedown', (ev) => {
+                // Stop propagation to prevent canvas from handling the click
+                ev.stopPropagation();
+                // Focus immediately when clicking directly on textarea
+                setTimeout(() => {
+                    if (this.textareaEl && document.activeElement !== this.textareaEl) {
+                        this.textareaEl.focus();
+                    }
+                }, 0);
+            });
+            
             // Stop key events from bubbling to canvas shortcuts
             ta.addEventListener('keydown', (ev) => {
                 ev.stopPropagation();
@@ -217,6 +306,8 @@ export default class TextInputNodeUI extends BaseCustomNode {
     private hideTextarea() {
         if (this.textareaEl) {
             this.textareaEl.style.display = 'none';
+            // Ensure pointer-events are disabled when hidden to prevent intercepting clicks
+            this.textareaEl.style.pointerEvents = 'none';
         }
     }
 
@@ -303,8 +394,15 @@ export default class TextInputNodeUI extends BaseCustomNode {
             relativeX + canvasW < 0 || relativeY + canvasH < 0 ||
             relativeX > containerWidth || relativeY > containerHeight) {
             this.textareaEl.style.display = 'none';
+            this.textareaEl.style.pointerEvents = 'none';
         } else {
             this.textareaEl.style.display = '';
+            // Only enable pointer-events when visible and selected/focused
+            if (isSelected || this.isTextareaFocused) {
+                this.textareaEl.style.pointerEvents = 'auto';
+            } else {
+                this.textareaEl.style.pointerEvents = 'none';
+            }
         }
     }
 }

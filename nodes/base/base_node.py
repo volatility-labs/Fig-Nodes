@@ -30,7 +30,9 @@ class Base(ABC):
     required_keys: list[str] = []
     CATEGORY: NodeCategory = NodeCategory.BASE
 
-    def __init__(self, id: int, params: dict[str, Any], graph_context: dict[str, Any] | None = None):
+    def __init__(
+        self, id: int, params: dict[str, Any], graph_context: dict[str, Any] | None = None
+    ):
         self.id = id
         self.params = {**self.default_params, **(params or {})}
         self.inputs = dict(getattr(self, "inputs", {}))
@@ -199,7 +201,7 @@ class Base(ABC):
         self.validate_inputs(
             inputs
         )  # Raises NodeValidationError if invalid (missing or type issues)
-        self._emit_progress(ProgressState.START, 0.0, "start")
+        self._emit_progress(ProgressState.START, 0.0, "")
         try:
             result = await self._execute_impl(inputs)
             self._validate_outputs(result)

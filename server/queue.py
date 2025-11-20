@@ -227,7 +227,9 @@ async def execution_worker(queue: ExecutionQueue, node_registry: NodeRegistry):
                 kwargs["text"] = str(event["text"])
 
             if "state" in event:
-                kwargs["state"] = event["state"].value
+                kwargs["state"] = event[
+                    "state"
+                ]  # ProgressState enum - Pydantic will serialize to string
 
             if "meta" in event:
                 kwargs["meta"] = event["meta"]

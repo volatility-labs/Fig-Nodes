@@ -20,6 +20,14 @@ export enum ExecutionState {
     CANCELLED = "cancelled"
 }
 
+export enum ProgressState {
+    START = "start",
+    UPDATE = "update",
+    DONE = "done",
+    ERROR = "error",
+    STOPPED = "stopped"
+}
+
 // ============================================================================
 // CLIENT → SERVER MESSAGES
 // ============================================================================
@@ -76,6 +84,7 @@ export interface ServerToClientProgressMessage {
     node_id?: number;
     progress?: number;
     text?: string;
+    state?: ProgressState;
     meta?: Record<string, unknown>;
     job_id: number;
 }

@@ -29,9 +29,9 @@
  * 5. ServerToClientProgressMessage
  *    - type: "progress"
  *    - node_id?: number (optional node ID for progress update)
- *    - progress?: number (optional progress percentage 0-1)
+ *    - progress?: number (optional progress percentage 0-100)
  *    - text?: string (optional progress text)
- *    - state?: string (optional progress state)
+ *    - state?: ProgressState (optional progress state: "start", "update", "done", "error", "stopped")
  *    - meta?: Record<string, unknown> (optional additional metadata)
  * 
  * 6. ServerToClientQueuePositionMessage
@@ -64,6 +64,7 @@ import {
     isProgressMessage,
     isQueuePositionMessage,
     isSessionMessage,
+    ProgressState,
     type ServerToClientStatusMessage,
     type ServerToClientQueuePositionMessage
 } from './types/websocketType';
@@ -246,7 +247,10 @@ function handleDataMessage(data: any, graph: LGraph) {
 
 function handleProgressMessage(data: any, graph: LGraph) {
     const node: any = graph.getNodeById(data.node_id as number);
-    if (node && typeof node.setProgress === 'function') {
+    if (!node) return;
+    
+    // Handle progress updates
+    if (typeof node.setProgress === 'function') {
         const progress = data.progress ?? 0;
         // Only pass text if it's explicitly provided and non-empty
         if (data.text !== undefined && data.text !== '') {
@@ -254,6 +258,19 @@ function handleProgressMessage(data: any, graph: LGraph) {
         } else {
             node.setProgress(progress);
         }
+    }
+    
+    // Handle highlight based on execution state
+    const state = data.state as ProgressState | undefined;
+    if ((state === ProgressState.START || state === ProgressState.UPDATE) && typeof node.pulseHighlight === 'function') {
+        // Node is starting or actively executing - pulse highlight
+        node.pulseHighlight();
+    } else if (
+        (state === ProgressState.DONE || state === ProgressState.ERROR || state === ProgressState.STOPPED) &&
+        typeof node.clearHighlight === 'function'
+    ) {
+        // Node execution finished - clear highlight
+        node.clearHighlight();
     }
     
     // Handle polygon data status metadata

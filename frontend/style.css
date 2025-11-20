@@ -443,23 +443,26 @@ body {
     background: #1976d2;
 }
 
-/* Inline Node Textarea */
+/* Inline Node Textarea - Theme-aware using CSS variables */
 .inline-node-textarea {
-    background: #333;
-    border: 1px solid #555;
+    background: var(--theme-bg, #1c2128);
+    border: 1px solid var(--theme-border, #373e47);
     border-radius: 4px;
-    color: white;
+    color: var(--theme-text, #adbac7);
     font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
     font-size: 12px;
     padding: 8px;
     resize: none;
     outline: none;
     user-select: text;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .inline-node-textarea:focus {
-    border-color: #2196f3;
-    box-shadow: 0 0 5px rgba(33, 150, 243, 0.3);
+    border-color: var(--theme-text-secondary, #768390);
+    /* Use a subtle glow effect that works with theme colors */
+    box-shadow: 0 0 0 1px var(--theme-text-secondary, #768390), 
+                0 0 8px rgba(0, 0, 0, 0.3);
 }
 
 .monospace {

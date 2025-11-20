@@ -7,7 +7,9 @@ export class NodeRenderer {
         displayText: string;
         error: string;
         highlightStartTs: number | null;
+        isExecuting: boolean;
         readonly highlightDurationMs: number;
+        readonly pulseCycleMs: number;
         progress: number;
         progressText: string;
         properties: { [key: string]: unknown };
@@ -19,7 +21,9 @@ export class NodeRenderer {
         displayText: string;
         error: string;
         highlightStartTs: number | null;
+        isExecuting: boolean;
         readonly highlightDurationMs: number;
+        readonly pulseCycleMs: number;
         progress: number;
         progressText: string;
         properties: { [key: string]: unknown };
@@ -49,6 +53,25 @@ export class NodeRenderer {
         return lines;
     }
 
+    /**
+     * Convert hex color to RGB array
+     */
+    private hexToRgb(hex: string): [number, number, number] | null {
+        const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+        return result ? [
+            parseInt(result[1], 16),
+            parseInt(result[2], 16),
+            parseInt(result[3], 16)
+        ] : null;
+    }
+
+    /**
+     * Easing function for smooth animation (ease-out cubic)
+     */
+    private easeOutCubic(t: number): number {
+        return 1 - Math.pow(1 - t, 3);
+    }
+
     onDrawForeground(ctx: CanvasRenderingContext2D) {
         this.drawHighlight(ctx);
         this.drawProgressBar(ctx);
@@ -57,24 +80,94 @@ export class NodeRenderer {
     }
 
     protected drawHighlight(ctx: CanvasRenderingContext2D) {
-        if (this.node.highlightStartTs !== null) {
+        // Continuous pulsing while executing, or single pulse if not executing but has timestamp
+        if (this.node.isExecuting || this.node.highlightStartTs !== null) {
             const now = performance.now();
-            const elapsed = now - this.node.highlightStartTs;
-            if (elapsed < this.node.highlightDurationMs) {
-                const t = 1 - (elapsed / this.node.highlightDurationMs);
-                const alpha = 0.25 + 0.55 * t;
-                const glow = Math.floor(6 * t) + 2;
+            let elapsed: number;
+            let easedPulse: number;
+            
+            if (this.node.isExecuting) {
+                // Continuous pulsing: use modulo to create repeating cycle
+                if (this.node.highlightStartTs === null) {
+                    this.node.highlightStartTs = now;
+                }
+                elapsed = (now - this.node.highlightStartTs) % this.node.pulseCycleMs;
+                const cycleProgress = elapsed / this.node.pulseCycleMs;
+                // Use sine wave for smooth pulsing effect (0 to 1)
+                const pulseIntensity = (Math.sin(cycleProgress * Math.PI * 2) + 1) / 2;
+                // Apply slight easing for smoother feel on continuous pulse
+                easedPulse = Math.pow(pulseIntensity, 0.8);
+            } else {
+                // Single pulse: use elapsed time directly with ease-out
+                elapsed = now - (this.node.highlightStartTs || now);
+                if (elapsed >= this.node.highlightDurationMs) {
+                    this.node.highlightStartTs = null;
+                    return;
+                }
+                // For single pulse, use ease-out curve directly (no additional easing needed)
+                const t = elapsed / this.node.highlightDurationMs;
+                easedPulse = 1 - this.easeOutCubic(t);
+            }
+            
+            // Get theme color (connecting link color is appropriate for executing nodes)
+            const highlightColor = LiteGraph.CONNECTING_LINK_COLOR || '#3fb950';
+            const rgb = this.hexToRgb(highlightColor);
+            
+            if (rgb) {
+                // Alpha pulses from 0.3 (min) to 0.8 (max) with fade
+                const baseAlpha = 0.3;
+                const peakAlpha = 0.8;
+                const alpha = baseAlpha + (peakAlpha - baseAlpha) * easedPulse;
+                
+                // Glow intensity pulses from 3 to 10
+                const minGlow = 3;
+                const maxGlow = 10;
+                const glow = minGlow + (maxGlow - minGlow) * easedPulse;
+                
+                // Add subtle color fade effect (slightly brighter at peak)
+                const fadeMultiplier = 0.95 + (0.1 * easedPulse); // 0.95 to 1.05
+                const fadedR = Math.min(255, Math.floor(rgb[0] * fadeMultiplier));
+                const fadedG = Math.min(255, Math.floor(rgb[1] * fadeMultiplier));
+                const fadedB = Math.min(255, Math.floor(rgb[2] * fadeMultiplier));
+                
                 ctx.save();
-                ctx.strokeStyle = `rgba(33, 150, 243, ${alpha.toFixed(3)})`;
+                ctx.strokeStyle = `rgba(${fadedR}, ${fadedG}, ${fadedB}, ${alpha.toFixed(3)})`;
                 ctx.lineWidth = 2;
-                (ctx as { shadowColor: string; shadowBlur: number }).shadowColor = `rgba(33, 150, 243, ${Math.min(0.8, 0.2 + 0.6 * t).toFixed(3)})`;
+                (ctx as { shadowColor: string; shadowBlur: number }).shadowColor = `rgba(${fadedR}, ${fadedG}, ${fadedB}, ${(alpha * 0.7).toFixed(3)})`;
                 (ctx as { shadowColor: string; shadowBlur: number }).shadowBlur = glow;
+                
                 const nodeWithSize = this.node as { size: [number, number] };
-                ctx.strokeRect(1, 1, nodeWithSize.size[0] - 2, nodeWithSize.size[1] - 2);
+                const titleHeight = LiteGraph.NODE_TITLE_HEIGHT;
+                
+                // Draw rectangle that includes title bar (title bar is above y=0 in LiteGraph's coordinate system)
+                // Start from top of title bar, include full node height
+                ctx.strokeRect(
+                    1, 
+                    -titleHeight + 1, 
+                    nodeWithSize.size[0] - 2, 
+                    nodeWithSize.size[1] + titleHeight - 2
+                );
                 ctx.restore();
                 this.node.setDirtyCanvas(true, true);
             } else {
-                this.node.highlightStartTs = null;
+                // Fallback if color parsing fails
+                const baseAlpha = 0.3;
+                const peakAlpha = 0.8;
+                const alpha = baseAlpha + (peakAlpha - baseAlpha) * easedPulse;
+                const minGlow = 3;
+                const maxGlow = 10;
+                const glow = minGlow + (maxGlow - minGlow) * easedPulse;
+                
+                ctx.save();
+                ctx.strokeStyle = `rgba(63, 185, 80, ${alpha.toFixed(3)})`;
+                ctx.lineWidth = 2;
+                (ctx as { shadowColor: string; shadowBlur: number }).shadowColor = `rgba(63, 185, 80, ${(alpha * 0.7).toFixed(3)})`;
+                (ctx as { shadowColor: string; shadowBlur: number }).shadowBlur = glow;
+                const nodeWithSize = this.node as { size: [number, number] };
+                const titleHeight = LiteGraph.NODE_TITLE_HEIGHT;
+                ctx.strokeRect(1, -titleHeight + 1, nodeWithSize.size[0] - 2, nodeWithSize.size[1] + titleHeight - 2);
+                ctx.restore();
+                this.node.setDirtyCanvas(true, true);
             }
         }
     }
@@ -210,7 +303,18 @@ export class NodeRenderer {
     }
 
     pulseHighlight() {
-        this.node.highlightStartTs = performance.now();
+        // Start or continue execution highlighting
+        if (this.node.highlightStartTs === null) {
+            this.node.highlightStartTs = performance.now();
+        }
+        this.node.isExecuting = true;
+        this.node.setDirtyCanvas(true, true);
+    }
+
+    clearHighlight() {
+        // Stop execution highlighting
+        this.node.isExecuting = false;
+        this.node.highlightStartTs = null;
         this.node.setDirtyCanvas(true, true);
     }
 

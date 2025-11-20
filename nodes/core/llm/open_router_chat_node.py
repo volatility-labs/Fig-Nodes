@@ -6,7 +6,7 @@ import aiohttp
 from pydantic import BaseModel
 
 from core.api_key_vault import APIKeyVault
-from core.types_registry import ConfigDict, NodeCategory, get_type
+from core.types_registry import ConfigDict, NodeCategory, ProgressState, get_type
 from nodes.base.base_node import Base
 
 
@@ -538,8 +538,14 @@ class OpenRouterChat(Base):
         # Enable vision if images present or param set
         use_vision = self._parse_bool_param("use_vision", False) or bool(images and images)
 
+        # Emit progress update before LLM call
+        self._emit_progress(ProgressState.UPDATE, 50.0, "Calling LLM...")
+
         # Single LLM call with web search enabled via :online suffix
         resp_data_model = await self._call_llm(messages, options, api_key)
+
+        # Emit progress update after receiving response
+        self._emit_progress(ProgressState.UPDATE, 90.0, "Processing response...")
 
         if not resp_data_model.choices:
             return self._create_error_response("No choices in response")

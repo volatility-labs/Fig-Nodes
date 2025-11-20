@@ -5,7 +5,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-from core.types_registry import SerialisableGraph
+from core.types_registry import ProgressState, SerialisableGraph
 
 # ============================================================================
 # SHARED ENUMS
@@ -100,6 +100,9 @@ class ServerToClientProgressMessage(BaseModel):
     node_id: int | None = Field(None, description="Node ID for progress update")
     progress: float | None = Field(None, description="Progress percentage")
     text: str | None = Field(None, description="Progress text")
+    state: ProgressState | None = Field(
+        None, description="Progress state: start, update, done, error, stopped"
+    )
     meta: dict[str, Any] | None = Field(None, description="Additional metadata")
     job_id: int = Field(..., description="Job ID for this progress")
 

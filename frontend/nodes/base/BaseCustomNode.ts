@@ -28,7 +28,9 @@ export default class BaseCustomNode extends LGraphNode {
     declare properties: Dictionary<NodeProperty | undefined>;
     error: string = '';
     highlightStartTs: number | null = null;
-    readonly highlightDurationMs: number = 900;
+    isExecuting: boolean = false;
+    readonly highlightDurationMs: number = 500;
+    readonly pulseCycleMs: number = 1200; // Full pulse cycle duration for continuous pulsing
     progress: number = -1; // -1 = no progress, 0-100 = progress percentage
     progressText: string = '';
 
@@ -46,7 +48,7 @@ export default class BaseCustomNode extends LGraphNode {
 
         // Initialize modular components
         this.widgetManager = new NodeWidgetManager(this as unknown as LGraphNode & { properties: { [key: string]: unknown } }, serviceRegistry);
-        this.renderer = new NodeRenderer(this as unknown as LGraphNode & { displayResults: boolean; result: unknown; displayText: string; error: string; highlightStartTs: number | null; readonly highlightDurationMs: number; progress: number; progressText: string; properties: { [key: string]: unknown } });
+        this.renderer = new NodeRenderer(this as unknown as LGraphNode & { displayResults: boolean; result: unknown; displayText: string; error: string; highlightStartTs: number | null; isExecuting: boolean; readonly highlightDurationMs: number; readonly pulseCycleMs: number; progress: number; progressText: string; properties: { [key: string]: unknown } });
         this.interactions = new NodeInteractions(this as unknown as LGraphNode & { title: string; pos: [number, number]; size: [number, number] });
 
         this.initializeNode(data);
@@ -169,6 +171,10 @@ export default class BaseCustomNode extends LGraphNode {
 
     clearProgress() {
         this.renderer.clearProgress();
+    }
+
+    clearHighlight() {
+        this.renderer.clearHighlight();
     }
 
     onConnectionsChange() { }
