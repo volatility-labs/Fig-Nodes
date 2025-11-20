@@ -7,8 +7,10 @@ import rustworkx as rx
 
 from core.api_key_vault import APIKeyVault
 from core.types_registry import (
+    NodeCategory,
     NodeExecutionError,
     ProgressCallback,
+    ResultCallback,
     SerialisableGraph,
     SerialisedLink,
 )
@@ -40,6 +42,7 @@ class GraphExecutor:
         self._state: _GraphExecutionState = _GraphExecutionState.IDLE
         self._cancellation_reason: str | None = None
         self._progress_callback: ProgressCallback | None = None
+        self._result_callback: ResultCallback | None = None
         self.vault = APIKeyVault()
         self._active_tasks: list[
             asyncio.Task[tuple[int, dict[str, Any]]]
@@ -148,12 +151,28 @@ class GraphExecutor:
                     self._cancel_all_tasks(tasks)
                     break
 
-                level_results = await asyncio.gather(*tasks, return_exceptions=True)
-
-                if self._should_stop():
-                    break
-
-                self._process_level_results(level_results, results)
+                # Process results as tasks complete for immediate emission/dependent starts
+                for coro in asyncio.as_completed(tasks):
+                    if self._should_stop():
+                        self._cancel_all_tasks(tasks)
+                        break
+                    
+                    try:
+                        level_result = await coro
+                        if self._should_stop():
+                            break
+                        # Process result immediately as it completes
+                        self._process_level_results([level_result], results)
+                    except asyncio.CancelledError:
+                        # Task was cancelled - force_stop() was already called in _execute_node_with_error_handling
+                        print("RESULT_TRACE: Task cancelled in as_completed loop, stopping")
+                        self._cancel_all_tasks(tasks)
+                        break
+                    except Exception as e:
+                        # Handle unexpected exceptions (shouldn't happen as _execute_node_with_error_handling catches them)
+                        logger.error(f"Unexpected exception in as_completed loop: {e}", exc_info=True)
+                        # Wrap exception for _process_level_results
+                        self._process_level_results([e], results)
 
     def _process_level_results(
         self, level_results: list[Any], results: dict[int, dict[str, Any]]
@@ -167,6 +186,15 @@ class GraphExecutor:
             elif isinstance(level_result, tuple):
                 node_id, output = level_result  # type: ignore[assignment]
                 if isinstance(node_id, int) and isinstance(output, dict):
+                    node = self.nodes[node_id]
+                    print(f"RESULT_TRACE: Processing result for node {node_id}, type={type(node).__name__}, category={node.CATEGORY}")
+                    # Emit immediately for IO category nodes
+                    should_emit = self._should_emit_immediately(node)
+                    has_callback = self._result_callback is not None
+                    print(f"RESULT_TRACE: Node {node_id} - should_emit={should_emit}, has_callback={has_callback}")
+                    if should_emit and self._result_callback:
+                        print(f"RESULT_TRACE: Emitting immediate result for node {node_id}")
+                        self._result_callback(node_id, output)
                     results[node_id] = output
 
     async def _cleanup_execution(self) -> None:
@@ -321,6 +349,16 @@ class GraphExecutor:
         self._progress_callback = callback
         for node in self.nodes.values():
             node.set_progress_callback(callback)
+
+    def set_result_callback(self, callback: ResultCallback) -> None:
+        """Set a result callback function for immediate emission."""
+        self._result_callback = callback
+
+    def _should_emit_immediately(self, node: Base) -> bool:
+        """Check if node should emit results immediately (IO category nodes)."""
+        result = node.CATEGORY == NodeCategory.IO
+        print(f"RESULT_TRACE: _should_emit_immediately(node={type(node).__name__}, category={node.CATEGORY}) -> {result}")
+        return result
 
 
 # ---- rustworkx helper shims with precise typing to satisfy the type checker ----

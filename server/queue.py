@@ -6,12 +6,15 @@ from typing import Any
 from fastapi import WebSocket
 from starlette.websockets import WebSocketState
 
-logger = logging.getLogger(__name__)
-
 from core.graph_executor import GraphExecutor
 from core.node_registry import NodeRegistry
 from core.serialization import serialize_results
-from core.types_registry import ExecutionResult, ProgressEvent, SerialisableGraph
+from core.types_registry import (
+    ExecutionResult,
+    NodeCategory,
+    ProgressEvent,
+    SerialisableGraph,
+)
 
 from .api.websocket_schemas import (
     ExecutionState,
@@ -23,6 +26,8 @@ from .api.websocket_schemas import (
     ServerToClientStatusMessage,
     ServerToClientStoppedMessage,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _debug(message: str) -> None:
@@ -239,6 +244,38 @@ async def execution_worker(queue: ExecutionQueue, node_registry: NodeRegistry):
             progress_msg = ServerToClientProgressMessage(**kwargs)
             _ws_send_async(websocket, progress_msg)
 
+        def guarded_result_callback(node_id: int, outputs: dict[str, Any]) -> None:
+            print(
+                f"RESULT_TRACE: guarded_result_callback called for node {node_id}, outputs keys: {list(outputs.keys())}"
+            )
+            # Same guards as progress callback
+            if executor and (executor.is_stopped or executor.is_stopping):
+                print(f"RESULT_TRACE: Skipping node {node_id} - executor stopped/stopping")
+                return
+            if websocket.client_state == WebSocketState.DISCONNECTED:
+                print(f"RESULT_TRACE: Skipping node {node_id} - websocket disconnected")
+                return
+
+            print(f"RESULT_TRACE: Sending immediate result for node {node_id} via websocket")
+            data_msg = ServerToClientDataMessage(
+                type="data",
+                results=serialize_results({node_id: outputs}),
+                job_id=job_id,
+            )
+            _ws_send_async(websocket, data_msg)
+            print(f"RESULT_TRACE: Sent immediate result for node {node_id}")
+
+        def _should_emit_immediately_for_node_id(
+            node_id: int, executor: GraphExecutor | None
+        ) -> bool:
+            """Check if a node should emit results immediately (IO category nodes)."""
+            if not executor:
+                return False
+            node = executor.nodes.get(node_id)
+            if not node:
+                return False
+            return node.CATEGORY == NodeCategory.IO
+
         execution_task: asyncio.Task[Any] | None = None
         monitor_task: asyncio.Task[Any] | None = None
         result: ExecutionResult = ExecutionResult.error_result("Unexpected error")
@@ -247,6 +284,15 @@ async def execution_worker(queue: ExecutionQueue, node_registry: NodeRegistry):
             # Create executor inside try block to catch initialization errors
             executor = GraphExecutor(job.graph_data, node_registry)
             executor.set_progress_callback(guarded_progress_callback)
+            executor.set_result_callback(guarded_result_callback)
+            print(
+                f"RESULT_TRACE: Executor created, result_callback set: {hasattr(executor, '_result_callback') and getattr(executor, '_result_callback') is not None}"
+            )
+            # Print node categories for debugging
+            for node_id, node in executor.nodes.items():
+                print(
+                    f"RESULT_TRACE: Node {node_id} ({type(node).__name__}) has category: {node.CATEGORY}"
+                )
 
             status_msg = ServerToClientStatusMessage(
                 type="status",
@@ -289,9 +335,17 @@ async def execution_worker(queue: ExecutionQueue, node_registry: NodeRegistry):
             # Send appropriate message based on result
             if websocket.client_state == WebSocketState.CONNECTED:
                 if result.is_success and result.results is not None:
+                    # Filter out IO category nodes that already emitted immediately
+                    final_results = {
+                        node_id: outputs
+                        for node_id, outputs in result.results.items()
+                        if not _should_emit_immediately_for_node_id(node_id, executor)
+                    }
+
+                    # Send final results (may be empty dict if all nodes were IO)
                     data_msg = ServerToClientDataMessage(
                         type="data",
-                        results=serialize_results(result.results),
+                        results=serialize_results(final_results),
                         job_id=job.id,
                     )
                     await _ws_send_sync(websocket, data_msg)

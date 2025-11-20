@@ -4,6 +4,7 @@ export default class SMACrossoverFilterNodeUI extends BaseCustomNode {
     constructor(title: string, data: any, serviceRegistry: any) {
         super(title, data, serviceRegistry);
         this.size = [360, 160];
+        this.displayResults = false; // Store results but don't display in node
 
         // Add convenience buttons
         this.addWidget('button', 'Preview Filtered', '', () => {

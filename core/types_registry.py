@@ -358,6 +358,8 @@ class ProgressEvent(TypedDict, total=False):
 
 ProgressCallback = Callable[[ProgressEvent], None]
 
+ResultCallback = Callable[[int, dict[str, Any]], None]
+
 TYPE_REGISTRY: dict[str, type[Any]] = {
     "AssetSymbol": AssetSymbol,
     "AssetSymbolList": AssetSymbolList,
@@ -446,6 +448,7 @@ __all__ = [
     "ProgressState",
     "ProgressEvent",
     "ProgressCallback",
+    "ResultCallback",
     "ExecutionOutcome",
     "ExecutionResult",
 ]

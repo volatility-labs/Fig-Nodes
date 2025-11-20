@@ -4,6 +4,7 @@ export default class MovingAverageFilterNodeUI extends BaseCustomNode {
     constructor(title: string, data: any, serviceRegistry: any) {
         super(title, data, serviceRegistry);
         this.size = [220, 100];
+        this.displayResults = false; // Store results but don't display in node
 
         // After base setup, ensure step is explicitly set on number widgets
         if (this.widgets && Array.isArray(data?.params)) {

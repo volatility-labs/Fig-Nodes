@@ -76,6 +76,7 @@ import type { ConnectionStatus } from './services/ExecutionStatusService';
 let ws: WebSocket | null = null;
 let stopPromiseResolver: (() => void) | null = null;
 let sessionId: string | null = localStorage.getItem('session_id');
+let graphInstance: LGraph | null = null;
 
 function getStatusService(): ExecutionStatusService | null {
     const sr: ServiceRegistry | undefined = (window as any).serviceRegistry;
@@ -107,6 +108,31 @@ function hideOverlay() {
     if (overlay) overlay.style.display = 'none';
 }
 
+function clearAllHighlights() {
+    if (!graphInstance) return;
+    const nodes = ((graphInstance as any)._nodes as any[]) || [];
+    nodes.forEach((node: any) => {
+        try {
+            if (typeof node.clearHighlight === 'function') {
+                node.clearHighlight();
+            } else {
+                // Fallback: clear highlight properties directly
+                if (node.highlightStartTs !== undefined) {
+                    node.highlightStartTs = null;
+                }
+                if (node.isExecuting !== undefined) {
+                    node.isExecuting = false;
+                }
+                if (typeof node.setDirtyCanvas === 'function') {
+                    node.setDirtyCanvas(true, true);
+                }
+            }
+        } catch (err) {
+            console.warn('Error clearing highlight on node:', err);
+        }
+    });
+}
+
 // Stop Execution
 async function stopExecution(): Promise<void> {
     const currentState = getExecutionState();
@@ -136,6 +162,7 @@ async function stopExecution(): Promise<void> {
 function forceCleanup() {
     hideOverlay();
     showExecuteButton();
+    clearAllHighlights();
     const statusService = getStatusService();
     statusService?.setIdle();
     // Don't clear polygon status - keep it visible
@@ -209,6 +236,9 @@ function handleStoppedMessage(data: any) {
     // Show execute button and hide stop button
     showExecuteButton();
     
+    // Clear all pulsating highlights
+    clearAllHighlights();
+    
     // Clean up UI state
     const statusService = getStatusService();
     statusService?.stopped(null);
@@ -234,11 +264,16 @@ function handleDataMessage(data: any, graph: LGraph) {
         const node: any = graph.getNodeById(parseInt(nodeId));
         if (!node) continue;
 
-        const allowRender = node.type === 'Logging' || node.type === 'ImageDisplay';
-        const updateMethod = node.onStreamUpdate || node.updateDisplay;
-
-        if (allowRender && typeof updateMethod === 'function') {
-            updateMethod.call(node, results[nodeId]);
+        // Streaming nodes always receive results via onStreamUpdate
+        // Only call onStreamUpdate for actual streaming nodes (not just nodes that have the method)
+        if (node.isStreaming === true && typeof node.onStreamUpdate === 'function') {
+            node.onStreamUpdate.call(node, results[nodeId]);
+        }
+        
+        // Only call updateDisplay if node explicitly wants to display results
+        // Nodes with displayResults=false won't receive results (unless they use onStreamUpdate)
+        if (node.displayResults === true && typeof node.updateDisplay === 'function') {
+            node.updateDisplay.call(node, results[nodeId]);
         }
     }
 
@@ -315,6 +350,7 @@ function handleQueuePositionMessage(message: ServerToClientQueuePositionMessage)
 
 // Setup
 export function setupWebSocket(graph: LGraph, _canvas: LGraphCanvas, apiKeyManager: APIKeyManager) {
+    graphInstance = graph;
     document.getElementById('execute')?.addEventListener('click', async () => {
         if (getExecutionState() === 'stopping') {
             console.warn('Cannot start execution while stopping previous one');

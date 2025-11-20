@@ -4,6 +4,7 @@ export default class DuplicateSymbolFilterNodeUI extends BaseCustomNode {
     constructor(title: string, data: any, serviceRegistry: any) {
         super(title, data, serviceRegistry);
         this.size = [250, 120];
+        this.displayResults = false; // Store results but don't display in node
     }
 
     updateDisplay(result: any) {

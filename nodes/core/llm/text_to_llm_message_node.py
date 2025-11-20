@@ -29,7 +29,7 @@ class TextToLLMMessage(Base):
     }
 
     outputs = {
-        "message": get_type("LLMChatMessage"),
+        "message": get_type("LLMChatMessage") | None,
     }
 
     default_params = {

@@ -4,6 +4,7 @@ export default class PolygonCustomBarsNodeUI extends BaseCustomNode {
     constructor(title: string, data: any, serviceRegistry: any) {
         super(title, data, serviceRegistry);
         this.size = [360, 180];
+        this.displayResults = false; // Store results but don't display in node
 
         // Add convenience buttons
         this.addWidget('button', 'Preview Data', '', () => {

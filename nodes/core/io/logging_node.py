@@ -2,6 +2,7 @@ import json
 import logging
 from typing import Any, TypeGuard
 
+from core.types_registry import NodeCategory
 from core.types_utils import detect_type, infer_data_type
 from nodes.base.base_node import Base
 
@@ -29,6 +30,7 @@ class Logging(Base):
         self.last_content_length = 0
         self.logger = logging.getLogger(f"LoggingNode-{self.id}")
 
+    CATEGORY = NodeCategory.IO
     inputs = {"input": Any}
     outputs = {"output": str}
 
@@ -115,7 +117,8 @@ class Logging(Base):
                     text += f"  {sym} ({len(bars)} bars):\n"
                     for i, bar in enumerate(bars[:preview_bars]):
                         if isinstance(bar, dict) and all(
-                            key in bar for key in {"timestamp", "open", "high", "low", "close", "volume"}
+                            key in bar
+                            for key in {"timestamp", "open", "high", "low", "close", "volume"}
                         ):
                             text += f"    Bar {i + 1}: {bar['timestamp']} O:{bar['open']} H:{bar['high']} L:{bar['low']} C:{bar['close']} V:{bar['volume']}\n"
                     if len(bars) > preview_bars:

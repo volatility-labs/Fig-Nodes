@@ -1,6 +1,6 @@
 import asyncio
 import random
-from typing import Any, Literal, NotRequired, TypedDict, TypeGuard
+from typing import Any, Literal, TypeGuard
 
 import aiohttp
 from pydantic import BaseModel
@@ -8,36 +8,6 @@ from pydantic import BaseModel
 from core.api_key_vault import APIKeyVault
 from core.types_registry import ConfigDict, NodeCategory, ProgressState, get_type
 from nodes.base.base_node import Base
-
-
-class OpenRouterGenerationMetrics(TypedDict):
-    total_cost: float
-    native_tokens_prompt: NotRequired[int | None]
-    native_tokens_completion: NotRequired[int | None]
-    native_tokens_reasoning: NotRequired[int | None]
-    latency: NotRequired[int | None]
-    generation_time: NotRequired[int | None]
-    tokens_prompt: NotRequired[int | None]
-    tokens_completion: NotRequired[int | None]
-    finish_reason: NotRequired[str | None]
-    native_finish_reason: NotRequired[str | None]
-    num_search_results: NotRequired[int | None]
-
-
-class OpenRouterGenerationData(TypedDict):
-    id: str
-    model: str
-    created_at: str
-    streamed: NotRequired[bool | None]
-    cancelled: NotRequired[bool | None]
-    provider_name: NotRequired[str | None]
-    origin: str
-    usage: float
-    is_byok: bool
-
-
-class OpenRouterGenerationResponse(TypedDict):
-    data: OpenRouterGenerationData
 
 
 # Pydantic models for validation
@@ -80,8 +50,7 @@ class OpenRouterChat(Base):
     - images: ConfigDict (optional dict of label to base64 data URL for images to attach to the user prompt)
 
     Outputs:
-    - message: Dict[str, Any] (assistant message with role, content, etc.)
-    - metrics: Dict[str, Any] (generation stats like durations and token counts)
+    - response: Dict[str, Any] (assistant message with role, content, etc.)
     - thinking_history: List[Dict[str, Any]] (always empty list, kept for API compatibility)
 
     Properties:
@@ -98,12 +67,11 @@ class OpenRouterChat(Base):
         "prompt": str | None,
         "system": str | dict[str, Any] | None,
         "images": ConfigDict | None,
-        **{f"message_{i}": dict[str, Any] | None for i in range(5)},
+        **{f"message_{i}": get_type("LLMChatMessage") | None for i in range(5)},
     }
 
     outputs = {
-        "message": dict[str, Any],
-        "metrics": get_type("LLMChatMetrics"),
+        "response": dict[str, Any],
         "thinking_history": get_type("LLMThinkingHistory"),
     }
 
@@ -117,8 +85,8 @@ class OpenRouterChat(Base):
 
     default_params = {
         "model": "z-ai/glm-4.6",  # Default model (text-capable; will switch if use_vision)
-        "temperature": 0.7,
-        "max_tokens": 2048,
+        "temperature": 0.2,
+        "max_tokens": 20000,
         "seed": 0,
         "seed_mode": "fixed",  # fixed | random | increment
         "use_vision": "false",
@@ -203,9 +171,10 @@ class OpenRouterChat(Base):
 
     def _create_error_response(self, error_msg: str) -> dict[str, Any]:
         """Create standardized error response."""
+        error_message = self._DEFAULT_ASSISTANT_MESSAGE.copy()
+        error_message["content"] = error_msg
         return {
-            "message": self._DEFAULT_ASSISTANT_MESSAGE.copy(),
-            "metrics": {"error": error_msg},
+            "response": error_message,
             "thinking_history": [],
         }
 
@@ -529,14 +498,11 @@ class OpenRouterChat(Base):
         # Early explicit API key check so the graph surfaces a clear failure without silent fallthrough
         api_key = self.vault.get("OPENROUTER_API_KEY")
         if not api_key:
-            error_resp = self._create_error_response("OPENROUTER_API_KEY not found in vault")
-            error_resp["message"]["content"] = "OpenRouter API key missing. Set OPENROUTER_API_KEY."
-            return error_resp
+            return self._create_error_response(
+                "OpenRouter API key missing. Set OPENROUTER_API_KEY."
+            )
 
         options = self._prepare_generation_options()
-
-        # Enable vision if images present or param set
-        use_vision = self._parse_bool_param("use_vision", False) or bool(images and images)
 
         # Emit progress update before LLM call
         self._emit_progress(ProgressState.UPDATE, 50.0, "Calling LLM...")
@@ -545,7 +511,7 @@ class OpenRouterChat(Base):
         resp_data_model = await self._call_llm(messages, options, api_key)
 
         # Emit progress update after receiving response
-        self._emit_progress(ProgressState.UPDATE, 90.0, "Processing response...")
+        self._emit_progress(ProgressState.UPDATE, 90.0, "Received...")
 
         if not resp_data_model.choices:
             return self._create_error_response("No choices in response")
@@ -558,65 +524,13 @@ class OpenRouterChat(Base):
 
         self._ensure_assistant_role_inplace(final_message)
 
-        # Extract metrics from response
-        metrics: dict[str, Any] = {
-            "temperature": options.get("temperature"),
-            "seed": options.get("seed"),
-            "use_vision": use_vision,
-        }
-
-        if resp_data_model:
-            first_choice = resp_data_model.choices[0] if resp_data_model.choices else None
-            finish_reason = first_choice.finish_reason if first_choice else None
-
-            if finish_reason == "error":
-                error_resp = self._create_error_response("finish_reason: error")
-                error_resp["message"]["content"] = "API returned error"
-                error_resp["metrics"].update(metrics)
-                return error_resp
-
-            usage_dict = resp_data_model.usage.model_dump() if resp_data_model.usage else {}
-            metrics.update(
-                {
-                    "prompt_tokens": usage_dict.get("prompt_tokens", 0),
-                    "completion_tokens": usage_dict.get("completion_tokens", 0),
-                    "total_tokens": usage_dict.get("total_tokens", 0),
-                    "finish_reason": finish_reason,
-                }
-            )
-
-            if first_choice and first_choice.native_finish_reason:
-                metrics["native_finish_reason"] = first_choice.native_finish_reason
-
-            # Query detailed generation stats if available
-            generation_id: str | None = resp_data_model.id
-            if generation_id and api_key:
-                try:
-                    if not self._is_stopped:
-                        session = await self._get_session()
-                        async with session.get(
-                            f"https://openrouter.ai/api/v1/generation?id={generation_id}",
-                            headers={"Authorization": f"Bearer {api_key}"},
-                        ) as gen_response:
-                            gen_response.raise_for_status()
-                            gen_data: OpenRouterGenerationResponse = await gen_response.json()
-                            if gen_data.get("data"):
-                                gen_metrics = gen_data["data"]
-                                for key in [
-                                    "total_cost",
-                                    "native_tokens_prompt",
-                                    "native_tokens_completion",
-                                    "latency",
-                                    "generation_time",
-                                    "num_media_prompt",  # NEW: Include image count from generation stats
-                                ]:
-                                    if key in gen_metrics:
-                                        metrics[key] = gen_metrics[key]
-                except (Exception, asyncio.CancelledError):
-                    pass
+        # Check for error finish reason
+        if resp_data_model and resp_data_model.choices:
+            first_choice = resp_data_model.choices[0]
+            if first_choice.finish_reason == "error":
+                return self._create_error_response("API returned error")
 
         return {
-            "message": final_message,
-            "metrics": metrics,
+            "response": final_message,
             "thinking_history": [],
         }

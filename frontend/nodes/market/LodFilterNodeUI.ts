@@ -4,6 +4,7 @@ export default class LodFilterNodeUI extends BaseCustomNode {
     constructor(title: string, data: any, serviceRegistry: any) {
         super(title, data, serviceRegistry);
         this.size = [360, 120];
+        this.displayResults = false; // Store results but don't display in node
 
         // After base setup, enhance numeric widget labels with units and ensure step/precision
         if (this.widgets && Array.isArray(data?.params)) {

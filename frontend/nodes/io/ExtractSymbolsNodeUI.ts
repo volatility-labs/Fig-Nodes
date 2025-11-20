@@ -4,6 +4,7 @@ export default class ExtractSymbolsNodeUI extends BaseCustomNode {
     constructor(title: string, data: any, serviceRegistry: any) {
         super(title, data, serviceRegistry);
         this.size = [200, 90];
+        this.displayResults = true; // Display extracted symbols
     }
 
     updateDisplay(result: any) {

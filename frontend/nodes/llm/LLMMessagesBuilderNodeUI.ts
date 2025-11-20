@@ -4,6 +4,7 @@ export default class LLMMessagesBuilderNodeUI extends BaseCustomNode {
     constructor(title: string, data: any, serviceRegistry: any) {
         super(title, data, serviceRegistry);
         this.size = [340, 240];
+        this.displayResults = true; // Display message summary
     }
 
     updateDisplay(result: any) {

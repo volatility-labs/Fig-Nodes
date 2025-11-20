@@ -20,7 +20,7 @@ export default class ImageDisplayNodeUI extends BaseCustomNode {
     constructor(title: string, data: any, serviceRegistry: any) {
         super(title, data, serviceRegistry);
         this.size = [500, 360];
-        this.displayResults = false; // custom canvas rendering
+        this.displayResults = true; // Need to receive results for custom rendering (but won't display text due to custom renderer)
         this.renderer = new ImageDisplayRenderer(this);
     }
 

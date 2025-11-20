@@ -4,6 +4,7 @@ export default class SystemPromptLoaderNodeUI extends BaseCustomNode {
     constructor(title: string, data: any, serviceRegistry: any) {
         super(title, data, serviceRegistry);
         this.size = [360, 220];
+        this.displayResults = true; // Display loaded system prompt content
 
         // Wipe auto-generated widgets and add our own controls
         this.widgets = [];
