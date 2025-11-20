@@ -273,12 +273,28 @@ export default class HurstPlotNodeUI extends BaseCustomNode {
             return;
         }
 
-        // Grid layout for multiple images
+        // Grid layout for multiple images - StockCharts-style with clear separation
+        // Calculate optimal grid dimensions for true symmetry
         const cols = Math.ceil(Math.sqrt(labels.length));
         const rows = Math.ceil(labels.length / cols);
-        const cellSpacing = 4;
-        const cellW = Math.floor((w - (cols - 1) * cellSpacing) / cols);
-        const cellH = Math.floor((h - (rows - 1) * cellSpacing) / rows);
+        const cellSpacing = 12; // Increased spacing for better visual separation between symbols
+        
+        // Calculate cell dimensions ensuring true symmetry - all cells same size
+        // Use floor to ensure integer pixel values for clean borders
+        const totalSpacingW = (cols - 1) * cellSpacing;
+        const totalSpacingH = (rows - 1) * cellSpacing;
+        let cellW = Math.floor((w - totalSpacingW) / cols);
+        let cellH = Math.floor((h - totalSpacingH) / rows);
+        
+        // Ensure minimum cell size for readability
+        const minCellW = 200;
+        const minCellH = 150;
+        if (cellW < minCellW) {
+            cellW = minCellW;
+        }
+        if (cellH < minCellH) {
+            cellH = minCellH;
+        }
 
         // Calculate total grid dimensions (same logic as onMouseWheel)
         const totalGridHeight = rows * cellH + (rows - 1) * cellSpacing;
@@ -334,20 +350,27 @@ export default class HurstPlotNodeUI extends BaseCustomNode {
                         // Skip drawing if cell is completely outside visible area
                         if (cy + cellH < y0 || cy > y0 + h || cx + cellW < x0 || cx > x0 + w) continue;
 
+                // Draw subtle background for each symbol's chart group (StockCharts-style)
+                ctx.fillStyle = '#fafafa'; // Very light gray background for separation
+                ctx.fillRect(cx, cy, cellW, cellH);
+
                 if (img) {
-                    const imageArea = this.fitImageToBounds(img.width, img.height, cellW - 2, cellH - 2);
+                    // Add padding inside the cell for better visual separation
+                    const padding = 4;
+                    const imageArea = this.fitImageToBounds(img.width, img.height, cellW - padding * 2, cellH - padding * 2);
                     ctx.drawImage(
                         img,
-                        cx + 1 + imageArea.x,
-                        cy + 1 + imageArea.y,
+                        cx + padding + imageArea.x,
+                        cy + padding + imageArea.y,
                         imageArea.width,
                         imageArea.height
                     );
                 }
 
-                        ctx.strokeStyle = 'rgba(75, 85, 99, 0.18)';
-                        ctx.lineWidth = 1;
-                        ctx.strokeRect(cx + 0.5, cy + 0.5, cellW - 1, cellH - 1);
+                // Draw prominent border around each symbol's chart group (StockCharts-style grid separation)
+                ctx.strokeStyle = '#d0d0d0'; // Medium gray border for clear separation
+                ctx.lineWidth = 2; // Thicker border for better visibility
+                ctx.strokeRect(cx + 0.5, cy + 0.5, cellW - 1, cellH - 1);
                     }
                 }
             }

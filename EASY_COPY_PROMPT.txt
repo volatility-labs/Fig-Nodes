@@ -1,4 +1,4 @@
-Please analyze the provided cryptocurrency chart images which include the most recent volume, EMAs, Hurst data, MESA stochastics, and Cycle Channel Oscillator (CCO). Also included is longer-term Hurst, MESA, CCO, and OHLCV data.
+Please analyze the provided cryptocurrency chart images which include the most recent volume, EMAs, Hurst data, MESA stochastics, Cycle Channel Oscillator (CCO), and Volume-by-Price (VBP) bars. Also included is longer-term Hurst, MESA, CCO, and OHLCV data.
 
 CRITICAL: All indicators carry EQUAL WEIGHT - Do not prioritize one indicator over others. Look for symbols where multiple indicators align positively.
 
@@ -56,7 +56,27 @@ RANKING CRITERIA (Equal Weight - All Indicators Matter):
    - Position relative to key levels (0.0, 0.5, 1.0)
    - Note: Similar to %b oscillator - Fast Osc shows price location, Slow Osc acts as signal line
 
-7. Overall Momentum & Convergence (Equal Weight):
+7. Volume-by-Price (VBP) Analysis (Equal Weight):
+   - VBP bars appear as horizontal bars on the LEFT SIDE of the price chart, extending into the chart area
+   - BIG BARS = Important Support/Resistance Levels: Thick, wide VBP bars indicate price levels where significant volume was traded
+     * These act as STRONG support (if price is above) or STRONG resistance (if price is below)
+     * Price tends to pause, bounce, or reverse at these high-volume price zones
+     * Multiple big bars clustered together create even stronger support/resistance zones
+   - NARROW BARS or NO BARS = Free Flow Lanes: Thin or missing VBP bars indicate price levels with little trading activity
+     * These are "free flow lanes" where price can move easily with minimal resistance
+     * Price tends to move quickly through these low-volume zones
+     * Gaps between VBP bars indicate price levels with minimal historical trading activity
+   - Current Price Position: Analyze where current price is relative to VBP bars
+     * Price ABOVE big VBP bars = Strong support below, potential for upward movement
+     * Price BELOW big VBP bars = Strong resistance above, potential for downward pressure
+     * Price IN low-volume zone = Easy movement potential in either direction
+     * Price approaching big VBP bar = Likely to encounter support/resistance
+   - VBP Distribution: Look for patterns in VBP bar distribution
+     * Clustered big bars = Strong support/resistance zones
+     * Scattered or missing bars = Volatile price zones with less predictable behavior
+     * Even distribution = More balanced trading activity across price range
+
+8. Overall Momentum & Convergence (Equal Weight):
    - Multiple indicators aligning in same direction
    - Early-stage patterns (not over-extended)
    - Strong confirmation across all indicators
@@ -95,6 +115,15 @@ Cycle Channel Oscillator - CCO (Equal Weight):
 - Trend: [Both oscillators trending upward = bullish, both trending downward = bearish]
 - Extreme Conditions: [Any values above 1.0 (overbought) or below 0.0 (oversold) - highlighted in purple]
 - Assessment: [Bullish/Neutral/Bearish signal strength based on oscillator positions and relationship]
+
+Volume-by-Price (VBP) Analysis (Equal Weight):
+- VBP Bar Distribution: [Describe the pattern - clustered big bars, scattered bars, gaps, etc.]
+- Big Bars (Support/Resistance): [Identify price levels with thick VBP bars and their significance]
+- Narrow/Missing Bars (Free Flow Zones): [Identify price levels with thin or no VBP bars - easy movement zones]
+- Current Price Position: [Where is current price relative to VBP bars? Above/below big bars? In low-volume zone?]
+- Support/Resistance Assessment: [Strong support below / Strong resistance above / Free flow zone / Approaching key level]
+- Price Movement Potential: [Based on VBP distribution, assess ease of upward/downward movement]
+- Assessment: [Bullish/Neutral/Bearish signal strength based on VBP bar distribution and current price position]
 
 Overall Assessment (Equal Weight to All Indicators):
 - [Synthesis of all indicators - why this symbol ranks in top 3]

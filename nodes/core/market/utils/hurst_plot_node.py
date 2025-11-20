@@ -11,6 +11,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 import matplotlib
+import matplotlib.ticker
 
 matplotlib.use("Agg")  # non-interactive backend for server-side rendering
 import matplotlib.pyplot as plt
@@ -173,7 +174,7 @@ def _normalize_bars(bars: list[OHLCVBar]) -> tuple[list[tuple[int, float, float,
     return ohlc_data, volume_data
 
 
-def _plot_candles(ax: "Axes", series: list[tuple[int, float, float, float, float]], volumes: list[float] | None = None, ema_10: list[float | None] | None = None, ema_30: list[float | None] | None = None, ema_100: list[float | None] | None = None, show_current_price: bool = True, current_price_override: float | None = None) -> None:
+def _plot_candles(ax: "Axes", series: list[tuple[int, float, float, float, float]], volumes: list[float] | None = None, ema_10: list[float | None] | None = None, ema_30: list[float | None] | None = None, ema_100: list[float | None] | None = None, show_current_price: bool = True, current_price_override: float | None = None, show_volume_by_price: bool = False, volume_by_price_bars: int = 12, volume_by_price_color_volume: bool = False, volume_by_price_opacity: float = 0.3) -> None:
     """Plot OHLC bars, volume bars, and EMAs on the given axes.
     
     Args:
@@ -214,7 +215,8 @@ def _plot_candles(ax: "Axes", series: list[tuple[int, float, float, float, float
                 valid_indices = [x[0] for x in valid_ema]
                 valid_values = [x[1] for x in valid_ema]
                 # Use solid lines with full opacity for maximum visibility
-                line, = ax.plot(valid_indices, valid_values, color=color, linewidth=linewidth, alpha=1.0, label=label, linestyle='-')
+                # zorder 4: above VBP bars (2) and grid (0), but below candles (5)
+                line, = ax.plot(valid_indices, valid_values, color=color, linewidth=linewidth, alpha=1.0, label=label, linestyle='-', zorder=4)
                 ema_lines.append(line)
     
     # Detect EMA crosses (recent crosses are particularly positive signals)
@@ -260,21 +262,26 @@ def _plot_candles(ax: "Axes", series: list[tuple[int, float, float, float, float
                     cross_price = (ema_10[i] + ema_100[i]) / 2
                     ax.plot(i, cross_price, 'o', color='#4caf50', markersize=6, zorder=10, alpha=0.8)
     
-    # Add recent crosses annotation if any detected (keep this on chart)
+    # Add recent crosses annotation if any detected - limit to max 3 and position at bottom left
+    # This prevents layout issues and keeps charts symmetrical
     if ema_lines and len(series) > 0 and recent_crosses:
-        last_index = len(series) - 1
-        crosses_text = "Recent Crosses: " + ", ".join(recent_crosses[:3])  # Show up to 3 most recent
+        # Limit to 3 most recent crosses to prevent annotation from extending
+        limited_crosses = recent_crosses[:3]
+        crosses_text = "Recent Crosses: " + ", ".join(limited_crosses)
+        
+        # Position at bottom left corner, fixed position to maintain grid symmetry
+        price_min = min(closes) if closes else 0
         ax.annotate(
             crosses_text,
-            xy=(last_index, min(closes) if closes else 0),
-            xytext=(8, -15),
-                        textcoords="offset points",
-            fontsize=9,
+            xy=(0, price_min),  # Bottom left corner
+            xytext=(8, 8),  # Small offset from corner
+            textcoords="offset points",
+            fontsize=8,  # Slightly smaller to fit better
             color='#4caf50',
-                        fontweight='bold',
-            bbox=dict(boxstyle="round,pad=0.4", facecolor='#e8f5e9', edgecolor='#4caf50', alpha=0.95, linewidth=1.5),
-                        ha='left',
-            va='top'
+            fontweight='bold',
+            bbox=dict(boxstyle="round,pad=0.3", facecolor='#e8f5e9', edgecolor='#4caf50', alpha=0.95, linewidth=1.2),
+            ha='left',
+            va='bottom'  # Anchor to bottom
         )
     
     # Get price range for volume scaling
@@ -372,14 +379,14 @@ def _plot_candles(ax: "Axes", series: list[tuple[int, float, float, float, float
         # StockCharts style: black for up bars, red for down bars
         color = "black" if close >= open else "#ef5350"  # Black for up, red for down
         
-        # Plot vertical line (high to low)
-        ax.plot([i, i], [low, high], color=color, linewidth=1.5, alpha=1.0, solid_capstyle='round', solid_joinstyle='round')
+        # Plot vertical line (high to low) with higher zorder so candles appear above VBP bars
+        ax.plot([i, i], [low, high], color=color, linewidth=1.5, alpha=1.0, solid_capstyle='round', solid_joinstyle='round', zorder=5)
         
         # Plot left tick (open)
-        ax.plot([i - tick_length, i], [open, open], color=color, linewidth=1.5, alpha=1.0, solid_capstyle='round', solid_joinstyle='round')
+        ax.plot([i - tick_length, i], [open, open], color=color, linewidth=1.5, alpha=1.0, solid_capstyle='round', solid_joinstyle='round', zorder=5)
         
         # Plot right tick (close)
-        ax.plot([i, i + tick_length], [close, close], color=color, linewidth=1.5, alpha=1.0, solid_capstyle='round', solid_joinstyle='round')
+        ax.plot([i, i + tick_length], [close, close], color=color, linewidth=1.5, alpha=1.0, solid_capstyle='round', solid_joinstyle='round', zorder=5)
     
     # Add generous padding on the right to ensure the last OHLC bar is fully visible
     # Last bar is at index len(series) - 1, with tick extending to (len(series) - 1) + tick_length
@@ -416,6 +423,17 @@ def _plot_candles(ax: "Axes", series: list[tuple[int, float, float, float, float
             color="black",
             ha="left",
             va="bottom"
+        )
+    
+    # Plot Volume-by-Price on the left side if enabled (BEFORE candles so candles appear on top)
+    if show_volume_by_price and volumes and len(volumes) == len(series):
+        _plot_volume_by_price(
+            ax,
+            closes,
+            volumes,
+            num_bars=volume_by_price_bars,
+            separate_up_down=volume_by_price_color_volume,
+            opacity=volume_by_price_opacity,
         )
     
     # StockCharts-style grid - clearer but still subtle
@@ -458,6 +476,203 @@ def _plot_candles(ax: "Axes", series: list[tuple[int, float, float, float, float
     
     # Light background color
     ax.set_facecolor('#ffffff')
+
+
+def _calculate_volume_by_price(
+    closes: list[float],
+    volumes: list[float],
+    num_bars: int = 12,
+    separate_up_down: bool = False,
+) -> tuple[list[tuple[float, float, float, float]], float, float]:
+    """
+    Calculate Volume-by-Price bars based on closing prices and volumes.
+    
+    Args:
+        closes: List of closing prices
+        volumes: List of volume values (same length as closes)
+        num_bars: Number of Volume-by-Price bars (default 12)
+        separate_up_down: Whether to separate up volume and down volume
+    
+    Returns:
+        Tuple of (bars, price_min, price_max) where bars is a list of
+        (zone_low, zone_high, total_volume, up_volume) tuples
+    """
+    if not closes or not volumes or len(closes) != len(volumes):
+        return [], 0.0, 0.0
+    
+    # Find price range for closing prices
+    price_min = min(closes)
+    price_max = max(closes)
+    price_range = price_max - price_min
+    
+    if price_range == 0:
+        return [], price_min, price_max
+    
+    # Calculate zone size
+    zone_size = price_range / num_bars
+    
+    # Initialize zones
+    zones: list[list[float]] = [[] for _ in range(num_bars)]  # Store volumes for each zone
+    zone_up_volumes: list[float] = [0.0] * num_bars
+    zone_down_volumes: list[float] = [0.0] * num_bars
+    
+    # Determine if each day was up or down
+    up_days: list[bool] = []
+    for i in range(len(closes)):
+        if i == 0:
+            up_days.append(True)  # First day is considered "up" by default
+        else:
+            up_days.append(closes[i] >= closes[i-1])
+    
+    # Assign each closing price to a zone and accumulate volume
+    for i, (close, volume, is_up) in enumerate(zip(closes, volumes, up_days)):
+        # Calculate which zone this price belongs to
+        if close == price_max:
+            zone_idx = num_bars - 1  # Highest price goes to last zone
+        else:
+            zone_idx = int((close - price_min) / zone_size)
+            zone_idx = min(zone_idx, num_bars - 1)  # Ensure within bounds
+        
+        zones[zone_idx].append(volume)
+        if separate_up_down:
+            if is_up:
+                zone_up_volumes[zone_idx] += volume
+            else:
+                zone_down_volumes[zone_idx] += volume
+    
+    # Create bars: (zone_low, zone_high, total_volume, up_volume)
+    bars: list[tuple[float, float, float, float]] = []
+    for i in range(num_bars):
+        zone_low = price_min + i * zone_size
+        zone_high = price_min + (i + 1) * zone_size
+        total_volume = sum(zones[i]) if zones[i] else 0.0
+        up_volume = zone_up_volumes[i] if separate_up_down else total_volume
+        
+        bars.append((zone_low, zone_high, total_volume, up_volume))
+    
+    return bars, price_min, price_max
+
+
+def _plot_volume_by_price(
+    ax: "Axes",
+    closes: list[float],
+    volumes: list[float],
+    num_bars: int = 12,
+    separate_up_down: bool = False,
+    opacity: float = 0.5,
+    max_width_fraction: float = 0.25,
+) -> None:
+    """
+    Plot Volume-by-Price bars extending into the chart area (StockCharts-style).
+    
+    Args:
+        ax: Matplotlib axes to plot on
+        closes: List of closing prices
+        volumes: List of volume values
+        num_bars: Number of Volume-by-Price bars (default 12)
+        separate_up_down: Whether to use two colors (green for up, red for down)
+        opacity: Opacity of the bars (0.0 to 1.0)
+        max_width_fraction: Maximum width of Volume-by-Price bars as fraction of chart width
+    """
+    if not closes or not volumes or len(closes) != len(volumes):
+        return
+    
+    # Calculate Volume-by-Price bars
+    vbp_bars, _, _ = _calculate_volume_by_price(
+        closes, volumes, num_bars, separate_up_down
+    )
+    
+    if not vbp_bars:
+        return
+    
+    # Get current axis limits to determine positioning
+    xlim = ax.get_xlim()
+    chart_width = xlim[1] - xlim[0]
+    
+    # Calculate maximum volume for scaling
+    max_volume = max(bar[2] for bar in vbp_bars)  # Total volume
+    if max_volume == 0:
+        return
+    
+    # Position bars to extend into the chart area (StockCharts-style)
+    # Bars start from left edge and extend into the chart
+    bar_start_x = xlim[0] - chart_width * max_width_fraction  # Start outside chart
+    bar_end_x = xlim[0] + chart_width * 0.15  # Extend well into chart area
+    
+    # Calculate bar width (total space available)
+    bar_width = bar_end_x - bar_start_x
+    
+    # Plot each Volume-by-Price bar
+    for zone_low, zone_high, total_volume, up_volume in vbp_bars:
+        if total_volume == 0:
+            continue
+        
+        # Calculate bar height (price range of the zone)
+        bar_height = zone_high - zone_low
+        
+        # Calculate bar length (scaled by volume)
+        bar_length = (total_volume / max_volume) * bar_width
+        
+        # Center the bar vertically within its price zone
+        bar_center_y = (zone_low + zone_high) / 2
+        bar_bottom_y = bar_center_y - bar_height / 2
+        
+        from matplotlib.patches import Rectangle
+        
+        # Use lower zorder so candles appear on top of VBP bars
+        # zorder 2: above grid (0) and volume bars (1), but below EMAs (4) and candles (5)
+        vbp_zorder = 2
+        
+        if separate_up_down and up_volume > 0:
+            # Plot up volume (green) portion
+            up_length = (up_volume / total_volume) * bar_length
+            down_volume = total_volume - up_volume
+            
+            # Up volume starts from the left
+            up_rect = Rectangle(
+                (bar_start_x, bar_bottom_y),
+                up_length,
+                bar_height,
+                facecolor='#4caf50',  # Green for up volume
+                edgecolor='#2e7d32',
+                linewidth=0.8,  # Thicker edge for better visibility
+                alpha=opacity,
+                zorder=vbp_zorder,
+            )
+            ax.add_patch(up_rect)
+            
+            # Down volume (red) portion
+            if down_volume > 0:
+                down_length = (down_volume / total_volume) * bar_length
+                down_rect = Rectangle(
+                    (bar_start_x + up_length, bar_bottom_y),
+                    down_length,
+                    bar_height,
+                    facecolor='#ef5350',  # Red for down volume
+                    edgecolor='#c62828',
+                    linewidth=0.8,  # Thicker edge for better visibility
+                    alpha=opacity,
+                    zorder=vbp_zorder,
+                )
+                ax.add_patch(down_rect)
+        else:
+            # Single color (gray/pink) for all volume - StockCharts-style
+            rect = Rectangle(
+                (bar_start_x, bar_bottom_y),
+                bar_length,
+                bar_height,
+                facecolor='#e91e63',  # Pink/magenta color similar to StockCharts
+                edgecolor='#c2185b',
+                linewidth=0.8,  # Thicker edge for better visibility
+                alpha=opacity,
+                zorder=vbp_zorder,
+            )
+            ax.add_patch(rect)
+    
+    # Adjust x-axis limits to accommodate Volume-by-Price bars extending into chart
+    # Keep original right limit, extend left to show bars
+    new_xlim = (bar_start_x - chart_width * 0.02, xlim[1])
+    ax.set_xlim(new_xlim)
 
 
 def _plot_hurst_waves(
@@ -953,6 +1168,11 @@ class HurstPlot(Base):
         "cco_medium_cycle_length": 30,  # Medium cycle length
         "cco_short_cycle_multiplier": 1.0,  # Short cycle multiplier for ATR offset
         "cco_medium_cycle_multiplier": 3.0,  # Medium cycle multiplier for ATR offset
+        # Volume-by-Price parameters
+        "show_volume_by_price": False,  # On/off switch for Volume-by-Price
+        "volume_by_price_bars": 12,  # Number of Volume-by-Price bars (default 12)
+        "volume_by_price_color_volume": False,  # Separate up/down volume with colors
+        "volume_by_price_opacity": 0.5,  # Opacity of Volume-by-Price bars (0.0 to 1.0) - increased for better visibility
     }
     
     params_meta = [
@@ -1348,6 +1568,39 @@ class HurstPlot(Base):
             "max": 20,
             "step": 1,
             "description": "MESA Stochastic Trigger SMA Length",
+        },
+        # Volume-by-Price parameters
+        {
+            "name": "show_volume_by_price",
+            "type": "combo",
+            "default": False,
+            "options": [True, False],
+            "description": "Show Volume-by-Price bars on the left side of the price chart",
+        },
+        {
+            "name": "volume_by_price_bars",
+            "type": "number",
+            "default": 12,
+            "min": 4,
+            "max": 50,
+            "step": 1,
+            "description": "Number of Volume-by-Price bars (default 12, matching StockCharts)",
+        },
+        {
+            "name": "volume_by_price_color_volume",
+            "type": "combo",
+            "default": False,
+            "options": [True, False],
+            "description": "Separate up volume (green) and down volume (red) in Volume-by-Price bars",
+        },
+        {
+            "name": "volume_by_price_opacity",
+            "type": "number",
+            "default": 0.5,
+            "min": 0.1,
+            "max": 1.0,
+            "step": 0.1,
+            "description": "Opacity of Volume-by-Price bars (0.0 to 1.0) - higher values make bars more visible",
         },
     ]
 
@@ -1746,19 +1999,19 @@ class HurstPlot(Base):
             # Larger width (12 vs 10) provides more horizontal space for last candle visibility
             # Maintain aspect ratios but with more pixels for sharper rendering
             # StockCharts-style spacing: increased hspace and better panel separation
-            # Price chart (ax1) is 50% bigger than indicator panels for better visibility
+            # Price chart (ax1) is 125% bigger than indicator panels (2.25 vs 1.0) for better visibility
             # Top spacing increased significantly to accommodate titles above charts (completely outside)
             if num_subplots == 2:
-                fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 7.5), sharex=True, height_ratios=[1.5, 1.0])
+                fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 9.75), sharex=True, height_ratios=[2.25, 1.0])
                 fig.subplots_adjust(hspace=0.20, top=0.88, bottom=0.07, left=0.08, right=0.95)  # More top space for titles
             elif num_subplots == 3:
                 if show_mesa:
-                    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(12, 9.5), sharex=True, height_ratios=[1.5, 1.0, 1.0])
+                    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(12, 11.5), sharex=True, height_ratios=[2.25, 1.0, 1.0])
                 else:  # show_cco
-                    fig, (ax1, ax2, ax4) = plt.subplots(3, 1, figsize=(12, 9.5), sharex=True, height_ratios=[1.5, 1.0, 1.0])
+                    fig, (ax1, ax2, ax4) = plt.subplots(3, 1, figsize=(12, 11.5), sharex=True, height_ratios=[2.25, 1.0, 1.0])
                 fig.subplots_adjust(hspace=0.18, top=0.88, bottom=0.07, left=0.08, right=0.95)  # More top space for titles
             else:  # num_subplots == 4 (both MESA and CCO)
-                fig, (ax1, ax2, ax3, ax4) = plt.subplots(4, 1, figsize=(12, 11.5), sharex=True, height_ratios=[1.5, 1.0, 1.0, 1.0])
+                fig, (ax1, ax2, ax3, ax4) = plt.subplots(4, 1, figsize=(12, 13.5), sharex=True, height_ratios=[2.25, 1.0, 1.0, 1.0])
                 fig.subplots_adjust(hspace=0.15, top=0.88, bottom=0.07, left=0.08, right=0.95)  # More top space for titles
             
             # Apply StockCharts-style panel separation to all axes
@@ -1913,10 +2166,33 @@ class HurstPlot(Base):
                 display_ema_30 = []
                 display_ema_100 = []
             
-            _plot_candles(ax1, display_norm, display_volumes, display_ema_10, display_ema_30, display_ema_100, show_current_price, current_price_override=fresh_price)
+            # Get Volume-by-Price parameters
+            show_vbp = bool(self.params.get("show_volume_by_price", False))
+            vbp_bars = int(self.params.get("volume_by_price_bars", 12))
+            vbp_color_volume = bool(self.params.get("volume_by_price_color_volume", False))
+            vbp_opacity = float(self.params.get("volume_by_price_opacity", 0.3))
+            
+            _plot_candles(
+                ax1, display_norm, display_volumes, display_ema_10, display_ema_30, display_ema_100,
+                show_current_price, current_price_override=fresh_price,
+                show_volume_by_price=show_vbp,
+                volume_by_price_bars=vbp_bars,
+                volume_by_price_color_volume=vbp_color_volume,
+                volume_by_price_opacity=vbp_opacity,
+            )
             ax1.set_title(f"{str(sym)} Price Chart", fontsize=12, fontweight='bold', pad=10)
             ax1.set_ylabel("Price", fontsize=10)
-            ax1.tick_params(labelsize=9)
+            
+            # Enable Y-axis ticks and format price labels with $ symbol
+            ax1.tick_params(axis='y', labelsize=9, which='major', left=True, labelleft=True)
+            
+            # Format Y-axis price labels to be more readable (with $ symbol)
+            # Show 4 decimal places for prices < $1, 2 decimal places for prices >= $1
+            ax1.yaxis.set_major_formatter(matplotlib.ticker.FuncFormatter(lambda x, p: f'${x:.4f}' if x < 1 else f'${x:.2f}'))  # type: ignore
+            
+            # Ensure Y-axis ticks are visible
+            ax1.yaxis.set_ticks_position('left')
+            ax1.tick_params(axis='y', direction='out', length=4, width=1)
             
             # Apply Y-axis scale to price chart
             try:
@@ -1996,11 +2272,46 @@ class HurstPlot(Base):
             _plot_hurst_waves(ax2, timestamps, bandpasses, composite, show_periods, show_composite, y_axis_scale)
             ax2.set_title(f"{str(sym)} Hurst Spectral Analysis Oscillator", fontsize=12, fontweight='bold', pad=10)
             ax2.set_ylabel("Hurst Oscillator", fontsize=10)
-            # Only set xlabel if this is the bottom panel (no MESA or CCO below)
-            if num_subplots == 2:
-                ax2.set_xlabel("Bar Index", fontsize=10)
-            # Otherwise, xlabel is set on the bottommost panel to avoid overlap
             ax2.tick_params(labelsize=9)
+            
+            # Set time x-axis labels only on bottommost panel (will be shared via sharex=True)
+            bottom_ax = ax4 if ax4 else (ax3 if ax3 else ax2)
+            if len(display_norm) > 0:
+                timestamps_for_labels = [x[0] for x in display_norm]
+                try:
+                    # Convert timestamps (ms) to datetime objects
+                    dates = [datetime.fromtimestamp(ts / 1000) for ts in timestamps_for_labels]
+                    
+                    if len(dates) > 0:
+                        # Use a subset of dates for labels to avoid crowding
+                        num_labels = min(8, len(dates))  # Max 8 labels
+                        if num_labels > 1:
+                            step = max(1, len(dates) // num_labels)
+                            label_indices = list(range(0, len(dates), step))
+                            if len(dates) - 1 not in label_indices:
+                                label_indices.append(len(dates) - 1)  # Always include last
+                            
+                            label_positions = label_indices
+                            label_dates = [dates[i] for i in label_indices]
+                            
+                            # Format dates based on time range
+                            time_span = (dates[-1] - dates[0]).total_seconds()
+                            if time_span < 86400 * 2:  # Less than 2 days - show hours
+                                date_labels = [d.strftime("%H:%M") for d in label_dates]
+                            elif time_span < 86400 * 30:  # Less than 30 days - show day/month
+                                date_labels = [d.strftime("%d/%m") for d in label_dates]
+                            else:  # Longer - show month/year
+                                date_labels = [d.strftime("%b %Y") for d in label_dates]
+                            
+                            # Set x-axis ticks and labels on bottommost axis (shared with all via sharex=True)
+                            bottom_ax.set_xticks(label_positions)
+                            bottom_ax.set_xticklabels(date_labels, fontsize=8, rotation=45, ha='right')
+                            bottom_ax.set_xlabel("Time", fontsize=10)
+                        else:
+                            bottom_ax.set_xlabel("Time", fontsize=10)
+                except Exception as e:
+                    logger.warning(f"Failed to format time axis for {sym}: {e}")
+                    bottom_ax.set_xlabel("Time", fontsize=10)
             
             # Auto-scale Y-axis to show all waves clearly
             # Get all valid values from all waves to set appropriate Y-axis limits
@@ -2072,8 +2383,7 @@ class HurstPlot(Base):
                         ax3.set_ylabel("MESA Stochastic", fontsize=10)
                         # Don't set xlabel here if CCO is below - it's shared with bottom panel and would overlap with title
                         # Only set xlabel if this is the bottom panel (no CCO)
-                        if not show_cco:
-                            ax3.set_xlabel("Bar Index", fontsize=10)
+                        # X-axis label is set on bottommost panel to avoid overlap
                         ax3.tick_params(labelsize=9)
                     
                 except Exception as e:
@@ -2132,8 +2442,7 @@ class HurstPlot(Base):
                         _plot_cco(cco_ax, timestamps, display_fast_osc, display_slow_osc)
                         cco_ax.set_title(f"{str(sym)} Cycle Channel Oscillator (CCO)", fontsize=12, fontweight='bold', pad=10)
                         cco_ax.set_ylabel("CCO", fontsize=10)
-                        # This is always the bottom panel, so set xlabel here
-                        cco_ax.set_xlabel("Bar Index", fontsize=10)
+                        # X-axis label is set on bottommost panel to avoid overlap
                         cco_ax.tick_params(labelsize=9)
                     
                 except Exception as e:
