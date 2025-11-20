@@ -1,6 +1,5 @@
 import { ServiceRegistry } from './ServiceRegistry';
 
-
 export interface DialogOptions {
     type?: 'number' | 'text';
     input?: 'number' | 'text';
@@ -123,13 +122,13 @@ export class DialogManager {
             if (numericOnly) {
                 const n = Number(input.value);
                 if (!Number.isFinite(n)) return;
-                callback(String(Math.floor(n)));
+                callback(String(n));
             } else {
                 callback(input.value);
             }
             document.body.removeChild(overlay);
         };
-
+        
         const cancel = () => {
             callback(null);
             if (overlay.parentNode) document.body.removeChild(overlay);
