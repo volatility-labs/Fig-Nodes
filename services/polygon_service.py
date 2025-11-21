@@ -53,29 +53,59 @@ async def fetch_bars(
     # This ensures we get the most recent data even if we hit the 5000 bar limit
     # We'll reverse the results to get chronological order (oldest first)
     fetch_newest_first = False
-    if symbol.asset_class == AssetClass.CRYPTO:
-        # Estimate number of bars needed
-        parts = lookback_period.split()
-        if len(parts) == 2:
-            amount = int(parts[0])
-            unit = parts[1].lower()
-            if timespan == "hour":
-                # For hourly bars, estimate bars needed
-                if unit in ("month", "months"):
-                    estimated_bars = amount * 30 * 24  # ~30 days/month * 24 hours/day
-                elif unit in ("day", "days"):
-                    estimated_bars = amount * 24
-                elif unit in ("week", "weeks"):
-                    estimated_bars = amount * 7 * 24
-                else:
-                    estimated_bars = 0
-                
-                # If we might hit the ACTUAL API limit, fetch newest first
-                # Use effective_limit (capped at 5000) for the check
-                if estimated_bars > effective_limit * 0.8:  # If >80% of actual limit, fetch newest first
-                    fetch_newest_first = True
-                    sort = "desc"  # Override sort to get newest first
-                    logger.warning(f"POLYGON_SERVICE: 🔄 Large lookback ({lookback_period}, ~{estimated_bars} bars) for {symbol.ticker}, fetching NEWEST first to avoid missing recent data (effective_limit={effective_limit}, requested_limit={limit})")
+    
+    # Estimate number of bars needed to determine if we might hit API limits
+    # If we might hit the limit (5000 bars), we MUST fetch newest first to avoid stale data
+    # This is especially important for charts which need to show the current price context
+    parts = lookback_period.split()
+    if len(parts) == 2:
+        amount = int(parts[0])
+        unit = parts[1].lower()
+        
+        # Trading hours per day (Crypto 24h, Stocks ~6.5h - use 16 to be safe including ext hours)
+        # Trading days per week (Crypto 7, Stocks 5)
+        if symbol.asset_class == AssetClass.CRYPTO:
+            hours_per_day = 24
+            days_per_week_factor = 1.0
+        else:
+            # Polygon aggregates often include extended hours or partial bars
+            # Using a safer estimate of 16 hours/day for checks
+            hours_per_day = 16  
+            days_per_week_factor = 5/7
+            
+        # Convert lookback to days
+        days_lookback = 0
+        if unit in ("day", "days"):
+            days_lookback = amount
+        elif unit in ("week", "weeks"):
+            days_lookback = amount * 7
+        elif unit in ("month", "months"):
+            days_lookback = amount * 30
+        elif unit in ("year", "years"):
+            days_lookback = amount * 365
+            
+        # Estimate bars based on timespan
+        if timespan == "minute":
+            # Bars per day * number of days * adjustment for trading days
+            estimated_bars = (days_lookback * hours_per_day * 60) / multiplier * days_per_week_factor
+        elif timespan == "hour":
+            estimated_bars = (days_lookback * hours_per_day) / multiplier * days_per_week_factor
+        elif timespan == "day":
+            estimated_bars = days_lookback * days_per_week_factor
+        else:
+            estimated_bars = 0
+            
+        # If estimated bars exceeds 80% of the limit OR if the lookback is significant (>1 week for minute/hour)
+        # we force newest first. This protects against data gaps and limits.
+        # "Significant lookback" heuristic: >1000 estimated bars
+        is_significant_request = estimated_bars > 1000
+        
+        # Always prefer newest-first if there's any risk of hitting limits or missing recent data
+        if estimated_bars > effective_limit * 0.8 or is_significant_request:
+            fetch_newest_first = True
+            sort = "desc"
+            logger.warning(f"POLYGON_SERVICE: 🔄 Smart fetch active: Requesting {estimated_bars:.0f} bars ({lookback_period}) for {symbol.ticker}. Fetching NEWEST first to ensure current data visibility (limit={effective_limit}).")
+
 
     # Calculate date range (copied from PolygonCustomBarsNode._calculate_date_range)
     now = datetime.now()

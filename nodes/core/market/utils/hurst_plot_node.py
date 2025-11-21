@@ -400,14 +400,19 @@ def _plot_candles(ax: "Axes", series: list[tuple[int, float, float, float, float
         current_price = current_price_override if current_price_override is not None else closes[-1]
         current_index = len(closes) - 1
         
-        # Draw horizontal dotted line at current price for better visibility
-        ax.axhline(
-            y=current_price,
+        # Draw horizontal dashed red line across full chart width to show current price
+        # This line works for both crypto and stocks - always visible when show_current_price is True
+        # Extend from left edge to right edge for maximum visibility
+        x_start = -0.5  # Start from left edge (before first bar)
+        x_end = len(closes) + 1.5  # Extend beyond right edge
+        ax.plot(
+            [x_start, x_end],
+            [current_price, current_price],
             color='#ef5350',  # Red color for price line
-            linestyle='--',  # Dotted line
-            linewidth=1.5,
-            alpha=0.7,
-            zorder=5,  # Above grid but below OHLC bars/EMAs
+            linestyle='--',  # Dashed line (more visible than dotted)
+            linewidth=2.0,  # Thicker line for better visibility
+            alpha=0.9,  # High opacity for better visibility
+            zorder=10,  # High zorder to ensure it's above EMAs, grid, and other elements
             label=None  # Don't add to legend
         )
         
@@ -1826,6 +1831,15 @@ class HurstPlot(Base):
                         logger.error(f"  Gap: {gap_hours:.1f} hours ({gap_hours/24:.1f} days)")
                         logger.error(f"  This means Polygon/Massive.com API has no data for this period!")
                         logger.error(f"  Chart will show a jump from {last_api_bar_dt.strftime('%Y-%m-%d')} to {snapshot_dt.strftime('%Y-%m-%d')}")
+
+                    # Check for significant price discrepancy (outlier detection)
+                    price_diff_pct = abs(snapshot_price - last_api_bar_price) / last_api_bar_price if last_api_bar_price > 0 else 0
+                    if price_diff_pct > 0.20:  # >20% jump
+                         logger.error(f"⚠️⚠️⚠️ {sym}: LARGE PRICE JUMP DETECTED in snapshot!")
+                         logger.error(f"  Last API bar: ${last_api_bar_price:.4f}")
+                         logger.error(f"  Snapshot bar: ${snapshot_price:.4f}")
+                         logger.error(f"  Jump: {price_diff_pct*100:.1f}%")
+                         logger.error("  This may indicate a data error, a split, or extreme volatility.")
                 
                 # Always append snapshot bar, then sort to ensure chronological order
                 # (snapshot bar should be last, but sort ensures correctness)
@@ -2205,11 +2219,15 @@ class HurstPlot(Base):
             # STRATEGY: For linear scale, use recent bars to focus on current price
             #           For log/symlog scale, use FULL range to show all historical data
             if len(display_norm) > 0:
-                # Get current price (last bar close) - this is the most recent snapshot price
-                current_price = display_norm[-1][4]
+                # Get current price - use fresh snapshot if available, otherwise use last bar close
+                # This is critical for stocks where bar data may be stale but fresh snapshot is current
+                current_price = fresh_price if fresh_price is not None and fresh_price > 0 else display_norm[-1][4]
                 
-                # Get full dataset range
+                # Get full dataset range (include fresh price if available - important for stocks with stale bars)
                 all_prices = [bar[1] for bar in display_norm] + [bar[2] for bar in display_norm] + [bar[3] for bar in display_norm] + [bar[4] for bar in display_norm]
+                # Include fresh price in range calculation if it's significantly different (critical for stocks)
+                if fresh_price is not None and fresh_price > 0:
+                    all_prices.append(fresh_price)
                 full_min = min(all_prices)
                 full_max = max(all_prices)
                 
@@ -2234,6 +2252,9 @@ class HurstPlot(Base):
                     
                     # Calculate recent price range
                     recent_prices = [bar[1] for bar in recent_bars] + [bar[2] for bar in recent_bars] + [bar[3] for bar in recent_bars] + [bar[4] for bar in recent_bars]
+                    # Include fresh price in recent range if available (important for stocks with stale bars)
+                    if fresh_price is not None and fresh_price > 0:
+                        recent_prices.append(fresh_price)
                     recent_min = min(recent_prices)
                     recent_max = max(recent_prices)
                     recent_range = recent_max - recent_min
@@ -2264,7 +2285,7 @@ class HurstPlot(Base):
                     # Ensure we don't go below 0
                     y_min = max(y_min, 0.01 * current_price)
                     
-                    logger.warning(f"📊 {str(sym)} Y-axis range: ${y_min:.4f} to ${y_max:.4f} (current: ${current_price:.4f}, recent: ${recent_min:.4f}-${recent_max:.4f}, full: ${full_min:.4f}-${full_max:.4f}, using last {recent_bar_count} bars)")
+                    logger.warning(f"📊 {str(sym)} Y-axis range: ${y_min:.4f} to ${y_max:.4f} (current: ${current_price:.4f}, fresh: ${fresh_price:.4f if fresh_price else 'N/A'}, recent: ${recent_min:.4f}-${recent_max:.4f}, full: ${full_min:.4f}-${full_max:.4f}, using last {recent_bar_count} bars)")
                 
                 ax1.set_ylim(y_min, y_max)
             
