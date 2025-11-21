@@ -145,6 +145,8 @@ def calculate_orb(
         day_bars_sorted = sorted(day_bars, key=lambda b: b["timestamp"])
 
         # Determine opening range time based on asset class
+        # NOTE: DST handling is automatic - create_market_open_time uses et_tz.localize()
+        # which correctly applies DST offset for each specific date (same approach as user's external code)
         if symbol.asset_class == AssetClass.CRYPTO:
             # For crypto, use UTC midnight (00:00:00) as opening range, convert to ET
             utc_midnight = pytz.timezone("UTC").localize(
@@ -153,6 +155,7 @@ def calculate_orb(
             open_time = utc_midnight.astimezone(pytz.timezone("US/Eastern"))
         else:
             # For stocks, use 9:30 AM Eastern as opening range
+            # create_market_open_time handles DST correctly for each date via et_tz.localize()
             open_time = create_market_open_time(date_key, hour=9, minute=30)
 
         # Debug: Show first few bars for this day
@@ -160,8 +163,8 @@ def calculate_orb(
         for i, bar in enumerate(day_bars_sorted[:5]):
             print(f"  Bar {i}: timestamp={bar['timestamp']}")
 
-        # Look for bars within the opening range (9:30 AM to 9:35 AM)
-        open_range_end = open_time + timedelta(minutes=5)
+        # Look for bars within the opening range (e.g., 9:30 AM to 9:35 AM for 5-minute ORB)
+        open_range_end = open_time + timedelta(minutes=or_minutes)
 
         # Find bars that start within the opening range
         or_candidates = [
@@ -320,6 +323,8 @@ def calculate_orb(
         day_bars_sorted = sorted(daily_groups[target_date], key=lambda b: b["timestamp"])
         
         # Determine opening range time based on asset class
+        # NOTE: DST handling is automatic - create_market_open_time uses et_tz.localize()
+        # which correctly applies DST offset for each specific date (same approach as user's external code)
         if symbol.asset_class == AssetClass.CRYPTO:
             # For crypto, use UTC midnight (00:00:00) as opening range, convert to ET
             utc_midnight = pytz.timezone("UTC").localize(
@@ -328,6 +333,7 @@ def calculate_orb(
             open_time = utc_midnight.astimezone(pytz.timezone("US/Eastern"))
         else:
             # For stocks, use 9:30 AM Eastern as opening range
+            # create_market_open_time handles DST correctly for each date via et_tz.localize()
             open_time = create_market_open_time(target_date, hour=9, minute=30)
         
         open_range_end = open_time + timedelta(minutes=or_minutes)
