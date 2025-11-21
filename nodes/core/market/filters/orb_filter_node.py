@@ -436,4 +436,29 @@ class OrbFilter(BaseIndicatorFilter):
                 if isinstance(res, Exception):
                     logger.error(f"Worker task error: {res}", exc_info=True)
 
+        # Final summary log
+        passed_symbols = sorted([s.ticker for s in filtered_bundle.keys()])
+        failed_symbols = sorted([s.ticker for s in ohlcv_bundle.keys() if s not in filtered_bundle])
+        
+        print(f"\n{'='*80}")
+        print(f"🔵 ORB_FILTER SUMMARY:")
+        print(f"   Total input symbols: {total_symbols}")
+        print(f"   Symbols that PASSED: {len(passed_symbols)}")
+        print(f"   Symbols that FAILED: {len(failed_symbols)}")
+        print(f"\n   ✅ PASSED ({len(passed_symbols)}): {', '.join(passed_symbols) if passed_symbols else 'NONE'}")
+        print(f"\n   ❌ FAILED ({len(failed_symbols)}): {', '.join(failed_symbols) if failed_symbols else 'NONE'}")
+        
+        # Special check for PDD
+        pdd_passed = any(s.ticker.upper() == "PDD" for s in filtered_bundle.keys())
+        pdd_failed = any(s.ticker.upper() == "PDD" for s in failed_symbols)
+        if pdd_passed:
+            print(f"\n   🟢 PDD STATUS: PASSED - Included in output")
+        elif pdd_failed:
+            print(f"\n   🔴 PDD STATUS: FAILED - Filtered out (check logs above for reason)")
+        else:
+            print(f"\n   ⚠️ PDD STATUS: NOT FOUND in input bundle")
+        print(f"{'='*80}\n")
+        
+        logger.info(f"ORB_FILTER SUMMARY: {len(passed_symbols)} passed, {len(failed_symbols)} failed out of {total_symbols} total")
+        
         return {"filtered_ohlcv_bundle": filtered_bundle}
