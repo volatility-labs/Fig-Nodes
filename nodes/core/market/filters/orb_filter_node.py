@@ -104,11 +104,15 @@ class OrbFilter(BaseIndicatorFilter):
 
         or_minutes = int(or_minutes_raw)
 
-        # Fetch 5-min bars for last avg_period +1 days
+        # Fetch 5-min bars for enough days to guarantee avg_period trading days
+        # avg_period is in trading days, so we need to fetch more calendar days (weekends/holidays)
+        # A safe multiplier is 2x + buffer to ensure we get full 14 trading days
+        lookback_days = int(avg_period * 2) + 5
+        
         fetch_params = {
             "multiplier": 5,
             "timespan": "minute",
-            "lookback_period": f"{avg_period + 1} days",
+            "lookback_period": f"{lookback_days} days",
             "adjusted": True,
             "sort": "asc",
             "limit": 50000,
