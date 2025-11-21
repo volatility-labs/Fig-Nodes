@@ -137,28 +137,42 @@ class OrbIndicator(BaseIndicator):
                 logger.error(f"rel_vol must be a number, got {type(rel_vol_raw)}")
                 return {"results": []}
 
-            rel_vol = float(rel_vol_raw)
+            rel_vol = round(float(rel_vol_raw), 2)  # Round to 2 decimal places for readability
 
             # Get the latest timestamp from bars for the result
             latest_timestamp = bars[-1]["timestamp"] if bars else 0
             
             # Get current price from the latest bar
-            current_price = bars[-1]["close"] if bars else None
+            current_price_raw = bars[-1]["close"] if bars else None
+            current_price = round(current_price_raw, 2) if current_price_raw is not None else None
+            
+            # Round ORH/ORL to 2 decimal places for readability
+            or_high = round(or_high, 2) if or_high is not None else None
+            or_low = round(or_low, 2) if or_low is not None else None
 
             # Special logging for PDD
             is_pdd = symbol.ticker.upper() == "PDD"
             if is_pdd:
                 print("=" * 80, flush=True)
                 print(f"🔵 PDD ORB INDICATOR RESULTS:", flush=True)
-                print(f"   Relative Volume: {rel_vol}%", flush=True)
+                print(f"   Relative Volume: {rel_vol:.2f}%", flush=True)
                 print(f"   Direction: {direction}", flush=True)
-                print(f"   OR High: ${or_high}", flush=True)
-                print(f"   OR Low: ${or_low}", flush=True)
-                print(f"   Current Price: ${current_price}", flush=True)
+                if or_high is not None:
+                    print(f"   OR High: ${or_high:.2f}", flush=True)
+                else:
+                    print("   OR High: N/A", flush=True)
+                if or_low is not None:
+                    print(f"   OR Low: ${or_low:.2f}", flush=True)
+                else:
+                    print("   OR Low: N/A", flush=True)
+                if current_price is not None:
+                    print(f"   Current Price: ${current_price:.2f}", flush=True)
+                else:
+                    print("   Current Price: N/A", flush=True)
                 if current_price and or_high:
-                    print(f"   Price vs ORH: ${current_price} vs ${or_high} (diff: ${current_price - or_high:.2f})", flush=True)
+                    print(f"   Price vs ORH: ${current_price:.2f} vs ${or_high:.2f} (diff: ${current_price - or_high:.2f})", flush=True)
                 if current_price and or_low:
-                    print(f"   Price vs ORL: ${current_price} vs ${or_low} (diff: ${current_price - or_low:.2f})", flush=True)
+                    print(f"   Price vs ORL: ${current_price:.2f} vs ${or_low:.2f} (diff: ${current_price - or_low:.2f})", flush=True)
                 print("=" * 80, flush=True)
 
             # Return values in lines (for RVOL, ORH, ORL, current_price) and series (for direction)
