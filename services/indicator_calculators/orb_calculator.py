@@ -164,28 +164,26 @@ def calculate_orb(
             print(f"  Bar {i}: timestamp={bar['timestamp']}")
 
         # Look for bars within the opening range (9:30 AM to 9:35 AM ET for 5-minute ORB)
-        # Match external script logic: Filter by time component and take first bar
+        # Match external script logic: Filter by timestamp comparison (ET datetime to ET datetime)
+        # External script converts 9:30 AM ET to UTC, then compares with UTC timestamps
+        # Since our bars are already in ET timezone, we compare ET datetime directly
         open_range_end = open_time + timedelta(minutes=or_minutes)
         
-        # Extract time components for filtering (DST-aware, matches external script approach)
-        market_start_time = open_time.time()  # 9:30 AM ET time component
-        market_end_time = open_range_end.time()  # 9:35 AM ET time component
-        
-        # Filter bars by time component (matches external script: df.index.time >= market_start & <= market_end)
+        # Filter bars using datetime comparison (matches external script logic)
+        # External script uses: (daily_data.index >= market_open_utc) & (daily_data.index <= market_close_utc)
+        # We use: (bar["timestamp"] >= open_time) & (bar["timestamp"] <= open_range_end)
+        # Both are equivalent since bars are timezone-aware ET datetimes
         or_candidates = [
             bar for bar in day_bars_sorted
-            if market_start_time <= bar["timestamp"].time() <= market_end_time
+            if open_time <= bar["timestamp"] <= open_range_end
         ]
 
         if not or_candidates:
-            # Fallback: Use first available 5-min candle after 9:30 AM (matches external script fallback)
-            market_hours_bars = [
-                bar for bar in day_bars_sorted
-                if bar["timestamp"].time() >= market_start_time
-            ]
-            if market_hours_bars:
-                or_candidates = [market_hours_bars[0]]  # First 5-min candle after market open
-                logger.info(f"ORB CALCULATOR: Using fallback - first 5-min candle after market open")
+            # Fallback: Use first available candle if exact time not found (matches external script fallback)
+            # External script fallback: first_candle = daily_data.iloc[0] if exact time not found
+            if day_bars_sorted:
+                or_candidates = [day_bars_sorted[0]]  # First available candle (matches external script)
+                logger.info(f"ORB CALCULATOR: Using fallback - first available candle for {date_key}")
             else:
                 print(f"ORB CALCULATOR: No opening range bar found for {date_key}")
                 print(f"ORB CALCULATOR: Looking for bars between {open_time} and {open_range_end}")
@@ -370,26 +368,20 @@ def calculate_orb(
         open_range_end = open_time + timedelta(minutes=or_minutes)
         
         # Look for bars within the opening range (9:30 AM to 9:35 AM ET for 5-minute ORB)
-        # Match external script logic: Filter by time component and take first bar
-        # Extract time components for filtering (DST-aware, matches external script approach)
-        market_start_time = open_time.time()  # 9:30 AM ET time component
-        market_end_time = open_range_end.time()  # 9:35 AM ET time component
-        
-        # Filter bars by time component (matches external script: df.index.time >= market_start & <= market_end)
+        # Match external script logic: Filter by datetime comparison (ET datetime to ET datetime)
+        # External script converts 9:30 AM ET to UTC, then compares with UTC timestamps
+        # Since our bars are already in ET timezone, we compare ET datetime directly
         or_candidates = [
             bar for bar in day_bars_sorted
-            if market_start_time <= bar["timestamp"].time() <= market_end_time
+            if open_time <= bar["timestamp"] <= open_range_end
         ]
         
         if not or_candidates:
-            # Fallback: Use first available 5-min candle after 9:30 AM (matches external script fallback)
-            market_hours_bars = [
-                bar for bar in day_bars_sorted
-                if bar["timestamp"].time() >= market_start_time
-            ]
-            if market_hours_bars:
-                or_candidates = [market_hours_bars[0]]  # First 5-min candle after market open
-                logger.info(f"ORB CALCULATOR: Using fallback - first 5-min candle after market open")
+            # Fallback: Use first available candle if exact time not found (matches external script fallback)
+            # External script fallback: first_candle = daily_data.iloc[0] if exact time not found
+            if day_bars_sorted:
+                or_candidates = [day_bars_sorted[0]]  # First available candle (matches external script)
+                logger.info(f"ORB CALCULATOR: Using fallback - first available candle for {target_date}")
         
         if or_candidates:
             # Take first bar in opening range (matches external script: opening_range_candles.iloc[:1])
