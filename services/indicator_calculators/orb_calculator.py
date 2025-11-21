@@ -318,7 +318,23 @@ def calculate_orb(
     logger.info("=" * 80)
 
     # Calculate opening range high and low for current target date
+    # NOTE: OR High/Low should be FIXED once the opening range period (9:30-9:35 AM ET) is complete
+    # If these values are changing, it means either:
+    # 1. The opening range bar is still being formed (before 9:35 AM ET) - this is EXPECTED
+    # 2. The opening range bar selection is inconsistent - this is a BUG
+    # 3. The bars list is being updated with new data that affects the opening range bar - this is EXPECTED if before 9:35 AM ET
     target_or_bar = None
+    opening_range_complete = False
+    
+    # Check if we're past the opening range period (after 9:35 AM ET for today)
+    if target_date == today_date:
+        opening_range_end_time = create_market_open_time(target_date, hour=9, minute=30) + timedelta(minutes=or_minutes)
+        opening_range_complete = current_time_et > opening_range_end_time
+        if opening_range_complete:
+            logger.info(f"ORB CALCULATOR: Opening range period COMPLETE (current time {current_time_et} > {opening_range_end_time}) - OR High/Low should be FIXED")
+        else:
+            logger.info(f"ORB CALCULATOR: Opening range period IN PROGRESS (current time {current_time_et} < {opening_range_end_time}) - OR High/Low may change")
+    
     if target_date in daily_groups:
         day_bars_sorted = sorted(daily_groups[target_date], key=lambda b: b["timestamp"])
         
@@ -345,9 +361,24 @@ def calculate_orb(
         
         if or_candidates:
             target_or_bar = or_candidates[0]
+            # Log the opening range bar details for debugging
+            logger.info(f"ORB CALCULATOR: Opening range bar for {target_date}: timestamp={target_or_bar['timestamp']}, high={target_or_bar['high']}, low={target_or_bar['low']}")
+            print(f"ORB CALCULATOR: Opening range bar for {target_date}: timestamp={target_or_bar['timestamp']}, high={target_or_bar['high']}, low={target_or_bar['low']}")
+        else:
+            logger.warning(f"ORB CALCULATOR: No opening range bar found for {target_date}")
+            print(f"ORB CALCULATOR: No opening range bar found for {target_date}")
     
     or_high = target_or_bar["high"] if target_or_bar else None
     or_low = target_or_bar["low"] if target_or_bar else None
+    
+    # Log final OR High/Low values with status
+    if target_date == today_date:
+        status_note = "✅ FIXED" if opening_range_complete else "⚠️ MAY CHANGE (opening range still forming)"
+        logger.info(f"ORB CALCULATOR: Final OR High: {or_high}, OR Low: {or_low} - {status_note}")
+        print(f"ORB CALCULATOR: Final OR High: {or_high}, OR Low: {or_low} - {status_note}")
+    else:
+        logger.info(f"ORB CALCULATOR: Final OR High: {or_high}, OR Low: {or_low} (historical date - should be fixed)")
+        print(f"ORB CALCULATOR: Final OR High: {or_high}, OR Low: {or_low} (historical date - should be fixed)")
 
     return {
         "rel_vol": rel_vol,
