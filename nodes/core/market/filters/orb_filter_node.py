@@ -300,9 +300,19 @@ class OrbFilter(BaseIndicatorFilter):
         total_symbols = len(ohlcv_bundle)
         completed_count = 0
         
-        # Log input symbols for debugging
+        # Log input symbols for debugging - use print to ensure visibility
         input_symbols = [s.ticker for s in ohlcv_bundle.keys()]
+        print(f"🔵 ORB_FILTER: Processing {total_symbols} symbols: {', '.join(sorted(input_symbols))}")
         logger.info(f"ORB_FILTER: Processing {total_symbols} symbols: {', '.join(sorted(input_symbols))}")
+        
+        # Check specifically for PDD
+        pdd_in_bundle = any(s.ticker.upper() == "PDD" for s in ohlcv_bundle.keys())
+        if not pdd_in_bundle:
+            print(f"⚠️ ORB_FILTER: PDD is NOT in the input bundle!")
+            logger.warning(f"ORB_FILTER: PDD is NOT in the input bundle!")
+        else:
+            print(f"✅ ORB_FILTER: PDD IS in the input bundle")
+            logger.info(f"ORB_FILTER: PDD IS in the input bundle")
 
         # Use a bounded worker pool to avoid creating one task per symbol
         queue: asyncio.Queue[tuple[AssetSymbol, list[OHLCVBar]]] = asyncio.Queue()
@@ -355,12 +365,18 @@ class OrbFilter(BaseIndicatorFilter):
                             passes_main = self._should_pass_filter(indicator_result)
                             passes_additional = self._should_pass_additional_filters(indicator_result)
                             
+                            # Special logging for PDD
+                            is_pdd = symbol.ticker.upper() == "PDD"
+                            
                             if not passes_main:
                                 rel_vol = indicator_result.values.lines.get("rel_vol", 0) if indicator_result.values.lines else None
                                 direction = indicator_result.values.series[0].get("direction", "unknown") if indicator_result.values.series else "unknown"
                                 rel_vol_threshold = self.params.get("rel_vol_threshold", 100.0)
                                 param_dir = self.params.get("direction", "both")
-                                logger.info(f"ORB_FILTER: {symbol.ticker} FAILED main filter - rel_vol: {rel_vol}% (threshold: {rel_vol_threshold}%), direction: {direction} (filter: {param_dir}), error: {indicator_result.error}")
+                                msg = f"❌ ORB_FILTER: {symbol.ticker} FAILED main filter - rel_vol: {rel_vol}% (threshold: {rel_vol_threshold}%), direction: {direction} (filter: {param_dir}), error: {indicator_result.error}"
+                                if is_pdd:
+                                    print(f"🔴 {msg}")
+                                logger.info(msg)
                             
                             if passes_main and not passes_additional:
                                 current_price = indicator_result.values.lines.get("current_price") if indicator_result.values.lines else None
@@ -368,10 +384,16 @@ class OrbFilter(BaseIndicatorFilter):
                                 or_low = indicator_result.values.lines.get("or_low") if indicator_result.values.lines else None
                                 filter_above_orh = self.params.get("filter_above_orh", "No")
                                 filter_below_orl = self.params.get("filter_below_orl", "No")
-                                logger.info(f"ORB_FILTER: {symbol.ticker} PASSED main filter but FAILED additional filters - price: ${current_price}, ORH: ${or_high}, ORL: ${or_low}, filter_above_orh: {filter_above_orh}, filter_below_orl: {filter_below_orl}")
+                                msg = f"⚠️ ORB_FILTER: {symbol.ticker} PASSED main filter but FAILED additional filters - price: ${current_price}, ORH: ${or_high}, ORL: ${or_low}, filter_above_orh: {filter_above_orh}, filter_below_orl: {filter_below_orl}"
+                                if is_pdd:
+                                    print(f"🔴 {msg}")
+                                logger.info(msg)
                             
                             if passes_main and passes_additional:
-                                logger.info(f"ORB_FILTER: {symbol.ticker} PASSED all filters - INCLUDED in output")
+                                msg = f"✅ ORB_FILTER: {symbol.ticker} PASSED all filters - INCLUDED in output"
+                                if is_pdd:
+                                    print(f"🟢 {msg}")
+                                logger.info(msg)
                             
                             if passes_main and passes_additional:
                                 filtered_bundle[symbol] = ohlcv_data
