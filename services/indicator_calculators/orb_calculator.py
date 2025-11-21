@@ -145,38 +145,42 @@ def calculate_orb(
         day_bars_sorted = sorted(day_bars, key=lambda b: b["timestamp"])
 
         # Determine opening range time based on asset class
-        # NOTE: DST handling is automatic - create_market_open_time uses et_tz.localize()
-        # which correctly applies DST offset for each specific date (same approach as user's external code)
+        # Match external script logic: Convert 9:30 AM ET to UTC for each date (handles DST automatically)
+        et_tz = pytz.timezone("America/New_York")
         if symbol.asset_class == AssetClass.CRYPTO:
-            # For crypto, use UTC midnight (00:00:00) as opening range, convert to ET
+            # For crypto, use UTC midnight (00:00:00) as opening range
             utc_midnight = pytz.timezone("UTC").localize(
                 datetime.combine(date_key, datetime.strptime("00:00", "%H:%M").time())
             )
-            open_time = utc_midnight.astimezone(pytz.timezone("US/Eastern"))
+            market_open_et = utc_midnight.astimezone(et_tz)
+            market_open_utc = utc_midnight  # Already UTC
         else:
             # For stocks, use 9:30 AM Eastern as opening range
-            # create_market_open_time handles DST correctly for each date via et_tz.localize()
-            open_time = create_market_open_time(date_key, hour=9, minute=30)
+            # Convert this specific date's 9:30 AM ET to UTC (handles DST for that date)
+            # This matches external script: et_tz.localize(datetime.combine(date, datetime.min.time().replace(hour=9, minute=30)))
+            market_open_et = et_tz.localize(
+                datetime.combine(date_key, datetime.min.time().replace(hour=9, minute=30))
+            )
+            market_open_utc = market_open_et.astimezone(pytz.timezone("UTC"))
+        
+        # Convert opening range end time to UTC as well
+        market_close_et = market_open_et + timedelta(minutes=or_minutes)
+        market_close_utc = market_close_et.astimezone(pytz.timezone("UTC"))
 
         # Debug: Show first few bars for this day
         print(f"ORB CALCULATOR: Bars for {date_key} (showing first 5):")
         for i, bar in enumerate(day_bars_sorted[:5]):
             print(f"  Bar {i}: timestamp={bar['timestamp']}")
 
-        # Look for bars within the opening range (9:30 AM to 9:35 AM ET for 5-minute ORB)
-        # Match external script logic: Filter by timestamp comparison (ET datetime to ET datetime)
-        # External script converts 9:30 AM ET to UTC, then compares with UTC timestamps
-        # Since our bars are already in ET timezone, we compare ET datetime directly
-        open_range_end = open_time + timedelta(minutes=or_minutes)
-        
-        # Filter bars using datetime comparison (matches external script logic)
+        # Match external script logic exactly: Filter using UTC timestamp comparison
         # External script uses: (daily_data.index >= market_open_utc) & (daily_data.index <= market_close_utc)
-        # We use: (bar["timestamp"] >= open_time) & (bar["timestamp"] <= open_range_end)
-        # Both are equivalent since bars are timezone-aware ET datetimes
-        or_candidates = [
-            bar for bar in day_bars_sorted
-            if open_time <= bar["timestamp"] <= open_range_end
-        ]
+        # Convert bar timestamps to UTC for comparison
+        or_candidates = []
+        for bar in day_bars_sorted:
+            # Convert bar timestamp to UTC for comparison (bars are in ET timezone)
+            bar_utc = bar["timestamp"].astimezone(pytz.timezone("UTC"))
+            if market_open_utc <= bar_utc <= market_close_utc:
+                or_candidates.append(bar)
 
         if not or_candidates:
             # Fallback: Use first available candle if exact time not found (matches external script fallback)
@@ -186,9 +190,9 @@ def calculate_orb(
                 logger.info(f"ORB CALCULATOR: Using fallback - first available candle for {date_key}")
             else:
                 print(f"ORB CALCULATOR: No opening range bar found for {date_key}")
-                print(f"ORB CALCULATOR: Looking for bars between {open_time} and {open_range_end}")
+                print(f"ORB CALCULATOR: Looking for bars between {market_open_utc} (UTC) and {market_close_utc} (UTC)")
                 logger.warning(f"ORB Calculator: No opening range bar found for {date_key}")
-                logger.warning(f"ORB CALCULATOR: Expected opening range: {open_time} to {open_range_end}")
+                logger.warning(f"ORB CALCULATOR: Expected opening range (UTC): {market_open_utc} to {market_close_utc}")
                 logger.warning(f"ORB CALCULATOR: Available bars for {date_key}: {len(day_bars_sorted)}")
                 if day_bars_sorted:
                     logger.warning(f"ORB CALCULATOR: First bar time: {day_bars_sorted[0]['timestamp']}")
@@ -352,29 +356,37 @@ def calculate_orb(
         day_bars_sorted = sorted(daily_groups[target_date], key=lambda b: b["timestamp"])
         
         # Determine opening range time based on asset class
-        # NOTE: DST handling is automatic - create_market_open_time uses et_tz.localize()
-        # which correctly applies DST offset for each specific date (same approach as user's external code)
+        # Match external script logic: Convert 9:30 AM ET to UTC for target date (handles DST automatically)
+        et_tz = pytz.timezone("America/New_York")
         if symbol.asset_class == AssetClass.CRYPTO:
-            # For crypto, use UTC midnight (00:00:00) as opening range, convert to ET
+            # For crypto, use UTC midnight (00:00:00) as opening range
             utc_midnight = pytz.timezone("UTC").localize(
                 datetime.combine(target_date, datetime.strptime("00:00", "%H:%M").time())
             )
-            open_time = utc_midnight.astimezone(pytz.timezone("US/Eastern"))
+            market_open_et = utc_midnight.astimezone(et_tz)
+            market_open_utc = utc_midnight  # Already UTC
         else:
             # For stocks, use 9:30 AM Eastern as opening range
-            # create_market_open_time handles DST correctly for each date via et_tz.localize()
-            open_time = create_market_open_time(target_date, hour=9, minute=30)
+            # Convert this specific date's 9:30 AM ET to UTC (handles DST for that date)
+            # This matches external script: et_tz.localize(datetime.combine(date, datetime.min.time().replace(hour=9, minute=30)))
+            market_open_et = et_tz.localize(
+                datetime.combine(target_date, datetime.min.time().replace(hour=9, minute=30))
+            )
+            market_open_utc = market_open_et.astimezone(pytz.timezone("UTC"))
         
-        open_range_end = open_time + timedelta(minutes=or_minutes)
+        # Convert opening range end time to UTC as well
+        market_close_et = market_open_et + timedelta(minutes=or_minutes)
+        market_close_utc = market_close_et.astimezone(pytz.timezone("UTC"))
         
-        # Look for bars within the opening range (9:30 AM to 9:35 AM ET for 5-minute ORB)
-        # Match external script logic: Filter by datetime comparison (ET datetime to ET datetime)
-        # External script converts 9:30 AM ET to UTC, then compares with UTC timestamps
-        # Since our bars are already in ET timezone, we compare ET datetime directly
-        or_candidates = [
-            bar for bar in day_bars_sorted
-            if open_time <= bar["timestamp"] <= open_range_end
-        ]
+        # Match external script logic exactly: Filter using UTC timestamp comparison
+        # External script uses: (daily_data.index >= market_open_utc) & (daily_data.index <= market_close_utc)
+        # Convert bar timestamps to UTC for comparison
+        or_candidates = []
+        for bar in day_bars_sorted:
+            # Convert bar timestamp to UTC for comparison (bars are in ET timezone)
+            bar_utc = bar["timestamp"].astimezone(pytz.timezone("UTC"))
+            if market_open_utc <= bar_utc <= market_close_utc:
+                or_candidates.append(bar)
         
         if not or_candidates:
             # Fallback: Use first available candle if exact time not found (matches external script fallback)
