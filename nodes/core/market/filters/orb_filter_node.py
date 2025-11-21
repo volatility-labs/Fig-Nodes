@@ -199,20 +199,25 @@ class OrbFilter(BaseIndicatorFilter):
         )
 
     def _should_pass_filter(self, indicator_result: IndicatorResult) -> bool:
-        if (
-            indicator_result.error
-            or not indicator_result.values.lines
-            or not indicator_result.values.series
-        ):
+        if indicator_result.error:
+            logger.debug(f"ORB_FILTER: Filter failed due to error: {indicator_result.error}")
+            return False
+        if not indicator_result.values.lines:
+            logger.debug("ORB_FILTER: Filter failed - no lines data")
+            return False
+        if not indicator_result.values.series:
+            logger.debug("ORB_FILTER: Filter failed - no series data")
             return False
 
         rel_vol = indicator_result.values.lines.get("rel_vol", 0)
         if math.isnan(rel_vol):
+            logger.debug("ORB_FILTER: Filter failed - rel_vol is NaN")
             return False
         directions = [s["direction"] for s in indicator_result.values.series if "direction" in s]
         direction = directions[0] if directions else "doji"
 
         if direction == "doji":
+            logger.debug("ORB_FILTER: Filter failed - direction is 'doji'")
             return False
 
         rel_vol_threshold = self.params.get("rel_vol_threshold", 0.0)
@@ -220,12 +225,16 @@ class OrbFilter(BaseIndicatorFilter):
             raise ValueError(f"rel_vol_threshold must be a number, got {type(rel_vol_threshold)}")
 
         if rel_vol < float(rel_vol_threshold):
+            logger.debug(f"ORB_FILTER: Filter failed - rel_vol {rel_vol}% < threshold {rel_vol_threshold}%")
             return False
 
         param_dir = self.params["direction"]
         if param_dir == "both":
             return True
-        return direction == param_dir
+        if direction != param_dir:
+            logger.debug(f"ORB_FILTER: Filter failed - direction {direction} != filter direction {param_dir}")
+            return False
+        return True
 
     def _should_pass_additional_filters(self, indicator_result: IndicatorResult) -> bool:
         """Check additional price-based filters (ORH/ORL)."""
@@ -290,6 +299,10 @@ class OrbFilter(BaseIndicatorFilter):
         rate_limiter = RateLimiter(max_per_second=rate_limit)
         total_symbols = len(ohlcv_bundle)
         completed_count = 0
+        
+        # Log input symbols for debugging
+        input_symbols = [s.ticker for s in ohlcv_bundle.keys()]
+        logger.info(f"ORB_FILTER: Processing {total_symbols} symbols: {', '.join(sorted(input_symbols))}")
 
         # Use a bounded worker pool to avoid creating one task per symbol
         queue: asyncio.Queue[tuple[AssetSymbol, list[OHLCVBar]]] = asyncio.Queue()
@@ -337,7 +350,30 @@ class OrbFilter(BaseIndicatorFilter):
                             indicator_result = await self._calculate_orb_indicator(
                                 symbol, self.api_key or ""
                             )
-                            if self._should_pass_filter(indicator_result) and self._should_pass_additional_filters(indicator_result):
+                            
+                            # Debug logging for filter decisions
+                            passes_main = self._should_pass_filter(indicator_result)
+                            passes_additional = self._should_pass_additional_filters(indicator_result)
+                            
+                            if not passes_main:
+                                rel_vol = indicator_result.values.lines.get("rel_vol", 0) if indicator_result.values.lines else None
+                                direction = indicator_result.values.series[0].get("direction", "unknown") if indicator_result.values.series else "unknown"
+                                rel_vol_threshold = self.params.get("rel_vol_threshold", 100.0)
+                                param_dir = self.params.get("direction", "both")
+                                logger.info(f"ORB_FILTER: {symbol.ticker} FAILED main filter - rel_vol: {rel_vol}% (threshold: {rel_vol_threshold}%), direction: {direction} (filter: {param_dir}), error: {indicator_result.error}")
+                            
+                            if passes_main and not passes_additional:
+                                current_price = indicator_result.values.lines.get("current_price") if indicator_result.values.lines else None
+                                or_high = indicator_result.values.lines.get("or_high") if indicator_result.values.lines else None
+                                or_low = indicator_result.values.lines.get("or_low") if indicator_result.values.lines else None
+                                filter_above_orh = self.params.get("filter_above_orh", "No")
+                                filter_below_orl = self.params.get("filter_below_orl", "No")
+                                logger.info(f"ORB_FILTER: {symbol.ticker} PASSED main filter but FAILED additional filters - price: ${current_price}, ORH: ${or_high}, ORL: ${or_low}, filter_above_orh: {filter_above_orh}, filter_below_orl: {filter_below_orl}")
+                            
+                            if passes_main and passes_additional:
+                                logger.info(f"ORB_FILTER: {symbol.ticker} PASSED all filters - INCLUDED in output")
+                            
+                            if passes_main and passes_additional:
                                 filtered_bundle[symbol] = ohlcv_data
 
                             # Only increment counter on successful completion
