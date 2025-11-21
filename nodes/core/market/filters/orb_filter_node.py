@@ -357,9 +357,19 @@ class OrbFilter(BaseIndicatorFilter):
 
                         # Calculate ORB indicator with error handling
                         try:
+                            # Log start of processing for PDD
+                            if symbol.ticker.upper() == "PDD":
+                                print(f"🔵 PDD: Starting ORB calculation...")
+                            
                             indicator_result = await self._calculate_orb_indicator(
                                 symbol, self.api_key or ""
                             )
+                            
+                            # Log successful calculation for PDD
+                            if symbol.ticker.upper() == "PDD":
+                                rel_vol = indicator_result.values.lines.get("rel_vol", 0) if indicator_result.values.lines else None
+                                direction = indicator_result.values.series[0].get("direction", "unknown") if indicator_result.values.series else "unknown"
+                                print(f"🔵 PDD: ORB calculation complete - rel_vol: {rel_vol}%, direction: {direction}, error: {indicator_result.error}")
                             
                             # Debug logging for filter decisions
                             passes_main = self._should_pass_filter(indicator_result)
@@ -408,10 +418,17 @@ class OrbFilter(BaseIndicatorFilter):
                             self.force_stop()
                             raise  # Propagate cancellation
                         except Exception as e:
-                            logger.error(
-                                f"Error calculating ORB for {symbol}: {str(e)}", exc_info=True
-                            )
+                            error_msg = f"Error calculating ORB for {symbol.ticker}: {str(e)}"
+                            logger.error(error_msg, exc_info=True)
+                            # Special logging for PDD errors
+                            if symbol.ticker.upper() == "PDD":
+                                print(f"🔴 PDD ERROR: {error_msg}")
+                                print(f"🔴 PDD ERROR: Exception type: {type(e).__name__}")
                             # Continue without adding to bundle
+                            completed_count += 1
+                            progress = (completed_count / total_symbols) * 100
+                            progress_text = f"{completed_count}/{total_symbols}"
+                            self.report_progress(progress, progress_text)
                     finally:
                         queue.task_done()
                 except asyncio.CancelledError:
