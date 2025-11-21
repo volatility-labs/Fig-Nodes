@@ -97,6 +97,7 @@ class OrbIndicator(BaseIndicator):
 
         try:
             print(f"ORB INDICATOR: Fetching bars with params: {fetch_params}")
+            print(f"ORB INDICATOR: LOOKBACK PERIOD: {fetch_params.get('lookback_period')}")  # Debug print
             logger.info(f"ORB INDICATOR: Fetching bars with params: {fetch_params}")
 
             bars, _metadata = await fetch_bars(symbol, api_key, fetch_params)

@@ -378,20 +378,31 @@ def calculate_orb(
         market_close_et = market_open_et + timedelta(minutes=or_minutes)
         market_close_utc = market_close_et.astimezone(pytz.timezone("UTC"))
         
-        # Match external script logic exactly: Filter using UTC timestamp comparison
-        # External script uses: (daily_data.index >= market_open_utc) & (daily_data.index <= market_close_utc)
-        # Convert bar timestamps to UTC for comparison
+        # Match external script logic: For current day, use TIME COMPONENT filtering
+        # External script uses: df[(df.index.time >= market_start) & (df.index.time <= market_end)]
+        # where market_start and market_end are UTC time components
+        # Since our bars are in ET timezone, we use ET time components directly
+        market_start_time = market_open_et.time()  # 9:30 AM ET time component
+        market_end_time = market_close_et.time()   # 9:35 AM ET time component
+        
+        print(f"ORB CALCULATOR: Looking for opening range bars between {market_start_time} and {market_end_time} (ET time)")
+        print(f"ORB CALCULATOR: Market open ET: {market_open_et}, Market close ET: {market_close_et}")
+        print(f"ORB CALCULATOR: Total bars for {target_date}: {len(day_bars_sorted)}")
+        
+        # Filter by time component (matches standalone script's current day logic)
         or_candidates = []
         for bar in day_bars_sorted:
-            # Convert bar timestamp to UTC for comparison (bars are in ET timezone)
-            bar_utc = bar["timestamp"].astimezone(pytz.timezone("UTC"))
-            if market_open_utc <= bar_utc <= market_close_utc:
+            bar_time = bar["timestamp"].time()  # ET time component
+            if market_start_time <= bar_time <= market_end_time:
                 or_candidates.append(bar)
+                print(f"ORB CALCULATOR: Found candidate bar: timestamp={bar['timestamp']} (ET), time={bar_time}, high={bar['high']}, low={bar['low']}")
         
         if not or_candidates:
             # Fallback: Use first available candle if exact time not found (matches external script fallback)
             # External script fallback: first_candle = daily_data.iloc[0] if exact time not found
             if day_bars_sorted:
+                print(f"ORB CALCULATOR: No bars found in opening range window, using fallback")
+                print(f"ORB CALCULATOR: First available bar: timestamp={day_bars_sorted[0]['timestamp']}, high={day_bars_sorted[0]['high']}, low={day_bars_sorted[0]['low']}")
                 or_candidates = [day_bars_sorted[0]]  # First available candle (matches external script)
                 logger.info(f"ORB CALCULATOR: Using fallback - first available candle for {target_date}")
         
@@ -400,7 +411,8 @@ def calculate_orb(
             target_or_bar = or_candidates[0]
             # Log the opening range bar details for debugging
             logger.info(f"ORB CALCULATOR: Opening range bar for {target_date}: timestamp={target_or_bar['timestamp']}, high={target_or_bar['high']}, low={target_or_bar['low']}")
-            print(f"ORB CALCULATOR: Opening range bar for {target_date}: timestamp={target_or_bar['timestamp']}, high={target_or_bar['high']}, low={target_or_bar['low']}")
+            print(f"ORB CALCULATOR: ✅ SELECTED Opening range bar for {target_date}: timestamp={target_or_bar['timestamp']} (ET), high={target_or_bar['high']}, low={target_or_bar['low']}")
+            print(f"ORB CALCULATOR: Expected: OR High=$113.26, OR Low=$112.06 (from standalone script)")
         else:
             logger.warning(f"ORB CALCULATOR: No opening range bar found for {target_date}")
             print(f"ORB CALCULATOR: No opening range bar found for {target_date}")
