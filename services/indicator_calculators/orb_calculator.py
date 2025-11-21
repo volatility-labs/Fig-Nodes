@@ -166,11 +166,15 @@ def calculate_orb(
         # Look for bars within the opening range (e.g., 9:30 AM to 9:35 AM for 5-minute ORB)
         open_range_end = open_time + timedelta(minutes=or_minutes)
 
-        # Find bars that start within the opening range
-        # NOTE: We want the bar that STARTS closest to market open (9:30 AM ET)
-        # This ensures consistent selection even as new bars are added
+        # Find bars that cover the opening range period
+        # NOTE: Polygon's 5-minute bars might start at 9:29, 9:31, 9:32, etc.
+        # We want bars that START between 9:25-9:35 AM (expanded window to catch bars that start slightly early)
+        # Then pick the one that starts closest to 9:30 AM
+        expanded_start = open_time - timedelta(minutes=5)  # Start looking 5 minutes before market open
         or_candidates = [
-            bar for bar in day_bars_sorted if open_time <= bar["timestamp"] < open_range_end
+            bar for bar in day_bars_sorted 
+            if expanded_start <= bar["timestamp"] < open_range_end
+            and (bar["timestamp"] + timedelta(minutes=5)) > open_time  # Bar must extend past 9:30 AM
         ]
 
         if not or_candidates:
@@ -358,11 +362,15 @@ def calculate_orb(
         
         open_range_end = open_time + timedelta(minutes=or_minutes)
         
-        # Find bars that start within the opening range
-        # NOTE: We want the bar that STARTS closest to market open (9:30 AM ET)
-        # This ensures consistent selection even as new bars are added
+        # Find bars that cover the opening range period
+        # NOTE: Polygon's 5-minute bars might start at 9:29, 9:31, 9:32, etc.
+        # We want bars that START between 9:25-9:35 AM (expanded window to catch bars that start slightly early)
+        # Then pick the one that starts closest to 9:30 AM
+        expanded_start = open_time - timedelta(minutes=5)  # Start looking 5 minutes before market open
         or_candidates = [
-            bar for bar in day_bars_sorted if open_time <= bar["timestamp"] < open_range_end
+            bar for bar in day_bars_sorted 
+            if expanded_start <= bar["timestamp"] < open_range_end
+            and (bar["timestamp"] + timedelta(minutes=5)) > open_time  # Bar must extend past 9:30 AM
         ]
         
         if or_candidates:
