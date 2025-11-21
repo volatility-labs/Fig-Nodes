@@ -448,9 +448,9 @@ class OrbFilter(BaseIndicatorFilter):
         print(f"\n   ✅ PASSED ({len(passed_symbols)}): {', '.join(passed_symbols) if passed_symbols else 'NONE'}")
         print(f"\n   ❌ FAILED ({len(failed_symbols)}): {', '.join(failed_symbols) if failed_symbols else 'NONE'}")
         
-        # Special check for PDD
-        pdd_passed = any(s.ticker.upper() == "PDD" for s in filtered_bundle.keys())
-        pdd_failed = any(s.ticker.upper() == "PDD" for s in failed_symbols)
+        # Special check for PDD (passed_symbols and failed_symbols are lists of ticker strings)
+        pdd_passed = "PDD" in passed_symbols
+        pdd_failed = "PDD" in failed_symbols
         if pdd_passed:
             print(f"\n   🟢 PDD STATUS: PASSED - Included in output")
         elif pdd_failed:
