@@ -167,6 +167,8 @@ def calculate_orb(
         open_range_end = open_time + timedelta(minutes=or_minutes)
 
         # Find bars that start within the opening range
+        # NOTE: We want the bar that STARTS closest to market open (9:30 AM ET)
+        # This ensures consistent selection even as new bars are added
         or_candidates = [
             bar for bar in day_bars_sorted if open_time <= bar["timestamp"] < open_range_end
         ]
@@ -182,8 +184,10 @@ def calculate_orb(
                 logger.warning(f"ORB CALCULATOR: Last bar time: {day_bars_sorted[-1]['timestamp']}")
             continue
 
-        # Pick the earliest bar in the opening range
-        or_bar = or_candidates[0]
+        # Pick the bar that STARTS closest to market open (9:30 AM ET)
+        # This ensures consistent selection: always pick the bar closest to 9:30 AM
+        # even if multiple bars fall within the opening range window
+        or_bar = min(or_candidates, key=lambda b: abs((b["timestamp"] - open_time).total_seconds()))
 
         print(
             f"ORB CALCULATOR: Found {len(or_candidates)} opening range bars for {date_key}, using: {or_bar['timestamp']}"
@@ -355,12 +359,17 @@ def calculate_orb(
         open_range_end = open_time + timedelta(minutes=or_minutes)
         
         # Find bars that start within the opening range
+        # NOTE: We want the bar that STARTS closest to market open (9:30 AM ET)
+        # This ensures consistent selection even as new bars are added
         or_candidates = [
             bar for bar in day_bars_sorted if open_time <= bar["timestamp"] < open_range_end
         ]
         
         if or_candidates:
-            target_or_bar = or_candidates[0]
+            # Pick the bar that STARTS closest to market open (9:30 AM ET)
+            # This ensures consistent selection: always pick the bar closest to 9:30 AM
+            # even if multiple bars fall within the opening range window
+            target_or_bar = min(or_candidates, key=lambda b: abs((b["timestamp"] - open_time).total_seconds()))
             # Log the opening range bar details for debugging
             logger.info(f"ORB CALCULATOR: Opening range bar for {target_date}: timestamp={target_or_bar['timestamp']}, high={target_or_bar['high']}, low={target_or_bar['low']}")
             print(f"ORB CALCULATOR: Opening range bar for {target_date}: timestamp={target_or_bar['timestamp']}, high={target_or_bar['high']}, low={target_or_bar['low']}")
