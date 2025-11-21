@@ -308,17 +308,36 @@ class OrbFilter(BaseIndicatorFilter):
         # Check specifically for PDD
         pdd_in_bundle = any(s.ticker.upper() == "PDD" for s in ohlcv_bundle.keys())
         if not pdd_in_bundle:
-            print(f"⚠️ ORB_FILTER: PDD is NOT in the input bundle!")
+            print(f"⚠️ ORB_FILTER: PDD is NOT in the input bundle!", flush=True)
             logger.warning(f"ORB_FILTER: PDD is NOT in the input bundle!")
         else:
-            print(f"✅ ORB_FILTER: PDD IS in the input bundle")
+            print(f"✅ ORB_FILTER: PDD IS in the input bundle", flush=True)
             logger.info(f"ORB_FILTER: PDD IS in the input bundle")
 
         # Use a bounded worker pool to avoid creating one task per symbol
         queue: asyncio.Queue[tuple[AssetSymbol, list[OHLCVBar]]] = asyncio.Queue()
+        skipped_no_data = []
+        queued_symbols = []
         for symbol, ohlcv_data in ohlcv_bundle.items():
             if ohlcv_data:  # Only process symbols with data
                 queue.put_nowait((symbol, ohlcv_data))
+                queued_symbols.append(symbol.ticker)
+            else:
+                # Track symbols skipped due to no data
+                if symbol.ticker.upper() == "PDD":
+                    print(f"🔴 PDD: SKIPPED - No OHLCV data available!", flush=True)
+                    logger.warning(f"PDD: SKIPPED - No OHLCV data available!")
+                skipped_no_data.append(symbol.ticker)
+        
+        if skipped_no_data:
+            print(f"⚠️ ORB_FILTER: Skipped {len(skipped_no_data)} symbols with no data: {', '.join(skipped_no_data[:10])}{'...' if len(skipped_no_data) > 10 else ''}", flush=True)
+            logger.info(f"ORB_FILTER: Skipped {len(skipped_no_data)} symbols with no data")
+        
+        # Check if PDD is in the queue
+        if "PDD" in queued_symbols:
+            print(f"✅ PDD: IS in processing queue (will be processed)", flush=True)
+        else:
+            print(f"⚠️ PDD: NOT in processing queue (may have been skipped)", flush=True)
 
         async def worker(worker_id: int):
             nonlocal completed_count
@@ -359,7 +378,7 @@ class OrbFilter(BaseIndicatorFilter):
                         try:
                             # Log start of processing for PDD
                             if symbol.ticker.upper() == "PDD":
-                                print(f"🔵 PDD: Starting ORB calculation...")
+                                print(f"🔵 PDD: Starting ORB calculation...", flush=True)
                             
                             indicator_result = await self._calculate_orb_indicator(
                                 symbol, self.api_key or ""
@@ -369,7 +388,7 @@ class OrbFilter(BaseIndicatorFilter):
                             if symbol.ticker.upper() == "PDD":
                                 rel_vol = indicator_result.values.lines.get("rel_vol", 0) if indicator_result.values.lines else None
                                 direction = indicator_result.values.series[0].get("direction", "unknown") if indicator_result.values.series else "unknown"
-                                print(f"🔵 PDD: ORB calculation complete - rel_vol: {rel_vol}%, direction: {direction}, error: {indicator_result.error}")
+                                print(f"🔵 PDD: ORB calculation complete - rel_vol: {rel_vol}%, direction: {direction}, error: {indicator_result.error}", flush=True)
                             
                             # Debug logging for filter decisions
                             passes_main = self._should_pass_filter(indicator_result)
@@ -385,7 +404,7 @@ class OrbFilter(BaseIndicatorFilter):
                                 param_dir = self.params.get("direction", "both")
                                 msg = f"❌ ORB_FILTER: {symbol.ticker} FAILED main filter - rel_vol: {rel_vol}% (threshold: {rel_vol_threshold}%), direction: {direction} (filter: {param_dir}), error: {indicator_result.error}"
                                 if is_pdd:
-                                    print(f"🔴 {msg}")
+                                    print(f"🔴 {msg}", flush=True)
                                 logger.info(msg)
                             
                             if passes_main and not passes_additional:
@@ -396,13 +415,13 @@ class OrbFilter(BaseIndicatorFilter):
                                 filter_below_orl = self.params.get("filter_below_orl", "No")
                                 msg = f"⚠️ ORB_FILTER: {symbol.ticker} PASSED main filter but FAILED additional filters - price: ${current_price}, ORH: ${or_high}, ORL: ${or_low}, filter_above_orh: {filter_above_orh}, filter_below_orl: {filter_below_orl}"
                                 if is_pdd:
-                                    print(f"🔴 {msg}")
+                                    print(f"🔴 {msg}", flush=True)
                                 logger.info(msg)
                             
                             if passes_main and passes_additional:
                                 msg = f"✅ ORB_FILTER: {symbol.ticker} PASSED all filters - INCLUDED in output"
                                 if is_pdd:
-                                    print(f"🟢 {msg}")
+                                    print(f"🟢 {msg}", flush=True)
                                 logger.info(msg)
                             
                             if passes_main and passes_additional:
@@ -422,8 +441,8 @@ class OrbFilter(BaseIndicatorFilter):
                             logger.error(error_msg, exc_info=True)
                             # Special logging for PDD errors
                             if symbol.ticker.upper() == "PDD":
-                                print(f"🔴 PDD ERROR: {error_msg}")
-                                print(f"🔴 PDD ERROR: Exception type: {type(e).__name__}")
+                                print(f"🔴 PDD ERROR: {error_msg}", flush=True)
+                                print(f"🔴 PDD ERROR: Exception type: {type(e).__name__}", flush=True)
                             # Continue without adding to bundle
                             completed_count += 1
                             progress = (completed_count / total_symbols) * 100
@@ -457,24 +476,24 @@ class OrbFilter(BaseIndicatorFilter):
         passed_symbols = sorted([s.ticker for s in filtered_bundle.keys()])
         failed_symbols = sorted([s.ticker for s in ohlcv_bundle.keys() if s not in filtered_bundle])
         
-        print(f"\n{'='*80}")
-        print(f"🔵 ORB_FILTER SUMMARY:")
-        print(f"   Total input symbols: {total_symbols}")
-        print(f"   Symbols that PASSED: {len(passed_symbols)}")
-        print(f"   Symbols that FAILED: {len(failed_symbols)}")
-        print(f"\n   ✅ PASSED ({len(passed_symbols)}): {', '.join(passed_symbols) if passed_symbols else 'NONE'}")
-        print(f"\n   ❌ FAILED ({len(failed_symbols)}): {', '.join(failed_symbols) if failed_symbols else 'NONE'}")
+        print(f"\n{'='*80}", flush=True)
+        print(f"🔵 ORB_FILTER SUMMARY:", flush=True)
+        print(f"   Total input symbols: {total_symbols}", flush=True)
+        print(f"   Symbols that PASSED: {len(passed_symbols)}", flush=True)
+        print(f"   Symbols that FAILED: {len(failed_symbols)}", flush=True)
+        print(f"\n   ✅ PASSED ({len(passed_symbols)}): {', '.join(passed_symbols) if passed_symbols else 'NONE'}", flush=True)
+        print(f"\n   ❌ FAILED ({len(failed_symbols)}): {', '.join(failed_symbols) if failed_symbols else 'NONE'}", flush=True)
         
         # Special check for PDD (passed_symbols and failed_symbols are lists of ticker strings)
         pdd_passed = "PDD" in passed_symbols
         pdd_failed = "PDD" in failed_symbols
         if pdd_passed:
-            print(f"\n   🟢 PDD STATUS: PASSED - Included in output")
+            print(f"\n   🟢 PDD STATUS: PASSED - Included in output", flush=True)
         elif pdd_failed:
-            print(f"\n   🔴 PDD STATUS: FAILED - Filtered out (check logs above for reason)")
+            print(f"\n   🔴 PDD STATUS: FAILED - Filtered out (check logs above for reason)", flush=True)
         else:
-            print(f"\n   ⚠️ PDD STATUS: NOT FOUND in input bundle")
-        print(f"{'='*80}\n")
+            print(f"\n   ⚠️ PDD STATUS: NOT FOUND in input bundle", flush=True)
+        print(f"{'='*80}\n", flush=True)
         
         logger.info(f"ORB_FILTER SUMMARY: {len(passed_symbols)} passed, {len(failed_symbols)} failed out of {total_symbols} total")
         
