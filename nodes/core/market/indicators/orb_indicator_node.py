@@ -129,6 +129,8 @@ class OrbIndicator(BaseIndicator):
 
             rel_vol_raw = result.get("rel_vol")
             direction = result.get("direction", "doji")
+            or_high = result.get("or_high")
+            or_low = result.get("or_low")
 
             # Type guard for rel_vol
             if not isinstance(rel_vol_raw, int | float):
@@ -139,9 +141,36 @@ class OrbIndicator(BaseIndicator):
 
             # Get the latest timestamp from bars for the result
             latest_timestamp = bars[-1]["timestamp"] if bars else 0
+            
+            # Get current price from the latest bar
+            current_price = bars[-1]["close"] if bars else None
 
-            # Return values in lines (for RVOL) and series (for direction)
-            values = IndicatorValue(lines={"rel_vol": rel_vol}, series=[{"direction": direction}])
+            # Special logging for PDD
+            is_pdd = symbol.ticker.upper() == "PDD"
+            if is_pdd:
+                print("=" * 80, flush=True)
+                print(f"🔵 PDD ORB INDICATOR RESULTS:", flush=True)
+                print(f"   Relative Volume: {rel_vol}%", flush=True)
+                print(f"   Direction: {direction}", flush=True)
+                print(f"   OR High: ${or_high}", flush=True)
+                print(f"   OR Low: ${or_low}", flush=True)
+                print(f"   Current Price: ${current_price}", flush=True)
+                if current_price and or_high:
+                    print(f"   Price vs ORH: ${current_price} vs ${or_high} (diff: ${current_price - or_high:.2f})", flush=True)
+                if current_price and or_low:
+                    print(f"   Price vs ORL: ${current_price} vs ${or_low} (diff: ${current_price - or_low:.2f})", flush=True)
+                print("=" * 80, flush=True)
+
+            # Return values in lines (for RVOL, ORH, ORL, current_price) and series (for direction)
+            values = IndicatorValue(
+                lines={
+                    "rel_vol": rel_vol,
+                    "or_high": or_high,
+                    "or_low": or_low,
+                    "current_price": current_price
+                },
+                series=[{"direction": direction}]
+            )
 
             indicator_result = IndicatorResult(
                 indicator_type=IndicatorType.ORB,
