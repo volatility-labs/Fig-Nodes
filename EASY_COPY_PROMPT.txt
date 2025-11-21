@@ -1,102 +1,300 @@
-Please analyze the provided cryptocurrency chart images which include the most recent volume, EMAs, Hurst data, MESA stochastics, Cycle Channel Oscillator (CCO), and Volume-by-Price (VBP) bars. Also included is longer-term Hurst, MESA, CCO, and OHLCV data.
+Please analyze ALL chart images provided. Each chart shows a different symbol with the most recent volume, EMAs, Hurst data, MESA stochastics, Cycle Channel Oscillator (CCO), and Volume-by-Price (VBP) bars. Also included is longer-term Hurst, MESA, CCO, and OHLCV data.
 
-CRITICAL: All indicators carry EQUAL WEIGHT - Do not prioritize one indicator over others. Look for symbols where multiple indicators align positively.
+CRITICAL: Analyze ALL symbols present in the provided charts/images. After analyzing all symbols, select and report ONLY the TOP 3 BEST BULLISH (LONG) setups for short-term trading.
 
-EMA RELATIONSHIP VERIFICATION (Use Numeric Values for Accuracy):
+CRITICAL: Look ONLY for BULLISH (LONG) setups. Focus on signals indicating upward price movement. Rank the top 3 best bullish opportunities based on signal strength.
 
-- Always check the RIGHT SIDE of each chart (most recent data)
+CRITICAL: Focus on VERY SHORT-TERM signals (next few hours to 1-2 days maximum). Prioritize immediate momentum, recent crosses, and current price action over longer-term patterns.
+
+CRITICAL: Use THREE PRIMARY INDICATORS to determine bullish/bearish setup:
+1. Hurst Spectral Analysis Oscillator (Composite) - PRIMARY INDICATOR
+2. MESA Stochastic Multi Length - PRIMARY INDICATOR  
+3. Cycle Channel Oscillator (CCO) - PRIMARY INDICATOR
+
+These three indicators are REQUIRED and carry PRIMARY WEIGHT in determining if a symbol is bullish or bearish.
+
+SECONDARY INDICATORS (use at discretion only for confirmation):
+- EMAs (Moving Averages) - Use only to confirm or provide additional context
+- Volume - Use only to confirm momentum or divergence
+- Volume-by-Price (VBP) - Use only to identify support/resistance levels
+
+Prioritize symbols where the THREE PRIMARY INDICATORS align positively for BULLISH movement. Secondary indicators (EMAs, Volume, VBP) should only be used to confirm or provide additional context, not as primary determinants.
+
+CRITICAL: After analyzing ALL symbols, select ONLY symbols that show STRONG BULLISH signals. Rank the TOP 3 BEST BULLISH setups, but ONLY include symbols that are actually bullish. If fewer than 3 symbols show strong bullish signals, only rank those that are bullish. DO NOT include bearish or neutral symbols just to fill the top 3. If there are fewer than 3 bullish symbols, provide analysis for only those bullish symbols (e.g., if only 1 symbol is bullish, provide analysis for just that 1 symbol).
+
+EMA RELATIONSHIP VERIFICATION (Use Numeric Values for Accuracy - SHORT-TERM FOCUS):
+
+- Always check the RIGHT SIDE of each chart (most recent data) - THIS IS CRITICAL FOR SHORT-TERM SIGNALS
 
 - Verify EMA relationships using the NUMERIC VALUES shown in annotations (e.g., "EMA 10: $X.XX", "EMA 30: $X.XX", "EMA 100: $X.XX")
 
-- A "butterfly pattern" requires ALL THREE: EMA 10 value > EMA 30 value > EMA 100 value
+- PRIORITIZE RECENT CROSSES: Recent crosses (EMA 10↑30, EMA 30↑100, EMA 10↑100) in the last few bars are STRONGEST signals for immediate movement
+
+- A "butterfly pattern" requires ALL THREE: EMA 10 value > EMA 30 value > EMA 100 value (but recent crosses are MORE IMPORTANT for short-term)
 
 - Do NOT assume EMAs are above the 100 EMA just because price is rising - verify by comparing numeric annotation values
 
-- Note: EMAs can still be bullish even if below 100 EMA if other indicators align positively
+- For short-term: EMA convergence and recent crosses are MORE VALUABLE than butterfly patterns (which take time to develop)
 
-RANKING CRITERIA (Equal Weight - All Indicators Matter):
+RANKING CRITERIA (Primary Indicators First, Secondary at Discretion):
 
-1. EMA Analysis (Equal Weight):
-   - EMA progression stages (all are positive signals):
-     * Convergence: Shorter-term EMAs (10, 30) coming together
-     * Recent Crosses: Recent crosses of shorter-term EMAs over longer-term EMAs (e.g., EMA 10 crossing above EMA 30, EMA 30 crossing above EMA 100) - THIS IS PARTICULARLY POSITIVE
-     * Butterfly: EMAs "butterflying" above 100 EMA (EMA 10 > EMA 30 > EMA 100)
-     * Spread/Expansion: Butterfly pattern expanding (early stages preferred, not over-extended)
-   - Look for symbols in any of these stages, with recent crosses being particularly positive
-   - Verify using numeric values from annotations
+PRIMARY INDICATORS (Required - Use These to Determine Bullish/Bearish):
 
-2. Price Action (Equal Weight):
-   - Recent upward movement and momentum strength
-   - Price pattern formations
-   - Current price relative to EMAs
+1. Hurst Spectral Analysis Oscillator (PRIMARY):
+   - PRIORITIZE IMMEDIATE SIGNALS (in order of importance for next few hours):
+     * **RECENT CROSSES** (HIGHEST PRIORITY): Recent crosses in last 1-5 bars are STRONGEST short-term signals
+       - EMA 10 crossing above EMA 30 = Immediate bullish momentum
+       - EMA 30 crossing above EMA 100 = Strong bullish confirmation
+       - EMA 10 crossing above EMA 100 = Very strong bullish signal
+     * **Convergence**: Shorter-term EMAs (10, 30) coming together = Potential for immediate breakout
+     * **Current Price vs EMAs**: Price above all EMAs = Bullish, Price below all EMAs = Bearish (for next few hours)
+   - Multiple short-period alignments (5, 10, 20 day) = Stronger signal than long-period alignments
+   - Assessment: Above zero = Bullish momentum, Below zero = Bearish momentum
 
-3. Volume Analysis (Equal Weight):
-   - Volume trends and spikes
-   - Volume supporting price movement
-   - Volume relative to recent averages
+2. MESA Stochastic Multi Length (PRIMARY):
+   - CHECK RIGHT SIDE OF CHART (most recent bars) - this is what matters for next few hours
+   - Multi-length indicator positions (MESA1, MESA2, MESA3, MESA4) - each with its own trigger line (dashed)
+   - MESA Stochastic values range from 0.0 to 1.0 (similar to standard stochastic oscillator)
+   - **IMMEDIATE CROSSOVER SIGNALS (Bullish - HIGHEST PRIORITY - FOCUS ON THESE):**
+     * Crossover in TOP HALF (above 0.5) = "PUMP" signal - STRONG BULLISH momentum for NEXT FEW HOURS
+     * When MESA lines cross ABOVE their trigger lines in the upper half RIGHT NOW = Immediate buy signal
+     * Recent crossovers (last 1-3 bars) are STRONGEST signals
+   - **AVOID BEARISH SIGNALS (Do not select symbols with these):**
+     * Crossunder in BOTTOM HALF (below 0.5) = "DUMP" signal - STRONG BEARISH momentum
+     * When MESA lines cross BELOW their trigger lines in the lower half RIGHT NOW = Bearish signal - AVOID
+     * Recent crossunders (last 1-3 bars) = Bearish - DO NOT SELECT
+   - **GOOD ENTRY SIGNALS (IMMEDIATE ACTION):**
+     * MESA lines turning UPWARD from LOW points (near 0.0 or in lower half) RIGHT NOW = Buy signal
+     * Multiple MESA lines aligning and turning upward together in last 1-3 bars = STRONG BUY signal
+     * Best entries: Lines oversold (low values) and beginning to reverse upward NOW
+   - **AVOID THESE (Do not select symbols with these):**
+     * MESA lines turning DOWNWARD from HIGH points (near 1.0 or in upper half) RIGHT NOW = Bearish - AVOID
+     * Multiple MESA lines aligning and turning downward together in last 1-3 bars = STRONG BEARISH - DO NOT SELECT
+     * Lines overbought (high values) and beginning to reverse downward NOW = Bearish reversal - AVOID
+   - **CURRENT OVERBOUGHT/OVERSOLD (IMMEDIATE REVERSAL RISK):**
+     * Values approaching or above 1.0 RIGHT NOW = Overbought - potential pullback in next few hours
+     * Values approaching or below 0.0 RIGHT NOW = Oversold - potential bounce in next few hours
+   - **CONTINUATION SIGNALS (IMMEDIATE TREND):**
+     * MESA lines maintaining direction and staying aligned RIGHT NOW = Trend likely to continue for next few hours
+     * All MESA1-4 aligned in same direction = Strong continuation signal
+   - **Multi-Length Alignment (CURRENT STATE):**
+     * When MESA1, MESA2, MESA3, and MESA4 all align in same direction RIGHT NOW = STRONGEST immediate signal
+     * Divergence between different MESA lengths = Weaker signal, potential reversal soon
+   - Assessment: Bullish crossovers in top half = Strong bullish, Bearish crossunders in bottom half = Strong bearish
 
-4. Hurst Analysis (Equal Weight):
-   - Composite oscillator direction and strength
-   - Period-specific signals (5, 10, 20, 40, 80 day)
-   - Oscillator position relative to zero
-   - Multiple period alignments
+6. Volume Analysis (Secondary - Use at Discretion):
+   - RECENT VOLUME SPIKES: Volume spikes in last 1-5 bars = Strong immediate signal
+   - Volume supporting CURRENT price movement (right side of chart) = Confirmation for next few hours
+   - Volume relative to recent averages (last 20 bars) - above average = stronger signal
+   - Volume divergence: Decreasing volume on price moves = weakening momentum (bearish for continuation)
+   - Current volume vs price: High volume + price up = Strong buy signal, High volume + price down = Strong sell signal
+   - Use volume only to confirm momentum suggested by primary indicators
 
-5. MESA Stochastic (Equal Weight):
-   - Multi-length indicator positions (MESA1, MESA2, MESA3, MESA4)
-   - Trigger line relationships
-   - Momentum direction and strength
-   - Stochastic position and trend
+7. Volume-by-Price (VBP) Analysis (Secondary - Use at Discretion):
+   - CURRENT COMPOSITE DIRECTION: Is composite trending up or down RIGHT NOW? (most important)
+   - Short periods (5, 10 day) are MORE IMPORTANT than long periods (40, 80 day) for next few hours
+   - Recent oscillator crosses: Composite crossing zero or changing direction in last few bars = Strong signal
+   - Oscillator position relative to zero: Above zero = Bullish momentum, Below zero = Bearish momentum
+   - Multiple short-period alignments (5, 10, 20 day) = Stronger signal than long-period alignments
+   - Assessment: Above zero = Bullish momentum, Below zero = Bearish momentum
 
-6. Cycle Channel Oscillator - CCO (Equal Weight):
-   - Fast Oscillator: Price position within medium-term channel (0.0 to 1.0 range)
-   - Slow Oscillator: Short cycle midline position within medium-term channel (0.0 to 1.0 range)
-   - Oscillator relationships: Fast Osc ABOVE Slow Osc = BULLISH (positive momentum), Fast Osc BELOW Slow Osc = BEARISH (negative momentum)
-   - Both oscillators trending upward = bullish, both trending downward = bearish
-   - Extreme conditions: Values above 1.0 (overbought) or below 0.0 (oversold) - highlighted in purple
-   - Position relative to key levels (0.0, 0.5, 1.0)
+3. Cycle Channel Oscillator - CCO (PRIMARY):
+   - CHECK RIGHT SIDE OF CHART (most recent bars) - this is what matters for next few hours
+   - Multi-length indicator positions (MESA1, MESA2, MESA3, MESA4) - each with its own trigger line (dashed)
+   - MESA Stochastic values range from 0.0 to 1.0 (similar to standard stochastic oscillator)
+   - **IMMEDIATE CROSSOVER SIGNALS (Bullish - HIGHEST PRIORITY - FOCUS ON THESE):**
+     * Crossover in TOP HALF (above 0.5) = "PUMP" signal - STRONG BULLISH momentum for NEXT FEW HOURS
+     * When MESA lines cross ABOVE their trigger lines in the upper half RIGHT NOW = Immediate buy signal
+     * Recent crossovers (last 1-3 bars) are STRONGEST signals
+   - **AVOID BEARISH SIGNALS (Do not select symbols with these):**
+     * Crossunder in BOTTOM HALF (below 0.5) = "DUMP" signal - STRONG BEARISH momentum
+     * When MESA lines cross BELOW their trigger lines in the lower half RIGHT NOW = Bearish signal - AVOID
+     * Recent crossunders (last 1-3 bars) = Bearish - DO NOT SELECT
+   - **GOOD ENTRY SIGNALS (IMMEDIATE ACTION):**
+     * MESA lines turning UPWARD from LOW points (near 0.0 or in lower half) RIGHT NOW = Buy signal
+     * Multiple MESA lines aligning and turning upward together in last 1-3 bars = STRONG BUY signal
+     * Best entries: Lines oversold (low values) and beginning to reverse upward NOW
+   - **AVOID THESE (Do not select symbols with these):**
+     * MESA lines turning DOWNWARD from HIGH points (near 1.0 or in upper half) RIGHT NOW = Bearish - AVOID
+     * Multiple MESA lines aligning and turning downward together in last 1-3 bars = STRONG BEARISH - DO NOT SELECT
+     * Lines overbought (high values) and beginning to reverse downward NOW = Bearish reversal - AVOID
+   - **CURRENT OVERBOUGHT/OVERSOLD (IMMEDIATE REVERSAL RISK):**
+     * Values approaching or above 1.0 RIGHT NOW = Overbought - potential pullback in next few hours
+     * Values approaching or below 0.0 RIGHT NOW = Oversold - potential bounce in next few hours
+   - **CONTINUATION SIGNALS (IMMEDIATE TREND):**
+     * MESA lines maintaining direction and staying aligned RIGHT NOW = Trend likely to continue for next few hours
+     * All MESA1-4 aligned in same direction = Strong continuation signal
+   - **Multi-Length Alignment (CURRENT STATE):**
+     * When MESA1, MESA2, MESA3, and MESA4 all align in same direction RIGHT NOW = STRONGEST immediate signal
+     * Divergence between different MESA lengths = Weaker signal, potential reversal soon
+   - Assessment: Bullish crossovers in top half = Strong bullish, Bearish crossunders in bottom half = Strong bearish
+
+3. Cycle Channel Oscillator - CCO (PRIMARY):
+   - CHECK RIGHT SIDE OF CHART (current values) - this determines next few hours direction
+   - Fast Oscillator: Price position within medium-term channel (0.0 to 1.0 range) - CURRENT value matters most
+   - Slow Oscillator: Short cycle midline position within medium-term channel (0.0 to 1.0 range) - CURRENT value matters most
+   - **IMMEDIATE RELATIONSHIP (RIGHT NOW):**
+     * Fast Osc ABOVE Slow Osc RIGHT NOW = BULLISH momentum for next few hours
+     * Fast Osc BELOW Slow Osc RIGHT NOW = BEARISH momentum for next few hours
+     * Recent crossover (Fast crossing above Slow) = Strong buy signal
+     * Recent crossunder (Fast crossing below Slow) = Strong sell signal
+   - **CURRENT TREND:**
+     * Both oscillators trending upward RIGHT NOW = Bullish for next few hours
+     * Both oscillators trending downward RIGHT NOW = Bearish for next few hours
+   - **IMMEDIATE EXTREME CONDITIONS:**
+     * Values above 1.0 RIGHT NOW = Overbought - potential pullback in next few hours
+     * Values below 0.0 RIGHT NOW = Oversold - potential bounce in next few hours
+   - **CURRENT POSITION:**
+     * Near 0.0 = Oversold (potential bounce soon)
+     * Near 0.5 = Neutral (watch for direction change)
+     * Near 1.0 = Overbought (potential pullback soon)
    - Note: Similar to %b oscillator - Fast Osc shows price location, Slow Osc acts as signal line
+   - Assessment: Fast Osc > Slow Osc = Bullish, Fast Osc < Slow Osc = Bearish
 
-7. Volume-by-Price (VBP) Analysis (Equal Weight):
+SECONDARY INDICATORS (Use at Discretion Only - For Confirmation):
+
+4. EMA Analysis (Secondary - Use at Discretion):
+   - PRIORITIZE IMMEDIATE SIGNALS (in order of importance for next few hours):
+     * **RECENT CROSSES** (HIGHEST PRIORITY): Recent crosses in last 1-5 bars are STRONGEST short-term signals
+       - EMA 10 crossing above EMA 30 = Immediate bullish momentum
+       - EMA 30 crossing above EMA 100 = Strong bullish confirmation
+       - EMA 10 crossing above EMA 100 = Very strong bullish signal
+     * **Convergence**: Shorter-term EMAs (10, 30) coming together = Potential for immediate breakout
+     * **Current Price vs EMAs**: Price above all EMAs = Bullish, Price below all EMAs = Bearish (for next few hours)
+   - Lower priority for short-term: Butterfly patterns take time to develop (less relevant for hours/days timeframe)
+   - Verify using numeric values from annotations - focus on RIGHT SIDE of chart (most recent)
+   - Use EMAs only to confirm direction suggested by primary indicators, not as primary determinant
+
+5. Price Action (Secondary - Use at Discretion):
+   - IMMEDIATE MOMENTUM: Last 3-10 bars showing strong directional movement (most important)
+   - Current price relative to EMAs (right side of chart) - above/below for immediate direction
+   - Recent price patterns: Breakouts, reversals, or consolidations in last few bars
+   - Volume confirmation: Is volume supporting the recent price movement? (critical for short-term)
+   - Ignore longer-term patterns - focus on what's happening NOW
+   - Use price action only to confirm momentum suggested by primary indicators
+
+6. Volume Analysis (Secondary - Use at Discretion):
+   - RECENT VOLUME SPIKES: Volume spikes in last 1-5 bars = Strong immediate signal
+   - Volume supporting CURRENT price movement (right side of chart) = Confirmation for next few hours
+   - Volume relative to recent averages (last 20 bars) - above average = stronger signal
+   - Volume divergence: Decreasing volume on price moves = weakening momentum (bearish for continuation)
+   - Current volume vs price: High volume + price up = Strong buy signal, High volume + price down = Strong sell signal
+   - Use volume only to confirm momentum suggested by primary indicators
+
+7. Volume-by-Price (VBP) Analysis (Secondary - Use at Discretion):
    - VBP bars appear as horizontal bars on the LEFT SIDE of the price chart, extending into the chart area
-   - BIG BARS = Important Support/Resistance Levels: Thick, wide VBP bars indicate price levels where significant volume was traded
-     * These act as STRONG support (if price is above) or STRONG resistance (if price is below)
-     * Price tends to pause, bounce, or reverse at these high-volume price zones
-     * Multiple big bars clustered together create even stronger support/resistance zones
-   - NARROW BARS or NO BARS = Free Flow Lanes: Thin or missing VBP bars indicate price levels with little trading activity
-     * These are "free flow lanes" where price can move easily with minimal resistance
-     * Price tends to move quickly through these low-volume zones
-     * Gaps between VBP bars indicate price levels with minimal historical trading activity
-   - Current Price Position: Analyze where current price is relative to VBP bars
-     * Price ABOVE big VBP bars = Strong support below, potential for upward movement
-     * Price BELOW big VBP bars = Strong resistance above, potential for downward pressure
-     * Price IN low-volume zone = Easy movement potential in either direction
-     * Price approaching big VBP bar = Likely to encounter support/resistance
-   - VBP Distribution: Look for patterns in VBP bar distribution
-     * Clustered big bars = Strong support/resistance zones
-     * Scattered or missing bars = Volatile price zones with less predictable behavior
-     * Even distribution = More balanced trading activity across price range
+   - **CURRENT PRICE POSITION (RIGHT NOW) - MOST IMPORTANT:**
+     * Price ABOVE big VBP bars RIGHT NOW = Strong support below, bullish for next few hours
+     * Price BELOW big VBP bars RIGHT NOW = Strong resistance above, bearish for next few hours
+     * Price IN low-volume zone RIGHT NOW = Easy movement potential (can go either direction quickly)
+     * Price approaching big VBP bar (within 1-2%) = Likely to encounter support/resistance SOON
+   - **IMMEDIATE SUPPORT/RESISTANCE:**
+     * BIG BARS near current price = Strong support/resistance that will affect next few hours
+     * Thick VBP bars directly above current price = Resistance level to watch
+     * Thick VBP bars directly below current price = Support level to watch
+   - **FREE FLOW ZONES (IMMEDIATE MOVEMENT):**
+     * NARROW BARS or NO BARS near current price = Price can move quickly in either direction
+     * Gaps between VBP bars near current price = Minimal resistance, fast movement potential
+   - Lower priority for short-term: Historical VBP distribution patterns (less relevant for hours timeframe)
+   - Use VBP only to identify support/resistance levels, not as primary determinant
 
-8. Overall Momentum & Convergence (Equal Weight):
-   - Multiple indicators aligning in same direction
-   - Early-stage patterns (not over-extended)
-   - Strong confirmation across all indicators
-   - Note any divergences or conflicts between indicators
+8. Overall Momentum & Convergence (Primary Indicators First):
+   - **PRIMARY INDICATOR ALIGNMENT (REQUIRED):**
+     * Look for symbols where the THREE PRIMARY INDICATORS (Hurst, MESA, CCO) align in the same direction
+     * ALL THREE PRIMARY INDICATORS must align bullishly for a strong bullish signal
+     * If primary indicators conflict, the symbol is NOT a strong setup
+   - **SECONDARY INDICATOR CONFIRMATION (OPTIONAL):**
+     * Secondary indicators (EMAs, Volume, VBP) can provide additional confirmation
+     * If secondary indicators align with primary indicators, signal is stronger
+     * If secondary indicators conflict with primary indicators, rely on PRIMARY indicators
+   - **CONVERGENCE:**
+     * Strong confirmation across ALL THREE PRIMARY INDICATORS = Best setup
+     * Early-stage patterns (not over-extended) are preferred
+   - **TIMING:**
+     * Focus on signals that are happening NOW or just happened (last 1-5 bars)
+     * Ignore patterns that are developing over longer timeframes
+   - **ENTRY TIMING:**
+     * Best entries: Multiple indicators just aligned or crossing NOW
+     * Avoid entries: Indicators showing divergence or overbought/oversold extremes
 
 OUTPUT FORMAT:
 
-For each symbol in your top 3 predictions, provide:
+CRITICAL WORKFLOW: Follow these steps in order. Do NOT skip ahead or analyze symbols that don't pass the filter.
+
+STEP 1: QUICK SCREENING - Review ALL symbols present in the provided charts/images. For each symbol, quickly check:
+
+BULLISH SIGNALS (must have these PRIMARY indicators to pass filter):
+- Hurst Composite: Above zero = BULLISH momentum (or trending upward)
+- CCO: Fast Osc > Slow Osc = BULLISH (or Fast Osc crossing above Slow Osc)
+- MESA Stochastic: Lines above triggers AND trending up = BULLISH (or bullish crossovers in top half)
+
+BEARISH SIGNALS (these PRIMARY indicators mean SKIP the symbol):
+- Hurst Composite: Below zero = BEARISH momentum (or trending downward, SKIP)
+- CCO: Fast Osc < Slow Osc = BEARISH (SKIP)
+- MESA Stochastic: Lines below triggers AND trending down = BEARISH (or bearish crossunders in bottom half, SKIP)
+
+CRITICAL: A symbol must have AT LEAST 2 of the 3 PRIMARY indicators showing bullish signals to pass the filter. If 2 or more PRIMARY indicators are bearish, SKIP the symbol regardless of secondary indicators.
+
+CRITICAL: Oversold conditions (low MESA values, low CCO values) do NOT make a bearish setup bullish. If Hurst is bearish AND CCO is bearish, it's BEARISH regardless of oversold conditions. SKIP IT.
+
+COMMON MISTAKES TO AVOID:
+- DO NOT confuse "oversold" with "bullish setup" - oversold means price is low, but if PRIMARY indicators (Hurst, CCO, MESA) are bearish, it's still a bearish setup
+- DO NOT analyze symbols where PRIMARY indicators conflict or show bearish signals - rely on PRIMARY indicators first
+- DO NOT analyze symbols where Fast Osc < Slow Osc - this is bearish CCO, not bullish
+- DO NOT use secondary indicators (EMAs, Volume, VBP) to override PRIMARY indicators - PRIMARY indicators determine bullish/bearish
+- DO NOT say "about to cross" or "potential reversal" - only analyze symbols that ALREADY show bullish signals in PRIMARY indicators
+- DO NOT fill the top 3 with bearish symbols just because they're "oversold" or "might reverse"
+
+STEP 2: FILTER - After quick screening, identify ONLY symbols that show STRONG BULLISH signals in PRIMARY indicators. 
+- Symbols with bearish Hurst Composite (below zero or trending down) = SKIP (DO NOT ANALYZE - this is bearish)
+- Symbols with bearish CCO (Fast Osc < Slow Osc) = SKIP (DO NOT ANALYZE - this is bearish, not bullish)
+- Symbols with bearish MESA crossunders = SKIP (DO NOT ANALYZE - these are bearish, not bullish)
+- Symbols with overall bearish momentum in PRIMARY indicators = SKIP (DO NOT ANALYZE - these are bearish, not bullish)
+- CRITICAL: Oversold conditions (low MESA values, low CCO values) do NOT make a bearish setup bullish. If Hurst is bearish AND CCO is bearish, it's STILL BEARISH even if oversold. SKIP IT.
+- CRITICAL: A symbol must have AT LEAST 2 of these 3 PRIMARY indicators showing bullish signals to be considered bullish:
+  * Bullish Hurst Composite (above zero or trending upward)
+  * Bullish CCO (Fast Osc > Slow Osc) OR Fast Osc crossing above Slow Osc
+  * Bullish MESA (lines above triggers, trending up, or bullish crossovers in top half)
+- Secondary indicators (EMAs, Volume, VBP) can provide confirmation but do NOT override PRIMARY indicators
+- Only proceed to detailed analysis for symbols that pass this PRIMARY indicator bullish filter
+
+STEP 3: DETAILED ANALYSIS - Only provide complete analysis for symbols that passed the bullish filter in STEP 2. 
+
+CRITICAL DECISION POINT:
+- FIRST: Count how many symbols passed the bullish filter in STEP 2
+- IF ZERO symbols passed the filter: State "No strong bullish setups found. All analyzed symbols show weak, mixed, or bearish signals." and STOP IMMEDIATELY - DO NOT provide any detailed analysis for any symbols
+- IF 1-2 symbols passed the filter: Provide complete analysis ONLY for those symbols that passed
+- IF 3+ symbols passed the filter: Provide complete analysis for the TOP 3 BEST symbols that passed
+
+CRITICAL RULES:
+- Do NOT provide detailed analysis for symbols that are bearish, neutral, or should be avoided
+- Do NOT analyze symbols that failed the filter in STEP 2
+- Do NOT analyze symbols "just to fill the top 3" - if only 1 symbol passed, analyze only that 1 symbol
+- If you find yourself analyzing a symbol with inverted EMAs or bearish CCO, STOP - you made an error in STEP 2
+
+CRITICAL REMINDER BEFORE STARTING DETAILED ANALYSIS:
+1. FIRST: Check how many symbols passed the bullish filter in STEP 2
+2. IF ZERO symbols passed: State "No strong bullish setups found" and STOP - do NOT analyze any symbols
+3. IF symbols passed: Only analyze those symbols that passed the filter
+4. Do NOT analyze symbols that failed the filter - skip them entirely
+5. Do NOT analyze bearish symbols just to fill the top 3
+
+For each symbol that passed the bullish filter (ONLY symbols that passed STEP 2), provide complete analysis:
 
 Symbol: [SYMBOL]
 
-EMA Analysis (Equal Weight):
+PRIMARY INDICATORS (Required Analysis):
+
+Hurst Spectral Analysis Oscillator (PRIMARY):
 - EMA 10: $X.XX, EMA 30: $X.XX, EMA 100: $X.XX
 - Relationship: EMA 10 [above/below] EMA 30 [above/below] EMA 100
+- CRITICAL CHECK: If EMA 10 < EMA 30 < EMA 100, this is BEARISH (inverted EMAs). This symbol should NOT have passed the filter. If you're analyzing a symbol with inverted EMAs, STOP - this is an error.
 - EMA Stage: [Convergence/Recent Crosses/Butterfly/Spread-Expansion]
 - Recent Crosses: [Note any recent crosses of shorter-term EMAs over longer-term EMAs - this is a positive signal]
-- Butterfly Pattern: [Yes/No - only Yes if all three EMAs are in ascending order]
-- Assessment: [Bullish/Neutral/Bearish signal strength]
+- Butterfly Pattern: [Yes/No - only Yes if EMA 10 > EMA 30 > EMA 100 - all three EMAs in ascending order]
+- Assessment: [Bullish/Neutral/Bearish signal strength based on composite direction and period alignment]
 
-Price Action (Equal Weight):
+MESA Stochastic Multi Length (PRIMARY):
 - [Recent trend direction, momentum strength, pattern formations]
 
 Volume Analysis (Equal Weight):
@@ -106,42 +304,113 @@ Hurst Analysis (Equal Weight):
 - [Composite oscillator direction, period-specific signals, alignment]
 
 MESA Stochastic (Equal Weight):
-- [Multi-length positions, trigger relationships, momentum direction]
+- MESA1: [Current value, position relative to trigger, trend direction]
+- MESA2: [Current value, position relative to trigger, trend direction]
+- MESA3: [Current value, position relative to trigger, trend direction]
+- MESA4: [Current value, position relative to trigger, trend direction]
+- Crossovers/Crossunders: [Any crossovers in top half (PUMP) or crossunders in bottom half (DUMP)?]
+- Good Entry Signals: [Are MESA lines turning upward from low points? Multiple lines aligning upward?]
+- Bad Entry Signals: [Are MESA lines turning downward from high points? Multiple lines aligning downward?]
+- Overbought/Oversold: [Any values near 1.0 (overbought) or 0.0 (oversold)?]
+- Continuation: [Are MESA lines maintaining direction and staying aligned?]
+- Multi-Length Alignment: [Are all MESA lines (1-4) aligned in same direction? Any divergence?]
+- Assessment: [Bullish/Neutral/Bearish signal strength based on crossover positions, entry signals, and alignment]
 
-Cycle Channel Oscillator - CCO (Equal Weight):
+Cycle Channel Oscillator - CCO (PRIMARY):
 - Fast Osc: [Current value, position in channel (0.0-1.0), trend direction]
 - Slow Osc: [Current value, position in channel (0.0-1.0), trend direction]
 - Relationship: [Fast Osc ABOVE Slow Osc = BULLISH, Fast Osc BELOW Slow Osc = BEARISH]
+- CRITICAL CHECK: If Fast Osc < Slow Osc, this is BEARISH CCO. This symbol should NOT have passed the filter. If you're analyzing a symbol with Fast Osc < Slow Osc, STOP - this is an error. Do NOT say "about to cross" - only analyze symbols where Fast Osc > Slow Osc RIGHT NOW.
 - Trend: [Both oscillators trending upward = bullish, both trending downward = bearish]
 - Extreme Conditions: [Any values above 1.0 (overbought) or below 0.0 (oversold) - highlighted in purple]
-- Assessment: [Bullish/Neutral/Bearish signal strength based on oscillator positions and relationship]
+- Assessment: [Bullish/Neutral/Bearish signal strength based on oscillator positions and relationship - if Fast Osc < Slow Osc, this MUST be Bearish, not Bullish]
 
-Volume-by-Price (VBP) Analysis (Equal Weight):
+SECONDARY INDICATORS (Use at Discretion - For Confirmation Only):
+
+EMA Analysis (Secondary - Use at Discretion):
 - VBP Bar Distribution: [Describe the pattern - clustered big bars, scattered bars, gaps, etc.]
 - Big Bars (Support/Resistance): [Identify price levels with thick VBP bars and their significance]
 - Narrow/Missing Bars (Free Flow Zones): [Identify price levels with thin or no VBP bars - easy movement zones]
 - Current Price Position: [Where is current price relative to VBP bars? Above/below big bars? In low-volume zone?]
 - Support/Resistance Assessment: [Strong support below / Strong resistance above / Free flow zone / Approaching key level]
 - Price Movement Potential: [Based on VBP distribution, assess ease of upward/downward movement]
-- Assessment: [Bullish/Neutral/Bearish signal strength based on VBP bar distribution and current price position]
+- Assessment: [Use EMAs only to confirm direction suggested by PRIMARY indicators]
 
-Overall Assessment (Equal Weight to All Indicators):
-- [Synthesis of all indicators - why this symbol ranks in top 3]
-- [Indicator alignment: Strong/Moderate/Weak]
-- [Any conflicting signals between indicators]
+Price Action (Secondary - Use at Discretion):
+- [Recent trend direction, momentum strength, pattern formations]
+- [Use price action only to confirm momentum suggested by PRIMARY indicators]
+
+Volume Analysis (Secondary - Use at Discretion):
+- [Volume trends, spikes, support for price movement]
+- [Use volume only to confirm momentum suggested by PRIMARY indicators]
+
+Volume-by-Price (VBP) Analysis (Secondary - Use at Discretion):
+- VBP Bar Distribution: [Describe the pattern - clustered big bars, scattered bars, gaps, etc.]
+- Big Bars (Support/Resistance): [Identify price levels with thick VBP bars and their significance]
+- Narrow/Missing Bars (Free Flow Zones): [Identify price levels with thin or no VBP bars - easy movement zones]
+- Current Price Position: [Where is current price relative to VBP bars? Above/below big bars? In low-volume zone?]
+- Support/Resistance Assessment: [Strong support below / Strong resistance above / Free flow zone / Approaching key level]
+- Assessment: [Use VBP only to identify support/resistance levels, not as primary determinant]
+
+Overall Assessment (PRIMARY Indicators First - BULLISH ONLY):
+- [Direction: This MUST be a STRONG BULLISH (LONG) setup based on PRIMARY indicators. If PRIMARY indicators show bearish direction, STOP HERE - this symbol should NOT be analyzed further and should NOT appear in the final ranking]
+- [PRIMARY Indicator Alignment: How many PRIMARY indicators (Hurst, MESA, CCO) align bullishly? ALL THREE must align bullishly for strongest signal. At least 2 of 3 must be bullish to pass filter]
+- [Signal Strength: Count how many PRIMARY indicators show bullish signals. For a symbol to be ranked, at least 2 of 3 PRIMARY indicators must show bullish signals]
+- [Secondary Indicator Confirmation: Do secondary indicators (EMAs, Volume, VBP) confirm the PRIMARY indicator direction? This provides additional confidence but does NOT override PRIMARY indicators]
+- [Conflicts: Note any conflicts between PRIMARY indicators - if PRIMARY indicators conflict, this is NOT a strong setup. If secondary indicators conflict with PRIMARY indicators, rely on PRIMARY indicators]
+- [Recent signals (last 1-5 bars): What signals just happened that indicate immediate movement?]
+- [Convergence: Do multiple indicators confirm the same direction?]
+- [Entry timing: Is this a good time to enter NOW based on indicator alignment, or wait for better convergence?]
+- [CRITICAL CHECK: Before proceeding, verify this Overall Assessment confirms STRONG BULLISH direction. If it says "bearish", "neutral", "AVOID", "Strong Sell", "Weakly Bearish", "Not a bullish setup", or any negative language, this symbol MUST be excluded from analysis and ranking]
 
 Risk Considerations:
 - [Any concerns, limitations, or conflicting signals]
 
 ---
 
-Final Ranking:
-1. [Top symbol] - [Brief reason considering all indicators equally]
-2. [Second symbol] - [Brief reason considering all indicators equally]
-3. [Third symbol] - [Brief reason considering all indicators equally]
+[REPEAT THE ABOVE FORMAT FOR SYMBOL #2]
+
+---
+
+[REPEAT THE ABOVE FORMAT FOR SYMBOL #3]
+
+---
+
+FINAL RANKING SECTION - ONLY PROVIDE THIS IF YOU ANALYZED SYMBOLS IN STEP 3:
+
+CRITICAL: Only provide Final Ranking if you actually analyzed symbols in STEP 3. If you stated "No strong bullish setups found" and did not analyze any symbols, skip this entire Final Ranking section.
+
+CRITICAL: Before creating the Final Ranking, verify that each symbol's "Overall Assessment" explicitly states BULLISH direction. If any symbol's Overall Assessment says "bearish", "neutral", "AVOID", "Strong Sell", "Weakly Bearish", "Not a bullish setup", or any negative language, DO NOT include it in the ranking.
+
+Final Ranking (Ranked by PRIMARY Indicator Bullish Signal Strength - ONLY include STRONG BULLISH symbols):
+1. [Top symbol] - LONG - [Brief reason focusing on PRIMARY indicators (Hurst, MESA, CCO) - how many PRIMARY indicators align bullishly]
+2. [Second symbol] - LONG - [Brief reason focusing on PRIMARY indicators (Hurst, MESA, CCO) - how many PRIMARY indicators align bullishly]
+3. [Third symbol] - LONG - [Brief reason focusing on PRIMARY indicators (Hurst, MESA, CCO) - how many PRIMARY indicators align bullishly]
+
+NOTE: Only include STRONG BULLISH (LONG) setups where PRIMARY indicators (Hurst, MESA, CCO) align positively. Rank by PRIMARY indicator bullish signal strength. Secondary indicators (EMAs, Volume, VBP) can provide confirmation but PRIMARY indicators determine ranking. If fewer than 3 symbols qualify, only rank those that qualify. If no symbols qualify, state "No strong bullish setups found." 
+
+CRITICAL RANKING RULES:
+- If fewer than 3 symbols show STRONG bullish signals in PRIMARY indicators, only rank those that are STRONGLY bullish
+- If NO symbols show strong bullish signals in PRIMARY indicators, state: "No strong bullish setups found. All analyzed symbols show weak, mixed, or bearish signals in PRIMARY indicators." and STOP - do NOT provide any ranking
+- Do NOT include symbols with weak, mixed, or bearish PRIMARY indicators just to fill the ranking
+- Do NOT rank symbols where PRIMARY indicators conflict or show bearish signals
+- A symbol must have STRONG alignment across PRIMARY indicators (at least 2 of 3 bullish) to be ranked
+- The more PRIMARY indicators that align bullishly, the stronger the signal
+- Secondary indicators (EMAs, Volume, VBP) can provide confirmation but do NOT override PRIMARY indicators
+
+IMPORTANT: Only rank symbols that show STRONG BULLISH signals with clear alignment across multiple indicators. Weak or mixed signals should NOT be ranked. If a symbol's Overall Assessment says "AVOID", "bearish", "do not enter", or similar negative language, it should NOT be ranked.
+
+CRITICAL: Before ranking, check each symbol's Overall Assessment. If it says the symbol is bearish, neutral, or should be avoided, DO NOT include it in the ranking. Only rank symbols where the Overall Assessment confirms bullish direction.
+
+EXAMPLE OF CORRECT OUTPUT WHEN NO SYMBOLS PASS FILTER:
+"After reviewing all symbols in STEP 1 and applying the bullish filter in STEP 2, no symbols showed strong bullish signals. All symbols had bearish EMAs (inverted), bearish CCO (Fast Osc < Slow Osc), or other bearish indicators. 
+
+No strong bullish setups found. All analyzed symbols show weak, mixed, or bearish signals."
+
+[STOP HERE - Do NOT analyze any symbols, do NOT provide Final Ranking]
 
 Important Disclaimers:
 - These are predictions based on technical analysis only
-- Cryptocurrency markets are highly volatile
+- Markets are highly volatile
 - Always use proper risk management
 - This is not financial advice

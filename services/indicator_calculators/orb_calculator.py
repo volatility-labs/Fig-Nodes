@@ -314,7 +314,38 @@ def calculate_orb(
     
     logger.info("=" * 80)
 
+    # Calculate opening range high and low for current target date
+    target_or_bar = None
+    if target_date in daily_groups:
+        day_bars_sorted = sorted(daily_groups[target_date], key=lambda b: b["timestamp"])
+        
+        # Determine opening range time based on asset class
+        if symbol.asset_class == AssetClass.CRYPTO:
+            # For crypto, use UTC midnight (00:00:00) as opening range, convert to ET
+            utc_midnight = pytz.timezone("UTC").localize(
+                datetime.combine(target_date, datetime.strptime("00:00", "%H:%M").time())
+            )
+            open_time = utc_midnight.astimezone(pytz.timezone("US/Eastern"))
+        else:
+            # For stocks, use 9:30 AM Eastern as opening range
+            open_time = create_market_open_time(target_date, hour=9, minute=30)
+        
+        open_range_end = open_time + timedelta(minutes=or_minutes)
+        
+        # Find bars that start within the opening range
+        or_candidates = [
+            bar for bar in day_bars_sorted if open_time <= bar["timestamp"] < open_range_end
+        ]
+        
+        if or_candidates:
+            target_or_bar = or_candidates[0]
+    
+    or_high = target_or_bar["high"] if target_or_bar else None
+    or_low = target_or_bar["low"] if target_or_bar else None
+
     return {
         "rel_vol": rel_vol,
         "direction": direction,
+        "or_high": or_high,
+        "or_low": or_low,
     }

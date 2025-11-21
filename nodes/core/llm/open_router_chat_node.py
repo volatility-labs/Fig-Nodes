@@ -47,6 +47,7 @@ class OpenRouterGenerationResponse(TypedDict):
 class OpenRouterChatMessageModel(BaseModel):
     role: str
     content: str | None = None
+    thinking: str | None = None  # Some models return thinking/reasoning
 
 
 class OpenRouterNonStreamingChoiceModel(BaseModel):
@@ -89,7 +90,7 @@ class OpenRouterChat(Base):
     Outputs:
     - message: Dict[str, Any] (assistant message with role, content, etc.)
     - metrics: Dict[str, Any] (generation stats like durations and token counts)
-    - thinking_history: List[Dict[str, Any]] (always empty list, kept for API compatibility)
+    - thinking_history: List[Dict[str, Any]] (thinking/reasoning from models that support it, empty list if not available)
 
     Properties:
     - model: str (model to use for the chat)
@@ -132,6 +133,7 @@ class OpenRouterChat(Base):
         "seed": 0,
         "seed_mode": "fixed",  # fixed | random | increment
         "use_vision": "false",
+        "enable_thinking": "false",  # Enable thinking/reasoning mode (adds /think for Qwen, works for other models that support it)
     }
 
     params_meta = [
@@ -167,6 +169,13 @@ class OpenRouterChat(Base):
             "options": ["true", "false"],
             "description": "Enable vision mode for image inputs (auto-switches to vision-capable model)",
         },
+        {
+            "name": "enable_thinking",
+            "type": "combo",
+            "default": "false",
+            "options": ["true", "false"],
+            "description": "Enable thinking/reasoning mode - shows model's reasoning process (slower but more transparent). Works with Qwen (/think) and other models that support thinking.",
+        },
     ]
 
     def __init__(
@@ -201,7 +210,9 @@ class OpenRouterChat(Base):
         if response_model and response_model.choices:
             first_choice = response_model.choices[0]
             if first_choice.message:
-                return first_choice.message.model_dump()
+                # Use model_dump with exclude_none=False to include all fields
+                message_dict = first_choice.message.model_dump(exclude_none=False)
+                return message_dict
         return self._DEFAULT_ASSISTANT_MESSAGE.copy()
 
     def _create_error_response(self, error_msg: str) -> dict[str, Any]:
@@ -383,6 +394,19 @@ class OpenRouterChat(Base):
         base_model = str(self.params.get("model", "z-ai/glm-4.6"))
         model_with_web_search = self._get_model_with_web_search(base_model, use_vision_param)
 
+        # Enable reasoning for models that support it if thinking mode is enabled
+        enable_thinking = self._parse_bool_param("enable_thinking", False)
+        if enable_thinking:
+            model_lower = base_model.lower()
+            # Claude Sonnet 4.5 requires explicit reasoning parameter
+            if "claude" in model_lower:
+                if "reasoning" not in options:
+                    options["reasoning"] = True
+                    print(f"💭 Enabled reasoning parameter for Claude model")
+            # Note: Qwen models enable thinking via /think prefix in prompt (handled elsewhere)
+            # Qwen models may only return thinking in streaming mode, which is not currently supported
+            # Do NOT add reasoning/thinking_mode parameters for Qwen as OpenRouter API rejects them
+        
         # Final payload size check before sending
         request_body = {
             "model": model_with_web_search,
@@ -429,8 +453,15 @@ class OpenRouterChat(Base):
                         original_exc=ValueError(f"API error response: {resp_data_raw}"),
                     )
                 
+                # Store raw response for thinking extraction (before Pydantic validation)
+                # Pydantic might drop fields not in the model
+                raw_response_for_thinking = resp_data_raw.copy() if isinstance(resp_data_raw, dict) else None
+                
                 try:
-                    return OpenRouterChatResponseModel.model_validate(resp_data_raw)
+                    validated_model = OpenRouterChatResponseModel.model_validate(resp_data_raw)
+                    # Attach raw response for thinking extraction
+                    validated_model._raw_response = raw_response_for_thinking  # type: ignore
+                    return validated_model
                 except ValidationError as ve:
                     # If validation fails, it might be an unexpected error response format
                     raise NodeExecutionError(
@@ -860,6 +891,35 @@ class OpenRouterChat(Base):
         # Use combined prompt if we have any content
         final_prompt: str | None = "\n".join(combined_prompt_parts) if combined_prompt_parts else None
 
+        # Enable thinking mode if requested
+        enable_thinking = self._parse_bool_param("enable_thinking", False)
+        if enable_thinking:
+            model = str(self.params.get("model") or "")
+            # Check if /think is already in prompt or system
+            prompt_has_think = final_prompt and "/think" in final_prompt.lower()
+            system_has_think = False
+            if isinstance(system_input, str):
+                system_has_think = "/think" in system_input.lower()
+            elif isinstance(system_input, dict) and "content" in system_input:
+                system_has_think = "/think" in str(system_input.get("content", "")).lower()
+            
+            if not prompt_has_think and not system_has_think:
+                # Prepend /think to prompt (works for Qwen and other models that support it)
+                if final_prompt:
+                    final_prompt = f"/think\n\n{final_prompt}"
+                elif system_input:
+                    if isinstance(system_input, str):
+                        system_input = f"/think\n\n{system_input}"
+                    elif isinstance(system_input, dict):
+                        modified_system = system_input.copy()
+                        current_content = str(modified_system.get("content", ""))
+                        modified_system["content"] = f"/think\n\n{current_content}"
+                        system_input = modified_system
+                else:
+                    # If neither exists, add /think as prompt
+                    final_prompt = "/think"
+                print(f"💭 Thinking mode enabled for model: {model}")
+
         merged: list[dict[str, Any]] = []
         for i in range(4):
             msg = inputs.get(f"message_{i}")
@@ -978,8 +1038,263 @@ class OpenRouterChat(Base):
                 except (Exception, asyncio.CancelledError):
                     pass
 
+        # Extract thinking history from final_message if present
+        thinking_history: list[dict[str, Any]] = []
+        thinking = final_message.get("thinking")
+        
+        enable_thinking = self._parse_bool_param("enable_thinking", False)
+        model_name = str(self.params.get("model") or "unknown")
+        
+        # Debug: Check what's actually in final_message
+        if enable_thinking:
+            print(f"🔍 Debug: final_message keys: {list(final_message.keys())}")
+            if "thinking" in final_message:
+                thinking_val = final_message.get("thinking")
+                print(f"🔍 Debug: Found 'thinking' in final_message! Value type: {type(thinking_val)}, Is None: {thinking_val is None}, Is empty str: {thinking_val == ''}, Value preview: {str(thinking_val)[:200] if thinking_val else 'None/Empty'}")
+                # If thinking exists but is None or empty, try to get it from raw response
+                if not thinking_val or (isinstance(thinking_val, str) and not thinking_val.strip()):
+                    thinking = None  # Reset to None so we check raw response
+            else:
+                print(f"🔍 Debug: 'thinking' NOT in final_message keys")
+        
+        # Check raw response first (before Pydantic validation might drop fields)
+        raw_response = getattr(resp_data_model, "_raw_response", None) if resp_data_model else None
+        if not thinking and raw_response and isinstance(raw_response, dict):
+            try:
+                # Debug: Print top-level keys in raw response
+                if enable_thinking:
+                    print(f"🔍 Debug: Raw response top-level keys: {list(raw_response.keys())}")
+                # Check raw response structure
+                if "choices" in raw_response and isinstance(raw_response["choices"], list) and len(raw_response["choices"]) > 0:
+                    first_choice_raw = raw_response["choices"][0]
+                    if isinstance(first_choice_raw, dict):
+                        # Debug: Print choice-level keys
+                        if enable_thinking:
+                            print(f"🔍 Debug: Raw choice keys: {list(first_choice_raw.keys())}")
+                        # Check message field in raw response
+                        if "message" in first_choice_raw:
+                            msg_raw = first_choice_raw["message"]
+                            if isinstance(msg_raw, dict):
+                                # Debug: Print what's in raw message
+                                if enable_thinking:
+                                    print(f"🔍 Debug: Raw message keys: {list(msg_raw.keys())}")
+                                    # Check annotations field (Claude might put reasoning there)
+                                    if "annotations" in msg_raw:
+                                        annotations_val = msg_raw.get("annotations")
+                                        print(f"🔍 Debug: Found 'annotations' field! Type: {type(annotations_val)}, Value: {str(annotations_val)[:200] if annotations_val else 'None/Empty'}")
+                                        # Annotations might be a list or dict containing reasoning
+                                        if isinstance(annotations_val, list) and len(annotations_val) > 0:
+                                            print(f"🔍 Debug: Annotations is a list with {len(annotations_val)} items")
+                                            for idx, ann in enumerate(annotations_val):
+                                                if isinstance(ann, dict):
+                                                    print(f"🔍 Debug: Annotation {idx} keys: {list(ann.keys())}")
+                                        elif isinstance(annotations_val, dict):
+                                            print(f"🔍 Debug: Annotations is a dict with keys: {list(annotations_val.keys())}")
+                                    # Check each potential field
+                                    for check_key in ["thinking", "reasoning", "thought", "chain_of_thought", "reasoning_content"]:
+                                        if check_key in msg_raw:
+                                            check_val = msg_raw.get(check_key)
+                                            print(f"🔍 Debug: Found '{check_key}' in raw message! Type: {type(check_val)}, Is None: {check_val is None}, Is empty: {check_val == '' if isinstance(check_val, str) else 'N/A'}, Value preview: {str(check_val)[:200] if check_val else 'None/Empty'}")
+                                
+                                # Check annotations field first (Claude Sonnet 4.5 might put reasoning here)
+                                if "annotations" in msg_raw:
+                                    annotations_val = msg_raw.get("annotations")
+                                    if annotations_val:
+                                        # Try to extract reasoning from annotations
+                                        if isinstance(annotations_val, list):
+                                            for ann in annotations_val:
+                                                if isinstance(ann, dict):
+                                                    # Look for reasoning-related fields in annotation
+                                                    for ann_key in ["reasoning", "thinking", "content", "text"]:
+                                                        if ann_key in ann and ann[ann_key]:
+                                                            thinking = ann[ann_key]
+                                                            if isinstance(thinking, str) and thinking.strip():
+                                                                print(f"✅ Extracted thinking from annotations[{ann_key}]")
+                                                                break
+                                                    if thinking:
+                                                        break
+                                        elif isinstance(annotations_val, dict):
+                                            # Direct dict with reasoning
+                                            for ann_key in ["reasoning", "thinking", "content"]:
+                                                if ann_key in annotations_val and annotations_val[ann_key]:
+                                                    thinking = annotations_val[ann_key]
+                                                    if isinstance(thinking, str) and thinking.strip():
+                                                        print(f"✅ Extracted thinking from annotations.{ann_key}")
+                                                        break
+                                
+                                # Check all possible thinking field names
+                                for key in ["thinking", "reasoning", "thought", "chain_of_thought", "reasoning_content"]:
+                                    if key in msg_raw:
+                                        raw_value = msg_raw.get(key)
+                                        # Debug the value
+                                        if enable_thinking:
+                                            print(f"🔍 Debug: Checking field '{key}': type={type(raw_value)}, value={str(raw_value)[:100] if raw_value else 'None/Empty'}")
+                                        # Accept any non-None value (we'll validate string content later)
+                                        if raw_value is not None:
+                                            thinking = raw_value
+                                            print(f"✅ Extracted thinking from raw response field '{key}' (type: {type(thinking)}, length: {len(str(thinking)) if isinstance(thinking, str) else 'N/A'})")
+                                            break
+                                        elif enable_thinking:
+                                            print(f"🔍 Debug: Field '{key}' exists but value is None")
+                        # Check choice-level thinking fields
+                        if not thinking:
+                            for key in ["thinking", "reasoning", "thought", "chain_of_thought"]:
+                                if key in first_choice_raw:
+                                    thinking = first_choice_raw.get(key)
+                                    if thinking:
+                                        print(f"✅ Extracted thinking from raw choice field '{key}'")
+                                        break
+            except Exception as e:
+                if enable_thinking:
+                    print(f"🔍 Debug: Error checking raw response: {e}")
+        
+        # Check if thinking might be in the validated response choice or other fields
+        if not thinking:
+            if resp_data_model and resp_data_model.choices:
+                first_choice = resp_data_model.choices[0]
+                # Try to get raw dict from choice to see all fields
+                try:
+                    choice_dict = first_choice.model_dump(exclude_none=False)
+                    # Check message field
+                    if "message" in choice_dict:
+                        msg_dict = choice_dict["message"]
+                        if isinstance(msg_dict, dict):
+                            if "thinking" in msg_dict:
+                                thinking = msg_dict.get("thinking")
+                            # Check for other possible thinking fields
+                            for key in ["reasoning", "thought", "chain_of_thought"]:
+                                if key in msg_dict:
+                                    thinking = msg_dict.get(key)
+                                    break
+                    # Check choice-level thinking fields
+                    for key in ["thinking", "reasoning", "thought", "chain_of_thought"]:
+                        if key in choice_dict:
+                            thinking = choice_dict.get(key)
+                            break
+                except Exception:
+                    pass
+        
+        # Check if thinking is embedded in content (some models return it as XML tags)
+        if not thinking and enable_thinking:
+            content_raw = final_message.get("content", "")
+            # Handle content that might be a list (some APIs return content as array)
+            if isinstance(content_raw, list):
+                # Join list items into a single string
+                content = "\n".join(str(item) for item in content_raw if item)
+                if enable_thinking:
+                    print(f"🔍 Debug: Content is a list with {len(content_raw)} items, joined length: {len(content)}")
+            elif isinstance(content_raw, str):
+                content = content_raw
+            else:
+                content = str(content_raw) if content_raw else ""
+            
+            if content:
+                import re
+                # Debug: Check content length and show a sample
+                if enable_thinking:
+                    print(f"🔍 Debug: Checking content for embedded reasoning (content length: {len(content)})")
+                    # Look for any XML-like tags that might contain reasoning
+                    xml_tag_pattern = r'<(?:think|thinking|reasoning|redacted_reasoning|thought)[^>]*>(.*?)</(?:think|thinking|reasoning|redacted_reasoning|thought)>'
+                    xml_matches = re.findall(xml_tag_pattern, content, re.DOTALL | re.IGNORECASE)
+                    if xml_matches:
+                        print(f"🔍 Debug: Found {len(xml_matches)} XML reasoning tag(s) in content")
+                    else:
+                        # Check if content starts with thinking-like patterns
+                        thinking_starters = [r'^<think>', r'^<thinking>', r'^<reasoning>', r'^thinking:', r'^reasoning:']
+                        for pattern in thinking_starters:
+                            if re.search(pattern, content, re.IGNORECASE | re.MULTILINE):
+                                print(f"🔍 Debug: Content appears to start with thinking pattern: {pattern}")
+                                break
+                
+                # Check for <think>...</think> tags (common format, case-insensitive)
+                think_matches = re.findall(r'<think>(.*?)</think>', content, re.DOTALL | re.IGNORECASE)
+                if think_matches:
+                    thinking = "\n\n".join(think_matches).strip()
+                    if enable_thinking:
+                        print(f"✅ Found reasoning in <think> tags (length: {len(thinking)})")
+                
+                # Check for <thinking>...</thinking> tags
+                if not thinking:
+                    think_matches = re.findall(r'<thinking>(.*?)</thinking>', content, re.DOTALL | re.IGNORECASE)
+                    if think_matches:
+                        thinking = "\n\n".join(think_matches).strip()
+                        if enable_thinking:
+                            print(f"✅ Found reasoning in <thinking> tags (length: {len(thinking)})")
+                
+                # Check for <think>...</think> tags
+                if not thinking:
+                    think_matches = re.findall(r'<think>(.*?)</think>', content, re.DOTALL | re.IGNORECASE)
+                    if think_matches:
+                        thinking = "\n\n".join(think_matches).strip()
+                        if enable_thinking:
+                            print(f"✅ Found reasoning in <think> tags (length: {len(thinking)})")
+                
+                # Check for ```thinking blocks
+                if not thinking:
+                    think_code_blocks = re.findall(r'```thinking\s*\n(.*?)```', content, re.DOTALL)
+                    if think_code_blocks:
+                        thinking = "\n\n".join(think_code_blocks).strip()
+                        if enable_thinking:
+                            print(f"✅ Found reasoning in ```thinking code blocks (length: {len(thinking)})")
+                
+                # Check for ```think blocks
+                if not thinking:
+                    think_code_blocks = re.findall(r'```think\s*\n(.*?)```', content, re.DOTALL)
+                    if think_code_blocks:
+                        thinking = "\n\n".join(think_code_blocks).strip()
+                        if enable_thinking:
+                            print(f"✅ Found reasoning in ```think code blocks (length: {len(thinking)})")
+                
+                # If still no thinking found, check if entire content might be thinking (for some models)
+                if not thinking and enable_thinking:
+                    # Some models might return thinking as the entire content if it's structured differently
+                    # This is a fallback - we'll check if content looks like reasoning
+                    if len(content) > 100 and any(keyword in content.lower()[:500] for keyword in ['reasoning', 'thinking', 'analyze', 'consider', 'evaluate']):
+                        print(f"🔍 Debug: Content might contain reasoning but no tags found. First 500 chars: {content[:500]}")
+        
+        # Final check: if we found thinking/reasoning, add it to history
+        if thinking:
+            # Handle both string and other types
+            if isinstance(thinking, str):
+                thinking_str = thinking.strip()
+                if thinking_str:
+                    thinking_history.append({"thinking": thinking_str, "iteration": 0})
+                    if enable_thinking:
+                        print(f"✅ Added thinking to history (length: {len(thinking_str)})")
+            else:
+                # Non-string thinking (shouldn't happen, but handle it)
+                thinking_str = str(thinking).strip()
+                if thinking_str:
+                    thinking_history.append({"thinking": thinking_str, "iteration": 0})
+                    if enable_thinking:
+                        print(f"✅ Added thinking to history (non-string, length: {len(thinking_str)})")
+        elif enable_thinking and not thinking_history:
+            # Debug output to help diagnose - print what fields we actually have
+            if resp_data_model and resp_data_model.choices:
+                first_choice = resp_data_model.choices[0]
+                try:
+                    choice_dict = first_choice.model_dump(exclude_none=False)
+                    available_fields = list(choice_dict.keys())
+                    print(f"🔍 Debug: Available fields in response choice: {available_fields}")
+                    if "message" in choice_dict:
+                        msg_dict = choice_dict["message"]
+                        if isinstance(msg_dict, dict):
+                            msg_fields = list(msg_dict.keys())
+                            print(f"🔍 Debug: Available fields in message: {msg_fields}")
+                            content_preview = str(msg_dict.get("content", ""))[:200] if "content" in msg_dict else None
+                            if content_preview:
+                                print(f"🔍 Debug: Content preview (first 200 chars): {content_preview}")
+                except Exception as e:
+                    print(f"🔍 Debug: Error inspecting response: {e}")
+            
+            if "qwen" in model_name.lower():
+                print(f"💡 Thinking mode enabled but no thinking history found. Model: {model_name}")
+                print(f"💡 Qwen models may return thinking in content as <think> tags, or may require streaming mode.")
+            else:
+                print(f"💡 Thinking mode enabled but no thinking history found. Model: {model_name}")
+
         return {
             "message": final_message,
             "metrics": metrics,
-            "thinking_history": [],
+            "thinking_history": thinking_history,
         }

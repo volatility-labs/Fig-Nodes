@@ -92,7 +92,7 @@ class Logging(Base):
                 text = str(content)
                 await self._safe_print(f"LoggingNode {self.id}: {text}")
         elif isinstance(value, dict) and "message" in value and isinstance(value["message"], dict):
-            # Streaming message format
+            # LLM node output format (message, metrics, thinking_history)
             message_dict: dict[str, Any] = value["message"]
             if (
                 isinstance(message_dict.get("role"), str)
@@ -109,8 +109,18 @@ class Logging(Base):
 
                 if not is_partial:
                     await self._safe_print("")  # Newline for final
+                    # Check for thinking in message dict
                     if "thinking" in message_dict and isinstance(message_dict["thinking"], str):
-                        await self._safe_print("Thinking:", message_dict["thinking"])
+                        await self._safe_print("\n💭 Thinking:", message_dict["thinking"])
+                    # Check for thinking_history in value dict (from LLM nodes)
+                    thinking_history = value.get("thinking_history")
+                    if thinking_history and isinstance(thinking_history, list) and len(thinking_history) > 0:
+                        await self._safe_print("\n💭 Thinking History:")
+                        for idx, item in enumerate(thinking_history):
+                            if isinstance(item, dict) and "thinking" in item:
+                                thinking_text = item["thinking"]
+                                iteration = item.get("iteration", idx)
+                                await self._safe_print(f"  [{iteration}] {thinking_text}")
                     self.last_content_length = 0
                 else:
                     self.last_content_length = len(content)
@@ -119,6 +129,35 @@ class Logging(Base):
             else:
                 text = str(value)
                 await self._safe_print(f"LoggingNode {self.id}: {text}")
+        elif isinstance(value, dict) and "message" in value and "thinking_history" in value:
+            # Non-streaming LLM output with thinking_history
+            message_dict = value.get("message", {})
+            content = message_dict.get("content", "") if isinstance(message_dict, dict) else str(message_dict)
+            thinking_history = value.get("thinking_history", [])
+            
+            # Display main content
+            if isinstance(content, str) and content.strip():
+                await self._safe_print(content)
+            
+            # Display thinking history if present
+            if thinking_history and isinstance(thinking_history, list) and len(thinking_history) > 0:
+                await self._safe_print("\n💭 Thinking History:")
+                for idx, item in enumerate(thinking_history):
+                    if isinstance(item, dict) and "thinking" in item:
+                        thinking_text = item["thinking"]
+                        iteration = item.get("iteration", idx)
+                        await self._safe_print(f"  [{iteration}] {thinking_text}")
+            
+            text = content if isinstance(content, str) else str(value)
+        elif isinstance(value, list) and len(value) > 0 and isinstance(value[0], dict) and "thinking" in value[0]:
+            # Direct thinking_history list input (when connected to thinking_history output)
+            await self._safe_print("💭 Thinking History:")
+            for idx, item in enumerate(value):
+                if isinstance(item, dict) and "thinking" in item:
+                    thinking_text = item["thinking"]
+                    iteration = item.get("iteration", idx)
+                    await self._safe_print(f"  [{iteration}] {thinking_text}")
+            text = f"Thinking History ({len(value)} entries)"
         elif semantic_type == "AssetSymbolList" and isinstance(value, list):
             text = ", ".join(str(sym) for sym in value)
             await self._safe_print(text)

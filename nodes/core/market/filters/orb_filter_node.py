@@ -40,6 +40,8 @@ class OrbFilter(BaseIndicatorFilter):
         "rel_vol_threshold": 100.0,
         "direction": "both",  # 'bullish', 'bearish', 'both'
         "avg_period": 14,
+        "filter_above_orh": "No",  # Filter for price above Opening Range High
+        "filter_below_orl": "No",  # Filter for price below Opening Range Low
         "max_concurrent": 10,  # For concurrency limiting
         "rate_limit_per_second": 95,  # Stay under Polygon's recommended 100/sec
     }
@@ -54,6 +56,8 @@ class OrbFilter(BaseIndicatorFilter):
             "options": ["bullish", "bearish", "both"],
         },
         {"name": "avg_period", "type": "number", "default": 14, "min": 1, "step": 1},
+        {"name": "filter_above_orh", "type": "combo", "default": "No", "options": ["No", "Yes"]},
+        {"name": "filter_below_orl", "type": "combo", "default": "No", "options": ["No", "Yes"]},
     ]
 
     def __init__(
@@ -167,6 +171,8 @@ class OrbFilter(BaseIndicatorFilter):
 
         rel_vol_raw = result.get("rel_vol")
         direction = result.get("direction", "doji")
+        or_high = result.get("or_high")
+        or_low = result.get("or_low")
 
         # Type guard: ensure rel_vol is a number
         if not isinstance(rel_vol_raw, int | float):
@@ -177,7 +183,13 @@ class OrbFilter(BaseIndicatorFilter):
         # Get the latest timestamp from bars for the result
         latest_timestamp = bars[-1]["timestamp"] if bars else 0
 
-        values = IndicatorValue(lines={"rel_vol": rel_vol}, series=[{"direction": direction}])
+        # Get current price from the latest bar
+        current_price = bars[-1]["close"] if bars else None
+
+        values = IndicatorValue(
+            lines={"rel_vol": rel_vol, "or_high": or_high, "or_low": or_low, "current_price": current_price},
+            series=[{"direction": direction}]
+        )
 
         return IndicatorResult(
             indicator_type=IndicatorType.ORB,
@@ -214,6 +226,33 @@ class OrbFilter(BaseIndicatorFilter):
         if param_dir == "both":
             return True
         return direction == param_dir
+
+    def _should_pass_additional_filters(self, indicator_result: IndicatorResult) -> bool:
+        """Check additional price-based filters (ORH/ORL)."""
+        if not indicator_result.values.lines:
+            return True  # If no lines data, skip additional filters
+        
+        current_price = indicator_result.values.lines.get("current_price")
+        or_high = indicator_result.values.lines.get("or_high")
+        or_low = indicator_result.values.lines.get("or_low")
+        
+        # Check filter_above_orh
+        filter_above_orh = self.params.get("filter_above_orh", "No")
+        if filter_above_orh == "Yes":
+            if current_price is None or or_high is None:
+                return False  # Can't filter if we don't have the data
+            if not (current_price > or_high):
+                return False  # Price must be above ORH
+        
+        # Check filter_below_orl
+        filter_below_orl = self.params.get("filter_below_orl", "No")
+        if filter_below_orl == "Yes":
+            if current_price is None or or_low is None:
+                return False  # Can't filter if we don't have the data
+            if not (current_price < or_low):
+                return False  # Price must be below ORL
+        
+        return True
 
     def _get_target_date_for_orb(
         self, symbol: AssetSymbol, today_date: date, df: pd.DataFrame
@@ -298,7 +337,7 @@ class OrbFilter(BaseIndicatorFilter):
                             indicator_result = await self._calculate_orb_indicator(
                                 symbol, self.api_key or ""
                             )
-                            if self._should_pass_filter(indicator_result):
+                            if self._should_pass_filter(indicator_result) and self._should_pass_additional_filters(indicator_result):
                                 filtered_bundle[symbol] = ohlcv_data
 
                             # Only increment counter on successful completion
