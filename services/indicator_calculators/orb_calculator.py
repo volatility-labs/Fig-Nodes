@@ -163,35 +163,42 @@ def calculate_orb(
         for i, bar in enumerate(day_bars_sorted[:5]):
             print(f"  Bar {i}: timestamp={bar['timestamp']}")
 
-        # Look for bars within the opening range (e.g., 9:30 AM to 9:35 AM for 5-minute ORB)
+        # Look for bars within the opening range (9:30 AM to 9:35 AM ET for 5-minute ORB)
+        # Match external script logic: Filter by time component and take first bar
         open_range_end = open_time + timedelta(minutes=or_minutes)
-
-        # Find bars that cover the opening range period
-        # NOTE: Polygon's 5-minute bars might start at 9:29, 9:31, 9:32, etc.
-        # We want bars that START between 9:25-9:35 AM (expanded window to catch bars that start slightly early)
-        # Then pick the one that starts closest to 9:30 AM
-        expanded_start = open_time - timedelta(minutes=5)  # Start looking 5 minutes before market open
+        
+        # Extract time components for filtering (DST-aware, matches external script approach)
+        market_start_time = open_time.time()  # 9:30 AM ET time component
+        market_end_time = open_range_end.time()  # 9:35 AM ET time component
+        
+        # Filter bars by time component (matches external script: df.index.time >= market_start & <= market_end)
         or_candidates = [
-            bar for bar in day_bars_sorted 
-            if expanded_start <= bar["timestamp"] < open_range_end
-            and (bar["timestamp"] + timedelta(minutes=5)) > open_time  # Bar must extend past 9:30 AM
+            bar for bar in day_bars_sorted
+            if market_start_time <= bar["timestamp"].time() <= market_end_time
         ]
 
         if not or_candidates:
-            print(f"ORB CALCULATOR: No opening range bar found for {date_key}")
-            print(f"ORB CALCULATOR: Looking for bars between {open_time} and {open_range_end}")
-            logger.warning(f"ORB Calculator: No opening range bar found for {date_key}")
-            logger.warning(f"ORB CALCULATOR: Expected opening range: {open_time} to {open_range_end}")
-            logger.warning(f"ORB CALCULATOR: Available bars for {date_key}: {len(day_bars_sorted)}")
-            if day_bars_sorted:
-                logger.warning(f"ORB CALCULATOR: First bar time: {day_bars_sorted[0]['timestamp']}")
-                logger.warning(f"ORB CALCULATOR: Last bar time: {day_bars_sorted[-1]['timestamp']}")
-            continue
+            # Fallback: Use first available 5-min candle after 9:30 AM (matches external script fallback)
+            market_hours_bars = [
+                bar for bar in day_bars_sorted
+                if bar["timestamp"].time() >= market_start_time
+            ]
+            if market_hours_bars:
+                or_candidates = [market_hours_bars[0]]  # First 5-min candle after market open
+                logger.info(f"ORB CALCULATOR: Using fallback - first 5-min candle after market open")
+            else:
+                print(f"ORB CALCULATOR: No opening range bar found for {date_key}")
+                print(f"ORB CALCULATOR: Looking for bars between {open_time} and {open_range_end}")
+                logger.warning(f"ORB Calculator: No opening range bar found for {date_key}")
+                logger.warning(f"ORB CALCULATOR: Expected opening range: {open_time} to {open_range_end}")
+                logger.warning(f"ORB CALCULATOR: Available bars for {date_key}: {len(day_bars_sorted)}")
+                if day_bars_sorted:
+                    logger.warning(f"ORB CALCULATOR: First bar time: {day_bars_sorted[0]['timestamp']}")
+                    logger.warning(f"ORB CALCULATOR: Last bar time: {day_bars_sorted[-1]['timestamp']}")
+                continue
 
-        # Pick the bar that STARTS closest to market open (9:30 AM ET)
-        # This ensures consistent selection: always pick the bar closest to 9:30 AM
-        # even if multiple bars fall within the opening range window
-        or_bar = min(or_candidates, key=lambda b: abs((b["timestamp"] - open_time).total_seconds()))
+        # Take first bar in opening range (matches external script: opening_range_candles.iloc[:1])
+        or_bar = or_candidates[0]
 
         print(
             f"ORB CALCULATOR: Found {len(or_candidates)} opening range bars for {date_key}, using: {or_bar['timestamp']}"
@@ -362,22 +369,31 @@ def calculate_orb(
         
         open_range_end = open_time + timedelta(minutes=or_minutes)
         
-        # Find bars that cover the opening range period
-        # NOTE: Polygon's 5-minute bars might start at 9:29, 9:31, 9:32, etc.
-        # We want bars that START between 9:25-9:35 AM (expanded window to catch bars that start slightly early)
-        # Then pick the one that starts closest to 9:30 AM
-        expanded_start = open_time - timedelta(minutes=5)  # Start looking 5 minutes before market open
+        # Look for bars within the opening range (9:30 AM to 9:35 AM ET for 5-minute ORB)
+        # Match external script logic: Filter by time component and take first bar
+        # Extract time components for filtering (DST-aware, matches external script approach)
+        market_start_time = open_time.time()  # 9:30 AM ET time component
+        market_end_time = open_range_end.time()  # 9:35 AM ET time component
+        
+        # Filter bars by time component (matches external script: df.index.time >= market_start & <= market_end)
         or_candidates = [
-            bar for bar in day_bars_sorted 
-            if expanded_start <= bar["timestamp"] < open_range_end
-            and (bar["timestamp"] + timedelta(minutes=5)) > open_time  # Bar must extend past 9:30 AM
+            bar for bar in day_bars_sorted
+            if market_start_time <= bar["timestamp"].time() <= market_end_time
         ]
         
+        if not or_candidates:
+            # Fallback: Use first available 5-min candle after 9:30 AM (matches external script fallback)
+            market_hours_bars = [
+                bar for bar in day_bars_sorted
+                if bar["timestamp"].time() >= market_start_time
+            ]
+            if market_hours_bars:
+                or_candidates = [market_hours_bars[0]]  # First 5-min candle after market open
+                logger.info(f"ORB CALCULATOR: Using fallback - first 5-min candle after market open")
+        
         if or_candidates:
-            # Pick the bar that STARTS closest to market open (9:30 AM ET)
-            # This ensures consistent selection: always pick the bar closest to 9:30 AM
-            # even if multiple bars fall within the opening range window
-            target_or_bar = min(or_candidates, key=lambda b: abs((b["timestamp"] - open_time).total_seconds()))
+            # Take first bar in opening range (matches external script: opening_range_candles.iloc[:1])
+            target_or_bar = or_candidates[0]
             # Log the opening range bar details for debugging
             logger.info(f"ORB CALCULATOR: Opening range bar for {target_date}: timestamp={target_or_bar['timestamp']}, high={target_or_bar['high']}, low={target_or_bar['low']}")
             print(f"ORB CALCULATOR: Opening range bar for {target_date}: timestamp={target_or_bar['timestamp']}, high={target_or_bar['high']}, low={target_or_bar['low']}")
