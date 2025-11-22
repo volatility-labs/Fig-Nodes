@@ -2,7 +2,7 @@ import logging
 from collections.abc import ItemsView
 from typing import Any
 
-from core.types_registry import AssetSymbol, IndicatorResult, NodeCategory, OHLCVBar, get_type
+from core.types_registry import AssetSymbol, IndicatorResult, NodeCategory, OHLCVBar
 from nodes.core.market.filters.base.base_filter_node import BaseFilter
 
 logger = logging.getLogger(__name__)
@@ -16,12 +16,11 @@ class BaseIndicatorFilter(BaseFilter):
     Output: Filtered OHLCV bundle (Dict[AssetSymbol, List[OHLCVBar]])
     """
 
-    outputs = {
-        "filtered_ohlcv_bundle": get_type("OHLCVBundle"),
-    }
     CATEGORY = NodeCategory.MARKET
 
-    def __init__(self, id: int, params: dict[str, Any], graph_context: dict[str, Any] | None = None):  # Explicit constructor for consistency
+    def __init__(
+        self, id: int, params: dict[str, Any], graph_context: dict[str, Any] | None = None
+    ):  # Explicit constructor for consistency
         super().__init__(id, params, graph_context)
         self._validate_indicator_params()
 

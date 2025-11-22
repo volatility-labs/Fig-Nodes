@@ -452,7 +452,7 @@ export function setupWebSocket(graph: LGraph, _canvas: LGraphCanvas, apiKeyManag
                     // Now send the graph execution message
                     const statusService = getStatusService();
                     statusService?.setConnection('executing', 'Executing...');
-                    const message: ClientToServerMessage = { type: 'graph', graph_data: graphData };
+                    const message: ClientToServerMessage = { type: 'graph', graph_data: graphData as any };
                     ws?.send(JSON.stringify(message));
                     return;
                 }
@@ -491,7 +491,7 @@ export function setupWebSocket(graph: LGraph, _canvas: LGraphCanvas, apiKeyManag
             // Reuse existing connection - send graph execution directly
             const statusService = getStatusService();
             statusService?.setConnection('executing', 'Executing...');
-            const message: ClientToServerMessage = { type: 'graph', graph_data: graphData };
+            const message: ClientToServerMessage = { type: 'graph', graph_data: graphData as any };
             ws.send(JSON.stringify(message));
         }
     });

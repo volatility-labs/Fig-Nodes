@@ -85,10 +85,14 @@ class GraphExecutor:
             from_id = s_link["origin_id"]
             to_id = s_link["target_id"]
             if from_id not in self._id_to_idx:
-                logger.warning(f"Link {s_link.get('id', 'unknown')} references non-existent origin node {from_id}, skipping")
+                logger.warning(
+                    f"Link {s_link.get('id', 'unknown')} references non-existent origin node {from_id}, skipping"
+                )
                 continue
             if to_id not in self._id_to_idx:
-                logger.warning(f"Link {s_link.get('id', 'unknown')} references non-existent target node {to_id}, skipping")
+                logger.warning(
+                    f"Link {s_link.get('id', 'unknown')} references non-existent target node {to_id}, skipping"
+                )
                 continue
             self.dag.add_edge(self._id_to_idx[from_id], self._id_to_idx[to_id], None)
 
@@ -156,7 +160,7 @@ class GraphExecutor:
                     if self._should_stop():
                         self._cancel_all_tasks(tasks)
                         break
-                    
+
                     try:
                         level_result = await coro
                         if self._should_stop():
@@ -170,7 +174,9 @@ class GraphExecutor:
                         break
                     except Exception as e:
                         # Handle unexpected exceptions (shouldn't happen as _execute_node_with_error_handling catches them)
-                        logger.error(f"Unexpected exception in as_completed loop: {e}", exc_info=True)
+                        logger.error(
+                            f"Unexpected exception in as_completed loop: {e}", exc_info=True
+                        )
                         # Wrap exception for _process_level_results
                         self._process_level_results([e], results)
 
@@ -187,14 +193,19 @@ class GraphExecutor:
                 node_id, output = level_result  # type: ignore[assignment]
                 if isinstance(node_id, int) and isinstance(output, dict):
                     node = self.nodes[node_id]
-                    print(f"RESULT_TRACE: Processing result for node {node_id}, type={type(node).__name__}, category={node.CATEGORY}")
+                    print(
+                        f"RESULT_TRACE: Processing result for node {node_id}, type={type(node).__name__}, category={node.CATEGORY}"
+                    )
                     # Emit immediately for IO category nodes
                     should_emit = self._should_emit_immediately(node)
                     has_callback = self._result_callback is not None
-                    print(f"RESULT_TRACE: Node {node_id} - should_emit={should_emit}, has_callback={has_callback}")
+                    print(
+                        f"RESULT_TRACE: Node {node_id} - should_emit={should_emit}, has_callback={has_callback}"
+                    )
                     if should_emit and self._result_callback:
                         print(f"RESULT_TRACE: Emitting immediate result for node {node_id}")
-                        self._result_callback(node_id, output)
+                        output_dict: dict[str, Any] = output
+                        self._result_callback(node_id, output_dict)
                     results[node_id] = output
 
     async def _cleanup_execution(self) -> None:
@@ -205,10 +216,6 @@ class GraphExecutor:
 
         if self._should_stop():
             self._state = _GraphExecutionState.STOPPED
-
-    # ============================================================================
-    # Node Execution Utilities
-    # ============================================================================
 
     async def _execute_node_with_error_handling(
         self, node_id: int, node: Base, merged_inputs: dict[str, Any]
@@ -266,19 +273,11 @@ class GraphExecutor:
                 inputs[input_key] = value
         return inputs
 
-    # ============================================================================
-    # Task Management
-    # ============================================================================
-
     def _cancel_all_tasks(self, tasks: list[asyncio.Task[tuple[int, dict[str, Any]]]]):
         """Cancel all active tasks immediately."""
         for task in tasks:
             if not task.done():
                 task.cancel()
-
-    # ============================================================================
-    # Stop/Cancellation
-    # ============================================================================
 
     def force_stop(self, reason: str = "user"):
         """Single entrypoint to immediately kill all execution. Idempotent."""
@@ -357,7 +356,9 @@ class GraphExecutor:
     def _should_emit_immediately(self, node: Base) -> bool:
         """Check if node should emit results immediately (IO category nodes)."""
         result = node.CATEGORY == NodeCategory.IO
-        print(f"RESULT_TRACE: _should_emit_immediately(node={type(node).__name__}, category={node.CATEGORY}) -> {result}")
+        print(
+            f"RESULT_TRACE: _should_emit_immediately(node={type(node).__name__}, category={node.CATEGORY}) -> {result}"
+        )
         return result
 
 

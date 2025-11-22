@@ -5,6 +5,7 @@ import { FileManager } from './FileManager';
 import { APIKeyManager } from './APIKeyManager';
 import { AppState } from './AppState';
 import { ExecutionStatusService } from './ExecutionStatusService';
+import { TypeColorRegistry } from './TypeColorRegistry';
 
 export interface ServiceMap {
     graph: LGraph;
@@ -15,6 +16,7 @@ export interface ServiceMap {
     apiKeyManager: APIKeyManager;
     appState: AppState;
     statusService: ExecutionStatusService;
+    typeColorRegistry: TypeColorRegistry;
 }
 
 export type ServiceName = keyof ServiceMap;

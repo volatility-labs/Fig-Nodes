@@ -1,9 +1,9 @@
 import BaseCustomNode from '../base/BaseCustomNode';
 
-export default class OrbFilterNodeUI extends BaseCustomNode {
+export default class EVWMAFilterNodeUI extends BaseCustomNode {
     constructor(title: string, data: any, serviceRegistry: any) {
         super(title, data, serviceRegistry);
-        this.size = [360, 120];
+        this.size = [360, 140];
         this.displayResults = false; 
     }
 

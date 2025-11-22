@@ -2,12 +2,12 @@ import { LGraphNode } from '@fig-node/litegraph';
 import { NodeProperty } from '@fig-node/litegraph/dist/LGraphNode';
 import { Dictionary } from '@fig-node/litegraph/dist/interfaces';
 import { ISerialisedNode } from '@fig-node/litegraph/dist/types/serialisation';
-import { getTypeColor, TypeInfo } from '../../types';
 import { NodeTypeSystem } from '../utils/NodeTypeSystem';
 import { NodeWidgetManager } from '../utils/NodeWidgetManager';
 import { NodeRenderer } from '../utils/NodeRenderer';
 import { NodeInteractions } from '../utils/NodeInteractions';
 import { ServiceRegistry } from '../../services/ServiceRegistry';
+import { TypeColorRegistry, TypeInfo } from '../../services/TypeColorRegistry';
 
 // Reinstate module augmentation at top:
 declare module '@fig-node/litegraph' {
@@ -38,6 +38,7 @@ export default class BaseCustomNode extends LGraphNode {
     protected widgetManager: NodeWidgetManager;
     protected renderer: NodeRenderer;
     protected interactions: NodeInteractions;
+    protected serviceRegistry: ServiceRegistry;
 
     constructor(title: string, data: { inputs?: unknown; outputs?: unknown; params?: Array<{ name: string; type?: string; default?: unknown; options?: unknown[]; min?: number; max?: number; step?: number; precision?: number }> }, serviceRegistry: ServiceRegistry) {
         super(title);
@@ -45,6 +46,9 @@ export default class BaseCustomNode extends LGraphNode {
 
         // Initialize properties object
         this.properties = {};
+
+        // Store service registry
+        this.serviceRegistry = serviceRegistry;
 
         // Initialize modular components
         this.widgetManager = new NodeWidgetManager(this as unknown as LGraphNode & { properties: { [key: string]: unknown } }, serviceRegistry);
@@ -69,6 +73,8 @@ export default class BaseCustomNode extends LGraphNode {
     private setupInputs(inputs: unknown) {
         if (!inputs) return;
 
+        const typeColorRegistry = this.serviceRegistry?.get('typeColorRegistry') as TypeColorRegistry | null;
+
         const isArray = Array.isArray(inputs);
         const inputEntries: Array<[string, unknown]> = isArray
             ? (inputs as string[]).map((name: string) => [name, null])
@@ -77,8 +83,8 @@ export default class BaseCustomNode extends LGraphNode {
         inputEntries.forEach(([inp, typeInfo]: [string, unknown]) => {
             const typeStr = NodeTypeSystem.parseType(typeInfo);
             let color: string | undefined;
-            if (typeInfo) {
-                color = getTypeColor(typeInfo as TypeInfo);
+            if (typeInfo && typeColorRegistry) {
+                color = typeColorRegistry.getTypeColor(typeInfo as TypeInfo);
             }
             const typeStrLower = typeof typeStr === 'string' ? typeStr.toLowerCase() : '';
             if (typeof typeStr === 'string' && (typeStrLower.startsWith('list<') || typeStrLower.startsWith('dict<')) && typeInfo) {
@@ -96,6 +102,8 @@ export default class BaseCustomNode extends LGraphNode {
     private setupOutputs(outputs: unknown) {
         if (!outputs) return;
 
+        const typeColorRegistry = this.serviceRegistry?.get('typeColorRegistry') as TypeColorRegistry | null;
+
         const isArray = Array.isArray(outputs);
         const outputEntries: Array<[string, unknown]> = isArray
             ? (outputs as string[]).map((name: string) => [name, null])
@@ -104,8 +112,8 @@ export default class BaseCustomNode extends LGraphNode {
         outputEntries.forEach(([out, typeInfo]: [string, unknown], index: number) => {
             const typeStr = NodeTypeSystem.parseType(typeInfo);
             this.addOutput(out, typeStr);
-            if (typeInfo) {
-                const color = getTypeColor(typeInfo as TypeInfo);
+            if (typeInfo && typeColorRegistry) {
+                const color = typeColorRegistry.getTypeColor(typeInfo as TypeInfo);
                 this.outputs[index]!.color = color;
             }
         });

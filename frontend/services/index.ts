@@ -7,3 +7,4 @@ export { UIModuleLoader } from './UIModuleLoader';
 export { EditorInitializer } from './EditorInitializer';
 export { ServiceRegistry } from './ServiceRegistry';
 export { ThemeManager, THEMES, type Theme } from './ThemeManager';
+export { TypeColorRegistry, type TypeInfo } from './TypeColorRegistry';

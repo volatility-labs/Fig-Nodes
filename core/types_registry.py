@@ -43,6 +43,7 @@ class IndicatorType(Enum):
     ORB = auto()  # Custom Indicator
     LOD = auto()  # Low of Day Distance
     VBP = auto()  # Volume Profile
+    EVWMA = auto()  # Exponential Volume Weighted Moving Average
 
 
 # Progress/lifecycle enums for node execution

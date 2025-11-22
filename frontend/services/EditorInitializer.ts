@@ -9,6 +9,7 @@ import { UIModuleLoader } from './UIModuleLoader';
 import { ServiceRegistry } from './ServiceRegistry';
 import { registerExecutionStatusService } from './ExecutionStatusService';
 import { ThemeManager } from './ThemeManager';
+import { TypeColorRegistry } from './TypeColorRegistry';
 
 export function updateStatus(status: 'connected' | 'disconnected' | 'loading' | 'executing', message?: string) {
     const sr: ServiceRegistry | undefined = (window as any).serviceRegistry;
@@ -109,6 +110,18 @@ export class EditorInitializer {
             // Proactively warm up node metadata cache so '/nodes' is fetched even if UIModuleLoader is mocked
             try { await this.appState.getNodeMetadata(); } catch { /* ignore in init flow */ }
             const { allItems } = await uiModuleLoader.registerNodes();
+            
+            // Initialize TypeColorRegistry after nodes are registered
+            const typeColorRegistry = new TypeColorRegistry();
+            const nodeMetadata = uiModuleLoader.getNodeMetadata();
+            if (nodeMetadata) {
+                typeColorRegistry.initialize(nodeMetadata, canvas as any);
+            }
+            this.serviceRegistry.register('typeColorRegistry', typeColorRegistry);
+            
+            // Connect ThemeManager with TypeColorRegistry for connector theming
+            this.themeManager.setTypeColorRegistry(typeColorRegistry);
+            
             const palette = this.setupPalette(allItems, canvas as any, graph as any);
 
             // Set up event listeners

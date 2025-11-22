@@ -1,4 +1,5 @@
 import { LGraph, LGraphCanvas, LiteGraph } from '@fig-node/litegraph';
+import { TypeColorRegistry } from './TypeColorRegistry';
 
 export interface Theme {
     name: string;
@@ -124,11 +125,19 @@ export class ThemeManager {
     private currentTheme: Theme;
     private canvas: LGraphCanvas | null = null;
     private graph: LGraph | null = null;
+    private typeColorRegistry: TypeColorRegistry | null = null;
     
     constructor() {
         // Load from localStorage or default to bloomberg
         const saved = localStorage.getItem('fig-node-theme');
         this.currentTheme = THEMES[saved || 'bloomberg'] || THEMES.bloomberg;
+    }
+    
+    /**
+     * Set TypeColorRegistry reference for connector theming
+     */
+    setTypeColorRegistry(registry: TypeColorRegistry): void {
+        this.typeColorRegistry = registry;
     }
     
     /**
@@ -212,29 +221,35 @@ export class ThemeManager {
             output_on: colors.outputOn,
         };
         
-        // 3. Update link type colors
+        // 3. Update link type colors (basic types)
         LGraphCanvas.link_type_colors["-1"] = colors.eventLinkColor;
         LGraphCanvas.link_type_colors["number"] = colors.linkTypeNumber;
         LGraphCanvas.link_type_colors["node"] = colors.linkTypeNode;
         LGraphCanvas.DEFAULT_EVENT_LINK_COLOR = colors.eventLinkColor;
         
-        // 4. Update CSS variables for UI elements
+        // 4. Refresh type-based connector colors if TypeColorRegistry is available
+        // This ensures all registered type colors are refreshed when theme changes
+        if (this.typeColorRegistry) {
+            this.typeColorRegistry.refresh();
+        }
+        
+        // 5. Update CSS variables for UI elements
         document.documentElement.style.setProperty('--theme-bg', colors.uiBackground);
         document.documentElement.style.setProperty('--theme-border', colors.uiBorder);
         document.documentElement.style.setProperty('--theme-text', colors.uiText);
         document.documentElement.style.setProperty('--theme-text-secondary', colors.uiTextSecondary);
         
-        // 5. Update canvas element background
+        // 6. Update canvas element background
         const canvasEl = document.getElementById('litegraph-canvas');
         if (canvasEl) {
             canvasEl.style.background = colors.uiBackground;
         }
         
-        // 6. Update body background
+        // 7. Update body background
         document.body.style.background = colors.uiBackground;
         document.body.style.color = colors.uiText;
         
-        // 7. Update footer background
+        // 8. Update footer background
         const footer = document.getElementById('footer');
         if (footer) {
             footer.style.background = colors.uiBackground;

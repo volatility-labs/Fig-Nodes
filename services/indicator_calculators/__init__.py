@@ -2,6 +2,7 @@ from .adx_calculator import calculate_adx
 from .atr_calculator import calculate_atr, calculate_tr
 from .atrx_calculator import calculate_atrx
 from .ema_calculator import calculate_ema
+from .evwma_calculator import calculate_evwma, calculate_rolling_correlation
 from .lod_calculator import calculate_lod
 from .orb_calculator import calculate_orb
 from .rma_calculator import calculate_rma
@@ -25,10 +26,12 @@ __all__ = [
     "calculate_atrx",
     "calculate_tr",
     "calculate_ema",
+    "calculate_evwma",
     "calculate_lod",
     "calculate_orb",
     "calculate_rma",
     "calculate_rsi",
+    "calculate_rolling_correlation",
     "calculate_rolling_mean",
     "calculate_rolling_std_dev",
     "calculate_rolling_sum_strict",
