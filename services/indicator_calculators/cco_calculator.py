@@ -135,7 +135,11 @@ def calculate_cco(
     for i in range(data_length):
         # Short cycle channels
         scl_2_idx = int(i - scl_2) if i >= scl_2 else 0
-        ma_scl_val_raw = ma_scl[scl_2_idx] if scl_2_idx >= 0 and ma_scl[scl_2_idx] is not None else closes_list[i]
+        ma_scl_val_raw = (
+            ma_scl[scl_2_idx]
+            if scl_2_idx >= 0 and ma_scl[scl_2_idx] is not None
+            else closes_list[i]
+        )
         scm_off_raw = scm_off[i]
         scm_off_val: float = scm_off_raw if scm_off_raw is not None else 0.0
 
@@ -149,7 +153,11 @@ def calculate_cco(
 
         # Medium cycle channels
         mcl_2_idx = int(i - mcl_2) if i >= mcl_2 else 0
-        ma_mcl_val_raw = ma_mcl[mcl_2_idx] if mcl_2_idx >= 0 and ma_mcl[mcl_2_idx] is not None else closes_list[i]
+        ma_mcl_val_raw = (
+            ma_mcl[mcl_2_idx]
+            if mcl_2_idx >= 0 and ma_mcl[mcl_2_idx] is not None
+            else closes_list[i]
+        )
         mcm_off_raw = mcm_off[i]
         mcm_off_val: float = mcm_off_raw if mcm_off_raw is not None else 0.0
 
@@ -216,4 +224,3 @@ def calculate_cco(
         "medium_cycle_top": mct,
         "medium_cycle_bottom": mcb,
     }
-

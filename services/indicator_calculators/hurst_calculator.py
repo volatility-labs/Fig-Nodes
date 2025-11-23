@@ -40,9 +40,9 @@ def calculate_bandpass_filter(
     # Pre-calculate constants
     # IMPORTANT: Pinescript uses 3.14 as approximation of pi, not math.pi!
     # To match TradingView exactly, we must use the same approximation
-    PI_APPROX = 3.14  # Pinescript approximation (not math.pi!)
-    beta = math.cos(PI_APPROX * (360.0 / period) / 180.0)
-    gamma = 1.0 / math.cos(PI_APPROX * (720.0 * bandwidth / period) / 180.0)
+    pi_approx = 3.14  # Pinescript approximation (not math.pi!)
+    beta = math.cos(pi_approx * (360.0 / period) / 180.0)
+    gamma = 1.0 / math.cos(pi_approx * (720.0 * bandwidth / period) / 180.0)
     alpha = gamma - math.sqrt(gamma * gamma - 1.0)
 
     # Initialize state variables for filtered values (not raw prices)
@@ -196,8 +196,8 @@ def calculate_hurst_oscillator(
             source_series = list(closes)
         else:
             source_series = [
-                (h + l) / 2.0 if h is not None and l is not None else None
-                for h, l in zip(highs, lows)
+                (h + low) / 2.0 if h is not None and low is not None else None
+                for h, low in zip(highs, lows)
             ]
     elif source == "open" and len(closes) > 0:
         # Would need opens, but for now use close
