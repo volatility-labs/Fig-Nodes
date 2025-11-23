@@ -44,6 +44,7 @@ class IndicatorType(Enum):
     LOD = auto()  # Low of Day Distance
     VBP = auto()  # Volume Profile
     EVWMA = auto()  # Exponential Volume Weighted Moving Average
+    CCO = auto()  # Cycle Channel Oscillator
 
 
 # Progress/lifecycle enums for node execution

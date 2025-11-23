@@ -119,6 +119,41 @@ export const THEMES: Record<string, Theme> = {
             canvasGridColor: '#30363d'
         }
     },
+    light: {
+        name: 'light',
+        displayName: 'Light',
+        colors: {
+            canvasBackground: '#f0f0f0',
+            nodeDefaultColor: '#ffffff',
+            nodeDefaultBgColor: '#ffffff',
+            nodeTitleColor: '#333333',
+            nodeSelectedTitleColor: '#000000',
+            nodeTextColor: '#555555',
+            nodeTextHighlightColor: '#222222',
+            nodeBoxOutlineColor: '#b0b0b0',
+            nodeDefaultBoxColor: '#d0d0d0',
+            linkColor: '#0066cc',
+            eventLinkColor: '#cc6600',
+            connectingLinkColor: '#00aa00',
+            linkTypeNumber: '#0066cc',
+            linkTypeNode: '#00aa00',
+            inputOff: '#999999',
+            inputOn: '#00aa00',
+            outputOff: '#999999',
+            outputOn: '#0066cc',
+            widgetBgColor: '#ffffff',
+            widgetOutlineColor: '#b0b0b0',
+            widgetAdvancedOutlineColor: 'rgba(0, 102, 204, 0.8)',
+            widgetTextColor: '#333333',
+            widgetSecondaryTextColor: '#666666',
+            widgetDisabledTextColor: '#999999',
+            uiBackground: '#ffffff',
+            uiBorder: '#d0d0d0',
+            uiText: '#222222',
+            uiTextSecondary: '#666666',
+            canvasGridColor: '#d0d0d0'
+        }
+    },
 };
 
 export class ThemeManager {

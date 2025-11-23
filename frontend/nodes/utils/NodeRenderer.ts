@@ -40,12 +40,46 @@ export class NodeRenderer {
             let currentLine = words[0] || '';
             for (let i = 1; i < words.length; i++) {
                 const word = words[i];
-                const width = ctx.measureText(currentLine + ' ' + (word || '')).width;
-                if (width < maxWidth) {
-                    currentLine += ' ' + word;
+                const testLine = currentLine ? `${currentLine} ${word}` : word;
+                const testWidth = ctx.measureText(testLine).width;
+                
+                if (testWidth > maxWidth) {
+                    // If current line has content, push it and start new line
+                    if (currentLine) {
+                        lines.push(currentLine);
+                        currentLine = '';
+                    }
+                    
+                    // Handle word that's longer than maxWidth by breaking it
+                    const wordWidth = ctx.measureText(word).width;
+                    if (wordWidth > maxWidth) {
+                        // Break long word into chunks
+                        let remainingWord = word;
+                        while (remainingWord) {
+                            let chunk = '';
+                            for (let j = 0; j < remainingWord.length; j++) {
+                                const testChunk = chunk + remainingWord[j];
+                                if (ctx.measureText(testChunk).width > maxWidth && chunk) {
+                                    break;
+                                }
+                                chunk = testChunk;
+                            }
+                            if (chunk) {
+                                lines.push(chunk);
+                                remainingWord = remainingWord.slice(chunk.length);
+                            } else {
+                                // Single character is wider than maxWidth (shouldn't happen, but handle gracefully)
+                                lines.push(remainingWord[0] || '');
+                                remainingWord = remainingWord.slice(1);
+                            }
+                        }
+                        currentLine = '';
+                    } else {
+                        // Word fits on its own line
+                        currentLine = word;
+                    }
                 } else {
-                    lines.push(currentLine);
-                    currentLine = word || '';
+                    currentLine = testLine;
                 }
             }
             if (currentLine) lines.push(currentLine);
