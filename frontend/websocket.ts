@@ -270,9 +270,12 @@ function handleDataMessage(data: any, graph: LGraph) {
             node.onStreamUpdate.call(node, results[nodeId]);
         }
         
-        // Only call updateDisplay if node explicitly wants to display results
-        // Nodes with displayResults=false won't receive results (unless they use onStreamUpdate)
-        if (node.displayResults === true && typeof node.updateDisplay === 'function') {
+        // Call updateDisplay for nodes that want to display results
+        // LoggingNodeUI uses displayResults=false for custom rendering but still needs updateDisplay
+        const shouldCallUpdateDisplay = node.displayResults === true || 
+            (node.type === 'Logging' && typeof node.updateDisplay === 'function');
+        
+        if (shouldCallUpdateDisplay && typeof node.updateDisplay === 'function') {
             node.updateDisplay.call(node, results[nodeId]);
         }
     }
