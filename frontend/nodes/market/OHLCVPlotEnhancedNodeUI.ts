@@ -105,31 +105,18 @@ export default class OHLCVPlotEnhancedNodeUI extends BaseCustomNode {
             const cols = Math.ceil(Math.sqrt(labels.length));
             const rows = Math.ceil(labels.length / cols);
             
-            // Get average aspect ratio of all images
-            const aspectRatios = Array.from(this.imageAspectRatios.values());
-            const avgAspectRatio = aspectRatios.reduce((sum, ar) => sum + ar, 0) / aspectRatios.length;
-            
-            // Calculate cell dimensions based on average aspect ratio
             const cellSpacing = 2; // Small uniform spacing for clean grid
             
-            // Target: fit cells with proper aspect ratio
-            const targetCellWidth = Math.max(150, Math.min(250, 200));
+            // For grid layout, use a balanced approach
+            // Target a reasonable cell size that works for mixed aspect ratios
+            const targetCellWidth = 200;
+            const targetCellHeight = 150; // Balanced height for mixed content
             
-            // Calculate constrained content width first
-            const idealContentWidth = cols * targetCellWidth + (cols - 1) * cellSpacing;
-            const maxContentWidth = maxWidth - padding * 2;
-            const contentWidth = Math.min(maxContentWidth, idealContentWidth);
-            
-            // Recalculate actual cell width based on constrained content width
-            const actualCellWidth = Math.floor((contentWidth - (cols - 1) * cellSpacing) / cols);
-            
-            // Calculate height based on ACTUAL cell width to preserve aspect ratio
-            const actualCellHeight = actualCellWidth / minAspectRatio;
-            
-            const contentHeight = rows * actualCellHeight + (rows - 1) * cellSpacing;
+            const contentWidth = cols * targetCellWidth + (cols - 1) * cellSpacing;
+            const contentHeight = rows * targetCellHeight + (rows - 1) * cellSpacing;
             const totalHeight = headerHeight + padding * 2 + contentHeight;
 
-            this.size[0] = contentWidth + padding * 2;
+            this.size[0] = Math.max(minWidth, Math.min(maxWidth, contentWidth + padding * 2));
             this.size[1] = Math.max(minHeight + headerHeight, totalHeight);
         }
 
@@ -273,9 +260,12 @@ export default class OHLCVPlotEnhancedNodeUI extends BaseCustomNode {
         const cols = Math.ceil(Math.sqrt(labels.length));
         const rows = Math.ceil(labels.length / cols);
         const cellSpacing = 2; // Small uniform spacing between images
-        // Apply zoom to grid cell sizes for multi-image grids
+        
+        // Calculate actual cell dimensions based on available space
         const baseCellW = Math.floor((w - (cols - 1) * cellSpacing) / cols);
         const baseCellH = Math.floor((h - (rows - 1) * cellSpacing) / rows);
+        
+        // Apply zoom
         const cellW = baseCellW * this.zoomLevel;
         const cellH = baseCellH * this.zoomLevel;
         

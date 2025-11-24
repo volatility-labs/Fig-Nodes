@@ -106,19 +106,12 @@ export default class ImageDisplayNodeUI extends BaseCustomNode {
             const cols = Math.ceil(Math.sqrt(labels.length));
             const rows = Math.ceil(labels.length / cols);
             
-            // Calculate cell dimensions - use minimum aspect ratio to ensure all images fit
-            // This prevents taller images from being compressed
-            const aspectRatios = Array.from(this.imageAspectRatios.values());
-            if (aspectRatios.length === 0) return;
-            
-            // Use the minimum aspect ratio (tallest images) to size cells
-            // This ensures all images fit without compression
-            const minAspectRatio = Math.min(...aspectRatios);
             const cellSpacing = 2; // Small uniform spacing for clean grid
             
-            // Target: fit cells to accommodate tallest images
-            const targetCellWidth = Math.max(150, Math.min(250, 200));
-            const targetCellHeight = targetCellWidth / minAspectRatio; // Use min (tallest) to prevent compression
+            // For grid layout, use a balanced approach
+            // Target a reasonable cell size that works for mixed aspect ratios
+            const targetCellWidth = 200;
+            const targetCellHeight = 150; // Balanced height for mixed content
             
             const contentWidth = cols * targetCellWidth + (cols - 1) * cellSpacing;
             const contentHeight = rows * targetCellHeight + (rows - 1) * cellSpacing;
@@ -263,9 +256,12 @@ export default class ImageDisplayNodeUI extends BaseCustomNode {
         const cols = Math.ceil(Math.sqrt(labels.length));
         const rows = Math.ceil(labels.length / cols);
         const cellSpacing = 2; // Small uniform spacing between images
-        // Apply zoom to grid cell sizes for multi-image grids
+        
+        // Calculate actual cell dimensions based on available space
         const baseCellW = Math.floor((w - (cols - 1) * cellSpacing) / cols);
         const baseCellH = Math.floor((h - (rows - 1) * cellSpacing) / rows);
+        
+        // Apply zoom
         const cellW = baseCellW * this.zoomLevel;
         const cellH = baseCellH * this.zoomLevel;
         
