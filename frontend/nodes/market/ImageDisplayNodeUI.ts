@@ -106,16 +106,19 @@ export default class ImageDisplayNodeUI extends BaseCustomNode {
             const cols = Math.ceil(Math.sqrt(labels.length));
             const rows = Math.ceil(labels.length / cols);
             
-            // Get average aspect ratio of all images
+            // Calculate cell dimensions - use minimum aspect ratio to ensure all images fit
+            // This prevents taller images from being compressed
             const aspectRatios = Array.from(this.imageAspectRatios.values());
-            const avgAspectRatio = aspectRatios.reduce((sum, ar) => sum + ar, 0) / aspectRatios.length;
+            if (aspectRatios.length === 0) return;
             
-            // Calculate cell dimensions based on average aspect ratio
+            // Use the minimum aspect ratio (tallest images) to size cells
+            // This ensures all images fit without compression
+            const minAspectRatio = Math.min(...aspectRatios);
             const cellSpacing = 2; // Small uniform spacing for clean grid
             
-            // Target: fit cells with proper aspect ratio
+            // Target: fit cells to accommodate tallest images
             const targetCellWidth = Math.max(150, Math.min(250, 200));
-            const targetCellHeight = targetCellWidth / avgAspectRatio;
+            const targetCellHeight = targetCellWidth / minAspectRatio; // Use min (tallest) to prevent compression
             
             const contentWidth = cols * targetCellWidth + (cols - 1) * cellSpacing;
             const contentHeight = rows * targetCellHeight + (rows - 1) * cellSpacing;
