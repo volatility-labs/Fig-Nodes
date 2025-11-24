@@ -16,6 +16,11 @@ export default class OHLCVPlotNodeUI extends BaseCustomNode {
     private images: { [label: string]: string } = {};
     private loadedImages: Map<string, HTMLImageElement> = new Map();
     private imageAspectRatios: Map<string, number> = new Map();
+    private scrollOffsetX: number = 0;
+    private scrollOffsetY: number = 0;
+    private gridScrollOffset: number = 0; // For multi-image grid vertical scrolling
+    private gridScrollOffsetX: number = 0; // For multi-image grid horizontal scrolling
+    private zoomLevel: number = 1.0; // Zoom level (1.0 = 100% original size, >1.0 = zoomed in, clamped between 1.0 and 5.0)
 
     constructor(title: string, data: any, serviceRegistry: any) {
         super(title, data, serviceRegistry);
@@ -24,12 +29,25 @@ export default class OHLCVPlotNodeUI extends BaseCustomNode {
         this.renderer = new OHLCVPlotRenderer(this);
     }
 
+    // Override onMouseDown to ensure node can be selected properly
+    // Return false to allow normal node selection behavior
+    onMouseDown(event: any, pos: [number, number], canvas: any): boolean {
+        // Allow normal node selection - don't interfere with it
+        return false;
+    }
+
     updateDisplay(result: any) {
         // Expect { images: { label: dataUrl } }
         const imgs = (result && result.images) || {};
         this.images = imgs;
         this.loadedImages.clear();
         this.imageAspectRatios.clear();
+        // Reset scroll offsets and zoom when new images are loaded
+        this.scrollOffsetX = 0;
+        this.scrollOffsetY = 0;
+        this.gridScrollOffset = 0;
+        this.gridScrollOffsetX = 0;
+        this.zoomLevel = 1.0;
         
         // Preload all images and calculate aspect ratios
         let allLoaded = 0;
@@ -169,14 +187,9 @@ export default class OHLCVPlotNodeUI extends BaseCustomNode {
         ctx.rect(x0, y0, w, h);
         ctx.clip();
 
-        // Minimal flat background
-        ctx.fillStyle = '#0f1419';
+        // White background for uniform appearance (like ImageDisplay)
+        ctx.fillStyle = '#ffffff';
         ctx.fillRect(x0, y0, w, h);
-        
-        // Subtle rounded inner border
-        ctx.strokeStyle = 'rgba(75, 85, 99, 0.2)';
-        ctx.lineWidth = 1;
-        ctx.strokeRect(x0 + 0.5, y0 + 0.5, w - 1, h - 1);
 
         if (!labels.length) {
             // Minimal empty state
@@ -220,14 +233,32 @@ export default class OHLCVPlotNodeUI extends BaseCustomNode {
             return;
         }
 
-        // Compute grid for multiple images
+        // Multi-image grid with finite scrolling and zooming
         const cols = Math.ceil(Math.sqrt(labels.length));
         const rows = Math.ceil(labels.length / cols);
         const cellSpacing = 4;
-        const cellW = Math.floor((w - (cols - 1) * cellSpacing) / cols);
-        const cellH = Math.floor((h - (rows - 1) * cellSpacing) / rows);
+        const baseCellW = Math.floor((w - (cols - 1) * cellSpacing) / cols);
+        const baseCellH = Math.floor((h - (rows - 1) * cellSpacing) / rows);
 
-        // Draw each image into a cell
+        // Apply zoom to cell dimensions
+        const cellW = baseCellW * this.zoomLevel;
+        const cellH = baseCellH * this.zoomLevel;
+        
+        // Calculate total grid dimensions (FINITE scrolling)
+        const totalGridHeight = rows * cellH + (rows - 1) * cellSpacing;
+        const totalGridWidth = cols * cellW + (cols - 1) * cellSpacing;
+        
+        // Clamp scroll offsets to prevent scrolling beyond content
+        const maxScrollY = Math.max(0, totalGridHeight - h);
+        const maxScrollX = Math.max(0, totalGridWidth - w);
+        this.gridScrollOffset = Math.max(0, Math.min(maxScrollY, this.gridScrollOffset));
+        this.gridScrollOffsetX = Math.max(0, Math.min(maxScrollX, this.gridScrollOffsetX));
+
+        // Draw grid with finite scrolling
+        const baseX = x0 - this.gridScrollOffsetX;
+        const baseY = y0 - this.gridScrollOffset;
+        
+        // Draw each image into a cell with scroll offset
         let idx = 0;
         for (let r = 0; r < rows; r++) {
             for (let c = 0; c < cols; c++) {
@@ -236,29 +267,183 @@ export default class OHLCVPlotNodeUI extends BaseCustomNode {
                 if (!label) continue;
                 const img = this.loadedImages.get(label);
 
-                const cx = x0 + c * (cellW + cellSpacing);
-                const cy = y0 + r * (cellH + cellSpacing);
+                const cx = baseX + c * (cellW + cellSpacing);
+                const cy = baseY + r * (cellH + cellSpacing);
+
+                // Skip drawing if cell is completely outside visible area
+                if (cy + cellH < y0 || cy > y0 + h || cx + cellW < x0 || cx > x0 + w) continue;
+
+                // Draw subtle background for each chart (like ImageDisplay)
+                ctx.fillStyle = '#fafafa'; // Very light gray background for separation
+                ctx.fillRect(cx, cy, cellW, cellH);
 
                 // Image - fit preserving aspect ratio
                 if (img) {
-                    const imageArea = this.fitImageToBounds(img.width, img.height, cellW - 2, cellH - 2);
+                    // Add padding inside the cell for better visual separation
+                    const padding = 4;
+                    const imageArea = this.fitImageToBounds(img.width, img.height, cellW - padding * 2, cellH - padding * 2);
                     ctx.drawImage(
                         img,
-                        cx + 1 + imageArea.x,
-                        cy + 1 + imageArea.y,
+                        cx + padding + imageArea.x,
+                        cy + padding + imageArea.y,
                         imageArea.width,
                         imageArea.height
                     );
                 }
 
-                // Very subtle border
-                ctx.strokeStyle = 'rgba(75, 85, 99, 0.18)';
-                ctx.lineWidth = 1;
+                // Draw border around each chart (like ImageDisplay)
+                ctx.strokeStyle = '#d0d0d0'; // Medium gray border for clear separation
+                ctx.lineWidth = 2; // Thicker border for better visibility
                 ctx.strokeRect(cx + 0.5, cy + 0.5, cellW - 1, cellH - 1);
             }
         }
         
+        // Draw scrollbars for grid if needed
+        if (maxScrollY > 0) {
+            this.drawVerticalScrollbar(ctx, x0 + w, y0, w, h, totalGridHeight, h);
+        }
+        if (maxScrollX > 0) {
+            this.drawHorizontalScrollbar(ctx, x0, y0 + h, w, h, totalGridWidth, w);
+        }
+        
         ctx.restore();
+    }
+
+    // Handle mouse wheel events for scrolling and zooming
+    onMouseWheel(event: WheelEvent, pos: [number, number], canvas: any): boolean {
+        const nodeWithFlags = this as { flags?: { collapsed?: boolean }; size: [number, number]; selected?: boolean };
+        
+        if (nodeWithFlags.flags?.collapsed || !this.images || Object.keys(this.images).length === 0) {
+            return false;
+        }
+
+        const padding = 12;
+        const widgetSpacing = 8;
+        const widgetHeight = this.widgets ? this.widgets.length * LiteGraph.NODE_WIDGET_HEIGHT : 0;
+        const startY = LiteGraph.NODE_TITLE_HEIGHT + widgetHeight + widgetSpacing + padding;
+        const contentWidth = Math.max(0, nodeWithFlags.size[0] - padding * 2);
+        const contentHeight = Math.max(0, nodeWithFlags.size[1] - LiteGraph.NODE_TITLE_HEIGHT - widgetHeight - widgetSpacing - padding * 2);
+
+        // Check for zoom (Shift key held)
+        const isSelected = nodeWithFlags.selected || false;
+        const shiftPressed = event.shiftKey;
+        
+        if (shiftPressed && isSelected) {
+            // Zoom mode
+            const zoomSpeed = 0.001;
+            const zoomDelta = event.deltaY * zoomSpeed;
+            this.zoomLevel = Math.max(1.0, Math.min(5.0, this.zoomLevel - zoomDelta));
+            this.setDirtyCanvas(true, true);
+            return true;
+        }
+
+        // Check if mouse is within node bounds
+        if (pos[0] < 0 || pos[0] > nodeWithFlags.size[0] || pos[1] < startY || pos[1] > nodeWithFlags.size[1]) {
+            return false;
+        }
+
+        const labels = Object.keys(this.images);
+        
+        if (labels.length !== 1) {
+            // Multi-image grid scrolling
+            const cols = Math.ceil(Math.sqrt(labels.length));
+            const rows = Math.ceil(labels.length / cols);
+            const cellSpacing = 4;
+            const baseCellW = Math.floor((contentWidth - (cols - 1) * cellSpacing) / cols);
+            const baseCellH = Math.floor((contentHeight - (rows - 1) * cellSpacing) / rows);
+            const cellW = baseCellW * this.zoomLevel;
+            const cellH = baseCellH * this.zoomLevel;
+            
+            const totalGridHeight = rows * cellH + (rows - 1) * cellSpacing;
+            const totalGridWidth = cols * cellW + (cols - 1) * cellSpacing;
+            
+            const maxScrollY = Math.max(0, totalGridHeight - contentHeight);
+            const maxScrollX = Math.max(0, totalGridWidth - contentWidth);
+            
+            const isHorizontal = Math.abs(event.deltaX) > Math.abs(event.deltaY);
+            let scrollAmount = event.deltaMode === 0 ? (isHorizontal ? event.deltaX * 0.8 : event.deltaY * 0.8) : 
+                             event.deltaMode === 1 ? (isHorizontal ? event.deltaX * 20 : event.deltaY * 20) :
+                             (isHorizontal ? event.deltaX * contentWidth : event.deltaY * contentHeight);
+            
+            if (isHorizontal && maxScrollX > 0) {
+                this.gridScrollOffsetX = Math.max(0, Math.min(maxScrollX, this.gridScrollOffsetX + scrollAmount));
+            } else if (!isHorizontal && maxScrollY > 0) {
+                this.gridScrollOffset = Math.max(0, Math.min(maxScrollY, this.gridScrollOffset + scrollAmount));
+            }
+            
+            this.setDirtyCanvas(true, true);
+            return true;
+        }
+
+        // Single image scrolling
+        const label = labels[0];
+        if (!label) return false;
+        const img = this.loadedImages.get(label);
+        if (!img) return false;
+
+        const baseImageArea = this.fitImageToBounds(img.width, img.height, contentWidth, contentHeight);
+        const zoomedWidth = baseImageArea.width * this.zoomLevel;
+        const zoomedHeight = baseImageArea.height * this.zoomLevel;
+        const maxScrollX = Math.max(0, zoomedWidth - contentWidth);
+        const maxScrollY = Math.max(0, zoomedHeight - contentHeight);
+
+        if (maxScrollX <= 0 && maxScrollY <= 0) {
+            return false; // No scrolling needed
+        }
+
+        const isHorizontal = Math.abs(event.deltaX) > Math.abs(event.deltaY);
+        let scrollAmount = event.deltaMode === 0 ? (isHorizontal ? event.deltaX * 0.8 : event.deltaY * 0.8) : 
+                         event.deltaMode === 1 ? (isHorizontal ? event.deltaX * 20 : event.deltaY * 20) :
+                         (isHorizontal ? event.deltaX * contentWidth : event.deltaY * contentHeight);
+
+        if (isHorizontal && maxScrollX > 0) {
+            this.scrollOffsetX = Math.max(0, Math.min(maxScrollX, this.scrollOffsetX + scrollAmount));
+        } else if (!isHorizontal && maxScrollY > 0) {
+            this.scrollOffsetY = Math.max(0, Math.min(maxScrollY, this.scrollOffsetY + scrollAmount));
+        }
+
+        this.setDirtyCanvas(true, true);
+        return true;
+    }
+
+    private drawVerticalScrollbar(ctx: CanvasRenderingContext2D, scrollbarX: number, startY: number, visibleWidth: number, visibleHeight: number, totalHeight: number, viewportHeight: number) {
+        const scrollbarWidth = 8;
+        const scrollbarHeight = viewportHeight;
+        
+        // Scrollbar track
+        ctx.fillStyle = 'rgba(100, 100, 100, 0.3)';
+        ctx.fillRect(scrollbarX, startY, scrollbarWidth, scrollbarHeight);
+
+        // Scrollbar thumb
+        const maxScroll = Math.max(0, totalHeight - viewportHeight);
+        if (maxScroll <= 0) return;
+        
+        const thumbHeight = Math.max(20, (viewportHeight / totalHeight) * scrollbarHeight);
+        const scrollRatio = maxScroll > 0 ? this.scrollOffsetY / maxScroll : 0;
+        const thumbY = startY + scrollRatio * (scrollbarHeight - thumbHeight);
+        
+        ctx.fillStyle = 'rgba(150, 150, 150, 0.7)';
+        ctx.fillRect(scrollbarX, thumbY, scrollbarWidth, thumbHeight);
+    }
+
+    private drawHorizontalScrollbar(ctx: CanvasRenderingContext2D, startX: number, scrollbarY: number, visibleWidth: number, visibleHeight: number, totalWidth: number, viewportWidth: number) {
+        const scrollbarHeight = 8;
+        const scrollbarWidth = viewportWidth;
+        
+        // Scrollbar track
+        ctx.fillStyle = 'rgba(100, 100, 100, 0.3)';
+        ctx.fillRect(startX, scrollbarY, scrollbarWidth, scrollbarHeight);
+
+        // Scrollbar thumb
+        const maxScroll = Math.max(0, totalWidth - viewportWidth);
+        if (maxScroll <= 0) return;
+        
+        const thumbWidth = Math.max(20, (viewportWidth / totalWidth) * scrollbarWidth);
+        const scrollRatio = maxScroll > 0 ? this.scrollOffsetX / maxScroll : 0;
+        const thumbX = startX + scrollRatio * (scrollbarWidth - thumbWidth);
+        
+        ctx.fillStyle = 'rgba(150, 150, 150, 0.7)';
+        ctx.fillRect(thumbX, scrollbarY, thumbWidth, scrollbarHeight);
     }
 }
 

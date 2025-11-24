@@ -376,7 +376,7 @@ class OHLCVPlotEnhanced(Base):
         "overlay1_type": "SMA",
         "overlay2_period": 50,
         "overlay2_type": "SMA",
-        "show_vbp_levels": True,
+        "show_vbp_levels": False,  # Temporarily disabled to debug
         "vbp_bins": 50,
         "vbp_num_levels": 5,
         "vbp_lookback_years": 2,
@@ -507,6 +507,12 @@ class OHLCVPlotEnhanced(Base):
 
         images: dict[str, str] = {}
 
+        if not bundle:
+            logger.warning("OHLCVPlotEnhanced: No bundle provided in inputs")
+            return {"images": images}
+
+        logger.info(f"OHLCVPlotEnhanced: Processing bundle with {len(bundle)} symbols")
+        
         if bundle:
             # Limit symbols for safety
             max_syms_raw = self.params.get("max_symbols") or 12
@@ -519,12 +525,17 @@ class OHLCVPlotEnhanced(Base):
 
             items = list(bundle.items())[:max_syms]
             for sym, bars in items:
+                # Let _normalize_bars handle sorting - it always produces ascending order (oldest first)
+                # which is what the rest of the logic expects
+                logger.debug(f"OHLCVPlotEnhanced: Processing {sym} with {len(bars)} bars")
                 vbp_levels_for_sym: list[float] | None = None
                 if show_vbp and api_key:
                     try:
+                        logger.debug(f"OHLCVPlotEnhanced: Fetching weekly bars for VBP calculation for {sym}")
                         weekly_bars = await _fetch_weekly_bars_for_vbp(
                             sym, api_key, vbp_lookback_years
                         )
+                        logger.debug(f"OHLCVPlotEnhanced: Fetched {len(weekly_bars) if weekly_bars else 0} weekly bars for {sym}")
                         if weekly_bars:
                             vbp_levels_for_sym = _calculate_vbp_levels_from_weekly(
                                 weekly_bars,
@@ -533,16 +544,22 @@ class OHLCVPlotEnhanced(Base):
                                 vbp_use_dollar_weighted,
                                 vbp_use_close_only,
                             )
+                            logger.debug(f"OHLCVPlotEnhanced: Calculated {len(vbp_levels_for_sym) if vbp_levels_for_sym else 0} VBP levels for {sym}")
                     except Exception as e:
-                        logger = logging.getLogger(__name__)
-                        logger.warning(
-                            f"Failed to fetch weekly bars for VBP calculation for {sym}: {e}"
+                        logger.error(
+                            f"Failed to fetch weekly bars for VBP calculation for {sym}: {e}",
+                            exc_info=True
                         )
 
                 # Normalize and trim bars for display (daily bars from input)
                 norm = _normalize_bars(bars)
                 if lookback is not None and lookback > 0:
                     norm = norm[-lookback:]
+
+                # Check if we have enough bars to plot
+                if len(norm) < MIN_BARS_REQUIRED:
+                    logger.warning(f"OHLCVPlotEnhanced: Skipping {sym} - only {len(norm)} bars (minimum {MIN_BARS_REQUIRED} required)")
+                    continue
 
                 # Calculate overlays on the normalized and trimmed data
                 plot_overlays: list[tuple[list[float | None], str, str]] = []
@@ -552,7 +569,7 @@ class OHLCVPlotEnhanced(Base):
                     for i, (period, ma_type) in enumerate(overlay_configs):
                         overlay_values = _calculate_overlay(close_prices, period, ma_type)
                         non_none_count = sum(1 for v in overlay_values if v is not None)
-                        logging.getLogger(__name__).info(
+                        logger.info(
                             f"Computed {ma_type}({period}) for {sym}: {len(overlay_values)} total, "
                             f"{non_none_count} non-None in plot of {len(norm)} bars"
                         )
@@ -560,19 +577,25 @@ class OHLCVPlotEnhanced(Base):
                         color = colors[i % len(colors)]
                         plot_overlays.append((overlay_values, label, color))
 
-                fig, ax = plt.subplots(figsize=(3.2, 2.2))  # pyright: ignore
-                logger.debug(f"Plotting {sym} ({sym.asset_class}) with {len(norm)} bars")
-                _plot_candles(
-                    ax,
-                    norm,
-                    plot_overlays if plot_overlays else None,
-                    vbp_levels_for_sym if show_vbp else None,
-                    vbp_color,
-                    vbp_style,
-                    asset_class=sym.asset_class,  # Pass asset_class for timezone handling
-                )
-                ax.set_title(str(sym), fontsize=8)  # pyright: ignore
-                ax.tick_params(labelsize=7)  # pyright: ignore
-                images[str(sym)] = _encode_fig_to_data_url(fig)
+                try:
+                    logger.info(f"OHLCVPlotEnhanced: Creating plot for {sym} with {len(norm)} bars")
+                    fig, ax = plt.subplots(figsize=(3.2, 2.2))  # pyright: ignore
+                    logger.debug(f"OHLCVPlotEnhanced: Plotting {sym} ({sym.asset_class}) with {len(norm)} bars")
+                    _plot_candles(
+                        ax,
+                        norm,
+                        plot_overlays if plot_overlays else None,
+                        vbp_levels_for_sym if show_vbp else None,
+                        vbp_color,
+                        vbp_style,
+                        asset_class=sym.asset_class,  # Pass asset_class for timezone handling
+                    )
+                    ax.set_title(str(sym), fontsize=8)  # pyright: ignore
+                    ax.tick_params(labelsize=7)  # pyright: ignore
+                    image_data = _encode_fig_to_data_url(fig)
+                    images[str(sym)] = image_data
+                    logger.info(f"OHLCVPlotEnhanced: Successfully created image for {sym}, data length: {len(image_data)}")
+                except Exception as e:
+                    logger.error(f"OHLCVPlotEnhanced: Error creating plot for {sym}: {e}", exc_info=True)
 
         return {"images": images}

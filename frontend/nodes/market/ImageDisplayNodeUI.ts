@@ -266,22 +266,15 @@ export default class ImageDisplayNodeUI extends BaseCustomNode {
         const cellW = baseCellW * this.zoomLevel;
         const cellH = baseCellH * this.zoomLevel;
         
-        // Calculate total grid dimensions for infinite scrolling
+        // Calculate total grid dimensions (FINITE scrolling)
         const totalGridHeight = rows * cellH + (rows - 1) * cellSpacing;
-        const scrollBuffer = Math.max(50, totalGridHeight * 0.1);
-        const scrollableHeight = totalGridHeight + scrollBuffer;
-        
         const totalGridWidth = cols * cellW + (cols - 1) * cellSpacing;
-        const scrollBufferX = Math.max(50, totalGridWidth * 0.1);
-        const scrollableWidth = totalGridWidth + scrollBufferX;
         
-        // Wrap scroll offsets for infinite scrolling
-        if (scrollableHeight > 0) {
-            this.gridScrollOffset = ((this.gridScrollOffset % scrollableHeight) + scrollableHeight) % scrollableHeight;
-        }
-        if (scrollableWidth > 0) {
-            this.gridScrollOffsetX = ((this.gridScrollOffsetX % scrollableWidth) + scrollableWidth) % scrollableWidth;
-        }
+        // Clamp scroll offsets to prevent scrolling beyond content (FINITE scrolling)
+        const maxScrollY = Math.max(0, totalGridHeight - h);
+        const maxScrollX = Math.max(0, totalGridWidth - w);
+        this.gridScrollOffset = Math.max(0, Math.min(maxScrollY, this.gridScrollOffset));
+        this.gridScrollOffsetX = Math.max(0, Math.min(maxScrollX, this.gridScrollOffsetX));
 
         // Save the current context state before drawing grid
         ctx.save();
@@ -291,18 +284,9 @@ export default class ImageDisplayNodeUI extends BaseCustomNode {
         ctx.rect(x0, y0, w, h);
         ctx.clip();
 
-        // Draw grid with infinite scrolling support - draw multiple copies for seamless wrapping
-        const copiesNeededY = Math.ceil(h / scrollableHeight) + 2;
-        const copiesNeededX = Math.ceil(w / scrollableWidth) + 2;
-        
-        // Draw grid copies in both directions for infinite scrolling
-        for (let copyY = -1; copyY <= copiesNeededY; copyY++) {
-            const copyOffsetY = copyY * scrollableHeight;
-            const baseY = y0 - this.gridScrollOffset + copyOffsetY;
-            
-            for (let copyX = -1; copyX <= copiesNeededX; copyX++) {
-                const copyOffsetX = copyX * scrollableWidth;
-                const baseX = x0 - this.gridScrollOffsetX + copyOffsetX;
+        // Draw grid with finite scrolling
+        const baseX = x0 - this.gridScrollOffsetX;
+        const baseY = y0 - this.gridScrollOffset;
                 
                 // Draw each image into a cell with scroll offset
                 let idx = 0;
@@ -319,20 +303,27 @@ export default class ImageDisplayNodeUI extends BaseCustomNode {
                         // Skip drawing if cell is completely outside visible area
                         if (cy + cellH < y0 || cy > y0 + h || cx + cellW < x0 || cx > x0 + w) continue;
 
-                        // Image - stretch to fill entire cell for uniform grid appearance
+                // Draw subtle background for each symbol's chart group (StockCharts-style)
+                ctx.fillStyle = '#fafafa'; // Very light gray background for separation
+                ctx.fillRect(cx, cy, cellW, cellH);
+
                         if (img) {
-                            // Stretch image to fill cell completely (ignore aspect ratio for grid uniformity)
+                    // Add padding inside the cell for better visual separation
+                    const padding = 4;
+                    const imageArea = this.fitImageToBounds(img.width, img.height, cellW - padding * 2, cellH - padding * 2);
                             ctx.drawImage(
                                 img,
-                                cx,
-                                cy,
-                                cellW,
-                                cellH
+                        cx + padding + imageArea.x,
+                        cy + padding + imageArea.y,
+                        imageArea.width,
+                        imageArea.height
                             );
                         }
-                        // No borders - seamless grid appearance
-                    }
-                }
+
+                // Draw prominent border around each symbol's chart group (StockCharts-style grid separation)
+                ctx.strokeStyle = '#d0d0d0'; // Medium gray border for clear separation
+                ctx.lineWidth = 2; // Thicker border for better visibility
+                ctx.strokeRect(cx + 0.5, cy + 0.5, cellW - 1, cellH - 1);
             }
         }
         

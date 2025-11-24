@@ -1,5 +1,6 @@
 import base64
 import io
+import logging
 from typing import TYPE_CHECKING, Any
 
 import matplotlib
@@ -146,6 +147,10 @@ class OHLCVPlot(Base):
                 max_syms = 12
         items = list(bundle.items())[:max_syms]
         for sym, bars in items:
+            # Let _normalize_bars handle sorting - it always produces ascending order (oldest first)
+            # which is what the rest of the logic expects
+            logger = logging.getLogger(__name__)
+            logger.debug(f"OHLCVPlot: Processing {sym} with {len(bars)} bars")
             norm = _normalize_bars(bars)
             if lookback is not None and lookback > 0:
                 norm = norm[-lookback:]

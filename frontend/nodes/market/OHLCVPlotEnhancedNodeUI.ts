@@ -187,14 +187,9 @@ export default class OHLCVPlotEnhancedNodeUI extends BaseCustomNode {
         ctx.rect(x0, y0, w, h);
         ctx.clip();
 
-        // Minimal flat background
-        ctx.fillStyle = '#0f1419';
+        // White background for uniform appearance (like ImageDisplay)
+        ctx.fillStyle = '#ffffff';
         ctx.fillRect(x0, y0, w, h);
-        
-        // Subtle rounded inner border
-        ctx.strokeStyle = 'rgba(75, 85, 99, 0.2)';
-        ctx.lineWidth = 1;
-        ctx.strokeRect(x0 + 0.5, y0 + 0.5, w - 1, h - 1);
 
         if (!labels.length) {
             // Minimal empty state
@@ -260,31 +255,28 @@ export default class OHLCVPlotEnhancedNodeUI extends BaseCustomNode {
             return;
         }
 
-        // Compute grid for multiple images
+        // Compute grid for multiple images - fill available space dynamically
         const cols = Math.ceil(Math.sqrt(labels.length));
         const rows = Math.ceil(labels.length / cols);
         const cellSpacing = 2; // Small uniform spacing between images
         
-        // Use the same target cell dimensions as calculated in resizeNodeToMatchAspectRatio
-        // This ensures consistency between node sizing and drawing
-        const aspectRatios = Array.from(this.imageAspectRatios.values());
-        const avgAspectRatio = aspectRatios.reduce((sum, ar) => sum + ar, 0) / aspectRatios.length;
-        const targetCellWidth = Math.max(150, Math.min(250, 200));
-        const targetCellHeight = targetCellWidth / avgAspectRatio;
+        // Calculate cell dimensions to fill available space (like ImageDisplay)
+        const baseCellW = Math.floor((w - (cols - 1) * cellSpacing) / cols);
+        const baseCellH = Math.floor((h - (rows - 1) * cellSpacing) / rows);
         
-        // Apply zoom to the target dimensions
-        const cellW = targetCellWidth * this.zoomLevel;
-        const cellH = targetCellHeight * this.zoomLevel;
+        // Apply zoom to cell dimensions
+        const cellW = baseCellW * this.zoomLevel;
+        const cellH = baseCellH * this.zoomLevel;
         
-        // Calculate total grid dimensions
+        // Calculate total grid dimensions (FINITE scrolling)
         const totalGridHeight = rows * cellH + (rows - 1) * cellSpacing;
         const totalGridWidth = cols * cellW + (cols - 1) * cellSpacing;
         
-        // Clamp scroll offsets to valid ranges
-        const maxScrollX = Math.max(0, totalGridWidth - w);
+        // Clamp scroll offsets to prevent scrolling beyond content (FINITE scrolling)
         const maxScrollY = Math.max(0, totalGridHeight - h);
-        this.gridScrollOffsetX = Math.max(0, Math.min(maxScrollX, this.gridScrollOffsetX));
+        const maxScrollX = Math.max(0, totalGridWidth - w);
         this.gridScrollOffset = Math.max(0, Math.min(maxScrollY, this.gridScrollOffset));
+        this.gridScrollOffsetX = Math.max(0, Math.min(maxScrollX, this.gridScrollOffsetX));
 
         // Save the current context state before drawing grid
         ctx.save();
@@ -313,19 +305,28 @@ export default class OHLCVPlotEnhancedNodeUI extends BaseCustomNode {
                 // Skip drawing if cell is completely outside visible area
                 if (cy + cellH < y0 || cy > y0 + h || cx + cellW < x0 || cx > x0 + w) continue;
 
+                // Draw subtle background for each chart (like ImageDisplay)
+                ctx.fillStyle = '#fafafa'; // Very light gray background for separation
+                ctx.fillRect(cx, cy, cellW, cellH);
+
                 // Image - fit within cell preserving aspect ratio
                 if (img) {
-                    // Fit image within cell while preserving aspect ratio
-                    const imageArea = this.fitImageToBounds(img.width, img.height, cellW, cellH);
+                    // Add padding inside the cell for better visual separation
+                    const padding = 4;
+                    const imageArea = this.fitImageToBounds(img.width, img.height, cellW - padding * 2, cellH - padding * 2);
                     ctx.drawImage(
                         img,
-                        cx + imageArea.x,
-                        cy + imageArea.y,
+                        cx + padding + imageArea.x,
+                        cy + padding + imageArea.y,
                         imageArea.width,
                         imageArea.height
                     );
                 }
-                // No borders - seamless grid appearance
+
+                // Draw border around each chart (like ImageDisplay)
+                ctx.strokeStyle = '#d0d0d0'; // Medium gray border for clear separation
+                ctx.lineWidth = 2; // Thicker border for better visibility
+                ctx.strokeRect(cx + 0.5, cy + 0.5, cellW - 1, cellH - 1);
             }
         }
         

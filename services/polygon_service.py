@@ -43,6 +43,69 @@ async def fetch_bars(
     sort = params.get("sort", "asc")
     limit = params.get("limit", 5000)
 
+    # Massive.com aggregates API has a hard cap of 5000 bars per request
+    # Even if you request more, API will only return max 5000
+    # Use the actual API limit for our checks, not the requested limit
+    ACTUAL_API_LIMIT = 5000
+    effective_limit = min(limit, ACTUAL_API_LIMIT)
+    
+    # For crypto with long lookback periods, fetch newest first to avoid hitting API limits
+    # This ensures we get the most recent data even if we hit the 5000 bar limit
+    # We'll reverse the results to get chronological order (oldest first)
+    fetch_newest_first = False
+    
+    # Estimate number of bars needed to determine if we might hit API limits
+    # If we might hit the limit (5000 bars), we MUST fetch newest first to avoid stale data
+    # This is especially important for charts which need to show the current price context
+    parts = lookback_period.split()
+    if len(parts) == 2:
+        amount = int(parts[0])
+        unit = parts[1].lower()
+        
+        # Trading hours per day (Crypto 24h, Stocks ~6.5h - use 16 to be safe including ext hours)
+        # Trading days per week (Crypto 7, Stocks 5)
+        if symbol.asset_class == AssetClass.CRYPTO:
+            hours_per_day = 24
+            days_per_week_factor = 1.0
+        else:
+            # Polygon aggregates often include extended hours or partial bars
+            # Using a safer estimate of 16 hours/day for checks
+            hours_per_day = 16  
+            days_per_week_factor = 5/7
+            
+        # Convert lookback to days
+        days_lookback = 0
+        if unit in ("day", "days"):
+            days_lookback = amount
+        elif unit in ("week", "weeks"):
+            days_lookback = amount * 7
+        elif unit in ("month", "months"):
+            days_lookback = amount * 30
+        elif unit in ("year", "years"):
+            days_lookback = amount * 365
+            
+        # Estimate bars based on timespan
+        if timespan == "minute":
+            # Bars per day * number of days * adjustment for trading days
+            estimated_bars = (days_lookback * hours_per_day * 60) / multiplier * days_per_week_factor
+        elif timespan == "hour":
+            estimated_bars = (days_lookback * hours_per_day) / multiplier * days_per_week_factor
+        elif timespan == "day":
+            estimated_bars = days_lookback * days_per_week_factor
+        else:
+            estimated_bars = 0
+            
+        # If estimated bars exceeds 80% of the limit OR if the lookback is significant (>1 week for minute/hour)
+        # we force newest first. This protects against data gaps and limits.
+        # "Significant lookback" heuristic: >1000 estimated bars
+        is_significant_request = estimated_bars > 1000
+        
+        # Always prefer newest-first if there's any risk of hitting limits or missing recent data
+        if estimated_bars > effective_limit * 0.8 or is_significant_request:
+            fetch_newest_first = True
+            sort = "desc"
+            logger.warning(f"POLYGON_SERVICE: 🔄 Smart fetch active: Requesting {estimated_bars:.0f} bars ({lookback_period}) for {symbol.ticker}. Fetching NEWEST first to ensure current data visibility (limit={effective_limit}).")
+
     # Calculate date range (copied from PolygonCustomBarsNode._calculate_date_range)
     now = datetime.now()
     parts = lookback_period.split()
@@ -70,6 +133,7 @@ async def fetch_bars(
     # Add "X:" prefix for crypto tickers as required by Massive.com API
     if symbol.asset_class == AssetClass.CRYPTO:
         ticker = f"X:{ticker}"
+
     url = f"https://api.massive.com/v2/aggs/ticker/{ticker}/range/{multiplier}/{timespan}/{from_ms}/{to_ms}"
     query_params = {
         "adjusted": str(adjusted).lower(),
@@ -80,7 +144,6 @@ async def fetch_bars(
 
     # Use shorter timeout for better cancellation responsiveness
     timeout = httpx.Timeout(10.0, connect=5.0)  # modestly higher to reduce spurious timeouts
-
     current_time_utc = datetime.now(pytz.timezone("UTC"))
     current_time_et = current_time_utc.astimezone(pytz.timezone("US/Eastern"))
 
@@ -96,10 +159,11 @@ async def fetch_bars(
                     if attempt == 1:
                         raise
                     await asyncio.sleep(0.5)
+
             if response is None:
                 raise RuntimeError("No response received from Massive aggregates endpoint")
 
-        logger.info(f"POLYGON_SERVICE: HTTP response status: {response.status_code}")
+        logger.warning(f"POLYGON_SERVICE: HTTP response status: {response.status_code}")
 
         if response.status_code != 200:
             logger.error(f"POLYGON_SERVICE: HTTP error {response.status_code} for {symbol.ticker}")
@@ -109,7 +173,7 @@ async def fetch_bars(
         api_status = data.get("status")
         results_count = data.get("resultsCount", 0)
 
-        logger.info(f"POLYGON_SERVICE: API Response Status: {api_status}, Results: {results_count}")
+        logger.warning(f"POLYGON_SERVICE: API Response Status: {api_status}, Results: {results_count}, Limit requested: {limit}")
 
         # Log raw API response details for debugging delay issues
         if logger.isEnabledFor(logging.DEBUG):
@@ -156,8 +220,22 @@ async def fetch_bars(
         }
 
         results = data.get("results", [])
+        
+        # Check if we hit the API limit (API might cap at 5000 even if we request more)
+        actual_results = len(results)
+        if actual_results >= limit and results_count >= limit:
+            logger.warning(
+                f"POLYGON_SERVICE: Hit API limit for {symbol.ticker}: "
+                f"requested {limit} bars, got {actual_results} bars. "
+                f"Some data may be missing. Consider using shorter lookback period or fetching in chunks."
+            )
+        
+        # If we fetched newest first, reverse to get chronological order (oldest first)
+        if fetch_newest_first and results:
+            results = list(reversed(results))
+            logger.warning(f"POLYGON_SERVICE: 🔄 Reversed {len(results)} bars to chronological order (oldest first)")
+        
         bars: list[OHLCVBar] = []
-
         # Track if we need to append current bar from snapshot
         needs_current_bar = False
         current_bar_dict: OHLCVBar | None = None
@@ -170,7 +248,6 @@ async def fetch_bars(
                 logger.info(
                     f"POLYGON_SERVICE: Attempting snapshot fallback for crypto {symbol.ticker}"
                 )
-
                 try:
                     snapshot_bars, snapshot_metadata = await create_current_bar_from_snapshot(
                         symbol, api_key
@@ -189,9 +266,10 @@ async def fetch_bars(
                         f"POLYGON_SERVICE: Snapshot fallback error for {symbol.ticker}: {e}"
                     )
         else:
-            # Check if the latest bar is too old for crypto (more than 30 minutes)
+            # Check if the latest bar is too old (more than 30 minutes)
             # We'll fill in missing intervals with snapshot data to keep bars recent
-            if results and symbol.asset_class == AssetClass.CRYPTO and timespan == "minute":
+            # Apply to crypto with minute OR hour timespans (hourly bars can also be stale)
+            if results and symbol.asset_class == AssetClass.CRYPTO and timespan in ["minute", "hour"]:
                 # Determine which bar is most recent based on sort order
                 sort_order = params.get("sort", "asc")
                 if sort_order == "desc":
@@ -210,42 +288,72 @@ async def fetch_bars(
 
                     if age_minutes > 30:  # If latest bar is more than 30 minutes old
                         logger.warning(
-                            f"POLYGON_SERVICE: Latest bar for {symbol.ticker} is {age_minutes:.1f} minutes old, using snapshot"
+                            f"POLYGON_SERVICE: Latest bar for {symbol.ticker} is {age_minutes:.1f} minutes old, fetching current snapshot"
                         )
 
                         try:
                             # Get current price from snapshot
+                            logger.warning(f"POLYGON_SERVICE: Fetching snapshot for {symbol.ticker}...")
+                            logger.warning(f"POLYGON_SERVICE: Symbol details - ticker={symbol.ticker}, asset_class={symbol.asset_class}")
                             current_price, snapshot_metadata = await fetch_current_snapshot(
                                 symbol, api_key
                             )
+                            logger.warning(f"POLYGON_SERVICE: Snapshot fetch returned: price={current_price}, metadata={snapshot_metadata}")
 
                             if current_price is not None:
-                                # Calculate interval based on multiplier (1min, 5min, 15min, 30min)
-                                interval_minutes = multiplier
+                                logger.warning(f"POLYGON_SERVICE: ✅ Snapshot fetch successful for {symbol.ticker}, price=${current_price:.4f}")
+                                # For hourly bars, use hour-based rounding instead of minute-based
+                                if timespan == "hour":
+                                    # Round to the current hour
+                                    rounded_time = current_time_utc.replace(
+                                        minute=0, second=0, microsecond=0
+                                    )
+                                else:
+                                    # Calculate interval based on multiplier (1min, 5min, 15min, 30min)
+                                    interval_minutes = multiplier
+                                    # Round current time down to the nearest interval
+                                    # e.g., if it's 5:37 PM and using 5min bars, round to 5:35 PM
+                                    current_minute = current_time_utc.minute
+                                    rounded_minute = (
+                                        current_minute // interval_minutes
+                                    ) * interval_minutes
+                                    rounded_time = current_time_utc.replace(
+                                        minute=rounded_minute, second=0, microsecond=0
+                                    )
 
-                                # Round current time down to the nearest interval
-                                # e.g., if it's 5:37 PM and using 5min bars, round to 5:35 PM
-                                current_minute = current_time_utc.minute
-                                rounded_minute = (
-                                    current_minute // interval_minutes
-                                ) * interval_minutes
-                                rounded_time = current_time_utc.replace(
-                                    minute=rounded_minute, second=0, microsecond=0
-                                )
+                                # Get the last completed bar's close to use as open for the snapshot bar
+                                # This creates a proper OHLC candle instead of a full-body single-price candle
+                                snapshot_open = current_price  # Default to current price if no previous bar
+                                if bars:
+                                    # Use the last bar's close as the open for the current bar
+                                    # This represents the price at the start of the current hour/interval
+                                    last_bar = bars[-1]
+                                    snapshot_open = last_bar.get("close", current_price)
+                                    logger.warning(
+                                        f"POLYGON_SERVICE: Using last bar close ${snapshot_open:.4f} as open for snapshot bar"
+                                    )
 
-                                # Create bar at the rounded interval timestamp
+                                # Create proper OHLC bar: open from last bar's close, high/low/close from current price
+                                # This ensures the candle accurately represents price movement during the current period
+                                snapshot_high = max(snapshot_open, current_price)
+                                snapshot_low = min(snapshot_open, current_price)
+                                
                                 current_bar_dict = {
                                     "timestamp": int(rounded_time.timestamp() * 1000),
-                                    "open": current_price,
-                                    "high": current_price,
-                                    "low": current_price,
-                                    "close": current_price,
+                                    "open": snapshot_open,  # Price at start of hour (last bar's close)
+                                    "high": snapshot_high,  # Highest price seen (max of open and current)
+                                    "low": snapshot_low,    # Lowest price seen (min of open and current)
+                                    "close": current_price, # Current price (end of hour so far)
                                     "volume": 0.0,
                                 }
                                 needs_current_bar = True
+                                logger.warning(
+                                    f"POLYGON_SERVICE: ✅ Created OHLC bar for {symbol.ticker} at timestamp {current_bar_dict['timestamp']} "
+                                    f"({rounded_time}) with OHLC: O=${snapshot_open:.4f}, H=${snapshot_high:.4f}, L=${snapshot_low:.4f}, C=${current_price:.4f}"
+                                )
                             else:
                                 logger.warning(
-                                    f"POLYGON_SERVICE: Could not get current price for {symbol.ticker} from snapshot"
+                                    f"POLYGON_SERVICE: Snapshot fetch returned None for {symbol.ticker} - using stale bars"
                                 )
                         except Exception as e:
                             logger.error(
@@ -256,15 +364,18 @@ async def fetch_bars(
 
             # Track timestamps for delay analysis
             timestamps_ms: list[int] = []
+
             for result_item in results:
                 if not isinstance(result_item, dict):
                     continue
                 result_dict = cast(dict[str, Any], result_item)
+
                 ts_val = result_dict.get("t")
                 if not isinstance(ts_val, int):
                     continue
                 timestamp_ms = ts_val
                 timestamps_ms.append(timestamp_ms)
+
                 bar: OHLCVBar = {
                     "timestamp": timestamp_ms,
                     "open": float(result_dict.get("o", 0.0)),
@@ -277,14 +388,18 @@ async def fetch_bars(
 
             # Append current bar from snapshot if latest aggregate bar is too old
             if needs_current_bar and current_bar_dict:
-                # Determine correct position based on sort order
+                # IMPORTANT: After reversal (if fetch_newest_first), bars are ALWAYS in chronological order (oldest first)
+                # So we should ALWAYS append the snapshot bar to make it the newest (last)
+                # Only prepend if we didn't reverse AND sort_order is "desc"
                 sort_order = params.get("sort", "asc")
-                if sort_order == "desc":
-                    # For descending sort, prepend to make it the newest (first)
+                if not fetch_newest_first and sort_order == "desc":
+                    # For descending sort WITHOUT reversal, prepend to make it the newest (first)
                     bars.insert(0, current_bar_dict)
+                    logger.warning(f"POLYGON_SERVICE: Prepended snapshot bar for {symbol.ticker} (desc sort, no reversal)")
                 else:
-                    # For ascending sort, append to make it the newest (last)
+                    # For ascending sort OR after reversal, append to make it the newest (last)
                     bars.append(current_bar_dict)
+                    logger.warning(f"POLYGON_SERVICE: Appended snapshot bar for {symbol.ticker} (asc sort or after reversal)")
 
                 # Include appended bar timestamp in analysis if present
                 if needs_current_bar and current_bar_dict:
@@ -326,7 +441,6 @@ async def fetch_bars(
                 # - year: ~365 days
                 last_bar_start_utc = datetime.fromtimestamp(max_ts_ms / 1000, tz=pytz.UTC)
                 window_duration_seconds = 0
-
                 if timespan == "minute":
                     window_duration_seconds = multiplier * 60
                 elif timespan == "hour":
@@ -495,6 +609,7 @@ async def massive_fetch_filtered_tickers_for_list(
     etf_types: set[str] = set()
     if market in ["stocks", "otc"]:
         etf_types = await massive_fetch_ticker_types(client, api_key)
+
     ref_market = "otc" if market == "otc" else market
     allowed: set[str] = set()
 
@@ -503,25 +618,30 @@ async def massive_fetch_filtered_tickers_for_list(
         if market in ["stocks", "otc", "crypto", "fx", "indices"]:
             params["market"] = ref_market
         params["ticker"] = ticker
+
         response = await client.get("https://api.massive.com/v3/reference/tickers", params=params)
         if response.status_code != 200:
             allowed.add(ticker)
             continue
+
         data = response.json()
         results = data.get("results", [])
         if not isinstance(results, list) or not results:
             allowed.add(ticker)
             continue
+
         results_list: list[Any] = results
         first_item_raw = results_list[0]
         if not isinstance(first_item_raw, dict):
             allowed.add(ticker)
             continue
+
         first_item: dict[str, Any] = first_item_raw
         type_val: Any = first_item.get("type")
         market_val: Any = first_item.get("market")
         type_str = type_val if isinstance(type_val, str) else ""
         market_str = market_val if isinstance(market_val, str) else ""
+
         is_etf = (
             (type_str in etf_types)
             or ("etf" in type_str.lower())
@@ -529,11 +649,14 @@ async def massive_fetch_filtered_tickers_for_list(
             or ("etp" in type_str.lower())
             or (market_str == "etp")
         )
+
         if exclude_etfs and is_etf:
             continue
         if not exclude_etfs and not is_etf:
             continue
+
         allowed.add(ticker)
+
     return allowed
 
 
@@ -545,16 +668,20 @@ async def massive_fetch_filtered_tickers(
 ) -> set[str]:
     ref_market = "otc" if market == "otc" else market
     needs_etf_filter = market in ["stocks", "otc"]
+
     ref_params: dict[str, Any] = {"active": True, "limit": 1000, "apiKey": api_key}
     if market in ["stocks", "otc", "crypto", "fx", "indices"]:
         ref_params["market"] = ref_market
+
     etf_types: set[str] = set()
     if needs_etf_filter:
         etf_types = await massive_fetch_ticker_types(client, api_key)
+
     ticker_set: set[str] = set()
     ref_url = "https://api.massive.com/v3/reference/tickers"
     next_url: str | None = ref_url
     page_count = 0
+
     while next_url:
         if page_count > 0:
             if "?" in next_url:
@@ -564,10 +691,13 @@ async def massive_fetch_filtered_tickers(
             response = await client.get(url_to_fetch)
         else:
             response = await client.get(ref_url, params=ref_params)
+
         if response.status_code != 200:
             break
+
         data = response.json()
         results = data.get("results", [])
+
         for item in results:
             if not isinstance(item, dict):
                 continue
@@ -576,10 +706,12 @@ async def massive_fetch_filtered_tickers(
             if not isinstance(ticker_raw, str) or not ticker_raw:
                 continue
             ticker = ticker_raw
+
             type_val: Any = item_dict.get("type")
             market_val: Any = item_dict.get("market")
             ticker_type = type_val if isinstance(type_val, str) else ""
             ticker_market = market_val if isinstance(market_val, str) else ""
+
             if etf_types:
                 is_etf = (
                     ticker_type in etf_types
@@ -588,13 +720,17 @@ async def massive_fetch_filtered_tickers(
                     or "etp" in ticker_type.lower()
                     or ticker_market == "etp"
                 )
+
                 if exclude_etfs and is_etf:
                     continue
                 if not exclude_etfs and not is_etf:
                     continue
+
             ticker_set.add(ticker)
+
         next_url = data.get("next_url")
         page_count += 1
+
     return ticker_set
 
 
@@ -614,20 +750,24 @@ async def massive_fetch_snapshot(
     if tickers:
         params["tickers"] = ",".join(tickers)
     params["apiKey"] = api_key
+
     response = await client.get(url, params=params)
     if response.status_code != 200:
         error_text = response.text if response.text else response.reason_phrase
         raise ValueError(f"Failed to fetch snapshot: {response.status_code} - {error_text}")
+
     data = response.json()
     tickers_raw = data.get("tickers", [])
     tickers_list_any: list[Any] = tickers_raw if isinstance(tickers_raw, list) else []
     ticker_dicts: list[dict[str, Any]] = []
+
     for t in tickers_list_any:
         if isinstance(t, dict):
             try:
                 sanitized: dict[str, Any] = json.loads(json.dumps(t))
             except Exception:
                 sanitized = {}
+
             ticker_dicts.append(sanitized)
     return ticker_dicts
 
@@ -657,9 +797,11 @@ async def fetch_current_snapshot(
 
     client = httpx.AsyncClient(timeout=httpx.Timeout(5.0))
     try:
+        logger.debug(f"POLYGON_SERVICE: Calling massive_fetch_snapshot for ticker={ticker}, locale={locale}, markets={markets}")
         snapshots = await massive_fetch_snapshot(
             client, api_key, locale, markets, str(symbol.asset_class).lower(), [ticker], False
         )
+        logger.debug(f"POLYGON_SERVICE: massive_fetch_snapshot returned {len(snapshots) if snapshots else 0} snapshots")
         if snapshots:
             # Try lastTrade first, fallback to day's open/high/low/close
             last_trade = snapshots[0].get("lastTrade", {})
@@ -680,6 +822,7 @@ async def fetch_current_snapshot(
     except Exception as e:
         logger.error(f"POLYGON_SERVICE: Error fetching snapshot for {symbol.ticker}: {e}")
         return None, {"data_status": "error", "source": "snapshot"}
+
     finally:
         await client.aclose()
 

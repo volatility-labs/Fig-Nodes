@@ -127,12 +127,13 @@ def _encode_fig_to_data_url(fig: "Figure", dpi: int = 60) -> str:
 
 
 def _normalize_bars(bars: list[OHLCVBar]) -> tuple[list[tuple[int, float, float, float, float]], list[float]]:
-    """Return tuple of (OHLC data, volume data) sorted by ts.
+    """Return tuple of (OHLC data, volume data) sorted by ts (oldest to newest).
     
     OHLC data: list of tuples (ts, open, high, low, close)
     Volume data: list of volume values
     
     If duplicate timestamps exist, keeps the LAST occurrence (which should be the snapshot bar).
+    Always returns data in ascending order (oldest first, newest last) for consistent processing.
     """
     # Use dict to deduplicate by timestamp, keeping last occurrence
     timestamp_map: dict[int, tuple[int, float, float, float, float, float]] = {}
@@ -158,7 +159,7 @@ def _normalize_bars(bars: list[OHLCVBar]) -> tuple[list[tuple[int, float, float,
     if duplicates_found:
         logger.warning(f"🔍 Found {len(duplicates_found)} duplicate timestamp(s), kept last occurrence for each")
     
-    # Convert to list and sort by timestamp
+    # Convert to list and sort by timestamp (ascending: oldest first, newest last)
     normalized = list(timestamp_map.values())
     normalized.sort(key=lambda x: x[0])
     
@@ -194,6 +195,12 @@ def _plot_candles(ax: "Axes", series: list[tuple[int, float, float, float, float
     highs = [x[2] for x in series]
     lows = [x[3] for x in series]
     closes = [x[4] for x in series]
+    
+    # DEBUG: Log last bar values being plotted
+    if len(series) > 0:
+        last_bar_series = series[-1]
+        logger.warning(f"🔍 DEBUG _plot_candles: Last bar in series: ts={last_bar_series[0]}, O={last_bar_series[1]:.4f}, H={last_bar_series[2]:.4f}, L={last_bar_series[3]:.4f}, C={last_bar_series[4]:.4f}")
+        logger.warning(f"🔍 DEBUG _plot_candles: Extracted values - opens[-1]={opens[-1]:.4f}, closes[-1]={closes[-1]:.4f}, highs[-1]={highs[-1]:.4f}, lows[-1]={lows[-1]:.4f}")
     
     # Light background for better AI visibility
     ax.set_facecolor('#ffffff')
@@ -378,6 +385,11 @@ def _plot_candles(ax: "Axes", series: list[tuple[int, float, float, float, float
     for i, (open, close, high, low) in enumerate(zip(opens, closes, highs, lows)):
         # StockCharts style: black for up bars, red for down bars
         color = "black" if close >= open else "#ef5350"  # Black for up, red for down
+        
+        # DEBUG: Log the last bar being drawn
+        if i == len(opens) - 1:
+            logger.warning(f"🔍 DEBUG Drawing last candlestick at index {i}: O={open:.4f}, H={high:.4f}, L={low:.4f}, C={close:.4f}")
+            logger.warning(f"🔍 DEBUG This will draw: vertical line from {low:.4f} to {high:.4f}, open tick at {open:.4f}, close tick at {close:.4f}")
         
         # Plot vertical line (high to low) with higher zorder so candles appear above VBP bars
         ax.plot([i, i], [low, high], color=color, linewidth=1.5, alpha=1.0, solid_capstyle='round', solid_joinstyle='round', zorder=5)
@@ -1117,7 +1129,7 @@ class HurstPlot(Base):
         "max_symbols": 20,
         "lookback_bars": 100,  # Default to showing last 100 bars for better current price visibility
         "zoom_to_recent": False,  # Auto-zoom to last 300 bars for better visibility (~12 days hourly)
-        "y_axis_scale": "symlog",  # "symlog" (default) shows full range, "linear" zooms to recent, "log" for exponential growth
+        "y_axis_scale": "linear",  # "linear" (default) for price charts, "log" for exponential growth, "symlog" is for oscillators only
         "show_current_price": True,  # Annotate current price on chart
         "source": "hl2",
         "bandwidth": 0.025,
@@ -1201,9 +1213,9 @@ class HurstPlot(Base):
                {
                    "name": "y_axis_scale",
                    "type": "combo",
-                   "default": "symlog",
+                   "default": "linear",
                    "options": ["linear", "symlog", "log"],
-                   "description": "Y-axis scale: 'symlog' (default) shows full price range, 'linear' zooms to recent prices, 'log' for exponential growth",
+                   "description": "Y-axis scale: 'linear' (default, recommended for prices), 'log' for exponential growth, 'symlog' is for oscillators only (not recommended for prices)",
                },
                {
                    "name": "show_current_price",
@@ -1718,6 +1730,19 @@ class HurstPlot(Base):
             
             logger.warning(f"🔵 HurstPlot: Processing {sym}: received {len(bars)} bars")
             
+            # DETECT ORDER but let _normalize_bars handle sorting
+            # The issue: reversing bars here gets undone by _normalize_bars which always sorts ascending
+            # Solution: Let _normalize_bars sort properly, then work with the normalized data
+            original_order = "unknown"
+            if len(bars) > 1:
+                first_bar_ts = bars[0].get("timestamp", 0)
+                last_bar_ts = bars[-1].get("timestamp", 0)
+                if first_bar_ts < last_bar_ts:
+                    original_order = "ascending"
+                elif first_bar_ts > last_bar_ts:
+                    original_order = "descending"
+                logger.info(f"🔵 HurstPlot: {sym} input bars are in {original_order.upper()} order")
+            
             # Log first and last bar timestamps to verify snapshot injection
             if len(bars) > 0:
                 first_bar_ts = bars[0].get("timestamp", 0)
@@ -1727,21 +1752,17 @@ class HurstPlot(Base):
                 current_time = datetime.now()
                 if last_bar_dt:
                     age_minutes = (current_time - last_bar_dt.replace(tzinfo=None)).total_seconds() / 60
-                    logger.warning(f"🔵 HurstPlot: {sym} input bars - First: {first_bar_dt}, Last: {last_bar_dt}, Age: {age_minutes:.1f} min")
+                    logger.warning(f"🔵 HurstPlot: {sym} input bars (after normalization) - First: {first_bar_dt}, Last: {last_bar_dt}, Age: {age_minutes:.1f} min")
                 
             norm, volumes = _normalize_bars(bars)
             logger.warning(f"🔵 HurstPlot: Normalized {sym}: {len(norm)} bars after normalization")
             
-            # Verify bars are sorted correctly (oldest to newest)
+            # Verify bars are sorted correctly (oldest to newest) - _normalize_bars always sorts ascending
             if len(norm) > 1:
                 first_ts = norm[0][0]
                 last_ts = norm[-1][0]
-                if first_ts > last_ts:
-                    logger.error(f"Bars are NOT sorted correctly for {sym}! First timestamp {first_ts} > Last timestamp {last_ts}")
-                    # Reverse to fix (shouldn't happen, but safety check)
-                    norm = list(reversed(norm))
-                    logger.warning(f"Reversed bars for {sym} to fix sorting")
-                logger.info(f"Bar timestamp range for {sym}: {first_ts} to {last_ts} ({len(norm)} bars)")
+                logger.info(f"Bar timestamp range for {sym}: {first_ts} to {last_ts} ({len(norm)} bars, oldest→newest)")
+                # _normalize_bars always produces ascending order (oldest first), which is correct
             
             # Store full history for calculation
             full_norm = norm
@@ -2051,7 +2072,7 @@ class HurstPlot(Base):
                 y_axis_scale = "linear"  # Default to linear if invalid
 
             # Top panel: Price candlesticks
-            # CRITICAL: Verify snapshot bar is last before plotting
+            # CRITICAL: Verify snapshot bar is last before plotting and update with fresh price
             fresh_price: float | None = None
             if len(display_norm) > 0:
                 last_bar_price = display_norm[-1][4]
@@ -2065,6 +2086,77 @@ class HurstPlot(Base):
                         fresh_price, _ = await fetch_current_snapshot(sym, api_key)
                         if fresh_price and fresh_price > 0:
                             logger.warning(f"🔄 Fresh snapshot for {sym}: ${fresh_price:.4f} (bar had ${last_bar_price:.4f})")
+                            
+                            # CRITICAL FIX: Update the last bar with fresh snapshot price if significantly different
+                            # This ensures the actual bar shows current price, not just the annotation
+                            price_diff_pct = abs(fresh_price - last_bar_price) / last_bar_price if last_bar_price > 0 else 0
+                            if price_diff_pct > 0.001:  # Update if >0.1% difference
+                                # Update last bar OHLC with fresh price
+                                last_bar = display_norm[-1]
+                                
+                                # CRITICAL FIX: Check if the bar is very old (stale data)
+                                # If bars are months old, we shouldn't create a candlestick showing movement
+                                # from the previous bar - that would be misleading (e.g., showing ARB dropping
+                                # from $0.34 to $0.20 in one bar when it actually happened over months).
+                                current_time = datetime.now()
+                                bar_age_hours = (current_time - last_bar_dt.replace(tzinfo=None)).total_seconds() / 3600
+                                
+                                # If bar is more than 24 hours old, create a "current price" candlestick
+                                # with a small range around the current price, not a huge gap from previous bar
+                                if bar_age_hours > 24:
+                                    # Bar is stale: create a small candlestick around current price
+                                    # This represents the current price state, not historical movement
+                                    price_range_pct = 0.01  # 1% range around current price
+                                    new_open = fresh_price * (1 - price_range_pct / 2)
+                                    new_close = fresh_price
+                                    new_high = fresh_price * (1 + price_range_pct / 2)
+                                    new_low = fresh_price * (1 - price_range_pct / 2)
+                                    logger.warning(f"🔍 Bar is STALE ({bar_age_hours:.1f} hours old): creating small candlestick around current price ${fresh_price:.4f} (±{price_range_pct*100:.1f}%)")
+                                else:
+                                    # Bar is recent: show movement from previous bar's close to current price
+                                    # Get previous bar's close to show price movement
+                                    prev_bar_close = display_norm[-2][4] if len(display_norm) > 1 else last_bar[4]
+                                    
+                                    logger.warning(f"🔍 DEBUG Update logic for {sym}: prev_bar_close=${prev_bar_close:.4f}, fresh_price=${fresh_price:.4f}, old_bar O={last_bar[1]:.4f}, H={last_bar[2]:.4f}, L={last_bar[3]:.4f}, C={last_bar[4]:.4f}, bar_age={bar_age_hours:.1f}h")
+                                    
+                                    # Check if the price movement is unrealistic (more than 50% in one bar)
+                                    # This indicates stale data where we shouldn't show movement from prev bar
+                                    movement_pct = abs(fresh_price - prev_bar_close) / prev_bar_close if prev_bar_close > 0 else 0
+                                    if movement_pct > 0.50:  # More than 50% movement is unrealistic for one bar
+                                        # Unrealistic movement: create small candlestick around current price
+                                        price_range_pct = 0.01  # 1% range around current price
+                                        new_open = fresh_price * (1 - price_range_pct / 2)
+                                        new_close = fresh_price
+                                        new_high = fresh_price * (1 + price_range_pct / 2)
+                                        new_low = fresh_price * (1 - price_range_pct / 2)
+                                        logger.warning(f"🔍 Unrealistic movement ({movement_pct*100:.1f}%): creating small candlestick around current price ${fresh_price:.4f} instead of showing gap from ${prev_bar_close:.4f}")
+                                    else:
+                                        # Normal movement: show movement from previous close to current price
+                                        if fresh_price > prev_bar_close:
+                                            # Price moved up: open at prev close, close at fresh price
+                                            new_open = prev_bar_close
+                                            new_close = fresh_price
+                                            new_high = fresh_price  # Current price is the high
+                                            new_low = prev_bar_close  # Previous close is the low
+                                            logger.warning(f"🔍 Price moved UP: creating candlestick from ${prev_bar_close:.4f} to ${fresh_price:.4f}")
+                                        else:
+                                            # Price moved down: open at prev close, close at fresh price
+                                            new_open = prev_bar_close
+                                            new_close = fresh_price
+                                            new_high = prev_bar_close  # Previous close is the high
+                                            new_low = fresh_price  # Current price is the low
+                                            logger.warning(f"🔍 Price moved DOWN: creating candlestick from ${prev_bar_close:.4f} to ${fresh_price:.4f}")
+                                
+                                updated_bar = (
+                                    last_bar[0],  # timestamp
+                                    new_open,     # open
+                                    new_high,     # high
+                                    new_low,      # low
+                                    new_close,    # close (current price)
+                                )
+                                display_norm[-1] = updated_bar
+                                logger.warning(f"✅ Updated last bar for {sym}: ${last_bar_price:.4f} → ${fresh_price:.4f} (O={new_open:.4f}, H={new_high:.4f}, L={new_low:.4f}, C={new_close:.4f})")
+                                logger.warning(f"🔍 VERIFY: display_norm[-1] after update: O={display_norm[-1][1]:.4f}, H={display_norm[-1][2]:.4f}, L={display_norm[-1][3]:.4f}, C={display_norm[-1][4]:.4f}")
                         else:
                             logger.warning(f"⚠️ Failed to fetch fresh snapshot for {sym}, using bar price ${last_bar_price:.4f}")
                             fresh_price = None
@@ -2081,7 +2173,8 @@ class HurstPlot(Base):
                         bar_ts, _bar_o, _bar_h, _bar_l, bar_c = bar
                         bar_dt = datetime.fromtimestamp(bar_ts / 1000)
                         logger.warning(f"  Bar {len(display_norm)-3+i}: ts={bar_ts} ({bar_dt}), price=${bar_c:.4f}")
-                logger.warning(f"🎯 Plotting {sym}: Last bar price=${last_bar_price:.4f}, ts={last_bar_ts} ({last_bar_dt}) (this should match current price)")
+                final_last_price = display_norm[-1][4]
+                logger.warning(f"🎯 Plotting {sym}: Last bar price=${final_last_price:.4f}, ts={last_bar_ts} ({last_bar_dt}) (this should match current price)")
             
             show_current_price = bool(self.params.get("show_current_price", True))
             # Get corresponding volume data for display
@@ -2186,6 +2279,11 @@ class HurstPlot(Base):
             vbp_color_volume = bool(self.params.get("volume_by_price_color_volume", False))
             vbp_opacity = float(self.params.get("volume_by_price_opacity", 0.3))
             
+            # DEBUG: Verify last bar data before plotting
+            if len(display_norm) > 0:
+                last_bar_before_plot = display_norm[-1]
+                logger.warning(f"🔍 DEBUG: About to plot {sym} - Last bar in display_norm: ts={last_bar_before_plot[0]}, O={last_bar_before_plot[1]:.4f}, H={last_bar_before_plot[2]:.4f}, L={last_bar_before_plot[3]:.4f}, C={last_bar_before_plot[4]:.4f}")
+            
             _plot_candles(
                 ax1, display_norm, display_volumes, display_ema_10, display_ema_30, display_ema_100,
                 show_current_price, current_price_override=fresh_price,
@@ -2209,15 +2307,27 @@ class HurstPlot(Base):
             ax1.tick_params(axis='y', direction='out', length=4, width=1)
             
             # Apply Y-axis scale to price chart
+            # NOTE: symlog is designed for values near zero (oscillators), not price charts
+            # For price charts, linear or log scale is more appropriate
+            # If symlog is requested, we'll use linear instead (symlog distorts price visualization)
+            effective_scale = y_axis_scale
+            if y_axis_scale == "symlog":
+                logger.warning(f"⚠️ symlog scale is not recommended for price charts (designed for oscillators near zero). Using linear instead.")
+                effective_scale = "linear"
+            
             try:
-                ax1.set_yscale(y_axis_scale)
+                if effective_scale == "log":
+                    ax1.set_yscale('log')
+                else:
+                    # Use linear scale for price charts (most appropriate)
+                    ax1.set_yscale('linear')
             except Exception as e:
-                logger.warning(f"Failed to set y_axis_scale '{y_axis_scale}': {e}. Using linear.")
+                logger.warning(f"Failed to set y_axis_scale '{effective_scale}': {e}. Using linear.")
                 ax1.set_yscale("linear")
             
             # Set Y-axis limits with padding to ensure price visibility
-            # STRATEGY: For linear scale, use recent bars to focus on current price
-            #           For log/symlog scale, use FULL range to show all historical data
+            # STRATEGY: Use FULL range for all scales to show complete price action over the lookback period
+            #           This allows users to see what the symbol did in its entirety for the period
             if len(display_norm) > 0:
                 # Get current price - use fresh snapshot if available, otherwise use last bar close
                 # This is critical for stocks where bar data may be stale but fresh snapshot is current
@@ -2232,60 +2342,73 @@ class HurstPlot(Base):
                 full_max = max(all_prices)
                 
                 # Use different strategies based on Y-axis scale
-                if y_axis_scale in ["log", "symlog"]:
-                    # For logarithmic scales, use FULL range to show all bars
-                    # Log scale naturally compresses high values and expands low values
-                    padding = (full_max - full_min) * 0.05  # 5% padding on full range
-                    y_min = max(full_min - padding, full_min * 0.95)
-                    y_max = full_max + padding
+                # Note: symlog is converted to linear for price charts above
+                if effective_scale == "log":
+                    # For logarithmic scales, ensure current price is visible and add better padding
+                    # Include current price in range calculation (critical for stale bars)
+                    range_min = min(full_min, current_price)
+                    range_max = max(full_max, current_price)
+                    
+                    # Calculate padding: use percentage of range, but ensure minimum padding
+                    # For narrow ranges (like stablecoins), use larger percentage padding
+                    price_range = range_max - range_min
+                    if price_range < current_price * 0.01:  # Very narrow range (<1% of price)
+                        # For very narrow ranges, use larger padding (20% of price)
+                        padding = current_price * 0.20
+                    elif price_range < current_price * 0.05:  # Narrow range (<5% of price)
+                        # For narrow ranges, use moderate padding (10% of price)
+                        padding = current_price * 0.10
+                    else:
+                        # For normal ranges, use 10% of range
+                        padding = price_range * 0.10
+                    
+                    y_min = max(range_min - padding, range_min * 0.90)
+                    y_max = range_max + padding
+                    
+                    # Ensure current price is always visible with extra margin
+                    if current_price > y_max * 0.98:
+                        y_max = current_price * 1.15  # 15% above current
+                    if current_price < y_min * 1.02:
+                        y_min = current_price * 0.85  # 15% below current
                     
                     # Ensure positive values for log scale
                     if y_axis_scale == "log":
                         y_min = max(y_min, 0.01)
                     
-                    logger.warning(f"📊 {str(sym)} Y-axis range: ${y_min:.4f} to ${y_max:.4f} (FULL range for {y_axis_scale} scale, current: ${current_price:.4f})")
+                    logger.warning(f"📊 {str(sym)} Y-axis range: ${y_min:.4f} to ${y_max:.4f} (FULL range for {effective_scale} scale, current: ${current_price:.4f}, range: ${range_min:.4f}-${range_max:.4f}, padding: ${padding:.4f})")
                 else:
-                    # For linear scale, focus on recent bars to emphasize current price
-                    # Use last 30 bars to establish recent price range (last ~30 hours for hourly data)
-                    recent_bar_count = min(30, max(10, int(len(display_norm) * 0.05)))
-                    recent_bars = display_norm[-recent_bar_count:]
+                    # For linear scale, use FULL range to show complete price action over the lookback period
+                    # This allows users to see what the symbol did in its entirety for the period
+                    range_min = min(full_min, current_price)
+                    range_max = max(full_max, current_price)
                     
-                    # Calculate recent price range
-                    recent_prices = [bar[1] for bar in recent_bars] + [bar[2] for bar in recent_bars] + [bar[3] for bar in recent_bars] + [bar[4] for bar in recent_bars]
-                    # Include fresh price in recent range if available (important for stocks with stale bars)
-                    if fresh_price is not None and fresh_price > 0:
-                        recent_prices.append(fresh_price)
-                    recent_min = min(recent_prices)
-                    recent_max = max(recent_prices)
-                    recent_range = recent_max - recent_min
-                    
-                    # Calculate Y-axis: Use recent range but ensure current price is visible
-                    # If current price is near the top of recent range, extend upward
-                    # If current price is below recent range, extend downward
-                    if current_price >= recent_max * 0.95:
-                        # Current price is near top - extend upward more
-                        y_max = current_price * 1.10  # 10% above current
-                        y_min = recent_min * 0.95  # 5% below recent min
-                    elif current_price <= recent_min * 1.05:
-                        # Current price is near bottom - extend downward more
-                        y_min = current_price * 0.90  # 10% below current
-                        y_max = recent_max * 1.05  # 5% above recent max
+                    # Calculate padding: use percentage of range, but ensure minimum padding
+                    # For narrow ranges (like stablecoins), use larger percentage padding
+                    price_range = range_max - range_min
+                    if price_range < current_price * 0.01:  # Very narrow range (<1% of price)
+                        # For very narrow ranges, use larger padding (20% of price)
+                        padding = current_price * 0.20
+                    elif price_range < current_price * 0.05:  # Narrow range (<5% of price)
+                        # For narrow ranges, use moderate padding (10% of price)
+                        padding = current_price * 0.10
                     else:
-                        # Current price is in middle - use recent range with padding
-                        padding = max(recent_range * 0.20, current_price * 0.05)  # 20% of range or 5% of price
-                        y_min = recent_min - padding
-                        y_max = recent_max + padding
+                        # For normal ranges, use 10% of range
+                        padding = price_range * 0.10
                     
-                    # Ensure current price is always visible (add extra space if needed)
-                    if current_price > y_max * 0.95:
-                        y_max = current_price * 1.10
-                    if current_price < y_min * 1.05:
-                        y_min = current_price * 0.90
+                    y_min = range_min - padding
+                    y_max = range_max + padding
+                    
+                    # Ensure current price is always visible with extra margin
+                    if current_price > y_max * 0.98:
+                        y_max = current_price * 1.15  # 15% above current
+                    if current_price < y_min * 1.02:
+                        y_min = current_price * 0.85  # 15% below current
                     
                     # Ensure we don't go below 0
                     y_min = max(y_min, 0.01 * current_price)
                     
-                    logger.warning(f"📊 {str(sym)} Y-axis range: ${y_min:.4f} to ${y_max:.4f} (current: ${current_price:.4f}, fresh: ${fresh_price:.4f if fresh_price else 'N/A'}, recent: ${recent_min:.4f}-${recent_max:.4f}, full: ${full_min:.4f}-${full_max:.4f}, using last {recent_bar_count} bars)")
+                    fresh_price_str = f"${fresh_price:.4f}" if fresh_price else "N/A"
+                    logger.warning(f"📊 {str(sym)} Y-axis range: ${y_min:.4f} to ${y_max:.4f} (FULL range for {effective_scale} scale, current: ${current_price:.4f}, range: ${range_min:.4f}-${range_max:.4f}, padding: ${padding:.4f})")
                 
                 ax1.set_ylim(y_min, y_max)
             
