@@ -261,13 +261,16 @@ export default class ImageDisplayNodeUI extends BaseCustomNode {
         const rows = Math.ceil(labels.length / cols);
         const cellSpacing = 2; // Small uniform spacing between images
         
-        // Calculate actual cell dimensions based on available space
-        const baseCellW = Math.floor((w - (cols - 1) * cellSpacing) / cols);
-        const baseCellH = Math.floor((h - (rows - 1) * cellSpacing) / rows);
+        // Use the same target cell dimensions as calculated in resizeNodeToMatchAspectRatio
+        // This ensures consistency between node sizing and drawing
+        const aspectRatios = Array.from(this.imageAspectRatios.values());
+        const avgAspectRatio = aspectRatios.reduce((sum, ar) => sum + ar, 0) / aspectRatios.length;
+        const targetCellWidth = Math.max(150, Math.min(250, 200));
+        const targetCellHeight = targetCellWidth / avgAspectRatio;
         
-        // Apply zoom
-        const cellW = baseCellW * this.zoomLevel;
-        const cellH = baseCellH * this.zoomLevel;
+        // Apply zoom to the target dimensions
+        const cellW = targetCellWidth * this.zoomLevel;
+        const cellH = targetCellHeight * this.zoomLevel;
         
         // Calculate total grid dimensions
         const totalGridHeight = rows * cellH + (rows - 1) * cellSpacing;
@@ -306,15 +309,16 @@ export default class ImageDisplayNodeUI extends BaseCustomNode {
                 // Skip drawing if cell is completely outside visible area
                 if (cy + cellH < y0 || cy > y0 + h || cx + cellW < x0 || cx > x0 + w) continue;
 
-                // Image - stretch to fill entire cell for uniform grid appearance
+                // Image - fit within cell preserving aspect ratio
                 if (img) {
-                    // Stretch image to fill cell completely (ignore aspect ratio for grid uniformity)
+                    // Fit image within cell while preserving aspect ratio
+                    const imageArea = this.fitImageToBounds(img.width, img.height, cellW, cellH);
                     ctx.drawImage(
                         img,
-                        cx,
-                        cy,
-                        cellW,
-                        cellH
+                        cx + imageArea.x,
+                        cy + imageArea.y,
+                        imageArea.width,
+                        imageArea.height
                     );
                 }
                 // No borders - seamless grid appearance
