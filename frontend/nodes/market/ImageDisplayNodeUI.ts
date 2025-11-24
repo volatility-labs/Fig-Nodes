@@ -1,10 +1,10 @@
 import BaseCustomNode from '../base/BaseCustomNode';
-import { LiteGraph } from '@fig-node/litegraph';
+import { LiteGraph, LGraphNode } from '@fig-node/litegraph';
 import { NodeRenderer } from '../utils/NodeRenderer';
 
 class ImageDisplayRenderer extends NodeRenderer {
     onDrawForeground(ctx: CanvasRenderingContext2D) {
-        const node = this.node as ImageDisplayNodeUI;
+        const node = this.node as unknown as ImageDisplayNodeUI;
         node.drawPlots(ctx);
         this.drawHighlight(ctx);
         this.drawProgressBar(ctx);
@@ -16,43 +16,63 @@ export default class ImageDisplayNodeUI extends BaseCustomNode {
     private images: { [label: string]: string } = {};
     private loadedImages: Map<string, HTMLImageElement> = new Map();
     private imageAspectRatios: Map<string, number> = new Map();
+    private scrollOffsetX: number = 0;
+    private scrollOffsetY: number = 0;
+    private gridScrollOffset: number = 0;
+    private gridScrollOffsetX: number = 0;
+    private zoomLevel: number = 1.0;
 
     constructor(title: string, data: any, serviceRegistry: any) {
         super(title, data, serviceRegistry);
         this.size = [500, 360];
-        this.displayResults = true; // Need to receive results for custom rendering (but won't display text due to custom renderer)
-        this.renderer = new ImageDisplayRenderer(this);
+        this.displayResults = false;
+        this.renderer = new ImageDisplayRenderer(this as unknown as LGraphNode & {
+            displayResults: boolean;
+            result: unknown;
+            displayText: string;
+            error: string;
+            highlightStartTs: number | null;
+            isExecuting: boolean;
+            readonly highlightDurationMs: number;
+            readonly pulseCycleMs: number;
+            progress: number;
+            progressText: string;
+            properties: { [key: string]: unknown };
+        });
+    }
+
+    onMouseDown(_event: any, _pos: [number, number], _canvas: any): boolean {
+        return false;
     }
 
     updateDisplay(result: any) {
-        // Expect { images: { label: dataUrl } }
         const imgs = (result && result.images) || {};
         this.images = imgs;
         this.loadedImages.clear();
         this.imageAspectRatios.clear();
-        
-        // Preload all images and calculate aspect ratios
+        this.scrollOffsetX = 0;
+        this.scrollOffsetY = 0;
+        this.gridScrollOffset = 0;
+        this.gridScrollOffsetX = 0;
+        this.zoomLevel = 1.0;
+
         let allLoaded = 0;
         const totalImages = Object.keys(imgs).length;
-        
+
         Object.entries(imgs).forEach(([label, dataUrl]) => {
             const img = new Image();
             img.onload = () => {
                 this.loadedImages.set(label, img);
-                const aspectRatio = img.width / img.height;
-                this.imageAspectRatios.set(label, aspectRatio);
+                this.imageAspectRatios.set(label, img.width / img.height);
                 allLoaded++;
-                
-                // Resize node when all images are loaded
                 if (allLoaded === totalImages) {
                     this.resizeNodeToMatchAspectRatio();
                 }
-                
                 this.setDirtyCanvas(true, true);
             };
             img.src = dataUrl as string;
         });
-        
+
         this.setDirtyCanvas(true, true);
     }
 
@@ -69,13 +89,11 @@ export default class ImageDisplayNodeUI extends BaseCustomNode {
         const maxWidth = 800;
 
         if (labels.length === 1) {
-            // Single image: resize node to match image aspect ratio
             const label = labels[0];
             if (!label) return;
             const aspectRatio = this.imageAspectRatios.get(label);
             if (!aspectRatio) return;
 
-            // Calculate content area dimensions
             const contentWidth = Math.max(minWidth, Math.min(maxWidth, 500));
             const contentHeight = contentWidth / aspectRatio;
             const totalHeight = headerHeight + padding * 2 + contentHeight;
@@ -83,21 +101,13 @@ export default class ImageDisplayNodeUI extends BaseCustomNode {
             this.size[0] = contentWidth + padding * 2;
             this.size[1] = Math.max(minHeight + headerHeight, totalHeight);
         } else {
-            // Multiple images: use grid layout, calculate optimal size
             const cols = Math.ceil(Math.sqrt(labels.length));
             const rows = Math.ceil(labels.length / cols);
-            
-            // Get average aspect ratio of all images
             const aspectRatios = Array.from(this.imageAspectRatios.values());
             const avgAspectRatio = aspectRatios.reduce((sum, ar) => sum + ar, 0) / aspectRatios.length;
-            
-            // Calculate cell dimensions based on average aspect ratio
-            const cellSpacing = 4;
-            
-            // Target: fit cells with proper aspect ratio
+            const cellSpacing = 2;
             const targetCellWidth = Math.max(150, Math.min(250, 200));
             const targetCellHeight = targetCellWidth / avgAspectRatio;
-            
             const contentWidth = cols * targetCellWidth + (cols - 1) * cellSpacing;
             const contentHeight = rows * targetCellHeight + (rows - 1) * cellSpacing;
             const totalHeight = headerHeight + padding * 2 + contentHeight;
@@ -117,43 +127,36 @@ export default class ImageDisplayNodeUI extends BaseCustomNode {
     ): { width: number; height: number; x: number; y: number } {
         const imgAspectRatio = imgWidth / imgHeight;
         const containerAspectRatio = maxWidth / maxHeight;
-
         let width: number;
         let height: number;
 
         if (imgAspectRatio > containerAspectRatio) {
-            // Image is wider - fit to width
             width = maxWidth;
             height = maxWidth / imgAspectRatio;
         } else {
-            // Image is taller - fit to height
             height = maxHeight;
             width = maxHeight * imgAspectRatio;
         }
 
-        // Center the image
         const x = (maxWidth - width) / 2;
         const y = (maxHeight - height) / 2;
-
         return { width, height, x, y };
     }
 
     drawPlots(ctx: CanvasRenderingContext2D) {
-        // In jsdom test environments, canvas.getContext('2d') may return null.
-        // Guard to no-op when a real 2D context is not available.
         if (!ctx || typeof ctx.fillRect !== 'function') {
             return;
         }
+
         const labels = Object.keys(this.images || {});
         const padding = 12;
-        const widgetSpacing = 8; // Extra space after widgets
+        const widgetSpacing = 8;
         const widgetHeight = this.widgets ? this.widgets.length * LiteGraph.NODE_WIDGET_HEIGHT : 0;
         const x0 = padding;
         const y0 = LiteGraph.NODE_TITLE_HEIGHT + widgetHeight + widgetSpacing + padding;
         const w = Math.max(0, this.size[0] - padding * 2);
         const h = Math.max(0, this.size[1] - LiteGraph.NODE_TITLE_HEIGHT - widgetHeight - widgetSpacing - padding * 2);
 
-        // Draw subtle separator line between widgets and content
         if (widgetHeight > 0) {
             ctx.strokeStyle = 'rgba(75, 85, 99, 0.2)';
             ctx.lineWidth = 1;
@@ -163,37 +166,26 @@ export default class ImageDisplayNodeUI extends BaseCustomNode {
             ctx.stroke();
         }
 
-        // Clip to node bounds to prevent rendering outside
         ctx.save();
         ctx.beginPath();
         ctx.rect(x0, y0, w, h);
         ctx.clip();
 
-        // Minimal flat background
         ctx.fillStyle = '#0f1419';
         ctx.fillRect(x0, y0, w, h);
-        
-        // Subtle rounded inner border
-        ctx.strokeStyle = 'rgba(75, 85, 99, 0.2)';
-        ctx.lineWidth = 1;
-        ctx.strokeRect(x0 + 0.5, y0 + 0.5, w - 1, h - 1);
 
         if (!labels.length) {
-            // Minimal empty state
             const centerX = x0 + w / 2;
             const centerY = y0 + h / 2;
-            
             ctx.fillStyle = 'rgba(156, 163, 175, 0.4)';
             ctx.font = '12px Arial';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
             ctx.fillText('No images to display', centerX, centerY);
-            
             ctx.restore();
             return;
         }
 
-        // For single image, use full space with aspect ratio preservation
         if (labels.length === 1) {
             const label = labels[0];
             if (!label) {
@@ -202,14 +194,23 @@ export default class ImageDisplayNodeUI extends BaseCustomNode {
             }
             const img = this.loadedImages.get(label);
             if (img) {
-                // Fit image preserving aspect ratio
-                const imageArea = this.fitImageToBounds(img.width, img.height, w, h);
-                ctx.drawImage(img, x0 + imageArea.x, y0 + imageArea.y, imageArea.width, imageArea.height);
-            } else {
-                // Minimal loading state
+                const baseImageArea = this.fitImageToBounds(img.width, img.height, w, h);
+                const zoomedWidth = baseImageArea.width * this.zoomLevel;
+                const zoomedHeight = baseImageArea.height * this.zoomLevel;
                 const centerX = x0 + w / 2;
                 const centerY = y0 + h / 2;
-                
+                const drawX = centerX - zoomedWidth / 2;
+                const drawY = centerY - zoomedHeight / 2;
+                const maxScrollX = Math.max(0, zoomedWidth - w);
+                const maxScrollY = Math.max(0, zoomedHeight - h);
+
+                this.scrollOffsetX = Math.max(0, Math.min(maxScrollX, this.scrollOffsetX));
+                this.scrollOffsetY = Math.max(0, Math.min(maxScrollY, this.scrollOffsetY));
+
+                ctx.drawImage(img, drawX - this.scrollOffsetX, drawY - this.scrollOffsetY, zoomedWidth, zoomedHeight);
+            } else {
+                const centerX = x0 + w / 2;
+                const centerY = y0 + h / 2;
                 ctx.fillStyle = 'rgba(156, 163, 175, 0.5)';
                 ctx.font = '12px Arial';
                 ctx.textAlign = 'center';
@@ -220,46 +221,194 @@ export default class ImageDisplayNodeUI extends BaseCustomNode {
             return;
         }
 
-        // Compute grid for multiple images
         const cols = Math.ceil(Math.sqrt(labels.length));
         const rows = Math.ceil(labels.length / cols);
-        const cellSpacing = 4;
-        const cellW = Math.floor((w - (cols - 1) * cellSpacing) / cols);
-        const cellH = Math.floor((h - (rows - 1) * cellSpacing) / rows);
+        const cellSpacing = 2;
+        const baseCellW = Math.floor((w - (cols - 1) * cellSpacing) / cols);
+        const baseCellH = Math.floor((h - (rows - 1) * cellSpacing) / rows);
+        const cellW = baseCellW * this.zoomLevel;
+        const cellH = baseCellH * this.zoomLevel;
+        const totalGridHeight = rows * cellH + (rows - 1) * cellSpacing;
+        const scrollBuffer = Math.max(50, totalGridHeight * 0.1);
+        const scrollableHeight = totalGridHeight + scrollBuffer;
+        const totalGridWidth = cols * cellW + (cols - 1) * cellSpacing;
+        const scrollBufferX = Math.max(50, totalGridWidth * 0.1);
+        const scrollableWidth = totalGridWidth + scrollBufferX;
 
-        // Draw each image into a cell
-        let idx = 0;
-        for (let r = 0; r < rows; r++) {
-            for (let c = 0; c < cols; c++) {
-                if (idx >= labels.length) break;
-                const label = labels[idx++];
-                if (!label) continue;
-                const img = this.loadedImages.get(label);
+        if (scrollableHeight > 0) {
+            this.gridScrollOffset = ((this.gridScrollOffset % scrollableHeight) + scrollableHeight) % scrollableHeight;
+        }
+        if (scrollableWidth > 0) {
+            this.gridScrollOffsetX = ((this.gridScrollOffsetX % scrollableWidth) + scrollableWidth) % scrollableWidth;
+        }
 
-                const cx = x0 + c * (cellW + cellSpacing);
-                const cy = y0 + r * (cellH + cellSpacing);
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(x0, y0, w, h);
+        ctx.clip();
 
-                // Image - fit preserving aspect ratio
-                if (img) {
-                    const imageArea = this.fitImageToBounds(img.width, img.height, cellW - 2, cellH - 2);
-                    ctx.drawImage(
-                        img,
-                        cx + 1 + imageArea.x,
-                        cy + 1 + imageArea.y,
-                        imageArea.width,
-                        imageArea.height
-                    );
+        const copiesNeededY = Math.ceil(h / scrollableHeight) + 2;
+        const copiesNeededX = Math.ceil(w / scrollableWidth) + 2;
+
+        for (let copyY = -1; copyY <= copiesNeededY; copyY++) {
+            const copyOffsetY = copyY * scrollableHeight;
+            const baseY = y0 - this.gridScrollOffset + copyOffsetY;
+
+            for (let copyX = -1; copyX <= copiesNeededX; copyX++) {
+                const copyOffsetX = copyX * scrollableWidth;
+                const baseX = x0 - this.gridScrollOffsetX + copyOffsetX;
+
+                let idx = 0;
+                for (let r = 0; r < rows; r++) {
+                    for (let c = 0; c < cols; c++) {
+                        if (idx >= labels.length) break;
+                        const label = labels[idx++];
+                        if (!label) continue;
+                        const img = this.loadedImages.get(label);
+                        const cx = baseX + c * (cellW + cellSpacing);
+                        const cy = baseY + r * (cellH + cellSpacing);
+
+                        if (cy + cellH < y0 || cy > y0 + h || cx + cellW < x0 || cx > x0 + w) continue;
+
+                        if (img) {
+                            ctx.drawImage(img, cx, cy, cellW, cellH);
+                        }
+                    }
                 }
-
-                // Very subtle border
-                ctx.strokeStyle = 'rgba(75, 85, 99, 0.18)';
-                ctx.lineWidth = 1;
-                ctx.strokeRect(cx + 0.5, cy + 0.5, cellW - 1, cellH - 1);
             }
         }
-        
+
+        ctx.restore();
         ctx.restore();
     }
+
+    onMouseWheel(event: WheelEvent, pos: [number, number], canvas: any): boolean {
+        const nodeWithFlags = this as { flags?: { collapsed?: boolean }; size: [number, number]; selected?: boolean };
+
+        if (nodeWithFlags.flags?.collapsed || !this.images || Object.keys(this.images).length === 0) {
+            return false;
+        }
+
+        const padding = 12;
+        const widgetSpacing = 8;
+        const widgetHeight = this.widgets ? this.widgets.length * LiteGraph.NODE_WIDGET_HEIGHT : 0;
+        const startY = LiteGraph.NODE_TITLE_HEIGHT + widgetHeight + widgetSpacing + padding;
+        const contentWidth = Math.max(0, nodeWithFlags.size[0] - padding * 2);
+        const contentHeight = Math.max(0, nodeWithFlags.size[1] - LiteGraph.NODE_TITLE_HEIGHT - widgetHeight - widgetSpacing - padding * 2);
+        const isSelected = nodeWithFlags.selected || (canvas?.selected_nodes && canvas.selected_nodes[this.id]);
+        const shiftPressed = event.shiftKey || (event.getModifierState && event.getModifierState('Shift'));
+
+        if (shiftPressed) {
+            const zoomBoundsMargin = 200;
+            const isInBounds = pos[0] >= -zoomBoundsMargin && pos[0] <= nodeWithFlags.size[0] + zoomBoundsMargin &&
+                pos[1] >= startY - zoomBoundsMargin && pos[1] <= nodeWithFlags.size[1] + zoomBoundsMargin;
+
+            if (isInBounds || isSelected) {
+                const zoomSpeed = event.deltaMode === 0 ? 0.03 : 0.01;
+                const zoomDelta = -event.deltaY * zoomSpeed;
+                this.zoomLevel = Math.max(1.0, Math.min(5.0, this.zoomLevel + zoomDelta));
+                this.setDirtyCanvas(true, true);
+                if (this.graph) {
+                    this.graph.setDirtyCanvas(true);
+                }
+                requestAnimationFrame(() => {
+                    this.setDirtyCanvas(true, true);
+                    if (this.graph) {
+                        this.graph.setDirtyCanvas(true);
+                    }
+                });
+                return true;
+            }
+            return true;
+        }
+
+        const boundsMargin = 100;
+        const isInScrollBounds = pos[0] >= -boundsMargin && pos[0] <= nodeWithFlags.size[0] + boundsMargin &&
+            pos[1] >= startY - boundsMargin && pos[1] <= nodeWithFlags.size[1] + boundsMargin;
+
+        if (!isInScrollBounds && !isSelected) {
+            return false;
+        }
+
+        const labels = Object.keys(this.images);
+
+        if (labels.length !== 1) {
+            const cols = Math.ceil(Math.sqrt(labels.length));
+            const rows = Math.ceil(labels.length / cols);
+            const cellSpacing = 2;
+            const baseCellW = Math.floor((contentWidth - (cols - 1) * cellSpacing) / cols);
+            const baseCellH = Math.floor((contentHeight - (rows - 1) * cellSpacing) / rows);
+            const cellW = baseCellW * this.zoomLevel;
+            const cellH = baseCellH * this.zoomLevel;
+            const totalGridHeight = rows * cellH + (rows - 1) * cellSpacing;
+            const scrollBuffer = Math.max(50, totalGridHeight * 0.1);
+            const scrollableHeight = totalGridHeight + scrollBuffer;
+            const totalGridWidth = cols * cellW + (cols - 1) * cellSpacing;
+            const scrollBufferX = Math.max(50, totalGridWidth * 0.1);
+            const scrollableWidth = totalGridWidth + scrollBufferX;
+            const hasHorizontalDelta = Math.abs(event.deltaX) > 5;
+            const hasVerticalDelta = Math.abs(event.deltaY) > 5;
+            const isHorizontal = hasHorizontalDelta && Math.abs(event.deltaX) > Math.abs(event.deltaY);
+
+            let scrollAmountX = 0;
+            let scrollAmountY = 0;
+
+            if (event.deltaMode === 0) {
+                scrollAmountX = event.deltaX * 1.2;
+                scrollAmountY = event.deltaY * 1.2;
+            } else if (event.deltaMode === 1) {
+                scrollAmountX = event.deltaX * 30;
+                scrollAmountY = event.deltaY * 30;
+            } else {
+                scrollAmountX = event.deltaX * contentWidth * 0.1;
+                scrollAmountY = event.deltaY * contentHeight * 0.1;
+            }
+
+            if (scrollableWidth > 0 && (hasHorizontalDelta || isHorizontal)) {
+                this.gridScrollOffsetX = ((this.gridScrollOffsetX + scrollAmountX) % scrollableWidth + scrollableWidth) % scrollableWidth;
+            }
+
+            if (scrollableHeight > 0 && (hasVerticalDelta || !isHorizontal)) {
+                this.gridScrollOffset = ((this.gridScrollOffset + scrollAmountY) % scrollableHeight + scrollableHeight) % scrollableHeight;
+            }
+
+            this.setDirtyCanvas(true, true);
+            return true;
+        }
+
+        const label = labels[0];
+        if (!label) return false;
+        const img = this.loadedImages.get(label);
+        if (!img) return false;
+
+        const baseImageArea = this.fitImageToBounds(img.width, img.height, contentWidth, contentHeight);
+        const zoomedWidth = baseImageArea.width * this.zoomLevel;
+        const zoomedHeight = baseImageArea.height * this.zoomLevel;
+        const maxScrollX = Math.max(0, zoomedWidth - contentWidth);
+        const maxScrollY = Math.max(0, zoomedHeight - contentHeight);
+
+        if (maxScrollX <= 0 && maxScrollY <= 0) {
+            return false;
+        }
+
+        const isHorizontal = Math.abs(event.deltaX) > Math.abs(event.deltaY);
+        let scrollAmount: number;
+
+        if (event.deltaMode === 0) {
+            scrollAmount = isHorizontal ? event.deltaX * 0.8 : event.deltaY * 0.8;
+        } else if (event.deltaMode === 1) {
+            scrollAmount = isHorizontal ? event.deltaX * 20 : event.deltaY * 20;
+        } else {
+            scrollAmount = isHorizontal ? event.deltaX * contentWidth : event.deltaY * contentHeight;
+        }
+
+        if (isHorizontal && maxScrollX > 0) {
+            this.scrollOffsetX = Math.max(0, Math.min(maxScrollX, this.scrollOffsetX + scrollAmount));
+        } else if (!isHorizontal && maxScrollY > 0) {
+            this.scrollOffsetY = Math.max(0, Math.min(maxScrollY, this.scrollOffsetY + scrollAmount));
+        }
+
+        this.setDirtyCanvas(true, true);
+        return true;
+    }
 }
-
-

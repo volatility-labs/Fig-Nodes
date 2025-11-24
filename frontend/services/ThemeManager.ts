@@ -45,6 +45,25 @@ export interface Theme {
         uiBorder: string;
         uiText: string;
         uiTextSecondary: string;
+        
+        // Button colors
+        buttonBg: string;
+        buttonBorder: string;
+        buttonText: string;
+        buttonHoverBg: string;
+        buttonHoverBorder: string;
+        buttonHoverText: string;
+        buttonPrimaryBg: string;
+        buttonPrimaryBorder: string;
+        buttonPrimaryHoverBg: string;
+        buttonPrimaryHoverBorder: string;
+        buttonStopBg: string;
+        buttonStopBorder: string;
+        buttonStopHoverBg: string;
+        buttonStopHoverBorder: string;
+        buttonDisabledBg: string;
+        buttonDisabledBorder: string;
+        buttonDisabledText: string;
     };
 }
 
@@ -81,6 +100,23 @@ export const THEMES: Record<string, Theme> = {
             uiBorder: '#2a2a2a',
             uiText: '#ffffff',
             uiTextSecondary: '#aaa',
+            buttonBg: '#333',
+            buttonBorder: '#555',
+            buttonText: '#fff',
+            buttonHoverBg: '#444',
+            buttonHoverBorder: '#666',
+            buttonHoverText: '#fff',
+            buttonPrimaryBg: '#1f6feb',
+            buttonPrimaryBorder: '#316dca',
+            buttonPrimaryHoverBg: '#388bfd',
+            buttonPrimaryHoverBorder: '#4493f8',
+            buttonStopBg: '#6a1a1a',
+            buttonStopBorder: '#7a2a2a',
+            buttonStopHoverBg: '#7a2525',
+            buttonStopHoverBorder: '#8a3535',
+            buttonDisabledBg: '#1a1a1a',
+            buttonDisabledBorder: '#222',
+            buttonDisabledText: '#555',
             canvasGridColor: '#333'
         }
     },
@@ -116,6 +152,23 @@ export const THEMES: Record<string, Theme> = {
             uiBorder: '#30363d',
             uiText: '#c9d1d9',
             uiTextSecondary: '#768390',
+            buttonBg: '#1c2128',
+            buttonBorder: '#373e47',
+            buttonText: '#adbac7',
+            buttonHoverBg: '#22272e',
+            buttonHoverBorder: '#545d68',
+            buttonHoverText: '#cdd9e5',
+            buttonPrimaryBg: '#1f6feb',
+            buttonPrimaryBorder: '#316dca',
+            buttonPrimaryHoverBg: '#388bfd',
+            buttonPrimaryHoverBorder: '#4493f8',
+            buttonStopBg: '#6a1a1a',
+            buttonStopBorder: '#7a2a2a',
+            buttonStopHoverBg: '#7a2525',
+            buttonStopHoverBorder: '#8a3535',
+            buttonDisabledBg: '#1a1a1a',
+            buttonDisabledBorder: '#222',
+            buttonDisabledText: '#545d68',
             canvasGridColor: '#30363d'
         }
     },
@@ -151,6 +204,23 @@ export const THEMES: Record<string, Theme> = {
             uiBorder: '#d0d0d0',
             uiText: '#222222',
             uiTextSecondary: '#666666',
+            buttonBg: '#f5f5f5',
+            buttonBorder: '#d0d0d0',
+            buttonText: '#222222',
+            buttonHoverBg: '#e8e8e8',
+            buttonHoverBorder: '#b0b0b0',
+            buttonHoverText: '#000000',
+            buttonPrimaryBg: '#0066cc',
+            buttonPrimaryBorder: '#0052a3',
+            buttonPrimaryHoverBg: '#0052a3',
+            buttonPrimaryHoverBorder: '#003d7a',
+            buttonStopBg: '#cc3333',
+            buttonStopBorder: '#aa2222',
+            buttonStopHoverBg: '#aa2222',
+            buttonStopHoverBorder: '#881111',
+            buttonDisabledBg: '#f0f0f0',
+            buttonDisabledBorder: '#d0d0d0',
+            buttonDisabledText: '#999999',
             canvasGridColor: '#d0d0d0'
         }
     },
@@ -274,6 +344,38 @@ export class ThemeManager {
         document.documentElement.style.setProperty('--theme-text', colors.uiText);
         document.documentElement.style.setProperty('--theme-text-secondary', colors.uiTextSecondary);
         
+        // Button CSS variables
+        document.documentElement.style.setProperty('--button-bg', colors.buttonBg);
+        document.documentElement.style.setProperty('--button-border', colors.buttonBorder);
+        document.documentElement.style.setProperty('--button-text', colors.buttonText);
+        document.documentElement.style.setProperty('--button-hover-bg', colors.buttonHoverBg);
+        document.documentElement.style.setProperty('--button-hover-border', colors.buttonHoverBorder);
+        document.documentElement.style.setProperty('--button-hover-text', colors.buttonHoverText);
+        document.documentElement.style.setProperty('--button-primary-bg', colors.buttonPrimaryBg);
+        document.documentElement.style.setProperty('--button-primary-border', colors.buttonPrimaryBorder);
+        document.documentElement.style.setProperty('--button-primary-hover-bg', colors.buttonPrimaryHoverBg);
+        document.documentElement.style.setProperty('--button-primary-hover-border', colors.buttonPrimaryHoverBorder);
+        document.documentElement.style.setProperty('--button-stop-bg', colors.buttonStopBg);
+        document.documentElement.style.setProperty('--button-stop-border', colors.buttonStopBorder);
+        document.documentElement.style.setProperty('--button-stop-hover-bg', colors.buttonStopHoverBg);
+        document.documentElement.style.setProperty('--button-stop-hover-border', colors.buttonStopHoverBorder);
+        document.documentElement.style.setProperty('--button-disabled-bg', colors.buttonDisabledBg);
+        document.documentElement.style.setProperty('--button-disabled-border', colors.buttonDisabledBorder);
+        document.documentElement.style.setProperty('--button-disabled-text', colors.buttonDisabledText);
+        
+        // Node palette CSS variables
+        document.documentElement.style.setProperty('--palette-overlay-bg', this._hexToRgba(colors.uiBackground, 0.5));
+        document.documentElement.style.setProperty('--palette-bg', colors.nodeDefaultBgColor);
+        document.documentElement.style.setProperty('--palette-border', colors.uiBorder);
+        document.documentElement.style.setProperty('--palette-search-bg', colors.widgetBgColor);
+        document.documentElement.style.setProperty('--palette-search-border', colors.widgetOutlineColor);
+        document.documentElement.style.setProperty('--palette-search-text', colors.widgetTextColor);
+        document.documentElement.style.setProperty('--palette-search-focus-border', colors.buttonPrimaryBorder);
+        document.documentElement.style.setProperty('--palette-item-hover-bg', colors.nodeDefaultColor);
+        document.documentElement.style.setProperty('--palette-item-selected-border', colors.buttonPrimaryBg);
+        document.documentElement.style.setProperty('--palette-title-text', colors.nodeTextHighlightColor);
+        document.documentElement.style.setProperty('--palette-subtitle-text', colors.nodeTextColor);
+        
         // 6. Update canvas element background
         const canvasEl = document.getElementById('litegraph-canvas');
         if (canvasEl) {
@@ -304,7 +406,11 @@ export class ThemeManager {
         const gridSize = 10; // LiteGraph.CANVAS_GRID_SIZE
         const majorGridSize = 100;
         const gridColor = this.currentTheme.colors.canvasGridColor || '#30363d';
-        const majorGridColor = this._darkenColor(gridColor, 0.3) || '#545d68'; // Slightly bolder
+        // For light themes, lighten the grid color; for dark themes, darken it
+        const isLightTheme = this.currentTheme.name === 'light';
+        const majorGridColor = isLightTheme 
+            ? this._lightenColor(gridColor, 0.2) || '#b0b0b0'
+            : this._darkenColor(gridColor, 0.3) || '#545d68';
         
         ctx.save();
         ctx.strokeStyle = gridColor;
@@ -368,6 +474,25 @@ export class ThemeManager {
         const G = Math.max(0, Math.min(255, (num >> 8 & 0x00FF) + amt));
         const B = Math.max(0, Math.min(255, (num & 0x0000FF) + amt));
         return '#' + (1 << 24 | R << 16 | G << 8 | B).toString(16).slice(1);
+    }
+
+    private _lightenColor(hex: string, amount: number): string {
+        if (!hex || !hex.startsWith('#')) return hex;
+        const num = parseInt(hex.replace('#', ''), 16);
+        const amt = Math.round(2.55 * amount * 100);  // Positive for lighten
+        const R = Math.max(0, Math.min(255, (num >> 16) + amt));
+        const G = Math.max(0, Math.min(255, (num >> 8 & 0x00FF) + amt));
+        const B = Math.max(0, Math.min(255, (num & 0x0000FF) + amt));
+        return '#' + (1 << 24 | R << 16 | G << 8 | B).toString(16).slice(1);
+    }
+
+    private _hexToRgba(hex: string, alpha: number): string {
+        if (!hex || !hex.startsWith('#')) return hex;
+        const num = parseInt(hex.replace('#', ''), 16);
+        const R = (num >> 16) & 255;
+        const G = (num >> 8) & 255;
+        const B = num & 255;
+        return `rgba(${R}, ${G}, ${B}, ${alpha})`;
     }
 }
 

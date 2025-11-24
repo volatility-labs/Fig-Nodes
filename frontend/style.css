@@ -121,7 +121,7 @@ body {
 }
 
 .graph-name {
-    color: #768390;
+    color: var(--theme-text-secondary, #768390);
     font-size: 11px;
     font-weight: 500;
     letter-spacing: 0.2px;
@@ -170,73 +170,73 @@ body {
 
 .file-controls {
     padding-left: 8px;
-    border-left: 1px solid #30363d;
+    border-left: 1px solid var(--theme-border, #30363d);
 }
 
 .execution-controls {
     padding-left: 8px;
-    border-left: 1px solid #30363d;
+    border-left: 1px solid var(--theme-border, #30363d);
 }
 
 #footer button {
-    color: #adbac7;
-    border: 1px solid #373e47;
+    color: var(--button-text, #adbac7);
+    border: 1px solid var(--button-border, #373e47);
     padding: 4px 10px;
     border-radius: 2px;
     cursor: pointer;
     font-size: 11px;
     font-weight: 500;
     transition: all 0.15s ease;
-    background: #1c2128;
+    background: var(--button-bg, #1c2128);
     letter-spacing: 0.3px;
     text-transform: uppercase;
     font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
 }
 
 #footer button:hover {
-    background: #22272e;
-    border-color: #545d68;
-    color: #cdd9e5;
+    background: var(--button-hover-bg, #22272e);
+    border-color: var(--button-hover-border, #545d68);
+    color: var(--button-hover-text, #cdd9e5);
 }
 
 .btn-primary {
-    background: #1f6feb;
-    border-color: #316dca;
+    background: var(--button-primary-bg, #1f6feb);
+    border-color: var(--button-primary-border, #316dca);
     color: #fff;
 }
 
 .btn-primary:hover {
-    background: #388bfd;
-    border-color: #4493f8;
+    background: var(--button-primary-hover-bg, #388bfd);
+    border-color: var(--button-primary-hover-border, #4493f8);
 }
 
 .btn-secondary {
-    background: #1c2128;
-    border-color: #373e47;
+    background: var(--button-bg, #1c2128);
+    border-color: var(--button-border, #373e47);
 }
 
 .btn-secondary:hover {
-    background: #22272e;
-    border-color: #545d68;
+    background: var(--button-hover-bg, #22272e);
+    border-color: var(--button-hover-border, #545d68);
 }
 
 .btn-stop {
-    background: #6a1a1a;
-    border-color: #7a2a2a;
+    background: var(--button-stop-bg, #6a1a1a);
+    border-color: var(--button-stop-border, #7a2a2a);
     color: #fff;
 }
 
 .btn-stop:hover {
-    background: #7a2525;
-    border-color: #8a3535;
+    background: var(--button-stop-hover-bg, #7a2525);
+    border-color: var(--button-stop-hover-border, #8a3535);
 }
 
 #footer button:disabled {
-    background: #1a1a1a;
-    border-color: #222;
+    background: var(--button-disabled-bg, #1a1a1a);
+    border-color: var(--button-disabled-border, #222);
     cursor: not-allowed;
     opacity: 0.4;
-    color: #555;
+    color: var(--button-disabled-text, #555);
 }
 
 /* Link Mode and API Keys button styling */
@@ -296,7 +296,7 @@ body {
     left: 0;
     width: 100%;
     height: 100%;
-    background: rgba(0, 0, 0, 0.5);
+    background: var(--palette-overlay-bg, rgba(0, 0, 0, 0.5));
     display: flex;
     justify-content: center;
     align-items: center;
@@ -304,8 +304,8 @@ body {
 }
 
 .node-palette {
-    background: #2a2a2a;
-    border: 1px solid #555;
+    background: var(--palette-bg, #2a2a2a);
+    border: 1px solid var(--palette-border, #555);
     border-radius: 8px;
     width: 500px;
     max-height: 600px;
@@ -315,10 +315,10 @@ body {
 }
 
 .node-palette-search {
-    background: #333;
-    border: 1px solid #555;
+    background: var(--palette-search-bg, #333);
+    border: 1px solid var(--palette-search-border, #555);
     border-radius: 4px;
-    color: white;
+    color: var(--palette-search-text, white);
     padding: 12px;
     font-size: 14px;
     margin: 16px;
@@ -326,7 +326,7 @@ body {
 }
 
 .node-palette-search:focus {
-    border-color: #2196f3;
+    border-color: var(--palette-search-focus-border, #2196f3);
     box-shadow: 0 0 5px rgba(33, 150, 243, 0.3);
 }
 
@@ -334,6 +334,7 @@ body {
     flex: 1;
     overflow-y: auto;
     padding: 0 16px 16px;
+    background: var(--palette-bg, #2a2a2a);
 }
 
 .node-palette-item {
@@ -346,23 +347,23 @@ body {
 
 .node-palette-item:hover,
 .node-palette-item.selected {
-    background: #3a3a3a;
+    background: var(--palette-item-hover-bg, #3a3a3a);
 }
 
 .node-palette-item.selected {
-    border-left: 3px solid #2196f3;
+    border-left: 3px solid var(--palette-item-selected-border, #2196f3);
 }
 
 .node-palette-title {
     font-weight: 600;
     font-size: 14px;
-    color: #ffffff;
+    color: var(--palette-title-text, #ffffff);
     margin-bottom: 4px;
 }
 
 .node-palette-subtitle {
     font-size: 12px;
-    color: #aaa;
+    color: var(--palette-subtitle-text, #aaa);
     line-height: 1.3;
 }
 

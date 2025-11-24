@@ -294,7 +294,7 @@ export class NodeRenderer {
         }
 
         ctx.font = '12px Arial';
-        ctx.fillStyle = '#ffffff';
+        ctx.fillStyle = LiteGraph.NODE_TEXT_COLOR || '#AAA';
         ctx.textAlign = 'left';
 
         lines.forEach((line, index) => {
