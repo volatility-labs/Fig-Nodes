@@ -114,13 +114,22 @@ export default class OHLCVPlotEnhancedNodeUI extends BaseCustomNode {
             
             // Target: fit cells with proper aspect ratio
             const targetCellWidth = Math.max(150, Math.min(250, 200));
-            const targetCellHeight = targetCellWidth / avgAspectRatio;
             
-            const contentWidth = cols * targetCellWidth + (cols - 1) * cellSpacing;
-            const contentHeight = rows * targetCellHeight + (rows - 1) * cellSpacing;
+            // Calculate constrained content width first
+            const idealContentWidth = cols * targetCellWidth + (cols - 1) * cellSpacing;
+            const maxContentWidth = maxWidth - padding * 2;
+            const contentWidth = Math.min(maxContentWidth, idealContentWidth);
+            
+            // Recalculate actual cell width based on constrained content width
+            const actualCellWidth = Math.floor((contentWidth - (cols - 1) * cellSpacing) / cols);
+            
+            // Calculate height based on ACTUAL cell width to preserve aspect ratio
+            const actualCellHeight = actualCellWidth / minAspectRatio;
+            
+            const contentHeight = rows * actualCellHeight + (rows - 1) * cellSpacing;
             const totalHeight = headerHeight + padding * 2 + contentHeight;
 
-            this.size[0] = Math.max(minWidth, Math.min(maxWidth, contentWidth + padding * 2));
+            this.size[0] = contentWidth + padding * 2;
             this.size[1] = Math.max(minHeight + headerHeight, totalHeight);
         }
 
