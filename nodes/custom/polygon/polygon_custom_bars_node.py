@@ -25,7 +25,7 @@ class PolygonCustomBars(Base):
     default_params = {
         "multiplier": 1,
         "timespan": "day",
-        "lookback_period": "3 months",
+        "lookback_period": "6 months",  # Extended to get more historical data for delisted/low-volume tokens
         "adjusted": True,
         "sort": "asc",
         "limit": 5000,
