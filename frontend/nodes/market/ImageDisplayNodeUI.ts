@@ -303,15 +303,16 @@ export default class ImageDisplayNodeUI extends BaseCustomNode {
                 // Skip drawing if cell is completely outside visible area
                 if (cy + cellH < y0 || cy > y0 + h || cx + cellW < x0 || cx > x0 + w) continue;
 
-                // Image - stretch to fill entire cell for uniform grid appearance
+                // Image - fit within cell preserving aspect ratio (prevents distortion)
                 if (img) {
-                    // Stretch image to fill cell completely (ignore aspect ratio for grid uniformity)
+                    // Fit image within cell while preserving aspect ratio
+                    const imageArea = this.fitImageToBounds(img.width, img.height, cellW, cellH);
                     ctx.drawImage(
                         img,
-                        cx,
-                        cy,
-                        cellW,
-                        cellH
+                        cx + imageArea.x,
+                        cy + imageArea.y,
+                        imageArea.width,
+                        imageArea.height
                     );
                 }
                 // No borders - seamless grid appearance
