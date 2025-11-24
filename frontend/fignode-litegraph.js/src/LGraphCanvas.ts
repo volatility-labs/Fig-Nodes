@@ -7467,6 +7467,30 @@ export class LGraphCanvas implements CustomEventDispatcher<LGraphCanvasEventMap>
       }
     }
 
+    // Add "Reset all chart views" option
+    const hasChartNodes = this.graph?._nodes?.some((node: any) => 
+      typeof node.resetChartView === 'function'
+    ) || false;
+    
+    if (hasChartNodes) {
+      options.push(null, {
+        content: "Reset all chart views",
+        callback: () => {
+          if (!this.graph) return;
+          const chartNodes = this.graph._nodes.filter((node: any) => 
+            typeof node.resetChartView === 'function'
+          );
+          chartNodes.forEach((node: any) => {
+            try {
+              node.resetChartView();
+            } catch (err) {
+              console.warn('Error resetting chart view for node:', err);
+            }
+          });
+        },
+      });
+    }
+
     const extra = this.getExtraMenuOptions?.(this, options)
     return Array.isArray(extra)
       ? options.concat(extra)

@@ -37,6 +37,37 @@ export default class ImageDisplayNodeUI extends BaseCustomNode {
         return false;
     }
 
+    /**
+     * Reset chart view to default zoom and scroll position
+     */
+    resetChartView(): void {
+        this.zoomLevel = 1.0;
+        this.scrollOffsetX = 0;
+        this.scrollOffsetY = 0;
+        this.gridScrollOffset = 0;
+        this.gridScrollOffsetX = 0;
+        this.setDirtyCanvas(true, true);
+        if (this.graph) {
+            this.graph.setDirtyCanvas(true);
+        }
+    }
+
+    /**
+     * Override getMenuOptions to add "Reset chart view" option
+     */
+    getMenuOptions(canvas: any): any[] {
+        const baseOptions = super.getMenuOptions ? super.getMenuOptions(canvas) : [];
+        return [
+            {
+                content: "Reset chart view",
+                callback: () => {
+                    this.resetChartView();
+                },
+            },
+            ...(baseOptions.length > 0 ? [null, ...baseOptions] : baseOptions),
+        ];
+    }
+
     updateDisplay(result: any) {
         // Expect { images: { label: dataUrl } }
         const imgs = (result && result.images) || {};

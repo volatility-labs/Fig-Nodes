@@ -541,6 +541,138 @@ export class EditorInitializer {
                 }
             });
             footerCenter.appendChild(autoAlignBtn);
+
+            // Add Reset Charts button
+            const resetChartsBtn = document.createElement('button');
+            resetChartsBtn.id = 'reset-charts-btn';
+            resetChartsBtn.className = 'btn-secondary';
+            resetChartsBtn.textContent = 'Reset';
+            resetChartsBtn.title = 'Reset all chart views and fit all nodes to view';
+            resetChartsBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                try {
+                    const graph = this.serviceRegistry.get('graph') as LGraph;
+                    const canvas = this.serviceRegistry.get('canvas') as LGraphCanvas;
+                    
+                    console.log('Reset Charts clicked - graph:', graph, 'canvas:', canvas);
+                    
+                    if (!graph) {
+                        console.warn('Graph not available');
+                        return;
+                    }
+                    
+                    if (!canvas) {
+                        console.warn('Canvas not available');
+                        return;
+                    }
+
+                    // Reset chart views within nodes
+                    if (graph._nodes && graph._nodes.length > 0) {
+                        const chartNodes = graph._nodes.filter((node: any) => 
+                            typeof node.resetChartView === 'function'
+                        );
+                        console.log(`Found ${chartNodes.length} chart nodes to reset`);
+                        chartNodes.forEach((node: any) => {
+                            try {
+                                node.resetChartView();
+                            } catch (err) {
+                                console.warn('Error resetting chart view for node:', err);
+                            }
+                        });
+                    }
+
+                    // Fit all nodes to view
+                    // Clear selection first to fit all nodes
+                    if (canvas.selectedItems) {
+                        canvas.selectedItems.clear();
+                    }
+                    if (canvas.selected_nodes) {
+                        canvas.selected_nodes = {};
+                    }
+                    if (canvas.onSelectionChange) {
+                        canvas.onSelectionChange(canvas.selected_nodes || {});
+                    }
+                    
+                    // Use fitViewToSelectionAnimated which fits all nodes when nothing is selected
+                    if (typeof canvas.fitViewToSelectionAnimated === 'function') {
+                        console.log('Using fitViewToSelectionAnimated');
+                        try {
+                            canvas.fitViewToSelectionAnimated({
+                                duration: 300,
+                                zoom: 0.95, // Less aggressive zoom - closer to 1.0 for better view
+                                easing: 'easeInOutQuad'
+                            });
+                        } catch (err) {
+                            console.warn('fitViewToSelectionAnimated failed, trying fallback:', err);
+                            // Fallback to manual calculation
+                            this.fitAllNodesToView(graph, canvas);
+                        }
+                    } else {
+                        console.log('fitViewToSelectionAnimated not available, using fallback');
+                        // Fallback: manually calculate bounds and fit
+                        this.fitAllNodesToView(graph, canvas);
+                    }
+                } catch (error) {
+                    console.error('Failed to reset chart views and fit to view:', error);
+                }
+            });
+            footerCenter.appendChild(resetChartsBtn);
+        }
+    }
+
+    private fitAllNodesToView(graph: LGraph, canvas: LGraphCanvas): void {
+        if (!graph._nodes || graph._nodes.length === 0) {
+            console.log('No nodes to fit to view');
+            return;
+        }
+
+        let minX = Infinity;
+        let minY = Infinity;
+        let maxX = -Infinity;
+        let maxY = -Infinity;
+
+        graph._nodes.forEach((node: any) => {
+            if (node.pos && node.size) {
+                const x = node.pos[0] || 0;
+                const y = node.pos[1] || 0;
+                const w = node.size[0] || 0;
+                const h = node.size[1] || 0;
+                
+                minX = Math.min(minX, x);
+                minY = Math.min(minY, y);
+                maxX = Math.max(maxX, x + w);
+                maxY = Math.max(maxY, y + h);
+            }
+        });
+
+        if (!isFinite(minX) || !isFinite(minY) || !isFinite(maxX) || !isFinite(maxY)) {
+            console.warn('Could not calculate valid bounds for nodes');
+            return;
+        }
+
+        const padding = 50;
+        const bounds: [number, number, number, number] = [
+            minX - padding,
+            minY - padding,
+            maxX - minX + (padding * 2),
+            maxY - minY + (padding * 2)
+        ];
+        
+        console.log('Calculated bounds:', bounds);
+        
+        if (canvas.animateToBounds && typeof canvas.animateToBounds === 'function') {
+            canvas.animateToBounds(bounds, {
+                duration: 300,
+                zoom: 0.95, // Less aggressive zoom - closer to 1.0 for better view
+                easing: 'easeInOutQuad'
+            });
+        } else if (canvas.ds && canvas.ds.fitToBounds && typeof canvas.ds.fitToBounds === 'function') {
+            canvas.ds.fitToBounds(bounds, { zoom: 0.95 }); // Less aggressive zoom
+            canvas.setDirty(true, true);
+        } else {
+            console.warn('No method available to fit bounds to view');
         }
     }
 
