@@ -105,12 +105,16 @@ export default class OHLCVPlotEnhancedNodeUI extends BaseCustomNode {
             const cols = Math.ceil(Math.sqrt(labels.length));
             const rows = Math.ceil(labels.length / cols);
             
+            // Get average aspect ratio of all images
+            const aspectRatios = Array.from(this.imageAspectRatios.values());
+            const avgAspectRatio = aspectRatios.reduce((sum, ar) => sum + ar, 0) / aspectRatios.length;
+            
+            // Calculate cell dimensions based on average aspect ratio
             const cellSpacing = 2; // Small uniform spacing for clean grid
             
-            // For grid layout, use a balanced approach
-            // Target a reasonable cell size that works for mixed aspect ratios
-            const targetCellWidth = 200;
-            const targetCellHeight = 150; // Balanced height for mixed content
+            // Target: fit cells with proper aspect ratio
+            const targetCellWidth = Math.max(150, Math.min(250, 200));
+            const targetCellHeight = targetCellWidth / avgAspectRatio;
             
             const contentWidth = cols * targetCellWidth + (cols - 1) * cellSpacing;
             const contentHeight = rows * targetCellHeight + (rows - 1) * cellSpacing;
