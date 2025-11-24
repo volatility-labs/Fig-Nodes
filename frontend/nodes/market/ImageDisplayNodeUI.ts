@@ -440,11 +440,11 @@ export default class ImageDisplayNodeUI extends BaseCustomNode {
             const maxScrollY = Math.max(0, totalGridHeight - contentHeight);
             
             if (maxScrollX > 0 && (hasHorizontalDelta || isHorizontal)) {
-                this.gridScrollOffsetX = Math.max(0, Math.min(maxScrollX, this.gridScrollOffsetX - scrollAmountX));
+                this.gridScrollOffsetX = Math.max(0, Math.min(maxScrollX, this.gridScrollOffsetX + scrollAmountX));
             }
             
             if (maxScrollY > 0 && (hasVerticalDelta || !isHorizontal)) {
-                this.gridScrollOffset = Math.max(0, Math.min(maxScrollY, this.gridScrollOffset - scrollAmountY));
+                this.gridScrollOffset = Math.max(0, Math.min(maxScrollY, this.gridScrollOffset + scrollAmountY));
             }
             
             this.setDirtyCanvas(true, true);
