@@ -409,7 +409,7 @@ export default class ImageDisplayNodeUI extends BaseCustomNode {
         const labels = Object.keys(this.images);
         
         if (labels.length !== 1) {
-            // Multi-image grid scrolling with infinite scroll
+            // Multi-image grid scrolling with FINITE scrolling (no wrapping)
             const cols = Math.ceil(Math.sqrt(labels.length));
             const rows = Math.ceil(labels.length / cols);
             const cellSpacing = 2; // Small uniform spacing between images
@@ -418,13 +418,13 @@ export default class ImageDisplayNodeUI extends BaseCustomNode {
             const cellW = baseCellW * this.zoomLevel;
             const cellH = baseCellH * this.zoomLevel;
             
+            // Calculate total grid dimensions (FINITE scrolling - no buffers)
             const totalGridHeight = rows * cellH + (rows - 1) * cellSpacing;
-            const scrollBuffer = Math.max(50, totalGridHeight * 0.1);
-            const scrollableHeight = totalGridHeight + scrollBuffer;
-            
             const totalGridWidth = cols * cellW + (cols - 1) * cellSpacing;
-            const scrollBufferX = Math.max(50, totalGridWidth * 0.1);
-            const scrollableWidth = totalGridWidth + scrollBufferX;
+            
+            // Calculate maximum scroll offsets (FINITE scrolling)
+            const maxScrollY = Math.max(0, totalGridHeight - contentHeight);
+            const maxScrollX = Math.max(0, totalGridWidth - contentWidth);
             
             // Determine scroll direction - prioritize vertical scrolling for trackpad
             const hasHorizontalDelta = Math.abs(event.deltaX) > 5;
@@ -449,13 +449,13 @@ export default class ImageDisplayNodeUI extends BaseCustomNode {
                 scrollAmountY = event.deltaY * contentHeight * 0.1;
             }
             
-            // Infinite scrolling with wrapping
-            if (scrollableWidth > 0 && (hasHorizontalDelta || isHorizontal)) {
-                this.gridScrollOffsetX = ((this.gridScrollOffsetX + scrollAmountX) % scrollableWidth + scrollableWidth) % scrollableWidth;
+            // FINITE scrolling with clamping (no wrapping)
+            if (maxScrollX > 0 && (hasHorizontalDelta || isHorizontal)) {
+                this.gridScrollOffsetX = Math.max(0, Math.min(maxScrollX, this.gridScrollOffsetX + scrollAmountX));
             }
             
-            if (scrollableHeight > 0 && (hasVerticalDelta || !isHorizontal)) {
-                this.gridScrollOffset = ((this.gridScrollOffset + scrollAmountY) % scrollableHeight + scrollableHeight) % scrollableHeight;
+            if (maxScrollY > 0 && (hasVerticalDelta || !isHorizontal)) {
+                this.gridScrollOffset = Math.max(0, Math.min(maxScrollY, this.gridScrollOffset + scrollAmountY));
             }
             
             this.setDirtyCanvas(true, true);
