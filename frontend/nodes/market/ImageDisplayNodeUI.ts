@@ -260,27 +260,28 @@ export default class ImageDisplayNodeUI extends BaseCustomNode {
         const cols = Math.ceil(Math.sqrt(labels.length));
         const rows = Math.ceil(labels.length / cols);
         const cellSpacing = 2; // Small uniform spacing between images
+        // Apply zoom to grid cell sizes for multi-image grids
+        const baseCellW = Math.floor((w - (cols - 1) * cellSpacing) / cols);
+        const baseCellH = Math.floor((h - (rows - 1) * cellSpacing) / rows);
+        const cellW = baseCellW * this.zoomLevel;
+        const cellH = baseCellH * this.zoomLevel;
         
-        // Use the same target cell dimensions as calculated in resizeNodeToMatchAspectRatio
-        // This ensures consistency between node sizing and drawing
-        const aspectRatios = Array.from(this.imageAspectRatios.values());
-        const avgAspectRatio = aspectRatios.reduce((sum, ar) => sum + ar, 0) / aspectRatios.length;
-        const targetCellWidth = Math.max(150, Math.min(250, 200));
-        const targetCellHeight = targetCellWidth / avgAspectRatio;
-        
-        // Apply zoom to the target dimensions
-        const cellW = targetCellWidth * this.zoomLevel;
-        const cellH = targetCellHeight * this.zoomLevel;
-        
-        // Calculate total grid dimensions
+        // Calculate total grid dimensions for infinite scrolling
         const totalGridHeight = rows * cellH + (rows - 1) * cellSpacing;
-        const totalGridWidth = cols * cellW + (cols - 1) * cellSpacing;
+        const scrollBuffer = Math.max(50, totalGridHeight * 0.1);
+        const scrollableHeight = totalGridHeight + scrollBuffer;
         
-        // Clamp scroll offsets to valid ranges
-        const maxScrollX = Math.max(0, totalGridWidth - w);
-        const maxScrollY = Math.max(0, totalGridHeight - h);
-        this.gridScrollOffsetX = Math.max(0, Math.min(maxScrollX, this.gridScrollOffsetX));
-        this.gridScrollOffset = Math.max(0, Math.min(maxScrollY, this.gridScrollOffset));
+        const totalGridWidth = cols * cellW + (cols - 1) * cellSpacing;
+        const scrollBufferX = Math.max(50, totalGridWidth * 0.1);
+        const scrollableWidth = totalGridWidth + scrollBufferX;
+        
+        // Wrap scroll offsets for infinite scrolling
+        if (scrollableHeight > 0) {
+            this.gridScrollOffset = ((this.gridScrollOffset % scrollableHeight) + scrollableHeight) % scrollableHeight;
+        }
+        if (scrollableWidth > 0) {
+            this.gridScrollOffsetX = ((this.gridScrollOffsetX % scrollableWidth) + scrollableWidth) % scrollableWidth;
+        }
 
         // Save the current context state before drawing grid
         ctx.save();
@@ -290,38 +291,48 @@ export default class ImageDisplayNodeUI extends BaseCustomNode {
         ctx.rect(x0, y0, w, h);
         ctx.clip();
 
-        // Draw grid with scroll offset (simple clamped scrolling)
-        const baseX = x0 - this.gridScrollOffsetX;
-        const baseY = y0 - this.gridScrollOffset;
+        // Draw grid with infinite scrolling support - draw multiple copies for seamless wrapping
+        const copiesNeededY = Math.ceil(h / scrollableHeight) + 2;
+        const copiesNeededX = Math.ceil(w / scrollableWidth) + 2;
         
-        // Draw each image into a cell with scroll offset
-        let idx = 0;
-        for (let r = 0; r < rows; r++) {
-            for (let c = 0; c < cols; c++) {
-                if (idx >= labels.length) break;
-                const label = labels[idx++];
-                if (!label) continue;
-                const img = this.loadedImages.get(label);
+        // Draw grid copies in both directions for infinite scrolling
+        for (let copyY = -1; copyY <= copiesNeededY; copyY++) {
+            const copyOffsetY = copyY * scrollableHeight;
+            const baseY = y0 - this.gridScrollOffset + copyOffsetY;
+            
+            for (let copyX = -1; copyX <= copiesNeededX; copyX++) {
+                const copyOffsetX = copyX * scrollableWidth;
+                const baseX = x0 - this.gridScrollOffsetX + copyOffsetX;
+                
+                // Draw each image into a cell with scroll offset
+                let idx = 0;
+                for (let r = 0; r < rows; r++) {
+                    for (let c = 0; c < cols; c++) {
+                        if (idx >= labels.length) break;
+                        const label = labels[idx++];
+                        if (!label) continue;
+                        const img = this.loadedImages.get(label);
 
-                const cx = baseX + c * (cellW + cellSpacing);
-                const cy = baseY + r * (cellH + cellSpacing);
+                        const cx = baseX + c * (cellW + cellSpacing);
+                        const cy = baseY + r * (cellH + cellSpacing);
 
-                // Skip drawing if cell is completely outside visible area
-                if (cy + cellH < y0 || cy > y0 + h || cx + cellW < x0 || cx > x0 + w) continue;
+                        // Skip drawing if cell is completely outside visible area
+                        if (cy + cellH < y0 || cy > y0 + h || cx + cellW < x0 || cx > x0 + w) continue;
 
-                // Image - fit within cell preserving aspect ratio
-                if (img) {
-                    // Fit image within cell while preserving aspect ratio
-                    const imageArea = this.fitImageToBounds(img.width, img.height, cellW, cellH);
-                    ctx.drawImage(
-                        img,
-                        cx + imageArea.x,
-                        cy + imageArea.y,
-                        imageArea.width,
-                        imageArea.height
-                    );
+                        // Image - stretch to fill entire cell for uniform grid appearance
+                        if (img) {
+                            // Stretch image to fill cell completely (ignore aspect ratio for grid uniformity)
+                            ctx.drawImage(
+                                img,
+                                cx,
+                                cy,
+                                cellW,
+                                cellH
+                            );
+                        }
+                        // No borders - seamless grid appearance
+                    }
                 }
-                // No borders - seamless grid appearance
             }
         }
         
@@ -407,7 +418,7 @@ export default class ImageDisplayNodeUI extends BaseCustomNode {
         const labels = Object.keys(this.images);
         
         if (labels.length !== 1) {
-            // Multi-image grid scrolling
+            // Multi-image grid scrolling with infinite scroll
             const cols = Math.ceil(Math.sqrt(labels.length));
             const rows = Math.ceil(labels.length / cols);
             const cellSpacing = 2; // Small uniform spacing between images
@@ -417,7 +428,12 @@ export default class ImageDisplayNodeUI extends BaseCustomNode {
             const cellH = baseCellH * this.zoomLevel;
             
             const totalGridHeight = rows * cellH + (rows - 1) * cellSpacing;
+            const scrollBuffer = Math.max(50, totalGridHeight * 0.1);
+            const scrollableHeight = totalGridHeight + scrollBuffer;
+            
             const totalGridWidth = cols * cellW + (cols - 1) * cellSpacing;
+            const scrollBufferX = Math.max(50, totalGridWidth * 0.1);
+            const scrollableWidth = totalGridWidth + scrollBufferX;
             
             // Determine scroll direction - prioritize vertical scrolling for trackpad
             const hasHorizontalDelta = Math.abs(event.deltaX) > 5;
@@ -442,16 +458,13 @@ export default class ImageDisplayNodeUI extends BaseCustomNode {
                 scrollAmountY = event.deltaY * contentHeight * 0.1;
             }
             
-            // Apply scrolling - allow both horizontal and vertical simultaneously
-            const maxScrollX = Math.max(0, totalGridWidth - contentWidth);
-            const maxScrollY = Math.max(0, totalGridHeight - contentHeight);
-            
-            if (maxScrollX > 0 && (hasHorizontalDelta || isHorizontal)) {
-                this.gridScrollOffsetX = Math.max(0, Math.min(maxScrollX, this.gridScrollOffsetX + scrollAmountX));
+            // Infinite scrolling with wrapping
+            if (scrollableWidth > 0 && (hasHorizontalDelta || isHorizontal)) {
+                this.gridScrollOffsetX = ((this.gridScrollOffsetX + scrollAmountX) % scrollableWidth + scrollableWidth) % scrollableWidth;
             }
             
-            if (maxScrollY > 0 && (hasVerticalDelta || !isHorizontal)) {
-                this.gridScrollOffset = Math.max(0, Math.min(maxScrollY, this.gridScrollOffset + scrollAmountY));
+            if (scrollableHeight > 0 && (hasVerticalDelta || !isHorizontal)) {
+                this.gridScrollOffset = ((this.gridScrollOffset + scrollAmountY) % scrollableHeight + scrollableHeight) % scrollableHeight;
             }
             
             this.setDirtyCanvas(true, true);
@@ -495,5 +508,3 @@ export default class ImageDisplayNodeUI extends BaseCustomNode {
         return true;
     }
 }
-
-

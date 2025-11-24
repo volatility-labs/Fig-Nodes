@@ -1115,7 +1115,7 @@ class HurstPlot(Base):
     
     default_params = {
         "max_symbols": 20,
-        "lookback_bars": None,
+        "lookback_bars": 100,  # Default to showing last 100 bars for better current price visibility
         "zoom_to_recent": False,  # Auto-zoom to last 300 bars for better visibility (~12 days hourly)
         "y_axis_scale": "symlog",  # "symlog" (default) shows full range, "linear" zooms to recent, "log" for exponential growth
         "show_current_price": True,  # Annotate current price on chart
