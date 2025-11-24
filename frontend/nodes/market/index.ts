@@ -17,3 +17,5 @@ export { default as OrbFilterNodeUI } from './OrbFilterNodeUI';
 export { default as VBPLevelFilterNodeUI } from './VBPLevelFilterNodeUI';
 export { default as WildersADXFilterNodeUI } from './WildersADXFilterNodeUI';
 export { default as EVWMAFilterNodeUI } from './EVWMAFilterNodeUI';
+export { default as HurstPlotNodeUI } from './HurstPlotNodeUI';
+export { default as ImageDisplayNodeUI } from './ImageDisplayNodeUI';

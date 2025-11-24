@@ -270,9 +270,10 @@ function handleDataMessage(data: any, graph: LGraph) {
             node.onStreamUpdate.call(node, results[nodeId]);
         }
         
-        // Only call updateDisplay if node explicitly wants to display results
-        // Nodes with displayResults=false won't receive results (unless they use onStreamUpdate)
-        if (node.displayResults === true && typeof node.updateDisplay === 'function') {
+        // Call updateDisplay if node has the method
+        // Nodes with displayResults=false can still override updateDisplay for custom rendering (e.g., images)
+        // Base implementation handles displayResults=false correctly (won't display text)
+        if (typeof node.updateDisplay === 'function') {
             node.updateDisplay.call(node, results[nodeId]);
         }
     }

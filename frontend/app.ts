@@ -1,3 +1,4 @@
+import './setup/patchLiteGraph';
 import { EditorInitializer } from './services/EditorInitializer';
 
 async function createEditor(container: HTMLElement) {

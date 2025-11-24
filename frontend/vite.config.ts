@@ -25,6 +25,10 @@ export default defineConfig({
       '@fig-node/litegraph': path.resolve(__dirname, './fignode-litegraph.js')
     },
   },
+  optimizeDeps: {
+    include: ['@fig-node/litegraph'],
+    exclude: [],
+  },
   test: {
     globals: true,
     environment: 'jsdom',

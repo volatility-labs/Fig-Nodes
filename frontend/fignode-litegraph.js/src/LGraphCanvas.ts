@@ -4532,12 +4532,12 @@ export class LGraphCanvas implements CustomEventDispatcher<LGraphCanvasEventMap>
       ctx.save()
       this.ds.toCanvasContext(ctx)
 
-      // render BG - always render at full opacity regardless of zoom
+      // render BG - only render when zoomed in for performance
       if (
+        this.ds.scale < 1.5 &&
         !bg_already_painted &&
         this.clear_background_color
       ) {
-        ctx.globalAlpha = 1.0
         ctx.fillStyle = this.clear_background_color
         ctx.fillRect(
           this.visible_area[0],
