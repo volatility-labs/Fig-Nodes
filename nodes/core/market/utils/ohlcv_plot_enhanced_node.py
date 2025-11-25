@@ -659,25 +659,25 @@ class OHLCVPlotEnhanced(Base):
                         color = colors[i % len(colors)]
                         plot_overlays.append((overlay_values, label, color))
 
-                try:
-                    logger.info(f"OHLCVPlotEnhanced: Creating plot for {sym} with {len(norm)} bars")
-                    fig, ax = plt.subplots(figsize=(3.2, 2.2))  # pyright: ignore
-                    logger.debug(f"OHLCVPlotEnhanced: Plotting {sym} ({sym.asset_class}) with {len(norm)} bars")
-                    _plot_candles(
-                        ax,
-                        norm,
-                        plot_overlays if plot_overlays else None,
-                        vbp_levels_for_sym if show_vbp else None,
-                        vbp_color,
-                        vbp_style,
-                        asset_class=sym.asset_class,  # Pass asset_class for timezone handling
-                    )
-                    ax.set_title(str(sym), fontsize=8, pad=-15)  # pyright: ignore
-                    ax.tick_params(labelsize=7)  # pyright: ignore
-                    image_data = _encode_fig_to_data_url(fig)
-                    images[str(sym)] = image_data
-                    logger.info(f"OHLCVPlotEnhanced: Successfully created image for {sym}, data length: {len(image_data)}")
-                except Exception as e:
-                    logger.error(f"OHLCVPlotEnhanced: Error creating plot for {sym}: {e}", exc_info=True)
+                    try:
+                        logger.info(f"OHLCVPlotEnhanced: Creating plot for {sym} with {len(norm)} bars")
+                        fig, ax = plt.subplots(figsize=(3.2, 2.2))  # pyright: ignore
+                        logger.debug(f"OHLCVPlotEnhanced: Plotting {sym} ({sym.asset_class}) with {len(norm)} bars")
+                        _plot_candles(
+                            ax,
+                            norm,
+                            plot_overlays if plot_overlays else None,
+                            vbp_levels_for_sym if show_vbp else None,
+                            vbp_color,
+                            vbp_style,
+                            asset_class=sym.asset_class,  # Pass asset_class for timezone handling
+                        )
+                        ax.set_title(str(sym), fontsize=8, pad=-15)  # pyright: ignore
+                        ax.tick_params(labelsize=7)  # pyright: ignore
+                        image_data = _encode_fig_to_data_url(fig)
+                        images[str(sym)] = image_data
+                        logger.info(f"OHLCVPlotEnhanced: Successfully created image for {sym}, data length: {len(image_data)}")
+                    except Exception as e:
+                        logger.error(f"OHLCVPlotEnhanced: Error creating plot for {sym}: {e}", exc_info=True)
 
         return {"images": images}

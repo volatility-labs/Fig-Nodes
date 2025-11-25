@@ -495,6 +495,45 @@ class OpenRouterChat(Base):
                 "No valid messages, prompt, or system provided to OpenRouterChatNode"
             )
 
+        # Log what's being sent to OpenRouter for debugging
+        # Count text and images in messages
+        total_text_length = 0
+        image_count = 0
+        for msg in messages:
+            content = msg.get("content", "")
+            if isinstance(content, list):
+                # Multimodal content (text + images)
+                for item in content:
+                    if item.get("type") == "text":
+                        text = item.get("text", "")
+                        total_text_length += len(text)
+                    elif item.get("type") == "image_url":
+                        image_count += 1
+            elif isinstance(content, str):
+                # Text-only content
+                total_text_length += len(content)
+        
+        # Extract text preview (first 200 chars) for confirmation
+        text_preview = ""
+        for msg in messages:
+            content = msg.get("content", "")
+            if isinstance(content, list):
+                for item in content:
+                    if item.get("type") == "text":
+                        text_preview = item.get("text", "")[:200]
+                        break
+            elif isinstance(content, str):
+                text_preview = content[:200]
+                break
+        
+        print(
+            f"🔵 OpenRouterChat Node {self.id}: Sending to API - "
+            f"{len(messages)} message(s), {total_text_length:,} chars of text (~{total_text_length // 4:,} tokens), "
+            f"{image_count} image(s), {len(filtered_messages)} message input(s)"
+        )
+        if text_preview:
+            print(f"   📝 Text preview (first 150 chars): {text_preview[:150]}...")
+
         # Early explicit API key check so the graph surfaces a clear failure without silent fallthrough
         api_key = self.vault.get("OPENROUTER_API_KEY")
         if not api_key:
