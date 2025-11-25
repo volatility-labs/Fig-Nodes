@@ -271,9 +271,10 @@ function handleDataMessage(data: any, graph: LGraph) {
         }
         
         // Call updateDisplay for nodes that want to display results
-        // LoggingNodeUI uses displayResults=false for custom rendering but still needs updateDisplay
+        // LoggingNodeUI and ImageDisplayNodeUI use displayResults=false for custom rendering but still need updateDisplay
         const shouldCallUpdateDisplay = node.displayResults === true || 
-            (node.type === 'Logging' && typeof node.updateDisplay === 'function');
+            (node.type === 'Logging' && typeof node.updateDisplay === 'function') ||
+            (node.type === 'ImageDisplay' && typeof node.updateDisplay === 'function');
         
         if (shouldCallUpdateDisplay && typeof node.updateDisplay === 'function') {
             node.updateDisplay.call(node, results[nodeId]);

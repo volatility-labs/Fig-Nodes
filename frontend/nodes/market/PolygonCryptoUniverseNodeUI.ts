@@ -3,6 +3,8 @@ import BaseCustomNode from '../base/BaseCustomNode';
 export default class PolygonCryptoUniverseNodeUI extends BaseCustomNode {
     constructor(title: string, data: any, serviceRegistry: any) {
         super(title, data, serviceRegistry);
+        
+        this.displayResults = false; // Store results but don't display in node
 
         // After BaseCustomNode constructor adds widgets, customize their labels and properties
         if (this.widgets && data.params) {
