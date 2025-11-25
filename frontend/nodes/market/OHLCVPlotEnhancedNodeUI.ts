@@ -24,7 +24,7 @@ export default class OHLCVPlotEnhancedNodeUI extends BaseCustomNode {
 
     constructor(title: string, data: any, serviceRegistry: any) {
         super(title, data, serviceRegistry);
-        this.size = [500, 360];
+        this.size = [400, 360]; // Narrower default width for better symbol visibility
         this.displayResults = false; // custom canvas rendering
         this.renderer = new OHLCVPlotEnhancedRenderer(this);
     }
@@ -197,10 +197,11 @@ export default class OHLCVPlotEnhancedNodeUI extends BaseCustomNode {
         const padding = 12;
         const widgetSpacing = 8; // Extra space after widgets
         const widgetHeight = this.widgets ? this.widgets.length * LiteGraph.NODE_WIDGET_HEIGHT : 0;
+        const topRowPadding = labels.length > 1 ? 20 : 0; // Extra padding for top row when multiple charts
         const x0 = padding;
-        const y0 = LiteGraph.NODE_TITLE_HEIGHT + widgetHeight + widgetSpacing + padding;
+        const y0 = LiteGraph.NODE_TITLE_HEIGHT + widgetHeight + widgetSpacing + padding + topRowPadding;
         const w = Math.max(0, this.size[0] - padding * 2);
-        const h = Math.max(0, this.size[1] - LiteGraph.NODE_TITLE_HEIGHT - widgetHeight - widgetSpacing - padding * 2);
+        const h = Math.max(0, this.size[1] - LiteGraph.NODE_TITLE_HEIGHT - widgetHeight - widgetSpacing - padding * 2 - topRowPadding);
 
         // Draw subtle separator line between widgets and content
         if (widgetHeight > 0) {

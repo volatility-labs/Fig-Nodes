@@ -22,7 +22,6 @@ from core.types_registry import (
     AssetClass,
     AssetSymbol,
     NodeCategory,
-    NodeValidationError,
     OHLCVBar,
     get_type,
 )
@@ -242,15 +241,17 @@ def _plot_candles(
                 ax.axhline(  # pyright: ignore
                     y=level, color=vbp_color, linestyle=linestyle, linewidth=1.5, alpha=0.7
                 )
-                # Add subtle label for each VBP level
+                # Add subtle label on the left side to avoid blocking chart view
+                # Use a subtle gray color that works on dark backgrounds, no background box
                 ax.text(  # pyright: ignore
-                    len(series) - 1,
+                    0,  # Left side of chart
                     level,
                     f"{level:.2f}",
-                    fontsize=6,
+                    fontsize=4,
                     verticalalignment="center",
                     horizontalalignment="left",
-                    bbox=dict(boxstyle="round,pad=0.1", facecolor="white", alpha=0.8),
+                    color="#888888",  # Subtle gray that works on dark backgrounds
+                    alpha=0.5,  # Very transparent
                 )
 
     # Show legend if overlays present
@@ -380,6 +381,7 @@ class OHLCVPlotEnhanced(Base):
         "vbp_bins": 50,
         "vbp_num_levels": 5,
         "vbp_lookback_years": 2,
+        "vbp_lookback_years_2": None,
         "vbp_use_dollar_weighted": False,
         "vbp_use_close_only": False,
         "vbp_style": "dashed",
@@ -425,6 +427,14 @@ class OHLCVPlotEnhanced(Base):
             "step": 1,
         },
         {
+            "name": "vbp_lookback_years_2",
+            "type": "number",
+            "default": None,
+            "min": 1,
+            "max": 10,
+            "step": 1,
+        },
+        {
             "name": "vbp_use_dollar_weighted",
             "type": "combo",
             "default": False,
@@ -463,7 +473,8 @@ class OHLCVPlotEnhanced(Base):
             bundle = single_bundle
 
         if not bundle:
-            raise NodeValidationError(self.id, "Provide either 'ohlcv_bundle' or 'ohlcv'")
+            logger.warning(f"OHLCVPlotEnhanced Node {self.id}: No bundle provided - all inputs are empty")
+            return {"images": {}}
 
         lookback_raw = self.params.get("lookback_bars")
         lookback: int | None = None
@@ -492,6 +503,11 @@ class OHLCVPlotEnhanced(Base):
         vbp_bins = self._get_int_param("vbp_bins", 50)
         vbp_num_levels = self._get_int_param("vbp_num_levels", 5)
         vbp_lookback_years = self._get_int_param("vbp_lookback_years", 2)
+        vbp_lookback_years_2_raw = self.params.get("vbp_lookback_years_2")
+        vbp_lookback_years_2: int | None = None
+        if vbp_lookback_years_2_raw is not None:
+            if isinstance(vbp_lookback_years_2_raw, int | float):
+                vbp_lookback_years_2 = int(vbp_lookback_years_2_raw)
         vbp_use_dollar_weighted = self._get_bool_param("vbp_use_dollar_weighted", False)
         vbp_use_close_only = self._get_bool_param("vbp_use_close_only", False)
         vbp_color = DEFAULT_VBP_COLOR  # Use default color instead of reading from params
@@ -512,7 +528,7 @@ class OHLCVPlotEnhanced(Base):
             return {"images": images}
 
         logger.info(f"OHLCVPlotEnhanced: Processing bundle with {len(bundle)} symbols")
-        
+
         if bundle:
             # Limit symbols for safety
             max_syms_raw = self.params.get("max_symbols") or 12
@@ -531,28 +547,76 @@ class OHLCVPlotEnhanced(Base):
                 vbp_levels_for_sym: list[float] | None = None
                 if show_vbp and api_key:
                     try:
-                        logger.debug(f"OHLCVPlotEnhanced: Fetching weekly bars for VBP calculation for {sym}")
-                        weekly_bars = await _fetch_weekly_bars_for_vbp(
+                        # Calculate levels for first period
+                        logger.debug(f"OHLCVPlotEnhanced: Fetching weekly bars for VBP calculation (period 1: {vbp_lookback_years} years) for {sym}")
+                        weekly_bars_1 = await _fetch_weekly_bars_for_vbp(
                             sym, api_key, vbp_lookback_years
                         )
-                        logger.debug(f"OHLCVPlotEnhanced: Fetched {len(weekly_bars) if weekly_bars else 0} weekly bars for {sym}")
-                        if weekly_bars:
-                            vbp_levels_for_sym = _calculate_vbp_levels_from_weekly(
-                                weekly_bars,
+                        logger.debug(f"OHLCVPlotEnhanced: Fetched {len(weekly_bars_1) if weekly_bars_1 else 0} weekly bars for period 1 for {sym}")
+                        
+                        all_vbp_levels: list[float] = []
+                        if weekly_bars_1:
+                            levels_1 = _calculate_vbp_levels_from_weekly(
+                                weekly_bars_1,
                                 vbp_bins,
                                 vbp_num_levels,
                                 vbp_use_dollar_weighted,
                                 vbp_use_close_only,
                             )
-                            logger.debug(f"OHLCVPlotEnhanced: Calculated {len(vbp_levels_for_sym) if vbp_levels_for_sym else 0} VBP levels for {sym}")
+                            if levels_1:
+                                all_vbp_levels.extend(levels_1)
+                                logger.debug(f"OHLCVPlotEnhanced: Calculated {len(levels_1)} VBP levels for period 1 for {sym}")
+                        
+                        # Calculate levels for second period if specified
+                        if vbp_lookback_years_2 is not None:
+                            logger.debug(f"OHLCVPlotEnhanced: Fetching weekly bars for VBP calculation (period 2: {vbp_lookback_years_2} years) for {sym}")
+                            weekly_bars_2 = await _fetch_weekly_bars_for_vbp(
+                                sym, api_key, vbp_lookback_years_2
+                            )
+                            logger.debug(f"OHLCVPlotEnhanced: Fetched {len(weekly_bars_2) if weekly_bars_2 else 0} weekly bars for period 2 for {sym}")
+                            if weekly_bars_2:
+                                levels_2 = _calculate_vbp_levels_from_weekly(
+                                    weekly_bars_2,
+                                    vbp_bins,
+                                    vbp_num_levels,
+                                    vbp_use_dollar_weighted,
+                                    vbp_use_close_only,
+                                )
+                                if levels_2:
+                                    all_vbp_levels.extend(levels_2)
+                                    logger.debug(f"OHLCVPlotEnhanced: Calculated {len(levels_2)} VBP levels for period 2 for {sym}")
+                        
+                        # Deduplicate levels (keep unique price levels)
+                        if all_vbp_levels:
+                            # Sort and remove duplicates (within 0.01% tolerance)
+                            all_vbp_levels.sort()
+                            deduplicated: list[float] = []
+                            for level in all_vbp_levels:
+                                if not deduplicated:
+                                    deduplicated.append(level)
+                                else:
+                                    # Check if level is too close to previous level (within 0.01%)
+                                    last_level = deduplicated[-1]
+                                    if abs(level - last_level) / max(abs(last_level), 1e-9) > 0.0001:
+                                        deduplicated.append(level)
+                            
+                            # Limit to num_levels total (take top N by keeping first N after deduplication)
+                            # Since levels are already sorted, we can just take the first num_levels
+                            vbp_levels_for_sym = deduplicated[:vbp_num_levels] if len(deduplicated) > vbp_num_levels else deduplicated
+                            logger.debug(f"OHLCVPlotEnhanced: Combined {len(all_vbp_levels)} levels into {len(vbp_levels_for_sym)} unique VBP levels for {sym}")
+                        else:
+                            logger.debug(f"OHLCVPlotEnhanced: No VBP levels calculated for {sym}")
                     except Exception as e:
                         logger.error(
                             f"Failed to fetch weekly bars for VBP calculation for {sym}: {e}",
                             exc_info=True
                         )
 
-                # Normalize and trim bars for display (daily bars from input)
-                norm = _normalize_bars(bars)
+                # Normalize bars (keep full set for warm-up calculation)
+                full_norm = _normalize_bars(bars)
+                
+                # Trim bars for display
+                norm = full_norm
                 if lookback is not None and lookback > 0:
                     norm = norm[-lookback:]
 
@@ -561,17 +625,35 @@ class OHLCVPlotEnhanced(Base):
                     logger.warning(f"OHLCVPlotEnhanced: Skipping {sym} - only {len(norm)} bars (minimum {MIN_BARS_REQUIRED} required)")
                     continue
 
-                # Calculate overlays on the normalized and trimmed data
+                # Calculate overlays with warm-up period (like HurstPlot node)
+                # Use display bars + longest overlay period to ensure overlays are initialized
                 plot_overlays: list[tuple[list[float | None], str, str]] = []
                 if overlay_configs:
-                    close_prices = [bar[4] for bar in norm]
+                    # Find longest overlay period for warm-up calculation
+                    longest_period = max((period for period, _ in overlay_configs), default=0)
+                    overlay_warmup_bars = len(norm) + longest_period  # Display bars + warm-up
+                    
+                    # Use more bars for calculation to ensure proper initialization
+                    overlay_calc_bars = min(overlay_warmup_bars, len(full_norm))
+                    overlay_calc_norm = full_norm[-overlay_calc_bars:] if len(full_norm) > overlay_calc_bars else full_norm
+                    overlay_calc_closes = [bar[4] for bar in overlay_calc_norm]
+                    
                     colors = ["#2196F3", "#FF9800"]
                     for i, (period, ma_type) in enumerate(overlay_configs):
-                        overlay_values = _calculate_overlay(close_prices, period, ma_type)
+                        # Calculate overlay on warm-up bars
+                        calc_overlay_values = _calculate_overlay(overlay_calc_closes, period, ma_type)
+                        
+                        # Slice to match display range (take last len(norm) values)
+                        if len(calc_overlay_values) >= len(norm):
+                            overlay_values = calc_overlay_values[-len(norm):]
+                        else:
+                            # If not enough values, pad with None at the beginning
+                            overlay_values = [None] * (len(norm) - len(calc_overlay_values)) + calc_overlay_values
+                        
                         non_none_count = sum(1 for v in overlay_values if v is not None)
                         logger.info(
                             f"Computed {ma_type}({period}) for {sym}: {len(overlay_values)} total, "
-                            f"{non_none_count} non-None in plot of {len(norm)} bars"
+                            f"{non_none_count} non-None in plot of {len(norm)} bars (warm-up: {overlay_calc_bars} bars)"
                         )
                         label = f"{ma_type} {period}"
                         color = colors[i % len(colors)]
@@ -590,7 +672,7 @@ class OHLCVPlotEnhanced(Base):
                         vbp_style,
                         asset_class=sym.asset_class,  # Pass asset_class for timezone handling
                     )
-                    ax.set_title(str(sym), fontsize=8)  # pyright: ignore
+                    ax.set_title(str(sym), fontsize=8, pad=-15)  # pyright: ignore
                     ax.tick_params(labelsize=7)  # pyright: ignore
                     image_data = _encode_fig_to_data_url(fig)
                     images[str(sym)] = image_data
