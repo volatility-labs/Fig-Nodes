@@ -532,7 +532,36 @@ class OpenRouterChat(Base):
             f"{image_count} image(s), {len(filtered_messages)} message input(s)"
         )
         if text_preview:
-            print(f"   📝 Text preview (first 150 chars): {text_preview[:150]}...")
+            print(f"   📝 Text preview (first 300 chars): {text_preview[:300]}...")
+            
+        # Log more detail about what's being sent
+        if total_text_length > 0:
+            # Count lines to see if it's structured data
+            text_content = ""
+            for msg in messages:
+                content = msg.get("content", "")
+                if isinstance(content, list):
+                    for item in content:
+                        if isinstance(item, dict) and item.get("type") == "text":
+                            text_content = str(item.get("text", ""))
+                            break
+                elif isinstance(content, str):
+                    text_content = content
+                    break
+            
+            if text_content:
+                line_count = len(text_content.split('\n'))
+                # Check if it contains actual data (numbers, indicators, symbols)
+                sample = text_content[:1000] if len(text_content) > 1000 else text_content
+                has_numbers = any(char.isdigit() for char in sample)
+                sample_lines = text_content.split('\n')[:50]
+                has_symbols = any('USD' in str(line) or '===' in str(line) for line in sample_lines)
+                
+                print(
+                    f"   📊 Data details: {line_count:,} lines of text, "
+                    f"contains {'numeric data' if has_numbers else 'text only'}, "
+                    f"{'includes symbol/indicator data' if has_symbols else 'no symbol data detected'}"
+                )
 
         # Early explicit API key check so the graph surfaces a clear failure without silent fallthrough
         api_key = self.vault.get("OPENROUTER_API_KEY")

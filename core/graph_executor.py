@@ -352,6 +352,9 @@ class GraphExecutor:
     def set_result_callback(self, callback: ResultCallback) -> None:
         """Set a result callback function for immediate emission."""
         self._result_callback = callback
+        # Also set on all nodes so they can emit partial results
+        for node in self.nodes.values():
+            node.set_result_callback(callback)
 
     def _should_emit_immediately(self, node: Base) -> bool:
         """Check if node should emit results immediately (IO category nodes)."""

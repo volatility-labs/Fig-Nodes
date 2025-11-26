@@ -661,8 +661,8 @@ class OHLCVPlotEnhanced(Base):
 
                     try:
                         logger.info(f"OHLCVPlotEnhanced: Creating plot for {sym} with {len(norm)} bars")
-                        fig, ax = plt.subplots(figsize=(3.2, 2.2))  # pyright: ignore
                         logger.debug(f"OHLCVPlotEnhanced: Plotting {sym} ({sym.asset_class}) with {len(norm)} bars")
+                        fig, ax = plt.subplots(figsize=(3.2, 2.2))  # pyright: ignore
                         _plot_candles(
                             ax,
                             norm,
@@ -677,6 +677,9 @@ class OHLCVPlotEnhanced(Base):
                         image_data = _encode_fig_to_data_url(fig)
                         images[str(sym)] = image_data
                         logger.info(f"OHLCVPlotEnhanced: Successfully created image for {sym}, data length: {len(image_data)}")
+                        
+                        # Emit partial result immediately so images show up as they're created
+                        self.emit_partial_result({"images": {str(sym): image_data}})
                     except Exception as e:
                         logger.error(f"OHLCVPlotEnhanced: Error creating plot for {sym}: {e}", exc_info=True)
 

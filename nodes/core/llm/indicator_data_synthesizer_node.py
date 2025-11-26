@@ -19,7 +19,7 @@ from datetime import datetime
 from typing import Any
 
 from core.api_key_vault import APIKeyVault
-from core.types_registry import AssetSymbol, ConfigDict, NodeCategory, OHLCVBar, OHLCVBundle, get_type
+from core.types_registry import AssetSymbol, ConfigDict, NodeCategory, OHLCVBar, OHLCVBundle, ProgressState, get_type
 from nodes.base.base_node import Base
 
 logger = logging.getLogger(__name__)
@@ -65,16 +65,16 @@ class IndicatorDataSynthesizer(Base):
     default_params = {
         "include_ohlcv": False,  # Disable OHLCV by default (was causing token explosion) - enable only if needed
         "include_indicators": True,
-        "ohlcv_max_bars": 3,  # Very aggressive limit for token efficiency
+        "ohlcv_max_bars": 20,  # Increased from 3 - summarization handles large data efficiently
         "format_style": "readable",  # "readable" (svens-branch style), "json", "compact", "summary"
-        "include_recent_only": True,  # Only include recent indicator values
-        "recent_bars_count": 10,  # Reduced from 20 to 10 for token efficiency
-        "bandpass_recent_count": 5,  # Reduced from 10 to 5 for token efficiency
-        "summary_only": True,  # Show only stats (not individual values) to reduce tokens
-        "max_symbols": 3,  # Reduced from 5 to 3 for token efficiency
+        "recent_bars_count": 50,  # Number of recent bars to include (always limited to this count)
+        "summary_only": False,  # Default False (will be True if summarization disabled). False = show individual values, True = stats only
+        "max_symbols": 20,  # Increased from 3 - summarization handles large data efficiently
         "enable_summarization": False,  # Enable AI summarization before sending to OpenRouter
+        "summarize_full_dataset": False,  # If True, summarize full dataset (historical) + recent bars (detail). If False, only summarize formatted output.
+        "recursive_summarization": False,  # Use recursive summarization (better coherence, sequential processing)
         "summarization_mode": "ollama",  # "ollama" (local, free) or "openrouter" (cheaper model)
-        "summarization_model": "gemma2:2b",  # Ollama model name (e.g., "gemma2:2b", "llama3.2:1b") or OpenRouter model
+        "summarization_model": "qwen2.5:7b",  # Ollama model name - prefer Qwen for large contexts (qwen2.5:7b=128k, qwen2.5-1m=1M tokens)
         "ollama_host": "http://localhost:11434",  # Ollama server URL
     }
 
@@ -98,12 +98,12 @@ class IndicatorDataSynthesizer(Base):
         {
             "name": "ohlcv_max_bars",
             "type": "number",
-            "default": 3,
+            "default": 20,
             "min": 1,
             "max": 1000,
             "step": 1,
             "label": "Max OHLCV Bars",
-            "description": "Number of OHLCV bars to show (very aggressive limit for token efficiency)",
+            "description": "Number of OHLCV bars to show per symbol (increased default - summarization handles large data efficiently)",
         },
         {
             "name": "format_style",
@@ -116,48 +116,30 @@ class IndicatorDataSynthesizer(Base):
         {
             "name": "summary_only",
             "type": "combo",
-            "default": True,
+            "default": False,
             "options": [True, False],
             "label": "Summary Only",
-            "description": "Only show summary statistics (no individual values). If false, shows last N values + stats (like svens-branch).",
-        },
-        {
-            "name": "include_recent_only",
-            "type": "combo",
-            "default": True,
-            "options": [True, False],
-            "label": "Recent Values Only",
-            "description": "Only include recent indicator values (last N bars) to reduce token usage",
+            "description": "True = Only stats (min/max/recent). False = Shows last N individual values + stats. Defaults to False when summarization enabled (show data, let AI compress). Defaults to True when summarization disabled (save tokens).",
         },
         {
             "name": "recent_bars_count",
             "type": "number",
-            "default": 10,
+            "default": 50,
             "min": 1,
-            "max": 100,
+            "max": 500,
             "step": 1,
             "label": "Recent Bars Count",
-            "description": "Number of recent values to show for composite/MESA/CCO (reduced from 20 to 10 for token efficiency)",
-        },
-        {
-            "name": "bandpass_recent_count",
-            "type": "number",
-            "default": 5,
-            "min": 1,
-            "max": 50,
-            "step": 1,
-            "label": "Bandpass Recent Count",
-            "description": "Number of recent values to show for bandpasses (default: 10, matches svens-branch)",
+            "description": "Number of recent bars/values to include for all indicators (always limited to this count - no option to show all values)",
         },
         {
             "name": "max_symbols",
             "type": "number",
-            "default": 3,
+            "default": 20,
             "min": 1,
-            "max": 50,
+            "max": 100,
             "step": 1,
             "label": "Max Symbols",
-            "description": "Maximum number of symbols to process per indicator (default: 3, prevents token explosion with many symbols)",
+            "description": "Maximum number of symbols to process per indicator (increased default - summarization handles large data efficiently)",
         },
         {
             "name": "enable_summarization",
@@ -166,6 +148,22 @@ class IndicatorDataSynthesizer(Base):
             "options": [True, False],
             "label": "Enable AI Summarization",
             "description": "Use AI (Ollama or cheaper OpenRouter model) to summarize indicator data before sending to final analysis. Reduces token usage and improves quality.",
+        },
+        {
+            "name": "summarize_full_dataset",
+            "type": "combo",
+            "default": False,
+            "options": [True, False],
+            "label": "Summarize Full Dataset",
+            "description": "If True: Summarize full dataset (historical context) + format recent bars (detail). If False: Only summarize formatted output. Requires summarization enabled.",
+        },
+        {
+            "name": "recursive_summarization",
+            "type": "combo",
+            "default": False,
+            "options": [True, False],
+            "label": "Recursive Summarization",
+            "description": "Use recursive summarization (each chunk incorporates previous summary). Better coherence but sequential (slower). Only works when summarization is enabled.",
         },
         {
             "name": "summarization_mode",
@@ -178,9 +176,9 @@ class IndicatorDataSynthesizer(Base):
         {
             "name": "summarization_model",
             "type": "string",
-            "default": "gemma2:2b",
+            "default": "qwen2.5:7b",
             "label": "Summarization Model",
-            "description": "Model name: for Ollama use 'gemma2:2b' or 'llama3.2:1b', for OpenRouter use 'google/gemma-2-2b-it' or similar",
+            "description": "Ollama model: 'qwen2.5:7b' (128k context, recommended), 'qwen2.5-1m' (1M context if available), or 'gemma2:2b' (8k, slow). OpenRouter: 'google/gemma-2-2b-it'",
         },
         {
             "name": "ollama_host",
@@ -288,7 +286,7 @@ class IndicatorDataSynthesizer(Base):
         lines.append("")
         return "\n".join(lines)
 
-    def _format_dict_of_series(self, data: dict[str, Any], label: str, recent_only: bool, recent_count: int, summary_only: bool = False, bandpass_count: int = 10, max_symbols: int = 10) -> str:
+    def _format_dict_of_series(self, data: dict[str, Any], label: str, recent_count: int, summary_only: bool = False, max_symbols: int = 10) -> str:
         """Format a dict where values are series/lists (like hurst_data, mesa_data, cco_data)."""
         lines = [f"=== {label.upper()} ==="]
         
@@ -374,9 +372,9 @@ class IndicatorDataSynthesizer(Base):
                             else:
                                 lines.append(f"{series_key}: {recent_val} (1 value)")
                         else:
-                            use_count = bandpass_count if "bandpass" in series_key.lower() else recent_count
-                            if recent_only and len(series_value) > use_count:
-                                display_vals = series_value[-use_count:]
+                            # Always limit to recent_count (no option to show all values)
+                            if len(series_value) > recent_count:
+                                display_vals = series_value[-recent_count:]
                                 lines.append(f"{series_key} (last {len(display_vals)} of {len(series_value)} values):")
                             else:
                                 display_vals = series_value
@@ -426,11 +424,8 @@ class IndicatorDataSynthesizer(Base):
                         lines.append(f"{key}: {recent_val} (1 value)")
                 else:
                     # Full mode: Show last N values + stats (svens-branch style)
-                    # Determine count based on key name (bandpasses get fewer)
-                    use_count = bandpass_count if "bandpass" in key.lower() else recent_count
-                    
-                    if recent_only and len(value) > use_count:
-                        display_values = value[-use_count:]
+                    if recent_only and len(value) > recent_count:
+                        display_values = value[-recent_count:]
                         lines.append(f"{key} (last {len(display_values)} of {len(value)} values):")
                     else:
                         display_values = value
@@ -552,7 +547,7 @@ class IndicatorDataSynthesizer(Base):
         
         return "Indicator Data"
 
-    def _format_generic_indicator(self, data: Any, label: str | None = None, recent_only: bool = True, recent_count: int = 20, input_name: str | None = None, summary_only: bool = False, bandpass_count: int = 10, max_symbols: int = 10) -> str:
+    def _format_generic_indicator(self, data: Any, label: str | None = None, recent_count: int = 20, input_name: str | None = None, summary_only: bool = False, max_symbols: int = 10) -> str:
         """Format generic indicator data, auto-detecting structure."""
         if data is None:
             return ""
@@ -569,7 +564,7 @@ class IndicatorDataSynthesizer(Base):
             # Check if it's a dict of series (like hurst_data format)
             if self._is_dict_of_series(data):
                 label_str = label or "INDICATOR DATA"
-                return self._format_dict_of_series(data, label_str, recent_only, recent_count, summary_only, bandpass_count, max_symbols)
+                return self._format_dict_of_series(data, label_str, recent_count, summary_only, max_symbols)
             
             # Generic dict - format as key-value pairs
             lines = [f"=== {label.upper() if label else 'INDICATOR DATA'} ==="]
@@ -712,9 +707,9 @@ class IndicatorDataSynthesizer(Base):
             return str(data)
 
     async def _summarize_text(self, text: str) -> str | None:
-        """Summarize text using Ollama or OpenRouter."""
+        """Summarize text using Ollama or OpenRouter. Handles large text by chunking if needed."""
         summarization_mode = str(self.params.get("summarization_mode", "ollama")).lower()
-        model = str(self.params.get("summarization_model", "gemma2:2b"))
+        model = str(self.params.get("summarization_model", "qwen2.5:7b"))  # Default model (updated to match default_params)
         
         summarization_prompt = """You are a financial data analyst. Summarize the following indicator data, focusing on:
 - Key trends and patterns
@@ -725,31 +720,213 @@ class IndicatorDataSynthesizer(Base):
 Keep the summary concise but comprehensive. Preserve important numerical values and signal states.
 """
         
+        # Estimate text size - adjust chunk size based on model context window
+        text_tokens = len(text) // 4
+        
+        # Detect model context window and adjust chunk size accordingly
+        model_name = model.lower()  # Use the model we already retrieved above
+        original_model = model  # Store original for warning logic
+        
+        if "qwen2.5" in model_name and ("1m" in model_name or "1-m" in model_name):
+            MAX_CHUNK_TOKENS = 800000  # Qwen 2.5-1M has 1M context window
+            logger.info("Using Qwen 2.5-1M model with 1M token context window")
+        elif "qwen2.5" in model_name or "qwen3" in model_name:
+            MAX_CHUNK_TOKENS = 100000  # Qwen 2.5/3 standard models have 128k context
+            logger.info("Using Qwen model with 128k token context window")
+        elif "qwen2" in model_name:
+            MAX_CHUNK_TOKENS = 30000  # Qwen 2 has 32k context
+            logger.info("Using Qwen 2 model with 32k token context window")
+        elif "llama3.2" in model_name:
+            MAX_CHUNK_TOKENS = 100000  # Llama 3.2 has 128k context
+            logger.info("Using Llama 3.2 model with 128k token context window")
+        else:
+            MAX_CHUNK_TOKENS = 4000  # Conservative limit for Gemma 2's 8k context
+            # Don't warn yet - wait until after fallback logic to see final model
+        
         if summarization_mode == "ollama":
             # Use Ollama (local, free)
             ollama_host = str(self.params.get("ollama_host", "http://localhost:11434"))
+            
+            # Check if Ollama is reachable first and verify model exists
             try:
-                async with httpx.AsyncClient(timeout=60.0) as client:
-                    response = await client.post(
-                        f"{ollama_host}/api/chat",
-                        json={
-                            "model": model,
-                            "messages": [
-                                {"role": "system", "content": summarization_prompt},
-                                {"role": "user", "content": f"Summarize this indicator data:\n\n{text}"}
-                            ],
-                            "stream": False,
-                        },
-                    )
-                    response.raise_for_status()
-                    result = response.json()
-                    if "message" in result and "content" in result["message"]:
-                        return result["message"]["content"]
-                    logger.warning(f"Ollama summarization returned unexpected format: {result}")
-                    return None
+                async with httpx.AsyncClient(timeout=5.0) as client:
+                    # Check if Ollama is running
+                    health_check = await client.get(f"{ollama_host}/api/tags")
+                    health_check.raise_for_status()
+                    
+                    # Get list of available models
+                    tags_response = await client.get(f"{ollama_host}/api/tags")
+                    tags_data = tags_response.json()
+                    available_models = [m.get("name", "") for m in tags_data.get("models", [])]
+                    
+                    # Check if requested model exists, try alternatives
+                    # Prefer models with larger context windows for large data
+                    model_variants = [
+                        model,  # User's requested model
+                        f"{model}-it",
+                        model.replace(":", ":latest"),
+                        "qwen2.5:7b",  # 128k context - BEST for large data (already installed!)
+                        "qwen3:8b",  # 128k+ context
+                        "qwen2.5:3b",  # 128k context (smaller model)
+                        "qwen2:7b",  # 32k context
+                        "llama3.2:1b",  # 128k context
+                        "gemma2:2b",  # 8k context - fallback (too small!)
+                        "gemma:2b"
+                    ]
+                    found_model = None
+                    for variant in model_variants:
+                        if variant in available_models:
+                            found_model = variant
+                            break
+                    
+                    if not found_model:
+                        logger.error(
+                            f"❌ Model '{model}' not found in Ollama. Available models: {', '.join(available_models[:5])}... "
+                            f"Install with: 'ollama pull gemma2:2b' or 'ollama pull llama3.2:1b'"
+                        )
+                        return None
+                    
+                    if found_model != model:
+                        logger.info(f"Using model '{found_model}' instead of '{model}'")
+                        model = found_model
+                        # Update model_name after fallback so warning logic uses correct model
+                        model_name = model.lower()
+                        # Re-check context window after fallback
+                        if "qwen2.5" in model_name and ("1m" in model_name or "1-m" in model_name):
+                            MAX_CHUNK_TOKENS = 800000
+                        elif "qwen2.5" in model_name or "qwen3" in model_name:
+                            MAX_CHUNK_TOKENS = 100000
+                        elif "qwen2" in model_name:
+                            MAX_CHUNK_TOKENS = 30000
+                        elif "llama3.2" in model_name:
+                            MAX_CHUNK_TOKENS = 100000
+                        else:
+                            MAX_CHUNK_TOKENS = 4000
+                            # Only warn if user explicitly chose a small context model (not if we fell back to it)
+                            if original_model.lower() == model_name:
+                                logger.warning(f"Using small context model ({model_name}). Consider switching to qwen2.5:7b for better performance with large data.")
+                        
             except Exception as e:
-                logger.error(f"Ollama summarization failed: {e}")
+                logger.error(f"❌ Ollama not reachable at {ollama_host}: {e}. Make sure Ollama is running: 'ollama serve'")
                 return None
+            
+            # Store the model name to use (might have been updated to an alternative)
+            effective_model = model
+            
+            # Check if recursive summarization is enabled
+            recursive_summarization = self.params.get("recursive_summarization", False)
+            
+            # Chunk large text if needed
+            if text_tokens > MAX_CHUNK_TOKENS:
+                chunks = self._chunk_text(text, MAX_CHUNK_TOKENS * 4)
+                num_chunks = len(chunks)
+                logger.info(f"IndicatorDataSynthesizer: Text is large ({text_tokens:,} tokens), chunking into {num_chunks} chunks for summarization...")
+                
+                # Warn if too many chunks (will take very long)
+                if num_chunks > 100:
+                    logger.warning(
+                        f"⚠️ Warning: {num_chunks} chunks will take a very long time to summarize with Gemma 2:2b (8k context). "
+                        f"Consider using OpenRouter summarization with a larger model (e.g., 'google/gemma-2-9b-it' with 8k context) "
+                        f"or install a model with larger context: 'ollama pull qwen2.5:7b' (32k context) or 'ollama pull llama3.2:3b' (128k context)"
+                    )
+                
+                if recursive_summarization:
+                    # Recursive summarization: each chunk incorporates previous summary
+                    # M_i = summarize(M_{i-1} + Chunk_i)
+                    logger.info("Using recursive summarization mode (better coherence, sequential processing)")
+                    previous_memory = None
+                    
+                    for i, chunk in enumerate(chunks):
+                        # Update progress for each chunk (50-85% range for chunking)
+                        chunk_progress = 50.0 + (i / num_chunks) * 35.0
+                        chunk_tokens = len(chunk) // 4
+                        
+                        if previous_memory:
+                            # Incorporate previous memory into current chunk
+                            memory_tokens = len(previous_memory) // 4
+                            combined_input = f"[Previous Summary]\n{previous_memory}\n\n[New Data]\n{chunk}"
+                            self._emit_progress(
+                                ProgressState.UPDATE, 
+                                chunk_progress, 
+                                f"Recursively summarizing chunk {i+1}/{num_chunks} (~{chunk_tokens:,} tokens + {memory_tokens:,} from previous)..."
+                            )
+                            logger.info(f"Recursively summarizing chunk {i+1}/{num_chunks} (chunk: {chunk_tokens:,} tokens, memory: {memory_tokens:,} tokens)...")
+                        else:
+                            # First chunk - no previous memory
+                            self._emit_progress(
+                                ProgressState.UPDATE, 
+                                chunk_progress, 
+                                f"Summarizing chunk {i+1}/{num_chunks} (~{chunk_tokens:,} tokens)..."
+                            )
+                            logger.info(f"Summarizing chunk {i+1}/{num_chunks} ({chunk_tokens:,} tokens)...")
+                            combined_input = chunk
+                        
+                        try:
+                            if previous_memory:
+                                # Recursive: summarize previous memory + new chunk
+                                chunk_summary = await self._summarize_chunk(
+                                    combined_input, 
+                                    summarization_prompt, 
+                                    ollama_host, 
+                                    effective_model
+                                )
+                            else:
+                                # First chunk: summarize normally
+                                chunk_summary = await self._summarize_chunk(
+                                    chunk, 
+                                    summarization_prompt, 
+                                    ollama_host, 
+                                    effective_model
+                                )
+                            
+                            if chunk_summary:
+                                previous_memory = chunk_summary  # Update memory for next iteration
+                            else:
+                                logger.warning(f"Failed to summarize chunk {i+1}, continuing with previous memory...")
+                        except Exception as e:
+                            logger.warning(f"Failed to summarize chunk {i+1}: {e}. Continuing with previous memory...")
+                    
+                    # Return the final recursive memory
+                    if previous_memory:
+                        logger.info(f"Recursive summarization complete. Final summary: {len(previous_memory) // 4:,} tokens")
+                        return previous_memory
+                    return None
+                else:
+                    # Standard parallel summarization: summarize chunks independently, then combine
+                    summaries = []
+                    
+                    for i, chunk in enumerate(chunks):
+                        # Update progress for each chunk (50-85% range for chunking)
+                        chunk_progress = 50.0 + (i / num_chunks) * 35.0
+                        chunk_tokens = len(chunk) // 4
+                        self._emit_progress(
+                            ProgressState.UPDATE, 
+                            chunk_progress, 
+                            f"Summarizing chunk {i+1}/{num_chunks} (~{chunk_tokens:,} tokens)..."
+                        )
+                        
+                        if (i + 1) % 10 == 0 or i == 0:  # Log every 10th chunk to reduce spam
+                            logger.info(f"Summarizing chunk {i+1}/{num_chunks} ({chunk_tokens:,} tokens)...")
+                        try:
+                            chunk_summary = await self._summarize_chunk(chunk, summarization_prompt, ollama_host, effective_model)
+                            if chunk_summary:
+                                summaries.append(chunk_summary)
+                        except Exception as e:
+                            logger.warning(f"Failed to summarize chunk {i+1}: {e}")
+                    
+                    if summaries:
+                        # Summarize the summaries if we have multiple chunks
+                        if len(summaries) > 1:
+                            self._emit_progress(ProgressState.UPDATE, 85.0, "Combining chunk summaries...")
+                            logger.info(f"Combining {len(summaries)} chunk summaries...")
+                            combined = "\n\n".join(summaries)
+                            return await self._summarize_chunk(combined, summarization_prompt, ollama_host, effective_model)
+                        return summaries[0]
+                    return None
+            else:
+                # Single chunk - summarize directly
+                self._emit_progress(ProgressState.UPDATE, 60.0, f"Summarizing single chunk (~{text_tokens:,} tokens)...")
+                return await self._summarize_chunk(text, summarization_prompt, ollama_host, effective_model)
         
         elif summarization_mode == "openrouter":
             # Use OpenRouter (cheaper model)
@@ -788,14 +965,100 @@ Keep the summary concise but comprehensive. Preserve important numerical values 
                 return None
         
         return None
+    
+    async def _summarize_chunk(self, text: str, prompt: str, ollama_host: str, model: str) -> str | None:
+        """Summarize a single chunk of text using Ollama."""
+        try:
+            async with httpx.AsyncClient(timeout=300.0) as client:  # Longer timeout for large chunks
+                response = await client.post(
+                    f"{ollama_host}/api/chat",
+                    json={
+                        "model": model,
+                        "messages": [
+                            {"role": "system", "content": prompt},
+                            {"role": "user", "content": f"Summarize this indicator data:\n\n{text}"}
+                        ],
+                        "stream": False,
+                    },
+                )
+                response.raise_for_status()
+                result = response.json()
+                if "message" in result and "content" in result["message"]:
+                    return result["message"]["content"]
+                logger.warning(f"Ollama summarization returned unexpected format: {result}")
+                return None
+        except httpx.TimeoutException:
+            logger.error(f"❌ Ollama summarization timed out. The text might be too large or Ollama is slow.")
+            return None
+        except httpx.HTTPStatusError as e:
+            error_text = e.response.text if hasattr(e.response, 'text') else str(e)
+            if e.response.status_code == 404 and "not found" in error_text.lower():
+                logger.error(
+                    f"❌ Ollama model '{model}' not found. "
+                    f"Install with: 'ollama pull gemma2:2b' or 'ollama pull llama3.2:1b'. "
+                    f"Or switch to OpenRouter summarization mode."
+                )
+            else:
+                logger.error(f"❌ Ollama HTTP error: {e.response.status_code}: {error_text}")
+            return None
+        except Exception as e:
+            logger.error(f"❌ Ollama summarization failed: {e}")
+            import traceback
+            logger.debug(f"Full error: {traceback.format_exc()}")
+            return None
+    
+    def _chunk_text(self, text: str, max_chunk_size: int) -> list[str]:
+        """Split text into chunks that fit within token limits, trying to break at logical boundaries."""
+        chunks = []
+        current_chunk = ""
+        
+        # Split by sections (=== headers) first
+        sections = text.split("\n===")
+        
+        for i, section in enumerate(sections):
+            # Add back the === if not first section
+            if i > 0:
+                section = "===" + section
+            
+            # If section fits, add it
+            if len(current_chunk) + len(section) < max_chunk_size:
+                current_chunk += section + "\n"
+            else:
+                # Save current chunk if it has content
+                if current_chunk.strip():
+                    chunks.append(current_chunk.strip())
+                # If section itself is too large, split by lines
+                if len(section) > max_chunk_size:
+                    lines = section.split("\n")
+                    temp_chunk = ""
+                    for line in lines:
+                        if len(temp_chunk) + len(line) < max_chunk_size:
+                            temp_chunk += line + "\n"
+                        else:
+                            if temp_chunk.strip():
+                                chunks.append(temp_chunk.strip())
+                            temp_chunk = line + "\n"
+                    current_chunk = temp_chunk
+                else:
+                    current_chunk = section + "\n"
+        
+        # Add final chunk
+        if current_chunk.strip():
+            chunks.append(current_chunk.strip())
+        
+        return chunks
 
     async def _execute_impl(self, inputs: dict[str, Any]) -> dict[str, Any]:
         """Execute the synthesizer node."""
+        # Start execution
+        self._emit_progress(ProgressState.START, 0.0, "Starting data synthesis...")
+        
         # Get inputs
         images = inputs.get("images") or {}
         ohlcv_bundle = inputs.get("ohlcv_bundle") or {}
 
         # Collect all indicator data - both primary and explicit named inputs
+        self._emit_progress(ProgressState.UPDATE, 5.0, "Collecting indicator data...")
         indicator_data_list: list[Any] = []
         
         # Add primary indicator_data if present
@@ -811,18 +1074,25 @@ Keep the summary concise but comprehensive. Preserve important numerical values 
         # Get parameters
         include_ohlcv = self.params.get("include_ohlcv", False)  # Default False to reduce tokens
         include_indicators = self.params.get("include_indicators", True)
-        ohlcv_max_bars = int(self.params.get("ohlcv_max_bars", 3))  # Default 3 (reduced for token efficiency)
+        ohlcv_max_bars = int(self.params.get("ohlcv_max_bars", 20))  # Default 20 (increased - summarization handles large data)
         format_style = str(self.params.get("format_style", "readable")).lower()
-        include_recent_only = self.params.get("include_recent_only", True)
-        recent_bars_count = int(self.params.get("recent_bars_count", 5))  # Default 5 (reduced for token efficiency)
-        bandpass_recent_count = int(self.params.get("bandpass_recent_count", 3))  # Default 3 (reduced for token efficiency)
-        max_symbols = int(self.params.get("max_symbols", 3))  # Default 3 (reduced for token efficiency)
-        summary_only = self.params.get("summary_only", True) or format_style == "summary"  # Default True for token efficiency
+        recent_bars_count = int(self.params.get("recent_bars_count", 50))  # Default 50 (increased - summarization handles large data)
+        max_symbols = int(self.params.get("max_symbols", 20))  # Default 20 (increased - summarization handles large data)
+        # Smart default: if summarization is enabled, show full data (False). Otherwise, save tokens (True).
+        enable_summarization = self.params.get("enable_summarization", False)
+        summarize_full_dataset = self.params.get("summarize_full_dataset", False) and enable_summarization
+        summary_only_default = False if enable_summarization else True  # Show data if summarization will compress it
+        summary_only = self.params.get("summary_only", summary_only_default) or format_style == "summary"
         
         # Log current settings for debugging
-        logger.info(f"IndicatorDataSynthesizer: max_symbols={max_symbols}, recent_bars_count={recent_bars_count}, bandpass_recent_count={bandpass_recent_count}, include_ohlcv={include_ohlcv}, ohlcv_max_bars={ohlcv_max_bars}")
+        logger.info(
+            f"IndicatorDataSynthesizer: max_symbols={max_symbols}, recent_bars_count={recent_bars_count}, "
+            f"include_ohlcv={include_ohlcv}, ohlcv_max_bars={ohlcv_max_bars}, "
+            f"summarize_full_dataset={summarize_full_dataset}"
+        )
 
         # Build formatted text based on format style
+        self._emit_progress(ProgressState.UPDATE, 15.0, "Formatting data...")
         formatted_sections: list[str] = []
         
         # Detect indicator names for combined_data metadata
@@ -847,6 +1117,35 @@ Keep the summary concise but comprehensive. Preserve important numerical values 
             "indicator_names": indicator_names,  # List of detected indicator names
             "ohlcv_symbols_count": len(ohlcv_bundle),
         }
+        
+        # SMART AUTO-REDUCTION: When dealing with many symbols, automatically reduce bars to prevent token explosion
+        # This applies regardless of summarization settings
+        effective_recent_bars = recent_bars_count
+        effective_ohlcv_bars = ohlcv_max_bars
+        total_symbols = len(ohlcv_bundle) if ohlcv_bundle else 0
+        
+        if total_symbols > 20:  # Many symbols detected
+            # With 20+ symbols, cap at 20 bars max to prevent millions of tokens
+            max_bars_for_many_symbols = 20
+            if recent_bars_count > max_bars_for_many_symbols:
+                effective_recent_bars = max_bars_for_many_symbols
+                logger.warning(
+                    f"🔄 IndicatorDataSynthesizer: Auto-reducing bars from {recent_bars_count} to {effective_recent_bars} "
+                    f"due to {total_symbols} symbols (>20 symbols triggers auto-reduction to prevent token explosion)"
+                )
+            if ohlcv_max_bars > max_bars_for_many_symbols:
+                effective_ohlcv_bars = max_bars_for_many_symbols
+        elif total_symbols > 10:  # Moderate number of symbols
+            # With 10-20 symbols, cap at 30 bars max
+            max_bars_for_moderate_symbols = 30
+            if recent_bars_count > max_bars_for_moderate_symbols:
+                effective_recent_bars = max_bars_for_moderate_symbols
+                logger.info(
+                    f"🔄 IndicatorDataSynthesizer: Auto-reducing bars from {recent_bars_count} to {effective_recent_bars} "
+                    f"due to {total_symbols} symbols (10-20 symbols triggers moderate reduction)"
+                )
+            if ohlcv_max_bars > max_bars_for_moderate_symbols:
+                effective_ohlcv_bars = max_bars_for_moderate_symbols
 
         if format_style in ("readable", "summary"):
             # Human-readable format (summary mode is a subset of readable)
@@ -860,6 +1159,7 @@ Keep the summary concise but comprehensive. Preserve important numerical values 
                     if inputs.get(key) is not None:
                         input_names.append(key)
                 
+                total_indicators = len([d for d in indicator_data_list if d is not None])
                 for i, indicator_data in enumerate(indicator_data_list):
                     if indicator_data is None:
                         continue
@@ -868,8 +1168,13 @@ Keep the summary concise but comprehensive. Preserve important numerical values 
                     input_name = input_names[i] if i < len(input_names) else None
                     indicator_name = self._detect_indicator_name(indicator_data, input_name)
                     
+                    # Update progress during formatting
+                    if total_indicators > 0:
+                        progress = 20.0 + (i / total_indicators) * 20.0  # 20-40% for indicators
+                        self._emit_progress(ProgressState.UPDATE, progress, f"Formatting {indicator_name or f'indicator {i+1}'}...")
+                    
                     formatted_text = self._format_generic_indicator(
-                        indicator_data, indicator_name, include_recent_only, recent_bars_count, input_name, summary_only, bandpass_recent_count, max_symbols
+                        indicator_data, indicator_name, effective_recent_bars, input_name, summary_only, max_symbols
                     )
                     if formatted_text:
                         formatted_sections.append(formatted_text)
@@ -885,8 +1190,9 @@ Keep the summary concise but comprehensive. Preserve important numerical values 
                         combined_data[f"indicator_{i+1}"] = indicator_data
 
             if include_ohlcv and ohlcv_bundle:
+                self._emit_progress(ProgressState.UPDATE, 45.0, f"Formatting OHLCV data ({len(ohlcv_bundle)} symbols)...")
                 formatted_sections.append(
-                    self._format_ohlcv_bundle(ohlcv_bundle, ohlcv_max_bars, summary_only, max_symbols)
+                    self._format_ohlcv_bundle(ohlcv_bundle, effective_ohlcv_bars, summary_only, max_symbols)
                 )
                 combined_data["ohlcv_bundle"] = {
                     str(symbol): bars for symbol, bars in ohlcv_bundle.items()
@@ -971,47 +1277,229 @@ Keep the summary concise but comprehensive. Preserve important numerical values 
         formatted_text_size = len(formatted_text)
         estimated_tokens = formatted_text_size // 4
         
-        # Hard cap: If we're generating too much, truncate aggressively
-        # Hard cap: With max_tokens=900000 for output, OpenRouter only allows ~100k tokens for input
-        # Set cap to 50k to leave room for safety margin
-        MAX_TOKENS = 50000  # Hard cap at 50k tokens (~200KB text) - OpenRouter allows ~100k input with 900k output
-        if estimated_tokens > MAX_TOKENS:
-            logger.error(
-                f"⚠️ IndicatorDataSynthesizer: Formatted text exceeds hard cap ({estimated_tokens:,} tokens > {MAX_TOKENS:,}). "
-                f"Truncating to prevent API errors. Current settings: max_symbols={max_symbols}, recent_bars_count={recent_bars_count}, "
-                f"bandpass_recent_count={bandpass_recent_count}, include_ohlcv={include_ohlcv}"
-            )
-            # Truncate to ~50k tokens worth of text
-            max_chars = MAX_TOKENS * 4
-            formatted_text = formatted_text[:max_chars] + "\n\n[TRUNCATED - Text exceeded token limit. Reduce max_symbols, recent_bars_count, or disable OHLCV.]"
-            estimated_tokens = MAX_TOKENS
-        
         logger.info(
             f"IndicatorDataSynthesizer: Processed {len(output_images)} images, "
             f"{len(indicator_data_list)} indicator inputs, {len(ohlcv_bundle)} OHLCV symbols. "
-            f"Formatted text: ~{formatted_text_size:,} chars (~{estimated_tokens:,} tokens). "
-            f"Settings: max_symbols={max_symbols}, recent_bars_count={recent_bars_count}, bandpass_recent_count={bandpass_recent_count}"
+            f"Formatted text (recent bars): ~{formatted_text_size:,} chars (~{estimated_tokens:,} tokens). "
+            f"Settings: max_symbols={max_symbols}, recent_bars_count={effective_recent_bars} (requested: {recent_bars_count})"
         )
         
-        # Warn if text is very large
-        if estimated_tokens > 30_000:
-            logger.warning(
-                f"IndicatorDataSynthesizer: Large formatted text detected (~{estimated_tokens:,} tokens). "
-                f"Consider disabling OHLCV (images already show price data), reducing max_symbols, or enabling summarization."
-            )
-
-        # Optional AI summarization step
-        enable_summarization = self.params.get("enable_summarization", False)
-        if enable_summarization and formatted_text:
+        # Log preview of formatted text to verify data is included
+        if formatted_text:
+            preview_lines = formatted_text.split('\n')[:20]  # First 20 lines
+            preview = '\n'.join(preview_lines)
+            logger.info(f"📊 IndicatorDataSynthesizer: Recent bars preview (first 20 lines):\n{preview}")
+            if len(formatted_text.split('\n')) > 20:
+                logger.info(f"   ... ({len(formatted_text.split('\n')) - 20} more lines)")
+        
+        # Store recent detail (already formatted with summary_only=False and recent_bars_count limit)
+        recent_detail = formatted_text
+        
+        # Optional AI summarization step - DO THIS BEFORE TRUNCATION
+        # This allows summarization to work on the full dataset, reducing token count significantly
+        if summarize_full_dataset:
+            # HYBRID APPROACH: Summarize full dataset (historical) + format recent bars (detail)
+            logger.info("🔄 IndicatorDataSynthesizer: Using hybrid approach - summarizing full dataset + formatting recent bars")
+            self._emit_progress(ProgressState.UPDATE, 40.0, "Preparing hybrid summarization (full dataset + recent detail)...")
+            
+            # CRITICAL: When using hybrid approach, reduce recent detail bars to prevent token explosion
+            # The historical summary already provides full context, so we only need a small recent sample
+            # With many symbols (40+), even 30 bars generates millions of tokens, so cap at 10 bars
+            # Note: effective_recent_bars may already be reduced by auto-reduction logic above
+            recent_detail_bars = min(effective_recent_bars, 10)  # Cap at 10 bars for detail when using hybrid (was 30, but still too large)
+            
+            # ALWAYS re-format recent detail when using hybrid mode (don't check if it's less)
+            # This ensures we use the reduced bar count even if user already reduced recent_bars_count
+            logger.info(f"📉 IndicatorDataSynthesizer: Using {recent_detail_bars} bars for recent detail in hybrid mode (reduced from {effective_recent_bars} to prevent token explosion)")
+            
+            # Re-format recent detail with smaller bar count
+            recent_detail_sections: list[str] = []
+            if include_indicators and indicator_data_list:
+                input_names = []
+                if inputs.get("indicator_data") is not None:
+                    input_names.append("indicator_data")
+                for i in range(1, 6):
+                    key = f"indicator_data_{i}"
+                    if inputs.get(key) is not None:
+                        input_names.append(key)
+                
+                for i, indicator_data in enumerate(indicator_data_list):
+                    if indicator_data is None:
+                        continue
+                    input_name = input_names[i] if i < len(input_names) else None
+                    indicator_name = self._detect_indicator_name(indicator_data, input_name)
+                    detail_text = self._format_generic_indicator(
+                        indicator_data, indicator_name, recent_detail_bars, input_name, False, max_symbols  # summary_only=False, but fewer bars
+                    )
+                    if detail_text:
+                        recent_detail_sections.append(detail_text)
+            
+            if include_ohlcv and ohlcv_bundle:
+                recent_detail_sections.append(
+                    self._format_ohlcv_bundle(ohlcv_bundle, min(ohlcv_max_bars, recent_detail_bars), False, max_symbols)
+                )
+            
+            recent_detail = "\n\n".join(filter(None, recent_detail_sections))
+            
+            # Step 1: Format FULL dataset with summary_only=True (stats only, no bar limit)
+            # Use a very high limit to get all bars, but summary_only=True means we only get stats
+            self._emit_progress(ProgressState.UPDATE, 40.0, "Formatting full dataset for historical summary...")
+            full_dataset_sections: list[str] = []
+            
+            if include_indicators and indicator_data_list:
+                input_names = []
+                if inputs.get("indicator_data") is not None:
+                    input_names.append("indicator_data")
+                for i in range(1, 6):
+                    key = f"indicator_data_{i}"
+                    if inputs.get(key) is not None:
+                        input_names.append(key)
+                
+                total_indicators = len([d for d in indicator_data_list if d is not None])
+                for i, indicator_data in enumerate(indicator_data_list):
+                    if indicator_data is None:
+                        continue
+                    
+                    input_name = input_names[i] if i < len(input_names) else None
+                    indicator_name = self._detect_indicator_name(indicator_data, input_name)
+                    
+                    # Update progress
+                    if total_indicators > 0:
+                        progress = 40.0 + (i / total_indicators) * 5.0  # 40-45% for full dataset formatting
+                        self._emit_progress(ProgressState.UPDATE, progress, f"Formatting full dataset: {indicator_name or f'indicator {i+1}'}...")
+                    
+                    # Format with summary_only=True and very high limit (effectively no limit for stats)
+                    # summary_only=True means we only get stats, not individual values
+                    full_text = self._format_generic_indicator(
+                        indicator_data, indicator_name, 999999, input_name, True, max_symbols  # summary_only=True, high limit
+                    )
+                    if full_text:
+                        full_dataset_sections.append(full_text)
+            
+            if include_ohlcv and ohlcv_bundle:
+                self._emit_progress(ProgressState.UPDATE, 45.0, f"Formatting full OHLCV dataset ({len(ohlcv_bundle)} symbols)...")
+                full_dataset_sections.append(
+                    self._format_ohlcv_bundle(ohlcv_bundle, 999999, True, max_symbols)  # summary_only=True, high limit
+                )
+            
+            full_dataset_text = "\n\n".join(filter(None, full_dataset_sections))
+            
+            # Step 2: Summarize full dataset → historical summary
+            if full_dataset_text:
+                full_tokens = len(full_dataset_text) // 4
+                self._emit_progress(ProgressState.UPDATE, 46.0, f"Summarizing full dataset (~{full_tokens:,} tokens)...")
+                logger.info(f"IndicatorDataSynthesizer: Summarizing full dataset (~{full_tokens:,} tokens) for historical context...")
+                
+                try:
+                    historical_summary = await self._summarize_text(full_dataset_text)
+                    if historical_summary and len(historical_summary.strip()) > 0:
+                        hist_tokens = len(historical_summary) // 4
+                        reduction_pct = 100 * (1 - hist_tokens/full_tokens) if full_tokens > 0 else 0
+                        logger.info(
+                            f"✅ IndicatorDataSynthesizer: Full dataset summarized! "
+                            f"Reduced from ~{full_tokens:,} to ~{hist_tokens:,} tokens ({reduction_pct:.1f}% reduction) - historical context"
+                        )
+                    else:
+                        logger.warning("IndicatorDataSynthesizer: Full dataset summarization returned empty. Using formatted stats instead.")
+                        historical_summary = full_dataset_text  # Fallback to formatted stats
+                except Exception as e:
+                    logger.error(f"❌ IndicatorDataSynthesizer: Full dataset summarization failed: {e}. Using formatted stats instead.")
+                    historical_summary = full_dataset_text  # Fallback to formatted stats
+            else:
+                historical_summary = ""
+            
+            # Step 3: Recent detail is already formatted (summary_only=False, recent_bars_count limit)
+            # This was done above as `formatted_text` (now stored as `recent_detail`)
+            
+            # Step 4: Combine both
+            if historical_summary and recent_detail:
+                # Use recent_detail_bars (which is already capped at 10 for hybrid mode) or recent_bars_count
+                actual_recent_bars = recent_detail_bars if summarize_full_dataset else recent_bars_count
+                formatted_text = f"=== HISTORICAL SUMMARY (Full Dataset) ===\n\n{historical_summary}\n\n=== RECENT DETAIL (Last {actual_recent_bars} bars) ===\n\n{recent_detail}"
+                estimated_tokens = len(formatted_text) // 4
+                formatted_text_size = len(formatted_text)
+                logger.info(
+                    f"✅ IndicatorDataSynthesizer: Hybrid approach complete! "
+                    f"Historical summary: ~{len(historical_summary) // 4:,} tokens, "
+                    f"Recent detail: ~{len(recent_detail) // 4:,} tokens, "
+                    f"Total: ~{estimated_tokens:,} tokens"
+                )
+            elif historical_summary:
+                formatted_text = f"=== HISTORICAL SUMMARY (Full Dataset) ===\n\n{historical_summary}"
+                estimated_tokens = len(formatted_text) // 4
+                formatted_text_size = len(formatted_text)
+            elif recent_detail:
+                formatted_text = recent_detail
+                estimated_tokens = len(formatted_text) // 4
+                formatted_text_size = len(formatted_text)
+        
+        elif enable_summarization and formatted_text:
+            self._emit_progress(ProgressState.UPDATE, 50.0, f"Starting summarization (~{estimated_tokens:,} tokens)...")
+            logger.info(f"IndicatorDataSynthesizer: Starting summarization of ~{estimated_tokens:,} tokens...")
             try:
                 summarized_text = await self._summarize_text(formatted_text)
-                if summarized_text:
-                    logger.info(f"IndicatorDataSynthesizer: Summarized text from ~{estimated_tokens:,} tokens to ~{len(summarized_text) // 4:,} tokens")
+                if summarized_text and len(summarized_text.strip()) > 0:
+                    summarized_tokens = len(summarized_text) // 4
+                    reduction_pct = 100 * (1 - summarized_tokens/estimated_tokens) if estimated_tokens > 0 else 0
+                    logger.info(f"✅ IndicatorDataSynthesizer: Summarization successful! Reduced from ~{estimated_tokens:,} tokens to ~{summarized_tokens:,} tokens ({reduction_pct:.1f}% reduction)")
+                    
+                    # Log preview of summarized text to verify data detail is preserved
+                    preview_lines = summarized_text.split('\n')[:20]  # First 20 lines
+                    preview = '\n'.join(preview_lines)
+                    logger.info(f"📊 IndicatorDataSynthesizer: Summarized text preview (first 20 lines):\n{preview}")
+                    if len(summarized_text.split('\n')) > 20:
+                        logger.info(f"   ... ({len(summarized_text.split('\n')) - 20} more lines)")
+                    
+                    self._emit_progress(ProgressState.UPDATE, 90.0, f"Summarization complete ({reduction_pct:.1f}% reduction)")
                     formatted_text = summarized_text
+                    estimated_tokens = summarized_tokens
+                    formatted_text_size = len(formatted_text)
+                else:
+                    logger.warning(
+                        "IndicatorDataSynthesizer: Summarization returned empty result. Using original text. "
+                        "If using Ollama, make sure the model is installed: 'ollama pull gemma2:2b' or switch to OpenRouter summarization."
+                    )
             except Exception as e:
-                logger.warning(f"IndicatorDataSynthesizer: Summarization failed: {e}. Using original text.")
-                # Continue with original text if summarization fails
+                logger.error(
+                    f"❌ IndicatorDataSynthesizer: Summarization failed: {e}. Using original text. "
+                    f"If using Ollama, check: 'ollama list' or switch summarization_mode to 'openrouter'."
+                )
+                import traceback
+                logger.debug(f"Summarization error traceback: {traceback.format_exc()}")
+        
+        # Hard cap: If we're still generating too much after summarization, truncate
+        # Many modern models (Gemini 2.5 Pro, Claude 3.5 Sonnet, etc.) support 1M+ token context windows
+        # Set cap to 500k to allow substantial data while leaving room for output and safety margin
+        MAX_TOKENS = 900000  # Hard cap at 900k tokens (~3.6MB text) - Increased to allow more data with summarization
+        if estimated_tokens > MAX_TOKENS:
+            logger.error(
+                f"⚠️ IndicatorDataSynthesizer: Formatted text still exceeds hard cap ({estimated_tokens:,} tokens > {MAX_TOKENS:,}) after summarization. "
+                f"Truncating to prevent API errors. Current settings: max_symbols={max_symbols}, recent_bars_count={recent_bars_count}, "
+                f"include_ohlcv={include_ohlcv}"
+            )
+            # Truncate to ~500k tokens worth of text
+            max_chars = MAX_TOKENS * 4
+            formatted_text = formatted_text[:max_chars] + "\n\n[TRUNCATED - Text exceeded token limit even after summarization. Consider reducing max_symbols or recent_bars_count.]"
+            estimated_tokens = MAX_TOKENS
+        
+        # Warn if text is very large (but still under the cap)
+        if estimated_tokens > 600_000:
+            logger.warning(
+                f"IndicatorDataSynthesizer: Large formatted text detected (~{estimated_tokens:,} tokens). "
+                f"Consider enabling summarization to reduce token usage, or reduce max_symbols/recent_bars_count."
+            )
 
+        # Finalize
+        self._emit_progress(ProgressState.DONE, 100.0, f"Complete (~{estimated_tokens:,} tokens)")
+
+        # Final logging: Show what's being sent to OpenRouter
+        final_tokens = len(formatted_text) // 4 if formatted_text else 0
+        logger.info(
+            f"📤 IndicatorDataSynthesizer: Final output ready - "
+            f"~{final_tokens:,} tokens of text data, {len(output_images)} images. "
+            f"This will be sent to OpenRouter for analysis."
+        )
+        
         return {
             "images": output_images,
             "formatted_text": formatted_text,

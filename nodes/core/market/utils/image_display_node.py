@@ -27,5 +27,10 @@ class ImageDisplay(Base):
         if images is None:
             return {"images": {}}
 
+        # Emit partial results immediately so images show up as they're received
+        # This allows images to appear incrementally from upstream nodes
+        if images:
+            self.emit_partial_result({"images": images})
+
         # Pass through images for display
         return {"images": images}

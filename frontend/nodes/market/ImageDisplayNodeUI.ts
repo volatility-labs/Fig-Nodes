@@ -71,7 +71,17 @@ export default class ImageDisplayNodeUI extends BaseCustomNode {
     updateDisplay(result: any) {
         // Expect { images: { label: dataUrl } }
         const imgs = (result && result.images) || {};
-        this.images = imgs;
+        // Merge with existing images to support incremental updates
+        const newImageCount = Object.keys(imgs).length;
+        const existingImageCount = Object.keys(this.images).length;
+        this.images = { ...this.images, ...imgs };
+        
+        // Only clear and reload if this is a full update (no existing images) or if we got all new images
+        // For incremental updates, only load the new images
+        const isIncrementalUpdate = existingImageCount > 0 && newImageCount < existingImageCount;
+        
+        if (!isIncrementalUpdate) {
+            // Full update - clear everything
         this.loadedImages.clear();
         this.imageAspectRatios.clear();
         // Reset scroll offsets and zoom when new images are loaded
@@ -80,12 +90,23 @@ export default class ImageDisplayNodeUI extends BaseCustomNode {
         this.gridScrollOffset = 0;
         this.gridScrollOffsetX = 0;
         this.zoomLevel = 1.0;
+        }
         
-        // Preload all images and calculate aspect ratios
+        // Preload new images and calculate aspect ratios
         let allLoaded = 0;
-        const totalImages = Object.keys(imgs).length;
+        const totalImages = Object.keys(this.images).length;
+        const imagesToLoad = isIncrementalUpdate ? imgs : this.images;
         
-        Object.entries(imgs).forEach(([label, dataUrl]) => {
+        Object.entries(imagesToLoad).forEach(([label, dataUrl]) => {
+            // Skip if already loaded (for incremental updates)
+            if (this.loadedImages.has(label)) {
+                allLoaded++;
+                if (allLoaded === totalImages) {
+                    this.resizeNodeToMatchAspectRatio();
+                }
+                return;
+            }
+            
             const img = new Image();
             img.onload = () => {
                 this.loadedImages.set(label, img);

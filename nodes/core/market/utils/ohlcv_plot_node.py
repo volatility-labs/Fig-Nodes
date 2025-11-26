@@ -158,6 +158,10 @@ class OHLCVPlot(Base):
             _plot_candles(ax, norm)
             ax.set_title(str(sym), fontsize=8)  # pyright: ignore
             ax.tick_params(labelsize=7)  # pyright: ignore
-            images[str(sym)] = _encode_fig_to_data_url(fig)
+            image_data = _encode_fig_to_data_url(fig)
+            images[str(sym)] = image_data
+            
+            # Emit partial result immediately so images show up as they're created
+            self.emit_partial_result({"images": {str(sym): image_data}})
 
         return {"images": images}

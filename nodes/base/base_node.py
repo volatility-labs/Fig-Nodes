@@ -38,6 +38,7 @@ class Base(ABC):
         self.inputs = dict(getattr(self, "inputs", {}))
         self.outputs = dict(getattr(self, "outputs", {}))
         self._progress_callback: ProgressCallback | None = None
+        self._result_callback: Any | None = None  # Callback for emitting partial results
         self._is_stopped = False
         self.graph_context = graph_context or {}
 
@@ -153,6 +154,15 @@ class Base(ABC):
     def set_progress_callback(self, callback: ProgressCallback) -> None:
         """Set a callback function to report progress during execution."""
         self._progress_callback = callback
+    
+    def set_result_callback(self, callback: Any) -> None:
+        """Set a result callback function for emitting partial results during execution."""
+        self._result_callback = callback
+    
+    def emit_partial_result(self, partial_outputs: dict[str, Any]) -> None:
+        """Emit partial results during execution (e.g., images as they're created)."""
+        if self._result_callback:
+            self._result_callback(self.id, partial_outputs)
 
     def _clamp_progress(self, value: float) -> float:
         if value < 0.0:

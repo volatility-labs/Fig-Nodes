@@ -2637,7 +2637,11 @@ class HurstPlot(Base):
             
             # Get DPI from params (default 60)
             dpi = int(self.params.get("dpi", self.default_params.get("dpi", 60)))
-            images[str(sym)] = _encode_fig_to_data_url(fig, dpi=dpi)
+            image_data = _encode_fig_to_data_url(fig, dpi=dpi)
+            images[str(sym)] = image_data
+            
+            # Emit partial result immediately so images show up as they're created
+            self.emit_partial_result({"images": {str(sym): image_data}})
 
         return {
             "images": images,
