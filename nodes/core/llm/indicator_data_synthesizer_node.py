@@ -1080,11 +1080,17 @@ Keep the summary concise but comprehensive. Preserve important numerical values 
         max_symbols = int(self.params.get("max_symbols", 20))  # Default 20 (increased - summarization handles large data)
         # Smart default: if summarization is enabled, show full data (False). Otherwise, save tokens (True).
         enable_summarization = self.params.get("enable_summarization", False)
-        summarize_full_dataset = self.params.get("summarize_full_dataset", False) and enable_summarization
+        summarize_full_dataset_param = self.params.get("summarize_full_dataset", False)
+        summarize_full_dataset = summarize_full_dataset_param and enable_summarization
         summary_only_default = False if enable_summarization else True  # Show data if summarization will compress it
         summary_only = self.params.get("summary_only", summary_only_default) or format_style == "summary"
         
-        # Log current settings for debugging
+        # Log current settings for debugging - CRITICAL DEBUG
+        logger.warning(
+            f"🔍 IndicatorDataSynthesizer DEBUG: enable_summarization={enable_summarization}, "
+            f"summarize_full_dataset_param={summarize_full_dataset_param}, "
+            f"summarize_full_dataset={summarize_full_dataset}, summary_only={summary_only}"
+        )
         logger.info(
             f"IndicatorDataSynthesizer: max_symbols={max_symbols}, recent_bars_count={recent_bars_count}, "
             f"include_ohlcv={include_ohlcv}, ohlcv_max_bars={ohlcv_max_bars}, "
@@ -1297,6 +1303,7 @@ Keep the summary concise but comprehensive. Preserve important numerical values 
         
         # Optional AI summarization step - DO THIS BEFORE TRUNCATION
         # This allows summarization to work on the full dataset, reducing token count significantly
+        logger.warning(f"🔍 DEBUG: About to check hybrid approach. summarize_full_dataset={summarize_full_dataset}")
         if summarize_full_dataset:
             # HYBRID APPROACH: Summarize full dataset (historical) + format recent bars (detail)
             logger.info("🔄 IndicatorDataSynthesizer: Using hybrid approach - summarizing full dataset + formatting recent bars")
