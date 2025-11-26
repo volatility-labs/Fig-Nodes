@@ -31,7 +31,7 @@ class Logging(Base):
         self.logger = logging.getLogger(f"LoggingNode-{self.id}")
 
     CATEGORY = NodeCategory.IO
-    inputs = {"input": Any}
+    inputs = {"input": Any | None}
     outputs = {"output": str}
 
     # Allow UI to select how to display/parse the output text
@@ -58,6 +58,12 @@ class Logging(Base):
 
     async def _execute_impl(self, inputs: dict[str, Any]) -> dict[str, Any]:
         value = inputs.get("input")
+        
+        # Handle missing or None input gracefully
+        if value is None:
+            await self._safe_print(f"LoggingNode {self.id}: (no input)")
+            return {"output": "(no input)"}
+        
         selected_format = str(self.params.get("format") or "auto").strip()
 
         # Use type detection utilities
