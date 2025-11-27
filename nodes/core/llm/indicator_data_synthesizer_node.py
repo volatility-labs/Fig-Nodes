@@ -424,7 +424,7 @@ class IndicatorDataSynthesizer(Base):
                         lines.append(f"{key}: {recent_val} (1 value)")
                 else:
                     # Full mode: Show last N values + stats (svens-branch style)
-                    if recent_only and len(value) > recent_count:
+                    if len(value) > recent_count:
                         display_values = value[-recent_count:]
                         lines.append(f"{key} (last {len(display_values)} of {len(value)} values):")
                     else:
@@ -558,7 +558,7 @@ class IndicatorDataSynthesizer(Base):
 
         # Auto-detect structure and format accordingly
         if self._is_indicator_result(data):
-            return self._format_indicator_result(data, recent_only, recent_count)
+            return self._format_indicator_result(data, True, recent_count)  # Always limit to recent_count in hybrid mode
         
         if isinstance(data, dict):
             # Check if it's a dict of series (like hurst_data format)
@@ -570,7 +570,7 @@ class IndicatorDataSynthesizer(Base):
             lines = [f"=== {label.upper() if label else 'INDICATOR DATA'} ==="]
             for key, value in list(data.items())[:20]:  # Limit to first 20 items
                 if isinstance(value, list):
-                    if recent_only and len(value) > recent_count:
+                    if len(value) > recent_count:
                         value = value[-recent_count:]
                     lines.append(f"{key}: {len(value)} values")
                     if len(value) <= 5:
@@ -605,12 +605,12 @@ class IndicatorDataSynthesizer(Base):
                 # List of IndicatorResult
                 for i, item in enumerate(data[:10]):  # Limit to first 10
                     lines.append("")
-                    lines.append(self._format_indicator_result(item, recent_only, recent_count))
+                    lines.append(self._format_indicator_result(item, True, recent_count))  # Always limit to recent_count
                 if len(data) > 10:
                     lines.append(f"... ({len(data) - 10} more indicators)")
             else:
                 # Generic list
-                display_items = data[-recent_count:] if recent_only and len(data) > recent_count else data
+                display_items = data[-recent_count:] if len(data) > recent_count else data
                 for i, item in enumerate(display_items[:20]):
                     if isinstance(item, dict):
                         lines.append(f"  [{i+1}] {json.dumps(item, default=str)[:100]}")
@@ -1358,18 +1358,25 @@ Keep the summary concise but comprehensive. Preserve important numerical values 
                             continue
                         input_name = input_names[i] if i < len(input_names) else None
                         indicator_name = self._detect_indicator_name(indicator_data, input_name)
+                        logger.warning(f"🔍 DEBUG: Formatting indicator {i} ({indicator_name}) with recent_detail_bars={recent_detail_bars}")
                         detail_text = self._format_generic_indicator(
                             indicator_data, indicator_name, recent_detail_bars, input_name, False, max_symbols  # summary_only=False, but fewer bars
                         )
+                        logger.warning(f"🔍 DEBUG: Indicator {i} formatted to {len(detail_text) if detail_text else 0} chars")
                         if detail_text:
                             recent_detail_sections.append(detail_text)
                 
                 if include_ohlcv and ohlcv_bundle:
-                    recent_detail_sections.append(
-                        self._format_ohlcv_bundle(ohlcv_bundle, min(ohlcv_max_bars, recent_detail_bars), False, max_symbols)
-                    )
+                    logger.warning(f"🔍 DEBUG: Formatting OHLCV with bars={min(ohlcv_max_bars, recent_detail_bars)}, max_symbols={max_symbols}")
+                    ohlcv_text = self._format_ohlcv_bundle(ohlcv_bundle, min(ohlcv_max_bars, recent_detail_bars), False, max_symbols)
+                    logger.warning(f"🔍 DEBUG: OHLCV formatted to {len(ohlcv_text) if ohlcv_text else 0} chars")
+                    recent_detail_sections.append(ohlcv_text)
             
+                logger.warning(f"🔍 DEBUG: Combining {len(recent_detail_sections)} sections")
+                for idx, section in enumerate(recent_detail_sections):
+                    logger.warning(f"🔍 DEBUG: Section {idx} has {len(section)} chars")
                 recent_detail = "\n\n".join(filter(None, recent_detail_sections))
+                logger.warning(f"🔍 DEBUG: Combined recent_detail has {len(recent_detail)} chars (was {len(formatted_text)} chars before re-formatting)")
                 logger.warning(f"🔍 DEBUG: Successfully re-formatted recent detail with {recent_detail_bars} bars")
             except Exception as ex:
                 logger.error(f"🔍 ERROR in hybrid re-formatting: {type(ex).__name__}: {str(ex)}", exc_info=True)
