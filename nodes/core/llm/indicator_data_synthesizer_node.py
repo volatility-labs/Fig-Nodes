@@ -1335,36 +1335,45 @@ Keep the summary concise but comprehensive. Preserve important numerical values 
             
             # ALWAYS re-format recent detail when using hybrid mode (don't check if it's less)
             # This ensures we use the reduced bar count even if user already reduced recent_bars_count
+            logger.warning(f"🔍 DEBUG: About to log 'Using N bars' message")
             logger.info(f"📉 IndicatorDataSynthesizer: Using {recent_detail_bars} bars for recent detail in hybrid mode (reduced from {effective_recent_bars} to prevent token explosion)")
+            logger.warning(f"🔍 DEBUG: Logged 'Using N bars' message, now re-formatting")
             
             # Re-format recent detail with smaller bar count
-            recent_detail_sections: list[str] = []
-            if include_indicators and indicator_data_list:
-                input_names = []
-                if inputs.get("indicator_data") is not None:
-                    input_names.append("indicator_data")
-                for i in range(1, 6):
-                    key = f"indicator_data_{i}"
-                    if inputs.get(key) is not None:
-                        input_names.append(key)
+            try:
+                recent_detail_sections: list[str] = []
+                logger.warning(f"🔍 DEBUG: include_indicators={include_indicators}, len(indicator_data_list)={len(indicator_data_list) if 'indicator_data_list' in locals() else 'NOT DEFINED'}")
+                if include_indicators and indicator_data_list:
+                    input_names = []
+                    if inputs.get("indicator_data") is not None:
+                        input_names.append("indicator_data")
+                    for i in range(1, 6):
+                        key = f"indicator_data_{i}"
+                        if inputs.get(key) is not None:
+                            input_names.append(key)
+                    
+                    for i, indicator_data in enumerate(indicator_data_list):
+                        if indicator_data is None:
+                            continue
+                        input_name = input_names[i] if i < len(input_names) else None
+                        indicator_name = self._detect_indicator_name(indicator_data, input_name)
+                        detail_text = self._format_generic_indicator(
+                            indicator_data, indicator_name, recent_detail_bars, input_name, False, max_symbols  # summary_only=False, but fewer bars
+                        )
+                        if detail_text:
+                            recent_detail_sections.append(detail_text)
                 
-                for i, indicator_data in enumerate(indicator_data_list):
-                    if indicator_data is None:
-                        continue
-                    input_name = input_names[i] if i < len(input_names) else None
-                    indicator_name = self._detect_indicator_name(indicator_data, input_name)
-                    detail_text = self._format_generic_indicator(
-                        indicator_data, indicator_name, recent_detail_bars, input_name, False, max_symbols  # summary_only=False, but fewer bars
+                if include_ohlcv and ohlcv_bundle:
+                    recent_detail_sections.append(
+                        self._format_ohlcv_bundle(ohlcv_bundle, min(ohlcv_max_bars, recent_detail_bars), False, max_symbols)
                     )
-                    if detail_text:
-                        recent_detail_sections.append(detail_text)
             
-            if include_ohlcv and ohlcv_bundle:
-                recent_detail_sections.append(
-                    self._format_ohlcv_bundle(ohlcv_bundle, min(ohlcv_max_bars, recent_detail_bars), False, max_symbols)
-                )
-            
-            recent_detail = "\n\n".join(filter(None, recent_detail_sections))
+                recent_detail = "\n\n".join(filter(None, recent_detail_sections))
+                logger.warning(f"🔍 DEBUG: Successfully re-formatted recent detail with {recent_detail_bars} bars")
+            except Exception as ex:
+                logger.error(f"🔍 ERROR in hybrid re-formatting: {type(ex).__name__}: {str(ex)}", exc_info=True)
+                logger.warning(f"🔍 DEBUG: Failed to re-format recent detail, using original")
+                # Fall back to original recent_detail which is already set
             
             # Step 1: Format FULL dataset with summary_only=True (stats only, no bar limit)
             # Use a very high limit to get all bars, but summary_only=True means we only get stats
