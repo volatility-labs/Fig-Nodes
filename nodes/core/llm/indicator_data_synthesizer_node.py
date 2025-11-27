@@ -708,8 +708,10 @@ class IndicatorDataSynthesizer(Base):
 
     async def _summarize_text(self, text: str) -> str | None:
         """Summarize text using Ollama or OpenRouter. Handles large text by chunking if needed."""
+        logger.warning(f"🔍 DEBUG _summarize_text: ENTERED with text length {len(text)} chars")
         summarization_mode = str(self.params.get("summarization_mode", "ollama")).lower()
         model = str(self.params.get("summarization_model", "qwen2.5:7b"))  # Default model (updated to match default_params)
+        logger.warning(f"🔍 DEBUG _summarize_text: mode={summarization_mode}, model={model}")
         
         summarization_prompt = """You are a financial data analyst. Summarize the following indicator data, focusing on:
 - Key trends and patterns
@@ -1306,6 +1308,7 @@ Keep the summary concise but comprehensive. Preserve important numerical values 
         logger.warning(f"🔍 DEBUG: About to check hybrid approach. summarize_full_dataset={summarize_full_dataset}")
         if summarize_full_dataset:
             # HYBRID APPROACH: Summarize full dataset (historical) + format recent bars (detail)
+            logger.warning("🔍 DEBUG: ENTERING HYBRID APPROACH BLOCK")
             logger.info("🔄 IndicatorDataSynthesizer: Using hybrid approach - summarizing full dataset + formatting recent bars")
             self._emit_progress(ProgressState.UPDATE, 40.0, "Preparing hybrid summarization (full dataset + recent detail)...")
             
@@ -1398,7 +1401,9 @@ Keep the summary concise but comprehensive. Preserve important numerical values 
                 logger.info(f"IndicatorDataSynthesizer: Summarizing full dataset (~{full_tokens:,} tokens) for historical context...")
                 
                 try:
+                    logger.warning(f"🔍 DEBUG: About to call _summarize_text with {len(full_dataset_text)} chars")
                     historical_summary = await self._summarize_text(full_dataset_text)
+                    logger.warning(f"🔍 DEBUG: _summarize_text returned: {type(historical_summary)}, length={len(historical_summary) if historical_summary else 0}")
                     if historical_summary and len(historical_summary.strip()) > 0:
                         hist_tokens = len(historical_summary) // 4
                         reduction_pct = 100 * (1 - hist_tokens/full_tokens) if full_tokens > 0 else 0
@@ -1410,7 +1415,8 @@ Keep the summary concise but comprehensive. Preserve important numerical values 
                         logger.warning("IndicatorDataSynthesizer: Full dataset summarization returned empty. Using formatted stats instead.")
                         historical_summary = full_dataset_text  # Fallback to formatted stats
                 except Exception as e:
-                    logger.error(f"❌ IndicatorDataSynthesizer: Full dataset summarization failed: {e}. Using formatted stats instead.")
+                    logger.error(f"❌ IndicatorDataSynthesizer: Full dataset summarization failed: {e}. Using formatted stats instead.", exc_info=True)
+                    logger.warning(f"🔍 DEBUG: Exception type: {type(e).__name__}, str: {str(e)}")
                     historical_summary = full_dataset_text  # Fallback to formatted stats
             else:
                 historical_summary = ""
