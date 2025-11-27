@@ -178,7 +178,7 @@ class IndicatorDataSynthesizer(Base):
             "type": "string",
             "default": "qwen2.5:7b",
             "label": "Summarization Model",
-            "description": "Ollama model: 'qwen2.5:7b' (128k context, recommended), 'qwen2.5-1m' (1M context if available), or 'gemma2:2b' (8k, slow). OpenRouter: 'google/gemma-2-2b-it'",
+            "description": "Ollama model: 'qwen2.5:7b' (128k context, recommended), 'qwen2.5:3b' (128k, smaller), or 'llama3.2:1b' (128k, tiny). OpenRouter: use model names from their docs.",
         },
         {
             "name": "ollama_host",
@@ -711,6 +711,12 @@ class IndicatorDataSynthesizer(Base):
         logger.warning(f"🔍 DEBUG _summarize_text: ENTERED with text length {len(text)} chars")
         summarization_mode = str(self.params.get("summarization_mode", "ollama")).lower()
         model = str(self.params.get("summarization_model", "qwen2.5:7b"))  # Default model (updated to match default_params)
+        
+        # OVERRIDE: If gemma is detected, force qwen2.5:7b (gemma has terrible 8k context)
+        if "gemma" in model.lower():
+            logger.warning(f"⚠️ Overriding gemma model ({model}) with qwen2.5:7b for better performance (128k vs 8k context)")
+            model = "qwen2.5:7b"
+        
         logger.warning(f"🔍 DEBUG _summarize_text: mode={summarization_mode}, model={model}, params={self.params.get('summarization_model')}")
         
         summarization_prompt = """You are a financial data analyst. Summarize the following indicator data, focusing on:
@@ -742,7 +748,7 @@ Keep the summary concise but comprehensive. Preserve important numerical values 
             MAX_CHUNK_TOKENS = 100000  # Llama 3.2 has 128k context
             logger.info("Using Llama 3.2 model with 128k token context window")
         else:
-            MAX_CHUNK_TOKENS = 4000  # Conservative limit for Gemma 2's 8k context
+            MAX_CHUNK_TOKENS = 4000  # Conservative limit for small context models
             # Don't warn yet - wait until after fallback logic to see final model
         
         if summarization_mode == "ollama":
@@ -765,15 +771,14 @@ Keep the summary concise but comprehensive. Preserve important numerical values 
                     # Prefer models with larger context windows for large data
                     model_variants = [
                         model,  # User's requested model
+                        "qwen2.5:7b",  # 128k context - BEST for large data (already installed!)
                         f"{model}-it",
                         model.replace(":", ":latest"),
-                        "qwen2.5:7b",  # 128k context - BEST for large data (already installed!)
                         "qwen3:8b",  # 128k+ context
                         "qwen2.5:3b",  # 128k context (smaller model)
                         "qwen2:7b",  # 32k context
-                        "llama3.2:1b",  # 128k context
-                        "gemma2:2b",  # 8k context - fallback (too small!)
-                        "gemma:2b"
+                        "llama3.2:3b",  # 128k context
+                        "llama3.2:1b",  # 128k context (small but capable)
                     ]
                     found_model = None
                     for variant in model_variants:
@@ -784,7 +789,7 @@ Keep the summary concise but comprehensive. Preserve important numerical values 
                     if not found_model:
                         logger.error(
                             f"❌ Model '{model}' not found in Ollama. Available models: {', '.join(available_models[:5])}... "
-                            f"Install with: 'ollama pull gemma2:2b' or 'ollama pull llama3.2:1b'"
+                            f"Install with: 'ollama pull qwen2.5:7b' (recommended) or 'ollama pull llama3.2:1b'"
                         )
                         return None
                     
@@ -828,9 +833,9 @@ Keep the summary concise but comprehensive. Preserve important numerical values 
                 # Warn if too many chunks (will take very long)
                 if num_chunks > 100:
                     logger.warning(
-                        f"⚠️ Warning: {num_chunks} chunks will take a very long time to summarize with Gemma 2:2b (8k context). "
-                        f"Consider using OpenRouter summarization with a larger model (e.g., 'google/gemma-2-9b-it' with 8k context) "
-                        f"or install a model with larger context: 'ollama pull qwen2.5:7b' (32k context) or 'ollama pull llama3.2:3b' (128k context)"
+                        f"⚠️ Warning: {num_chunks} chunks will take a very long time to summarize with small context models. "
+                        f"Consider using 'qwen2.5:7b' with 128k context: 'ollama pull qwen2.5:7b' (recommended) "
+                        f"or using OpenRouter summarization mode with a larger model."
                     )
                 
                 if recursive_summarization:
@@ -998,7 +1003,7 @@ Keep the summary concise but comprehensive. Preserve important numerical values 
             if e.response.status_code == 404 and "not found" in error_text.lower():
                 logger.error(
                     f"❌ Ollama model '{model}' not found. "
-                    f"Install with: 'ollama pull gemma2:2b' or 'ollama pull llama3.2:1b'. "
+                    f"Install with: 'ollama pull qwen2.5:7b' (recommended) or 'ollama pull llama3.2:1b'. "
                     f"Or switch to OpenRouter summarization mode."
                 )
             else:
@@ -1477,7 +1482,7 @@ Keep the summary concise but comprehensive. Preserve important numerical values 
                 else:
                     logger.warning(
                         "IndicatorDataSynthesizer: Summarization returned empty result. Using original text. "
-                        "If using Ollama, make sure the model is installed: 'ollama pull gemma2:2b' or switch to OpenRouter summarization."
+                        "If using Ollama, make sure the model is installed: 'ollama pull qwen2.5:7b' or switch to OpenRouter summarization."
                     )
             except Exception as e:
                 logger.error(
