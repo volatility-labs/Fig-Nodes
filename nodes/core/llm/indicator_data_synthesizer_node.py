@@ -1308,6 +1308,7 @@ Keep the summary concise but comprehensive. Preserve important numerical values 
         
         # Store recent detail (already formatted with summary_only=False and recent_bars_count limit)
         recent_detail = formatted_text
+        recent_detail_bars = effective_recent_bars  # Default to effective_recent_bars
         
         # Optional AI summarization step - DO THIS BEFORE TRUNCATION
         # This allows summarization to work on the full dataset, reducing token count significantly
@@ -1449,9 +1450,11 @@ Keep the summary concise but comprehensive. Preserve important numerical values 
             # This was done above as `formatted_text` (now stored as `recent_detail`)
             
             # Step 4: Combine both
+            logger.warning(f"🔍 DEBUG Step 4: len(recent_detail)={len(recent_detail) if recent_detail else 0} chars")
             if historical_summary and recent_detail:
                 # Use recent_detail_bars (which is already capped at 10 for hybrid mode) or recent_bars_count
                 actual_recent_bars = recent_detail_bars if summarize_full_dataset else recent_bars_count
+                logger.warning(f"🔍 DEBUG: Combining with actual_recent_bars={actual_recent_bars}, but recent_detail has {len(recent_detail)} chars (~{len(recent_detail)//4} tokens)")
                 formatted_text = f"=== HISTORICAL SUMMARY (Full Dataset) ===\n\n{historical_summary}\n\n=== RECENT DETAIL (Last {actual_recent_bars} bars) ===\n\n{recent_detail}"
                 estimated_tokens = len(formatted_text) // 4
                 formatted_text_size = len(formatted_text)
