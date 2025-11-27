@@ -558,6 +558,12 @@ class IndicatorDataSynthesizer(Base):
         if data is None:
             return ""
 
+        # ULTRA-AGGRESSIVE: Force summary_only when recent_count is very small to prevent token explosion
+        # With 20 symbols x 10 series x 5 bars x detailed formatting = MILLIONS of chars!
+        if recent_count <= 5 and not summary_only:
+            logger.warning(f"🔧 _format_generic_indicator: Forcing summary_only=True for '{label or 'indicator'}' (recent_count={recent_count} ≤ 5)")
+            summary_only = True
+
         # Auto-detect indicator name if label not provided
         if not label:
             label = self._detect_indicator_name(data, input_name)
