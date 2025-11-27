@@ -1311,7 +1311,7 @@ Keep the summary concise but comprehensive. Preserve important numerical values 
         
         # Optional AI summarization step - DO THIS BEFORE TRUNCATION
         # This allows summarization to work on the full dataset, reducing token count significantly
-        logger.warning(f"🔍 DEBUG: About to check hybrid approach. summarize_full_dataset={summarize_full_dataset}")
+        logger.warning(f"🔍 DEBUG: About to check hybrid approach. summarize_full_dataset={summarize_full_dataset}, total_symbols={total_symbols}")
         if summarize_full_dataset:
             # HYBRID APPROACH: Summarize full dataset (historical) + format recent bars (detail)
             logger.warning("🔍 DEBUG: ENTERING HYBRID APPROACH BLOCK")
@@ -1323,12 +1323,15 @@ Keep the summary concise but comprehensive. Preserve important numerical values 
             # With many symbols (40+), even 30 bars generates millions of tokens, so cap at 10 bars
             # Note: effective_recent_bars may already be reduced by auto-reduction logic above
             # ULTRA AGGRESSIVE: With 20+ symbols, cap at just 5 bars for recent detail
+            logger.warning(f"🔍 DEBUG: About to calculate recent_detail_bars. total_symbols={total_symbols}, effective_recent_bars={effective_recent_bars}")
             if total_symbols > 20:
                 recent_detail_bars = min(effective_recent_bars, 5)  # Just 5 bars when many symbols
             elif total_symbols > 10:
-                recent_detail_bars = min(effective_recent_bars, 8)  # 8 bars for moderate symbols
+                recent_detail_bars = min(effective_recent_bars, 8)  # 8 bars for moderate symbols  
             else:
                 recent_detail_bars = min(effective_recent_bars, 10)  # 10 bars for few symbols
+            
+            logger.warning(f"🔍 DEBUG: Calculated recent_detail_bars={recent_detail_bars}")
             
             # ALWAYS re-format recent detail when using hybrid mode (don't check if it's less)
             # This ensures we use the reduced bar count even if user already reduced recent_bars_count
