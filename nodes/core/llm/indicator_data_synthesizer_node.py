@@ -711,7 +711,7 @@ class IndicatorDataSynthesizer(Base):
         logger.warning(f"🔍 DEBUG _summarize_text: ENTERED with text length {len(text)} chars")
         summarization_mode = str(self.params.get("summarization_mode", "ollama")).lower()
         model = str(self.params.get("summarization_model", "qwen2.5:7b"))  # Default model (updated to match default_params)
-        logger.warning(f"🔍 DEBUG _summarize_text: mode={summarization_mode}, model={model}")
+        logger.warning(f"🔍 DEBUG _summarize_text: mode={summarization_mode}, model={model}, params={self.params.get('summarization_model')}")
         
         summarization_prompt = """You are a financial data analyst. Summarize the following indicator data, focusing on:
 - Key trends and patterns
@@ -789,7 +789,8 @@ Keep the summary concise but comprehensive. Preserve important numerical values 
                         return None
                     
                     if found_model != model:
-                        logger.info(f"Using model '{found_model}' instead of '{model}'")
+                        logger.warning(f"⚠️ Model '{model}' not available! Using fallback model '{found_model}' instead")
+                        logger.warning(f"⚠️ To fix this, install the better model: ollama pull {model}")
                         model = found_model
                         # Update model_name after fallback so warning logic uses correct model
                         model_name = model.lower()
@@ -1316,7 +1317,13 @@ Keep the summary concise but comprehensive. Preserve important numerical values 
             # The historical summary already provides full context, so we only need a small recent sample
             # With many symbols (40+), even 30 bars generates millions of tokens, so cap at 10 bars
             # Note: effective_recent_bars may already be reduced by auto-reduction logic above
-            recent_detail_bars = min(effective_recent_bars, 10)  # Cap at 10 bars for detail when using hybrid (was 30, but still too large)
+            # ULTRA AGGRESSIVE: With 20+ symbols, cap at just 5 bars for recent detail
+            if total_symbols > 20:
+                recent_detail_bars = min(effective_recent_bars, 5)  # Just 5 bars when many symbols
+            elif total_symbols > 10:
+                recent_detail_bars = min(effective_recent_bars, 8)  # 8 bars for moderate symbols
+            else:
+                recent_detail_bars = min(effective_recent_bars, 10)  # 10 bars for few symbols
             
             # ALWAYS re-format recent detail when using hybrid mode (don't check if it's less)
             # This ensures we use the reduced bar count even if user already reduced recent_bars_count
