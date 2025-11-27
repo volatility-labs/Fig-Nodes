@@ -288,11 +288,17 @@ class IndicatorDataSynthesizer(Base):
 
     def _format_dict_of_series(self, data: dict[str, Any], label: str, recent_count: int, summary_only: bool = False, max_symbols: int = 10) -> str:
         """Format a dict where values are series/lists (like hurst_data, mesa_data, cco_data)."""
-        # ULTRA-AGGRESSIVE: For hybrid mode with very small bar counts, force summary_only to prevent token explosion
-        # With 20 symbols x 10 series x 5 bars x 10 lines each = millions of chars!
-        if recent_count <= 5 and not summary_only:
-            logger.warning(f"🔧 _format_dict_of_series: Forcing summary_only=True for {label} (recent_count={recent_count} ≤ 5)")
-            summary_only = True
+        # ULTRA-COMPACT mode: if we are already in summary_only **and** the caller has limited us to ≤5 recent bars,
+        # looping over every symbol / series still creates MBs of text.  Instead, emit a single compact block.
+        if summary_only and recent_count <= 5:
+            symbol_count = len([k for k in data.keys() if k != "metadata"]) if isinstance(data, dict) else 0
+            return (
+                f"=== {label.upper()} (Ultra-summary) ===\n"
+                f"Symbols analysed : {symbol_count}\n"
+                f"Series per symbol: ~{len(next(iter(data.values()))) if symbol_count and isinstance(next(iter(data.values())), dict) else 'n/a'}\n"
+                f"Recent bars shown : {recent_count}\n"
+                "(Detailed per-symbol stats suppressed to save tokens)\n"
+            )
         
         lines = [f"=== {label.upper()} ==="]
         
