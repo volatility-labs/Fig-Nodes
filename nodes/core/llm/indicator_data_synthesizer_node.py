@@ -76,6 +76,8 @@ class IndicatorDataSynthesizer(Base):
         "summarization_mode": "ollama",  # "ollama" (local, free) or "openrouter" (cheaper model)
         "summarization_model": "qwen2.5:7b",  # Ollama model name - prefer Qwen for large contexts (qwen2.5:7b=128k, qwen2.5-1m=1M tokens)
         "ollama_host": "http://localhost:11434",  # Ollama server URL
+        "enable_advanced_analysis": True,  # Enable divergence detection and confluence scoring
+        "adaptive_compression": True,  # Enable adaptive recent count based on volatility/asset type
     }
 
     params_meta = [
@@ -207,6 +209,22 @@ class IndicatorDataSynthesizer(Base):
             "label": "Ollama Host",
             "description": "Ollama server URL (default: http://localhost:11434)",
         },
+        {
+            "name": "enable_advanced_analysis",
+            "type": "combo",
+            "default": True,
+            "options": [True, False],
+            "label": "Advanced Analysis",
+            "description": "Enable divergence detection and signal confluence scoring for professional analysis",
+        },
+        {
+            "name": "adaptive_compression",
+            "type": "combo", 
+            "default": True,
+            "options": [True, False],
+            "label": "Adaptive Compression",
+            "description": "Automatically adjust recent bar count based on asset volatility and type (stablecoins get less detail)",
+        },
     ]
 
     def _format_timestamp(self, timestamp: int | float) -> str:
@@ -245,6 +263,147 @@ class IndicatorDataSynthesizer(Base):
         if len(s) > 100:
             return s[:100] + "..."
         return s
+
+    def _simple_std(self, values: list[float | int]) -> float:
+        """Calculate standard deviation without numpy dependency."""
+        if len(values) < 2:
+            return 0.0
+        mean = sum(values) / len(values)
+        variance = sum((x - mean) ** 2 for x in values) / (len(values) - 1)
+        return variance ** 0.5
+
+    def _get_adaptive_recent_count(self, data: Any, symbol: str, base_count: int) -> int:
+        """Dynamically adjust recent_unbatched_count based on data characteristics."""
+        
+        # Check if adaptive compression is enabled
+        if not self.params.get("adaptive_compression", True):
+            return base_count
+        
+        # Detect asset type from symbol
+        symbol_upper = str(symbol).upper()
+        if any(stable in symbol_upper for stable in ["USDC", "USDT", "DAI", "BUSD", "TUSD", "FRAX"]):
+            adaptive_count = max(5, base_count // 4)  # Stablecoins need less detail
+            logger.info(f"📉 Adaptive compression: {symbol} (stablecoin) {base_count} → {adaptive_count} bars")
+            return adaptive_count
+        
+        # Detect volatility from recent data
+        if isinstance(data, dict) and self._is_dict_of_series(data):
+            # Sample recent values to estimate volatility
+            for key, series in data.items():
+                if isinstance(series, list) and len(series) > 10:
+                    try:
+                        recent_vals = [float(v) for v in series[-20:] if isinstance(v, (int, float))]
+                        if len(recent_vals) > 5:
+                            volatility = self._simple_std(recent_vals)
+                            if volatility > 0.01:  # High volatility
+                                logger.info(f"📈 Adaptive compression: {symbol} (high volatility: {volatility:.4f}) keeping {base_count} bars")
+                                return base_count  # Full detail
+                            elif volatility < 0.001:  # Low volatility
+                                adaptive_count = max(10, base_count // 2)  # Half detail
+                                logger.info(f"📉 Adaptive compression: {symbol} (low volatility: {volatility:.4f}) {base_count} → {adaptive_count} bars")
+                                return adaptive_count
+                            break  # Only check first valid series
+                    except Exception:
+                        continue  # Skip this series if calculation fails
+        
+        return base_count  # Default
+
+    def _detect_divergences(self, data: dict[str, Any], symbol: str = "") -> list[str]:
+        """Detect divergences between timeframes for any indicator type."""
+        divergences = []
+        
+        if not self._is_dict_of_series(data):
+            return divergences
+            
+        # Look for timeframe patterns in keys
+        timeframe_data = {}
+        for key, series in data.items():
+            if isinstance(series, list) and series:
+                # Extract timeframe info from key names
+                key_lower = key.lower()
+                if any(tf in key_lower for tf in ['5_day', '10_day', '20_day', '40_day', '80_day', '20_week', '40_week', '18_month']):
+                    recent_val = next((v for v in reversed(series) if isinstance(v, (int, float))), None)
+                    if recent_val is not None:
+                        timeframe_data[key] = recent_val
+        
+        if len(timeframe_data) < 4:  # Need at least 4 timeframes to detect divergence
+            return divergences
+            
+        # Detect short vs long-term divergences
+        short_term = [k for k in timeframe_data.keys() if any(st in k.lower() for st in ['5_day', '10_day', '20_day'])]
+        long_term = [k for k in timeframe_data.keys() if any(lt in k.lower() for lt in ['40_day', '80_day', '20_week', '40_week'])]
+        
+        if short_term and long_term:
+            short_avg = sum(timeframe_data[k] for k in short_term) / len(short_term)
+            long_avg = sum(timeframe_data[k] for k in long_term) / len(long_term)
+            
+            # Detect significant divergences (threshold can be adjusted)
+            divergence_threshold = 0.001  # Adjust based on indicator scale
+            if abs(short_avg) > divergence_threshold and abs(long_avg) > divergence_threshold:
+                if short_avg > 0 and long_avg < 0:
+                    divergences.append(f"⚡ {symbol} DIVERGENCE: Short-term BULLISH ({short_avg:.4f}) vs Long-term BEARISH ({long_avg:.4f})")
+                elif short_avg < 0 and long_avg > 0:
+                    divergences.append(f"⚡ {symbol} DIVERGENCE: Short-term BEARISH ({short_avg:.4f}) vs Long-term BULLISH ({long_avg:.4f})")
+        
+        return divergences
+
+    def _calculate_confluence_score(self, data: dict[str, Any], symbol: str = "") -> dict[str, Any]:
+        """Calculate alignment scores for any indicator type."""
+        
+        if not self._is_dict_of_series(data):
+            return {}
+        
+        signals = {}
+        total_signals = 0
+        bullish_signals = 0
+        neutral_signals = 0
+        
+        for key, series in data.items():
+            if key == "metadata" or key == "timestamps":
+                continue
+                
+            if isinstance(series, list) and series:
+                recent_val = next((v for v in reversed(series) if isinstance(v, (int, float))), None)
+                if recent_val is not None:
+                    total_signals += 1
+                    
+                    # Enhanced signal detection based on indicator patterns
+                    if "composite" in key.lower() or "mesa" in key.lower():
+                        # For oscillators, check relative position
+                        if recent_val > 0.7:
+                            bullish_signals += 1
+                            signals[key] = "STRONG_BULLISH"
+                        elif recent_val > 0.3:
+                            bullish_signals += 1
+                            signals[key] = "BULLISH"
+                        elif recent_val > -0.3:
+                            neutral_signals += 1
+                            signals[key] = "NEUTRAL"
+                        else:
+                            signals[key] = "BEARISH"
+                    else:
+                        # Generic bullish/bearish detection
+                        if recent_val > 0.001:  # Small threshold for precision
+                            bullish_signals += 1
+                            signals[key] = "BULLISH"
+                        elif recent_val < -0.001:
+                            signals[key] = "BEARISH"
+                        else:
+                            neutral_signals += 1
+                            signals[key] = "NEUTRAL"
+        
+        confluence_pct = (bullish_signals / total_signals * 100) if total_signals > 0 else 0
+        bearish_signals = total_signals - bullish_signals - neutral_signals
+        
+        return {
+            "confluence_score": confluence_pct,
+            "bullish_count": bullish_signals,
+            "bearish_count": bearish_signals,
+            "neutral_count": neutral_signals,
+            "total_count": total_signals,
+            "signals": signals,
+            "summary": f"CONFLUENCE: {bullish_signals}/{total_signals} bullish, {bearish_signals} bearish ({confluence_pct:.1f}% bullish)"
+        }
 
     def _is_indicator_result(self, data: Any) -> bool:
         """Check if data is an IndicatorResult structure."""
@@ -421,6 +580,54 @@ class IndicatorDataSynthesizer(Base):
         if batch_size > 1:
             lines.append(f"(History batched by {batch_size} bars)")
         
+        # ENHANCED: Add divergence detection and confluence scoring
+        if self.params.get("enable_advanced_analysis", True) and isinstance(data, dict) and self._is_dict_of_series(data):
+            # Detect cross-timeframe divergences
+            divergences: list[str] = []
+            confluence_scores: list[str] = []
+            
+            try:
+                # For per-symbol data, analyze each symbol
+                first_value = next(iter(data.values())) if data.values() else None
+                if isinstance(first_value, dict):
+                    # Per-symbol structure
+                    for symbol_key, symbol_data in data.items():
+                        if symbol_key == "metadata" or not isinstance(symbol_data, dict):
+                            continue
+                        symbol_divergences = self._detect_divergences(symbol_data, str(symbol_key))
+                        if symbol_divergences:
+                            divergences.extend(symbol_divergences)
+                        
+                        confluence = self._calculate_confluence_score(symbol_data, str(symbol_key))
+                        if confluence and isinstance(confluence, dict):
+                            summary = confluence.get('summary', 'N/A')
+                            confluence_scores.append(f"📊 {symbol_key}: {summary}")
+                else:
+                    # Single symbol structure
+                    symbol_divergences = self._detect_divergences(data, str(label))
+                    if symbol_divergences:
+                        divergences.extend(symbol_divergences)
+                    
+                    confluence = self._calculate_confluence_score(data, str(label))
+                    if confluence and isinstance(confluence, dict):
+                        summary = confluence.get('summary', 'N/A')
+                        confluence_scores.append(f"📊 {label}: {summary}")
+                
+                # Add analysis results to output
+                if divergences:
+                    lines.append("")
+                    lines.append("🔍 DIVERGENCE ANALYSIS:")
+                    lines.extend([f"  {div}" for div in divergences])
+                
+                if confluence_scores:
+                    lines.append("")
+                    lines.append("📊 SIGNAL CONFLUENCE:")
+                    lines.extend([f"  {score}" for score in confluence_scores])
+                    lines.append("")
+            except Exception as e:
+                logger.warning(f"Advanced analysis failed for {label}: {e}")
+                # Continue with standard formatting
+        
         # Check if data is per-symbol (dict of dicts) or single symbol (dict of lists)
         is_per_symbol = False
         symbol_count = 0
@@ -494,6 +701,10 @@ class IndicatorDataSynthesizer(Base):
                         if not non_none_vals:
                             continue
                         
+                        # ADAPTIVE COMPRESSION: Adjust recent count based on asset characteristics
+                        base_recent_unbatched = int(self.params.get("recent_unbatched_count", 20))
+                        adaptive_recent_unbatched = self._get_adaptive_recent_count(value, key, base_recent_unbatched)
+                        
                         # BATCHING LOGIC
                         if batch_size > 1:
                             # First, limit to recent_count
@@ -501,7 +712,7 @@ class IndicatorDataSynthesizer(Base):
                                 series_value = series_value[-recent_count:]
                                 
                             # Ensure we have enough data to batch
-                            recent_unbatched = int(self.params.get("recent_unbatched_count", 20))
+                            recent_unbatched = adaptive_recent_unbatched
                             if len(series_value) > recent_unbatched:
                                 history_vals = series_value[:-recent_unbatched]
                                 recent_vals = series_value[-recent_unbatched:]
@@ -593,7 +804,9 @@ class IndicatorDataSynthesizer(Base):
                     if len(value) > recent_count:
                         value = value[-recent_count:]
                         
-                    recent_unbatched = int(self.params.get("recent_unbatched_count", 20))
+                    # ADAPTIVE COMPRESSION: Adjust based on data characteristics
+                    base_recent_unbatched = int(self.params.get("recent_unbatched_count", 20))
+                    recent_unbatched = self._get_adaptive_recent_count(data, key, base_recent_unbatched)
                     if len(value) > recent_unbatched:
                         history_vals = value[:-recent_unbatched]
                         recent_vals = value[-recent_unbatched:]
@@ -717,23 +930,58 @@ class IndicatorDataSynthesizer(Base):
                 }
                 return type_map.get(indicator_type.upper(), indicator_type)
         
-        # Check for common data structure patterns
+        # Check for common data structure patterns - EXTENDED for standardization
         if isinstance(data, dict):
-            # Check for Hurst-specific keys
-            if any(key in data for key in ["composite", "bandpass_5", "bandpass_10", "bandpass_20", "bandpass_40", "bandpass_80"]):
-                return "Hurst Spectral Analysis Oscillator"
+            # Enhanced pattern detection for extensible indicator support
+            pattern_map = {
+                # Existing indicators
+                ("composite", "bandpass_5", "bandpass_10", "bandpass_20", "bandpass_40", "bandpass_80"): "Hurst Spectral Analysis Oscillator",
+                ("mesa1", "mesa2", "mesa3", "mesa4", "trigger1", "trigger2", "trigger3", "trigger4"): "MESA Stochastic Multi Length",
+                ("fast_osc", "slow_osc", "fast_oscillator", "slow_oscillator"): "Cycle Channel Oscillator (CCO)",
+                ("vbp_levels", "price_levels", "volume_profile"): "Volume-by-Price (VBP)",
+                
+                # NEW: Standard technical indicators (extensible)
+                ("macd", "signal", "histogram"): "MACD",
+                ("rsi",): "Relative Strength Index (RSI)",
+                ("upper_band", "lower_band", "middle_band", "bb_upper", "bb_lower"): "Bollinger Bands",
+                ("atr", "true_range"): "Average True Range (ATR)",
+                ("adx", "di_plus", "di_minus", "+di", "-di"): "Average Directional Index (ADX)",
+                ("ema_10", "ema_20", "ema_50", "ema_100", "ema_200"): "Exponential Moving Average (EMA)",
+                ("sma_10", "sma_20", "sma_50", "sma_100", "sma_200"): "Simple Moving Average (SMA)",
+                ("poc", "value_area_high", "value_area_low", "volume_profile"): "Volume Profile",
+                ("support_1", "support_2", "resistance_1", "resistance_2"): "Support/Resistance Levels",
+                ("stoch_k", "stoch_d", "stochastic"): "Stochastic Oscillator",
+                ("williams_r", "wr"): "Williams %R",
+                ("cci", "commodity_channel"): "Commodity Channel Index (CCI)",
+                ("momentum", "rate_of_change", "roc"): "Momentum/ROC",
+                ("obv", "on_balance_volume"): "On-Balance Volume (OBV)",
+            }
             
-            # Check for MESA-specific keys
-            if any(key in data for key in ["mesa1", "mesa2", "mesa3", "mesa4", "trigger1", "trigger2", "trigger3", "trigger4"]):
-                return "MESA Stochastic Multi Length"
+            # Check each pattern group
+            for patterns, indicator_name in pattern_map.items():
+                if any(pattern in data for pattern in patterns):
+                    return indicator_name
             
-            # Check for CCO-specific keys
-            if any(key in data for key in ["fast_osc", "slow_osc", "fast_oscillator", "slow_oscillator"]):
-                return "Cycle Channel Oscillator (CCO)"
-            
-            # Check for VBP-specific keys
-            if any(key in data for key in ["vbp_levels", "price_levels", "volume_profile"]):
-                return "Volume-by-Price (VBP)"
+            # Check for partial matches (e.g., "ema_" prefix)
+            try:
+                data_keys = list(data.keys())
+                for key in data_keys:
+                    key_str = str(key)
+                    key_lower = key_str.lower()
+                    if key_lower.startswith("ema_"):
+                        return "Exponential Moving Average (EMA)"
+                    elif key_lower.startswith("sma_"):
+                        return "Simple Moving Average (SMA)"
+                    elif key_lower.startswith("bb_") or "bollinger" in key_lower:
+                        return "Bollinger Bands"
+                    elif "rsi" in key_lower:
+                        return "Relative Strength Index (RSI)"
+                    elif "macd" in key_lower:
+                        return "MACD"
+                    elif "stoch" in key_lower:
+                        return "Stochastic Oscillator"
+            except Exception:
+                pass  # Fallback to metadata check
             
             # Check metadata for indicator hints
             metadata = data.get("metadata", {})
@@ -812,10 +1060,11 @@ class IndicatorDataSynthesizer(Base):
                         if len(value) > recent_count:
                             value = value[-recent_count:]
                             
-                        # Ensure we have enough data to batch
-                        recent_unbatched = int(self.params.get("recent_unbatched_count", 20))
-                        if len(value) > recent_unbatched:
-                            history_vals = value[:-recent_unbatched]
+                            # Ensure we have enough data to batch - ADAPTIVE
+                            base_recent_unbatched = int(self.params.get("recent_unbatched_count", 20))
+                            recent_unbatched = self._get_adaptive_recent_count(data, key, base_recent_unbatched)
+                            if len(value) > recent_unbatched:
+                                history_vals = value[:-recent_unbatched]
                             recent_vals = value[-recent_unbatched:]
                             
                             # Aggregate history
@@ -946,11 +1195,11 @@ class IndicatorDataSynthesizer(Base):
             return ""
 
         batch_size = int(self.params.get("batch_size", 1))
-        recent_unbatched = int(self.params.get("recent_unbatched_count", 10))
+        base_recent_unbatched = int(self.params.get("recent_unbatched_count", 10))
 
         lines = ["=== OHLCV PRICE DATA ==="]
         if batch_size > 1:
-            lines.append(f"(History batched by {batch_size} bars, last {recent_unbatched} bars unbatched)")
+            lines.append(f"(History batched by {batch_size} bars, adaptive recent count)")
         lines.append("")
         
         # Apply max_symbols limit
@@ -967,6 +1216,9 @@ class IndicatorDataSynthesizer(Base):
             symbol_str = str(symbol)
             lines.append(f"Symbol: {symbol_str}")
             lines.append(f"Total Bars: {len(bars)}")
+            
+            # ADAPTIVE COMPRESSION for OHLCV
+            recent_unbatched = self._get_adaptive_recent_count(ohlcv_bundle, symbol_str, base_recent_unbatched)
             
             if batch_size > 1 and len(bars) > recent_unbatched:
                 # Split into history and recent
