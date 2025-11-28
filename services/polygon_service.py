@@ -651,10 +651,9 @@ async def massive_fetch_filtered_tickers_for_list(
         )
 
         if exclude_etfs and is_etf:
+            # Exclude ETFs: skip if it's an ETF
             continue
-        if not exclude_etfs and not is_etf:
-            continue
-
+        # When exclude_etfs=False, include both ETFs and equities (no filtering)
         allowed.add(ticker)
 
     return allowed

@@ -422,11 +422,9 @@ class PolygonStockUniverse(Base):
             )
 
             if exclude_etfs and is_etf:
-                # Exclude ETFs
+                # Exclude ETFs: skip if it's an ETF
                 continue
-            if not exclude_etfs and not is_etf:
-                # Include only ETFs
-                continue
+            # When exclude_etfs=False, include both ETFs and equities (no filtering)
             allowed.add(ticker)
 
         return allowed
@@ -521,9 +519,7 @@ class PolygonStockUniverse(Base):
                     if exclude_etfs and is_etf:
                         # Exclude ETFs: skip if it's an ETF
                         continue
-                    if not exclude_etfs and not is_etf:
-                        # Include only ETFs: skip if it's NOT an ETF
-                        continue
+                    # When exclude_etfs=False, include both ETFs and equities (no filtering)
 
                 # Apply OTC filtering for stocks market
                 include_otc = self.params.get("include_otc", False)

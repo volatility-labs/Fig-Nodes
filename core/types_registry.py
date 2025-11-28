@@ -45,6 +45,7 @@ class IndicatorType(Enum):
     VBP = auto()  # Volume Profile
     EVWMA = auto()  # Exponential Volume Weighted Moving Average
     CCO = auto()  # Cycle Channel Oscillator
+    WEEK52_HIGH_LOW = auto()  # 52-Week High/Low
 
 
 # Progress/lifecycle enums for node execution
