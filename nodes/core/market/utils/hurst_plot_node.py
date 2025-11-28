@@ -1130,11 +1130,12 @@ class HurstPlot(Base):
         "lookback_bars": 100,  # Default to showing last 100 bars for better current price visibility
         "zoom_to_recent": False,  # Auto-zoom to last 300 bars for better visibility (~12 days hourly)
         "y_axis_scale": "linear",  # "linear" (default) for price charts, "log" for exponential growth, "symlog" is for oscillators only
+        "market_type": "Stock (Trading Days)",  # "Stock (Trading Days)" or "Crypto (24/7)"
         "show_current_price": True,  # Annotate current price on chart
         "source": "hl2",
         "bandwidth": 0.025,
         "dpi": 60,  # Image DPI: 60 (default) for maximum speed and smaller payloads
-        # Show individual waves (all 11 cycles)
+        # Show individual waves (up to 18 Month)
         # Default: Show first 5 cycles for good visibility without clutter
         "show_5_day": True,
         "show_10_day": True,
@@ -1144,11 +1145,8 @@ class HurstPlot(Base):
         "show_20_week": False,  # Enable if you want longer cycles visible
         "show_40_week": False,  # Enable if you want longer cycles visible
         "show_18_month": False,  # Usually too long to see clearly on chart
-        "show_54_month": False,  # Usually too long to see clearly on chart
-        "show_9_year": False,  # Usually too long to see clearly on chart
-        "show_18_year": False,  # Usually too long to see clearly on chart
         "show_composite": True,
-        # Composite selection (all 11 cycles)
+        # Composite selection (up to 18 Month)
         "composite_5_day": True,
         "composite_10_day": True,
         "composite_20_day": True,
@@ -1157,10 +1155,7 @@ class HurstPlot(Base):
         "composite_20_week": True,
         "composite_40_week": True,
         "composite_18_month": True,
-        "composite_54_month": True,
-        "composite_9_year": True,
-        "composite_18_year": True,
-        # Period parameters (all 11 cycles)
+        # Period parameters (up to 18 Month)
         "period_5_day": 4.3,
         "period_10_day": 8.5,
         "period_20_day": 17.0,
@@ -1169,9 +1164,6 @@ class HurstPlot(Base):
         "period_20_week": 136.4,
         "period_40_week": 272.8,
         "period_18_month": 545.6,
-        "period_54_month": 1636.8,
-        "period_9_year": 3273.6,
-        "period_18_year": 6547.2,
         # MESA Stochastic parameters
         "show_mesa_stochastic": False,  # On/off switch for MESA Stochastic
         "mesa_length1": 50,  # First MESA Stochastic length
@@ -1216,6 +1208,13 @@ class HurstPlot(Base):
                    "default": "linear",
                    "options": ["linear", "symlog", "log"],
                    "description": "Y-axis scale: 'linear' (default, recommended for prices), 'log' for exponential growth, 'symlog' is for oscillators only (not recommended for prices)",
+               },
+               {
+                   "name": "market_type",
+                   "type": "combo",
+                   "default": "Stock (Trading Days)",
+                   "options": ["Stock (Trading Days)", "Crypto (24/7)"],
+                   "description": "Market type: Stock uses Hurst's original trading day cycle (4.3, 8.5...), Crypto uses 24/7 calendar day cycle (7, 14...)",
                },
                {
                    "name": "show_current_price",
@@ -1306,34 +1305,13 @@ class HurstPlot(Base):
             "description": "Show 18 Month wave",
         },
         {
-            "name": "show_54_month",
-            "type": "combo",
-            "default": False,
-            "options": [True, False],
-            "description": "Show 54 Month wave",
-        },
-        {
-            "name": "show_9_year",
-            "type": "combo",
-            "default": False,
-            "options": [True, False],
-            "description": "Show 9 Year wave",
-        },
-        {
-            "name": "show_18_year",
-            "type": "combo",
-            "default": False,
-            "options": [True, False],
-            "description": "Show 18 Year wave",
-        },
-        {
             "name": "show_composite",
             "type": "combo",
             "default": True,
             "options": [True, False],
             "description": "Show composite wave",
         },
-        # Composite selection (all 11 cycles)
+        # Composite selection (up to 18 Month)
         {
             "name": "composite_5_day",
             "type": "boolean",
@@ -1382,25 +1360,7 @@ class HurstPlot(Base):
             "default": True,
             "description": "Include 18 Month in composite",
         },
-        {
-            "name": "composite_54_month",
-            "type": "boolean",
-            "default": True,
-            "description": "Include 54 Month in composite",
-        },
-        {
-            "name": "composite_9_year",
-            "type": "boolean",
-            "default": True,
-            "description": "Include 9 Year in composite",
-        },
-        {
-            "name": "composite_18_year",
-            "type": "boolean",
-            "default": True,
-            "description": "Include 18 Year in composite",
-        },
-        # Period parameters (all 11 cycles)
+        # Period parameters (up to 18 Month)
         {
             "name": "period_5_day",
             "type": "number",
@@ -1464,30 +1424,6 @@ class HurstPlot(Base):
             "min": 2.0,
             "step": 0.1,
             "description": "18 Month period (bars)",
-        },
-        {
-            "name": "period_54_month",
-            "type": "number",
-            "default": 1636.8,
-            "min": 2.0,
-            "step": 0.1,
-            "description": "54 Month period (bars)",
-        },
-        {
-            "name": "period_9_year",
-            "type": "number",
-            "default": 3273.6,
-            "min": 2.0,
-            "step": 0.1,
-            "description": "9 Year period (bars)",
-        },
-        {
-            "name": "period_18_year",
-            "type": "number",
-            "default": 6547.2,
-            "min": 2.0,
-            "step": 0.1,
-            "description": "18 Year period (bars)",
         },
         # MESA Stochastic parameters
         {
@@ -1664,22 +1600,38 @@ class HurstPlot(Base):
         bandwidth_raw = self.params.get("bandwidth", 0.025)
         bandwidth = float(bandwidth_raw) if bandwidth_raw is not None else 0.025
         
-        # Build periods dict (all 11 cycles)
-        periods = {
-            "5_day": float(self.params.get("period_5_day", 4.3)),
-            "10_day": float(self.params.get("period_10_day", 8.5)),
-            "20_day": float(self.params.get("period_20_day", 17.0)),
-            "40_day": float(self.params.get("period_40_day", 34.1)),
-            "80_day": float(self.params.get("period_80_day", 68.2)),
-            "20_week": float(self.params.get("period_20_week", 136.4)),
-            "40_week": float(self.params.get("period_40_week", 272.8)),
-            "18_month": float(self.params.get("period_18_month", 545.6)),
-            "54_month": float(self.params.get("period_54_month", 1636.8)),
-            "9_year": float(self.params.get("period_9_year", 3273.6)),
-            "18_year": float(self.params.get("period_18_year", 6547.2)),
-        }
+        # Determine period values based on market_type
+        market_type = self.params.get("market_type", "Stock (Trading Days)")
         
-        # Build composite selection dict (all 11 cycles)
+        if market_type == "Crypto (24/7)":
+            # Crypto defaults (24/7 market): ~1.4x stock values (7/5 ratio)
+            # 5 Day -> 7, 10 Day -> 14, 20 Day -> 28, etc.
+            logger.info("🔄 HurstPlot: Using Crypto (24/7) period defaults")
+            periods = {
+                "5_day": 7.0,
+                "10_day": 14.0,
+                "20_day": 28.0,
+                "40_day": 56.0,
+                "80_day": 112.0,
+                "20_week": 224.0,
+                "40_week": 448.0,
+                "18_month": 896.0,
+            }
+        else:
+            # Stock defaults (Trading Days) - use inputs or defaults
+            # Default: 4.3, 8.5, 17.0, 34.1, 68.2, 136.4, 272.8, 545.6
+            periods = {
+                "5_day": float(self.params.get("period_5_day", 4.3)),
+                "10_day": float(self.params.get("period_10_day", 8.5)),
+                "20_day": float(self.params.get("period_20_day", 17.0)),
+                "40_day": float(self.params.get("period_40_day", 34.1)),
+                "80_day": float(self.params.get("period_80_day", 68.2)),
+                "20_week": float(self.params.get("period_20_week", 136.4)),
+                "40_week": float(self.params.get("period_40_week", 272.8)),
+                "18_month": float(self.params.get("period_18_month", 545.6)),
+            }
+        
+        # Build composite selection dict (up to 18 Month)
         composite_selection = {
             "5_day": bool(self.params.get("composite_5_day", True)),
             "10_day": bool(self.params.get("composite_10_day", True)),
@@ -1689,12 +1641,9 @@ class HurstPlot(Base):
             "20_week": bool(self.params.get("composite_20_week", True)),
             "40_week": bool(self.params.get("composite_40_week", True)),
             "18_month": bool(self.params.get("composite_18_month", True)),
-            "54_month": bool(self.params.get("composite_54_month", True)),
-            "9_year": bool(self.params.get("composite_9_year", True)),
-            "18_year": bool(self.params.get("composite_18_year", True)),
         }
         
-        # Determine which periods to show (all 11 cycles)
+        # Determine which periods to show (up to 18 Month)
         # Use defaults from default_params to match the updated defaults
         show_periods = []
         if self.params.get("show_5_day", self.default_params.get("show_5_day", True)):
@@ -1713,12 +1662,6 @@ class HurstPlot(Base):
             show_periods.append("40_week")
         if self.params.get("show_18_month", self.default_params.get("show_18_month", False)):
             show_periods.append("18_month")
-        if self.params.get("show_54_month", self.default_params.get("show_54_month", False)):
-            show_periods.append("54_month")
-        if self.params.get("show_9_year", self.default_params.get("show_9_year", False)):
-            show_periods.append("9_year")
-        if self.params.get("show_18_year", self.default_params.get("show_18_year", False)):
-            show_periods.append("18_year")
         
         show_composite = bool(self.params.get("show_composite", True))
 

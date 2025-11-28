@@ -142,6 +142,26 @@ class IndicatorDataSynthesizer(Base):
             "description": "Maximum number of symbols to process per indicator (increased default - summarization handles large data efficiently)",
         },
         {
+            "name": "batch_size",
+            "type": "number",
+            "default": 1,
+            "min": 1,
+            "max": 100,
+            "step": 1,
+            "label": "Batch Size",
+            "description": "Group older bars into batches (e.g., 24 = daily aggregation for hourly bars). Set to 1 to disable batching.",
+        },
+        {
+            "name": "recent_unbatched_count",
+            "type": "number",
+            "default": 10,
+            "min": 1,
+            "max": 500,
+            "step": 1,
+            "label": "Recent Unbatched",
+            "description": "Number of most recent bars to keep raw/unbatched (high resolution) even when batching is enabled.",
+        },
+        {
             "name": "enable_summarization",
             "type": "combo",
             "default": False,
@@ -205,6 +225,27 @@ class IndicatorDataSynthesizer(Base):
             f"C:{bar.get('close', 'N/A')} V:{bar.get('volume', 'N/A')}"
         )
 
+    def _format_value(self, value: Any) -> str:
+        """Format a value with rounding and truncation. Handles tiny numbers gracefully."""
+        if value is None:
+            return "None"
+        if isinstance(value, (int, float)):
+            abs_val = abs(value)
+            if abs_val == 0:
+                return "0.0"
+            # For very small numbers (crypto prices, oscillator values), use more precision or scientific notation
+            if abs_val < 0.0001:
+                return f"{value:.2e}"  # Scientific for tiny stuff (e.g. 1.5e-07)
+            if abs_val < 0.01:
+                return f"{value:.6f}"  # 6 decimals for small prices (e.g. 0.004231)
+            return f"{value:.4f}"      # Standard 4 decimals for others
+        
+        s = str(value)
+        # Aggressive truncation for non-numeric data to prevent base64 images from blowing up context
+        if len(s) > 100:
+            return s[:100] + "..."
+        return s
+
     def _is_indicator_result(self, data: Any) -> bool:
         """Check if data is an IndicatorResult structure."""
         return (
@@ -223,7 +264,7 @@ class IndicatorDataSynthesizer(Base):
             return False
         return any(isinstance(v, list) and len(v) > 0 for v in data.values() if v is not None)
 
-    def _format_indicator_result(self, result: dict[str, Any], recent_only: bool, recent_count: int) -> str:
+    def _format_indicator_result(self, result: dict[str, Any], recent_only: bool, recent_count: int, summary_only: bool = False, batch_size: int = 1) -> str:
         """Format a standard IndicatorResult structure."""
         indicator_type = result.get("indicator_type", "unknown")
         values = result.get("values", {})
@@ -248,49 +289,125 @@ class IndicatorDataSynthesizer(Base):
         if isinstance(values, dict):
             # Single value
             if "single" in values and values["single"] is not None:
-                lines.append(f"Value: {values['single']}")
+                lines.append(f"Value: {self._format_value(values['single'])}")
             
             # Lines (dict of named values)
             if "lines" in values and isinstance(values["lines"], dict):
                 lines.append("Values:")
                 for key, val in values["lines"].items():
                     if val is not None:
-                        lines.append(f"  {key}: {val}")
+                        lines.append(f"  {key}: {self._format_value(val)}")
             
             # Series (list of dicts or values)
             if "series" in values and isinstance(values["series"], list):
                 series = values["series"]
-                if recent_only and len(series) > recent_count:
+                
+                # BATCHING LOGIC
+                if batch_size > 1:
+                    # First, limit to recent_count to avoid processing thousands of bars
+                    if len(series) > recent_count:
+                        series = series[-recent_count:]
+                        
+                    recent_unbatched = int(self.params.get("recent_unbatched_count", 20))
+                    if len(series) > recent_unbatched:
+                        history_vals = series[:-recent_unbatched]
+                        recent_vals = series[-recent_unbatched:]
+                        
+                        # Aggregate history
+                        batch_vals = []
+                        for i in range(0, len(history_vals), batch_size):
+                            batch = history_vals[i:i+batch_size]
+                            # Handle list of scalars (skip complex dicts for now in batching)
+                            valid_batch = [v for v in batch if v is not None and isinstance(v, (int, float))]
+                            if valid_batch:
+                                avg_val = sum(valid_batch) / len(valid_batch)
+                                batch_vals.append(self._format_value(avg_val))
+                        
+                        if batch_vals:
+                            lines.append(f"Series (Batched x{batch_size}): {', '.join(batch_vals)}")
+                        
+                        # Recent Raw
+                        recent_valid = [v for v in recent_vals if v is not None]
+                        if recent_valid:
+                            # Handle formatting for scalars vs dicts
+                            if isinstance(recent_valid[0], (int, float)):
+                                recent_str = ", ".join([self._format_value(v) for v in recent_valid])
+                            else:
+                                recent_str = ", ".join([self._format_value(v) for v in recent_valid])
+                            lines.append(f"  Recent (Raw, {len(recent_valid)} values): {recent_str}")
+                    else:
+                        # Not enough for batching
+                        if recent_only and len(series) > recent_count:
+                            series = series[-recent_count:]
+                        series_str = "[" + ", ".join([self._format_value(v) for v in series]) + "]"
+                        lines.append(f"Series ({len(series)} values): {series_str}")
+
+                elif recent_only and len(series) > recent_count:
                     series = series[-recent_count:]
                 
-                lines.append(f"Series ({len(series)} values):")
-                if len(series) <= 10:
-                    for i, item in enumerate(series):
-                        if isinstance(item, dict):
-                            lines.append(f"  [{i+1}] {item}")
-                        else:
-                            lines.append(f"  [{i+1}] {item}")
+                if summary_only:
+                    # Summary mode for series
+                    non_none = [v for v in series if v is not None]
+                    recent = next((v for v in reversed(series) if v is not None), None)
+                    
+                    # Handle list of dicts (common in Hurst/MESA) by summarizing keys
+                    if non_none and isinstance(non_none[0], dict):
+                        lines.append(f"Series Summary ({len(series)} bars):")
+                        # Summarize last value only for dict series
+                        lines.append(f"  Latest: {non_none[-1]}")
+                    elif non_none and isinstance(non_none[0], (int, float)):
+                        lines.append(f"Series: Recent={recent}, Min={min(non_none):.4f}, Max={max(non_none):.4f}, Count={len(non_none)}")
+                    else:
+                        lines.append(f"Series: Recent={recent}, Count={len(series)}")
                 else:
-                    for i, item in enumerate(series[:3]):
-                        if isinstance(item, dict):
-                            lines.append(f"  [{i+1}] {item}")
-                        else:
-                            lines.append(f"  [{i+1}] {item}")
-                    lines.append(f"  ... ({len(series) - 6} more) ...")
-                    for i, item in enumerate(series[-3:], start=len(series) - 2):
-                        if isinstance(item, dict):
-                            lines.append(f"  [{i+1}] {item}")
-                        else:
-                            lines.append(f"  [{i+1}] {item}")
+                    # Full mode
+                    lines.append(f"Series ({len(series)} values):")
+                    if len(series) <= 10:
+                        for i, item in enumerate(series):
+                            if isinstance(item, dict):
+                                lines.append(f"  [{i+1}] {item}")
+                            else:
+                                lines.append(f"  [{i+1}] {item}")
+                    else:
+                        for i, item in enumerate(series[:3]):
+                            if isinstance(item, dict):
+                                lines.append(f"  [{i+1}] {item}")
+                            else:
+                                lines.append(f"  [{i+1}] {item}")
+                        lines.append(f"  ... ({len(series) - 6} more) ...")
+                        for i, item in enumerate(series[-3:], start=len(series) - 2):
+                            if isinstance(item, dict):
+                                lines.append(f"  [{i+1}] {item}")
+                            else:
+                                lines.append(f"  [{i+1}] {item}")
 
         lines.append("")
         return "\n".join(lines)
 
-    def _format_dict_of_series(self, data: dict[str, Any], label: str, recent_count: int, summary_only: bool = False, max_symbols: int = 10) -> str:
+    def _format_series_key(self, indicator_label: str, series_key: str) -> str:
+        """Format a series key with its indicator name for clarity.
+        
+        Args:
+            indicator_label: The name of the indicator (e.g., "MESA Stochastic Multi Length")
+            series_key: The series key (e.g., "mesa1", "composite")
+        
+        Returns:
+            Formatted string like "MESA Stochastic Multi Length - mesa1" or just "series_key" if label is generic
+        """
+        # If label is generic, don't prefix it
+        generic_labels = ["INDICATOR DATA", "INDICATOR", "DATA"]
+        if indicator_label.upper() in generic_labels:
+            return series_key
+        
+        # Format as "Indicator Name - series_key"
+        return f"{indicator_label} - {series_key}"
+
+    def _format_dict_of_series(self, data: dict[str, Any], label: str, recent_count: int, summary_only: bool = False, max_symbols: int = 10, batch_size: int = 1) -> str:
         """Format a dict where values are series/lists (like hurst_data, mesa_data, cco_data)."""
         # ULTRA-COMPACT mode: if we are already in summary_only **and** the caller has limited us to ≤5 recent bars,
         # looping over every symbol / series still creates MBs of text.  Instead, emit a single compact block.
-        if summary_only and recent_count <= 5:
+        # BUT: Skip if batching is active, as batching provides compression
+        if summary_only and recent_count <= 5 and batch_size <= 1:
             symbol_count = len([k for k in data.keys() if k != "metadata"]) if isinstance(data, dict) else 0
             return (
                 f"=== {label.upper()} (Ultra-summary) ===\n"
@@ -301,6 +418,8 @@ class IndicatorDataSynthesizer(Base):
             )
         
         lines = [f"=== {label.upper()} ==="]
+        if batch_size > 1:
+            lines.append(f"(History batched by {batch_size} bars)")
         
         # Check if data is per-symbol (dict of dicts) or single symbol (dict of lists)
         is_per_symbol = False
@@ -375,22 +494,65 @@ class IndicatorDataSynthesizer(Base):
                         if not non_none_vals:
                             continue
                         
-                        if summary_only:
+                        # BATCHING LOGIC
+                        if batch_size > 1:
+                            # First, limit to recent_count
+                            if len(series_value) > recent_count:
+                                series_value = series_value[-recent_count:]
+                                
+                            # Ensure we have enough data to batch
+                            recent_unbatched = int(self.params.get("recent_unbatched_count", 20))
+                            if len(series_value) > recent_unbatched:
+                                history_vals = series_value[:-recent_unbatched]
+                                recent_vals = series_value[-recent_unbatched:]
+                                
+                                # Aggregate history
+                                batch_vals = []
+                                for i in range(0, len(history_vals), batch_size):
+                                    batch = history_vals[i:i+batch_size]
+                                    # Filter Nones for averaging
+                                    valid_batch = [v for v in batch if v is not None and isinstance(v, (int, float))]
+                                    if valid_batch:
+                                        avg_val = sum(valid_batch) / len(valid_batch)
+                                        batch_vals.append(self._format_value(avg_val))
+                                    else:
+                                        # batch_vals.append("null") # Skip null batches to save space
+                                        pass
+                            
+                            if batch_vals:
+                                formatted_key = self._format_series_key(label, series_key)
+                                lines.append(f"{formatted_key} (Batched x{batch_size}): {', '.join(batch_vals)}")
+                            
+                            # Recent Raw
+                            recent_valid = [v for v in recent_vals if v is not None]
+                            if recent_valid:
+                                recent_str = ", ".join([self._format_value(v) for v in recent_valid])
+                                lines.append(f"  Recent (Raw, {len(recent_valid)} values): {recent_str}")
+                            else:
+                                # Not enough for batching
+                                valid_vals = [v for v in series_value if v is not None]
+                                recent_str = ", ".join([self._format_value(v) for v in valid_vals[-20:]])
+                                formatted_key = self._format_series_key(label, series_key)
+                                lines.append(f"{formatted_key}: {recent_str}")
+                        
+                        elif summary_only:
                             recent_val = next((v for v in reversed(series_value) if v is not None), None)
+                            formatted_key = self._format_series_key(label, series_key)
                             if len(non_none_vals) > 1:
                                 min_val = min(non_none_vals)
                                 max_val = max(non_none_vals)
-                                lines.append(f"{series_key}: Recent={recent_val}, Min={min_val}, Max={max_val}, Count={len(non_none_vals)}/{len(series_value)}")
+                                lines.append(f"{formatted_key}: Recent={recent_val}, Min={min_val}, Max={max_val}, Count={len(non_none_vals)}/{len(series_value)}")
                             else:
-                                lines.append(f"{series_key}: {recent_val} (1 value)")
+                                lines.append(f"{formatted_key}: {recent_val} (1 value)")
                         else:
                             # Always limit to recent_count (no option to show all values)
+                            formatted_key = self._format_series_key(label, series_key)
                             if len(series_value) > recent_count:
                                 display_vals = series_value[-recent_count:]
-                                lines.append(f"{series_key} (last {len(display_vals)} of {len(series_value)} values):")
+                                lines.append(f"{formatted_key} (last {len(display_vals)} of {len(series_value)} values):")
                             else:
                                 display_vals = series_value
-                                lines.append(f"{series_key} ({len(series_value)} values):")
+                                lines.append(f"{formatted_key} ({len(series_value)} values):")
                             
                             valid_display = [v for v in display_vals if v is not None]
                             if valid_display:
@@ -425,23 +587,58 @@ class IndicatorDataSynthesizer(Base):
                 if not non_none_values:
                     continue
                 
-                if summary_only:
+                if batch_size > 1:
+                    # BATCHING LOGIC for top-level series
+                    # First, limit to recent_count
+                    if len(value) > recent_count:
+                        value = value[-recent_count:]
+                        
+                    recent_unbatched = int(self.params.get("recent_unbatched_count", 20))
+                    if len(value) > recent_unbatched:
+                        history_vals = value[:-recent_unbatched]
+                        recent_vals = value[-recent_unbatched:]
+                        
+                        batch_vals = []
+                        for i in range(0, len(history_vals), batch_size):
+                            batch = history_vals[i:i+batch_size]
+                            valid_batch = [v for v in batch if v is not None and isinstance(v, (int, float))]
+                            if valid_batch:
+                                avg_val = sum(valid_batch) / len(valid_batch)
+                                batch_vals.append(self._format_value(avg_val))
+                        
+                        if batch_vals:
+                            formatted_key = self._format_series_key(label, key)
+                            lines.append(f"{formatted_key} (Batched x{batch_size}): {', '.join(batch_vals)}")
+                        
+                        recent_valid = [v for v in recent_vals if v is not None]
+                        if recent_valid:
+                            recent_str = ", ".join([self._format_value(v) for v in recent_valid])
+                            lines.append(f"  Recent (Raw, {len(recent_valid)} values): {recent_str}")
+                    else:
+                        valid_vals = [v for v in value if v is not None]
+                        recent_str = ", ".join([self._format_value(v) for v in valid_vals[-20:]])
+                        formatted_key = self._format_series_key(label, key)
+                        lines.append(f"{formatted_key}: {recent_str}")
+
+                elif summary_only:
                     # Summary mode: Only show statistics, no individual values
                     recent_val = next((v for v in reversed(value) if v is not None), None)
+                    formatted_key = self._format_series_key(label, key)
                     if len(non_none_values) > 1:
                         min_val = min(non_none_values)
                         max_val = max(non_none_values)
-                        lines.append(f"{key}: Recent={recent_val}, Min={min_val}, Max={max_val}, Count={len(non_none_values)}/{len(value)}")
+                        lines.append(f"{formatted_key}: Recent={recent_val}, Min={min_val}, Max={max_val}, Count={len(non_none_values)}/{len(value)}")
                     else:
-                        lines.append(f"{key}: {recent_val} (1 value)")
+                        lines.append(f"{formatted_key}: {recent_val} (1 value)")
                 else:
                     # Full mode: Show last N values + stats (svens-branch style)
+                    formatted_key = self._format_series_key(label, key)
                     if len(value) > recent_count:
                         display_values = value[-recent_count:]
-                        lines.append(f"{key} (last {len(display_values)} of {len(value)} values):")
+                        lines.append(f"{formatted_key} (last {len(display_values)} of {len(value)} values):")
                     else:
                         display_values = value
-                        lines.append(f"{key} ({len(value)} values):")
+                        lines.append(f"{formatted_key} ({len(value)} values):")
                     
                     # Show individual values (svens-branch style)
                     valid_display = [v for v in display_values if v is not None]
@@ -503,7 +700,7 @@ class IndicatorDataSynthesizer(Base):
         # Check if it's an IndicatorResult with indicator_type field
         if self._is_indicator_result(data):
             indicator_type = data.get("indicator_type", "")
-            if indicator_type:
+            if indicator_type and isinstance(indicator_type, str):
                 # Map common indicator types to readable names
                 type_map = {
                     "HURST": "Hurst Spectral Analysis Oscillator",
@@ -559,16 +756,25 @@ class IndicatorDataSynthesizer(Base):
         
         return "Indicator Data"
 
-    def _format_generic_indicator(self, data: Any, label: str | None = None, recent_count: int = 20, input_name: str | None = None, summary_only: bool = False, max_symbols: int = 10) -> str:
+    def _format_generic_indicator(self, data: Any, label: str | None = None, recent_count: int = 20, input_name: str | None = None, summary_only: bool = False, max_symbols: int = 10, batch_size: int = 1) -> str:
         """Format generic indicator data, auto-detecting structure."""
         if data is None:
             return ""
 
         # ULTRA-AGGRESSIVE: Force summary_only when recent_count is very small to prevent token explosion
-        # With 20 symbols x 10 series x 5 bars x detailed formatting = MILLIONS of chars!
-        if recent_count <= 5 and not summary_only:
+        # BUT: If batching is active (batch_size > 1), we effectively "summarize" via batching, so we can skip this override
+        if recent_count <= 5 and not summary_only and batch_size <= 1:
             logger.warning(f"🔧 _format_generic_indicator: Forcing summary_only=True for '{label or 'indicator'}' (recent_count={recent_count} ≤ 5)")
             summary_only = True
+
+        # DEBUG LOGGING
+        struct_type = "unknown"
+        if self._is_indicator_result(data): struct_type = "IndicatorResult"
+        elif self._is_dict_of_series(data): struct_type = "DictOfSeries"
+        elif isinstance(data, dict): struct_type = "Dict"
+        elif isinstance(data, list): struct_type = "List"
+        
+        logger.info(f"🔍 Formatter: Label='{label}', Type={struct_type}, SummaryOnly={summary_only}, RecentCount={recent_count}, BatchSize={batch_size}")
 
         # Auto-detect indicator name if label not provided
         if not label:
@@ -576,35 +782,117 @@ class IndicatorDataSynthesizer(Base):
 
         # Auto-detect structure and format accordingly
         if self._is_indicator_result(data):
-            return self._format_indicator_result(data, True, recent_count)  # Always limit to recent_count in hybrid mode
+            return self._format_indicator_result(data, True, recent_count, summary_only)  # Pass summary_only down
         
         if isinstance(data, dict):
             # Check if it's a dict of series (like hurst_data format)
             if self._is_dict_of_series(data):
                 label_str = label or "INDICATOR DATA"
-                return self._format_dict_of_series(data, label_str, recent_count, summary_only, max_symbols)
+                return self._format_dict_of_series(data, label_str, recent_count, summary_only, max_symbols, batch_size)
             
             # Generic dict - format as key-value pairs
             lines = [f"=== {label.upper() if label else 'INDICATOR DATA'} ==="]
             for key, value in list(data.items())[:20]:  # Limit to first 20 items
                 if isinstance(value, list):
-                    if len(value) > recent_count:
-                        value = value[-recent_count:]
-                    lines.append(f"{key}: {len(value)} values")
-                    if len(value) <= 5:
-                        for v in value:
-                            if v is not None:
-                                lines.append(f"  {v}")
+                    if not value:
+                        formatted_key = self._format_series_key(label or "INDICATOR DATA", key)
+                        lines.append(f"{formatted_key}: []")
+                        continue
+                        
+                    non_none = [v for v in value if v is not None]
+                    
+                    # Determine display mode: Batched, Summary, or Full
+                    formatted_key = self._format_series_key(label or "INDICATOR DATA", key)
+                    if batch_size > 1:
+                        # BATCHED VIEW
+                        lines.append(f"{formatted_key}:")
+                        
+                        # Split into history and recent (similar to OHLCV)
+                        # First, limit to recent_count
+                        if len(value) > recent_count:
+                            value = value[-recent_count:]
+                            
+                        # Ensure we have enough data to batch
+                        recent_unbatched = int(self.params.get("recent_unbatched_count", 20))
+                        if len(value) > recent_unbatched:
+                            history_vals = value[:-recent_unbatched]
+                            recent_vals = value[-recent_unbatched:]
+                            
+                            # Aggregate history
+                            batch_vals = []
+                            for i in range(0, len(history_vals), batch_size):
+                                batch = history_vals[i:i+batch_size]
+                                # Filter Nones for averaging
+                                valid_batch = [v for v in batch if v is not None and isinstance(v, (int, float))]
+                                if valid_batch:
+                                    avg_val = sum(valid_batch) / len(valid_batch)
+                                    batch_vals.append(self._format_value(avg_val))
+                                else:
+                                    batch_vals.append("null")
+                            
+                            if batch_vals:
+                                # Group into lines for readability
+                                lines.append(f"  History (Batched x{batch_size}): {', '.join(batch_vals)}")
+                            
+                            # Recent Raw
+                            recent_valid = [v for v in recent_vals if v is not None]
+                            if recent_valid:
+                                recent_str = ", ".join([self._format_value(v) for v in recent_valid])
+                                lines.append(f"  Recent (Raw, {len(recent_valid)} values): {recent_str}")
+                        else:
+                            # Not enough for batching, fallback to standard recent list
+                            valid_vals = [v for v in value if v is not None]
+                            recent_str = ", ".join([self._format_value(v) for v in valid_vals[-20:]])
+                            lines.append(f"{formatted_key} (Short): {recent_str}")
+
+                    elif summary_only:
+                        # Summary mode: concise stats only
+                        recent = next((v for v in reversed(value) if v is not None), None)
+                        if non_none and len(non_none) > 1 and isinstance(non_none[0], (int, float)):
+                            lines.append(f"{formatted_key}: Recent={recent}, Min={min(non_none):.4f}, Max={max(non_none):.4f}, Count={len(non_none)}")
+                        else:
+                            lines.append(f"{formatted_key}: Recent={recent}, Count={len(value)}")
                     else:
-                        for v in value[:2]:
-                            if v is not None:
-                                lines.append(f"  {v}")
-                        lines.append(f"  ... ({len(value) - 4} more) ...")
-                        for v in value[-2:]:
-                            if v is not None:
-                                lines.append(f"  {v}")
+                        # Full mode: telescoping detail
+                        if len(value) > recent_count:
+                            value = value[-recent_count:]
+                        lines.append(f"{formatted_key}: {len(value)} values")
+                        if len(value) <= 5:
+                            for v in value:
+                                if v is not None:
+                                    lines.append(f"  {self._format_value(v)}")
+                        else:
+                            for v in value[:2]:
+                                if v is not None:
+                                    lines.append(f"  {self._format_value(v)}")
+                            lines.append(f"  ... ({len(value) - 4} more) ...")
+                            for v in value[-2:]:
+                                if v is not None:
+                                    lines.append(f"  {self._format_value(v)}")
+                elif isinstance(value, dict):
+                    # Recursively handle nested dictionaries (e.g. per-symbol data)
+                    # Use _format_dict_of_series if it fits the structure (values are lists)
+                    if self._is_dict_of_series(value):
+                        # Pass key as label
+                        nested_fmt = self._format_dict_of_series(value, key, recent_count, summary_only, max_symbols, batch_size)
+                        # Indent everything for clarity
+                        lines.extend(["  " + l for l in nested_fmt.split('\n')])
+                    else:
+                        lines.append(f"{key}:")
+                        # Generic recursion for other dicts
+                        for k, v in list(value.items())[:10]:
+                            if isinstance(v, dict) and self._is_dict_of_series(v):
+                                # Found a dict of series (e.g. bandpasses)! Format it nicely.
+                                nested_fmt = self._format_dict_of_series(v, k, recent_count, summary_only, max_symbols, batch_size)
+                                # Indent lines
+                                lines.extend(["  " + l for l in nested_fmt.split('\n')])
+                            else:
+                                lines.append(f"  {k}: {self._format_value(v)}")
+                        if len(value) > 10:
+                            lines.append(f"  ... ({len(value) - 10} more)")
                 else:
-                    lines.append(f"{key}: {value}")
+                    formatted_key = self._format_series_key(label or "INDICATOR DATA", key)
+                    lines.append(f"{formatted_key}: {self._format_value(value)}")
             if len(data) > 20:
                 lines.append(f"... ({len(data) - 20} more items)")
             lines.append("")
@@ -628,14 +916,23 @@ class IndicatorDataSynthesizer(Base):
                     lines.append(f"... ({len(data) - 10} more indicators)")
             else:
                 # Generic list
-                display_items = data[-recent_count:] if len(data) > recent_count else data
-                for i, item in enumerate(display_items[:20]):
-                    if isinstance(item, dict):
-                        lines.append(f"  [{i+1}] {json.dumps(item, default=str)[:100]}")
+                if summary_only:
+                     # Summary mode for generic lists
+                    non_none = [v for v in data if v is not None]
+                    recent = next((v for v in reversed(data) if v is not None), None)
+                    if non_none and len(non_none) > 1 and isinstance(non_none[0], (int, float)):
+                         lines.append(f"Summary: Recent={recent}, Min={min(non_none):.4f}, Max={max(non_none):.4f}")
                     else:
-                        lines.append(f"  [{i+1}] {item}")
-                if len(display_items) > 20:
-                    lines.append(f"  ... ({len(display_items) - 20} more)")
+                         lines.append(f"Summary: Recent={recent}")
+                else:
+                    display_items = data[-recent_count:] if len(data) > recent_count else data
+                    for i, item in enumerate(display_items[:20]):
+                        if isinstance(item, dict):
+                            lines.append(f"  [{i+1}] {json.dumps(item, default=str)[:100]}")
+                        else:
+                            lines.append(f"  [{i+1}] {self._format_value(item)}")
+                    if len(display_items) > 20:
+                        lines.append(f"  ... ({len(display_items) - 20} more)")
             
             lines.append("")
             return "\n".join(lines)
@@ -644,26 +941,69 @@ class IndicatorDataSynthesizer(Base):
         return f"=== {label.upper() if label else 'INDICATOR DATA'} ===\n{str(data)}\n\n"
 
     def _format_ohlcv_bundle(self, ohlcv_bundle: dict[AssetSymbol, list[OHLCVBar]], max_bars: int, summary_only: bool = False, max_symbols: int = 5) -> str:
-        """Format OHLCV bundle data."""
+        """Format OHLCV bundle data with telescoping batching support."""
         if not ohlcv_bundle:
             return ""
 
+        batch_size = int(self.params.get("batch_size", 1))
+        recent_unbatched = int(self.params.get("recent_unbatched_count", 10))
+
         lines = ["=== OHLCV PRICE DATA ==="]
+        if batch_size > 1:
+            lines.append(f"(History batched by {batch_size} bars, last {recent_unbatched} bars unbatched)")
         lines.append("")
         
-        # Apply max_symbols limit (svens-branch had no limit, but we cap for safety)
+        # Apply max_symbols limit
         original_symbol_count = len(ohlcv_bundle)
         if original_symbol_count > max_symbols:
             logger.warning(f"IndicatorDataSynthesizer: Limiting OHLCV bundle from {original_symbol_count} to {max_symbols} symbols to reduce token usage.")
             ohlcv_bundle = dict(list(ohlcv_bundle.items())[:max_symbols])
 
         for symbol, bars in ohlcv_bundle.items():
+            # Filter to max_bars first
+            if len(bars) > max_bars:
+                bars = bars[-max_bars:]
+            
             symbol_str = str(symbol)
             lines.append(f"Symbol: {symbol_str}")
             lines.append(f"Total Bars: {len(bars)}")
             
-            if summary_only:
-                # Summary mode: Only show recent price info
+            if batch_size > 1 and len(bars) > recent_unbatched:
+                # Split into history and recent
+                history_bars = bars[:-recent_unbatched]
+                recent_bars = bars[-recent_unbatched:]
+                
+                # Process history batches
+                if history_bars:
+                    lines.append(f"History (Batched x{batch_size}):")
+                    for i in range(0, len(history_bars), batch_size):
+                        batch = history_bars[i:i+batch_size]
+                        if not batch: continue
+                        
+                        # Aggregate batch
+                        try:
+                            batch_open = batch[0].get('open')
+                            batch_close = batch[-1].get('close')
+                            batch_high = max(float(b.get('high', -float('inf'))) for b in batch if b.get('high') is not None)
+                            batch_low = min(float(b.get('low', float('inf'))) for b in batch if b.get('low') is not None)
+                            batch_vol = sum(float(b.get('volume', 0)) for b in batch if b.get('volume') is not None)
+                            
+                            # Format aggregated bar
+                            start_ts = self._format_timestamp(batch[0].get('timestamp', 0))
+                            end_ts = self._format_timestamp(batch[-1].get('timestamp', 0))
+                            lines.append(
+                                f"  {start_ts} -> {end_ts} | O:{batch_open} H:{batch_high:.4f} L:{batch_low:.4f} C:{batch_close} V:{batch_vol:.0f}"
+                            )
+                        except Exception:
+                            lines.append(f"  [Error aggregating batch starting at {i}]")
+
+                # Process recent unbatched bars
+                lines.append(f"Recent (Raw, {len(recent_bars)} bars):")
+                for i, bar in enumerate(recent_bars):
+                    lines.append(f"  [{len(history_bars) + i}] {self._format_ohlcv_bar(bar)}")
+            
+            elif summary_only:
+                # Summary mode: Only show recent price info (ignore batching as we only show stats)
                 if bars:
                     recent_bar = bars[-1]
                     lines.append(f"Recent: {self._format_ohlcv_bar(recent_bar)}")
@@ -671,8 +1011,9 @@ class IndicatorDataSynthesizer(Base):
                         first_bar = bars[0]
                         price_range = f"O:{first_bar.get('open', 'N/A')}-{recent_bar.get('close', 'N/A')}"
                         lines.append(f"Price Range: {price_range}")
+            
             else:
-                # Full mode: Show first 5 + last 5 bars (matches svens-branch exactly)
+                # Standard unbatched formatting (if batch_size=1 or not enough bars)
                 preview_count = min(5, len(bars))
                 lines.append(f"\nFirst {preview_count} bars:")
                 for i, bar in enumerate(bars[:preview_count]):
@@ -681,14 +1022,14 @@ class IndicatorDataSynthesizer(Base):
                 if len(bars) > preview_count * 2:
                     lines.append(f"\n... ({len(bars) - preview_count * 2} bars) ...\n")
                 
-                # Show last few bars (matches svens-branch: last 5)
+                # Show last few bars
                 if len(bars) > preview_count:
                     last_count = min(preview_count, len(bars) - preview_count)
                     lines.append(f"Last {last_count} bars:")
                     for i, bar in enumerate(bars[-last_count:], start=len(bars) - last_count):
                         lines.append(f"  [{i}] {self._format_ohlcv_bar(bar)}")
                 
-                # Summary stats (matches svens-branch)
+                # Summary stats always included
                 if bars:
                     closes = [float(bar.get("close", 0)) for bar in bars if isinstance(bar, dict) and "close" in bar]
                     if closes:
@@ -726,6 +1067,12 @@ class IndicatorDataSynthesizer(Base):
 
     async def _summarize_text(self, text: str) -> str | None:
         """Summarize text using Ollama or OpenRouter. Handles large text by chunking if needed."""
+        # FAILSAFE: If text is astronomically large (e.g. > 2M chars), something went wrong with formatting.
+        # Truncate it aggressively to prevent 1-hour hangs.
+        if len(text) > 2_000_000:
+            logger.error(f"⚠️ SAFETY TRIGGERED: Input text is too huge ({len(text)} chars). Truncating to 1M chars to prevent hang.")
+            text = text[:1_000_000] + "\n\n[TRUNCATED DUE TO EXCESSIVE LENGTH]"
+
         logger.warning(f"🔍 DEBUG _summarize_text: ENTERED with text length {len(text)} chars")
         summarization_mode = str(self.params.get("summarization_mode", "ollama")).lower()
         model = str(self.params.get("summarization_model", "qwen2.5:7b"))  # Default model (updated to match default_params)
@@ -737,13 +1084,22 @@ class IndicatorDataSynthesizer(Base):
         
         logger.warning(f"🔍 DEBUG _summarize_text: mode={summarization_mode}, model={model}, params={self.params.get('summarization_model')}")
         
-        summarization_prompt = """You are a financial data analyst. Summarize the following indicator data, focusing on:
-- Key trends and patterns
-- Recent signal changes
-- Critical values and crossovers
-- Overall market direction
+        summarization_prompt = """You are a financial data analyst. Summarize the following indicator data.
 
-Keep the summary concise but comprehensive. Preserve important numerical values and signal states.
+CRITICAL INSTRUCTIONS:
+1. ANALYZE ONLY THE PROVIDED DATA. Do NOT mention standard indicators like RSI, MACD, or Bollinger Bands unless they are explicitly present in the text below.
+2. If the data contains specific indicators like "Hurst", "MESA", "Composite", or "Bandpasses", focus your analysis strictly on those.
+3. Look for alignment (confluence) between different signals in the provided data.
+4. Identify key trends (rising/falling values in the lists).
+
+Focus on:
+- Key trends and patterns in the values provided
+- Recent signal changes (look at the 'Recent' values vs 'History')
+- Critical values and crossovers based on the numbers shown
+- Overall market direction implied by THIS specific data
+
+Keep the summary concise but comprehensive. Preserve important numerical values.
+IMPORTANT: You must respond in ENGLISH only.
 """
         
         # Estimate text size - adjust chunk size based on model context window
@@ -757,8 +1113,10 @@ Keep the summary concise but comprehensive. Preserve important numerical values 
             MAX_CHUNK_TOKENS = 800000  # Qwen 2.5-1M has 1M context window
             logger.info("Using Qwen 2.5-1M model with 1M token context window")
         elif "qwen2.5" in model_name or "qwen3" in model_name:
-            MAX_CHUNK_TOKENS = 100000  # Qwen 2.5/3 standard models have 128k context
-            logger.info("Using Qwen model with 128k token context window")
+            # Default 100k-token chunks take >5 min on CPU-only boxes and often hit the
+            # 300-second HTTP timeout.  Empirically 20 k-token chunks finish in ~60 s.
+            MAX_CHUNK_TOKENS = 20000  # keep below 20 k to avoid Ollama timeouts
+            logger.info("Using Qwen model (chunk size capped at 20 k tokens for speed)")
         elif "qwen2" in model_name:
             MAX_CHUNK_TOKENS = 30000  # Qwen 2 has 32k context
             logger.info("Using Qwen 2 model with 32k token context window")
@@ -995,7 +1353,8 @@ Keep the summary concise but comprehensive. Preserve important numerical values 
     async def _summarize_chunk(self, text: str, prompt: str, ollama_host: str, model: str) -> str | None:
         """Summarize a single chunk of text using Ollama."""
         try:
-            async with httpx.AsyncClient(timeout=300.0) as client:  # Longer timeout for large chunks
+            # Increase timeout to 10 min to cope with occasional bursts while still keeping a cap
+            async with httpx.AsyncClient(timeout=600.0) as client:
                 response = await client.post(
                     f"{ollama_host}/api/chat",
                     json={
@@ -1111,6 +1470,15 @@ Keep the summary concise but comprehensive. Preserve important numerical values 
         summary_only_default = False if enable_summarization else True  # Show data if summarization will compress it
         summary_only = self.params.get("summary_only", summary_only_default) or format_style == "summary"
         
+        # CRITICAL OVERRIDE: Force summary_only=True if many symbols are present to prevent 20MB text explosion.
+        # This overrides user setting to ensure system stability.
+        # EXCEPTION: If batching is enabled (batch_size > 1), we are already compressing history, so we can skip this force.
+        batch_size_param = int(self.params.get("batch_size", 1))
+        total_symbols_check = len(ohlcv_bundle) if ohlcv_bundle else 0
+        if total_symbols_check > 5 and not summary_only and batch_size_param <= 1:
+            logger.warning(f"⚠️ IndicatorDataSynthesizer: Forcing summary_only=True because total_symbols={total_symbols_check} > 5 and batching is disabled. This prevents massive token usage.")
+            summary_only = True
+        
         # Log current settings for debugging - CRITICAL DEBUG
         logger.warning(
             f"🔍 IndicatorDataSynthesizer DEBUG: enable_summarization={enable_summarization}, "
@@ -1156,17 +1524,29 @@ Keep the summary concise but comprehensive. Preserve important numerical values 
         effective_ohlcv_bars = ohlcv_max_bars
         total_symbols = len(ohlcv_bundle) if ohlcv_bundle else 0
         
+        # Check if batching is enabled
+        batch_size = int(self.params.get("batch_size", 1))
+        
         if total_symbols > 20:  # Many symbols detected
-            # With 20+ symbols, cap at 20 bars max to prevent millions of tokens
-            max_bars_for_many_symbols = 20
-            if recent_bars_count > max_bars_for_many_symbols:
-                effective_recent_bars = max_bars_for_many_symbols
-                logger.warning(
-                    f"🔄 IndicatorDataSynthesizer: Auto-reducing bars from {recent_bars_count} to {effective_recent_bars} "
-                    f"due to {total_symbols} symbols (>20 symbols triggers auto-reduction to prevent token explosion)"
-                )
-            if ohlcv_max_bars > max_bars_for_many_symbols:
-                effective_ohlcv_bars = max_bars_for_many_symbols
+            # With 20+ symbols, we usually cap bars. But if batching is ON, we can allow more history!
+            if batch_size > 1:
+                # Batching is active: Allow full history, but maybe cap at 500 to be safe
+                if recent_bars_count > 500:
+                    effective_recent_bars = 500
+                    logger.info(f"🔄 IndicatorDataSynthesizer: Cap bars at 500 (batching active, so 500 is fine)")
+                else:
+                    logger.info(f"✨ IndicatorDataSynthesizer: Batching active (size {batch_size}), keeping full {recent_bars_count} bars history.")
+            else:
+                # No batching: Aggressive reduction needed
+                max_bars_for_many_symbols = 20
+                if recent_bars_count > max_bars_for_many_symbols:
+                    effective_recent_bars = max_bars_for_many_symbols
+                    logger.warning(
+                        f"🔄 IndicatorDataSynthesizer: Auto-reducing bars from {recent_bars_count} to {effective_recent_bars} "
+                        f"due to {total_symbols} symbols (Enable 'Batch Size' > 1 to avoid this reduction!)"
+                    )
+                if ohlcv_max_bars > max_bars_for_many_symbols:
+                    effective_ohlcv_bars = max_bars_for_many_symbols
         elif total_symbols > 10:  # Moderate number of symbols
             # With 10-20 symbols, cap at 30 bars max
             max_bars_for_moderate_symbols = 30
@@ -1178,6 +1558,9 @@ Keep the summary concise but comprehensive. Preserve important numerical values 
                 )
             if ohlcv_max_bars > max_bars_for_moderate_symbols:
                 effective_ohlcv_bars = max_bars_for_moderate_symbols
+
+        # Log formatting details
+        logger.info(f"🔍 IndicatorDataSynthesizer: Formatting with batch_size={self.params.get('batch_size')}, recent_unbatched={self.params.get('recent_unbatched_count')}, max_symbols={max_symbols}, recent_bars={recent_bars_count}")
 
         if format_style in ("readable", "summary"):
             # Human-readable format (summary mode is a subset of readable)
@@ -1192,6 +1575,7 @@ Keep the summary concise but comprehensive. Preserve important numerical values 
                         input_names.append(key)
                 
                 total_indicators = len([d for d in indicator_data_list if d is not None])
+                ind_text_len = 0
                 for i, indicator_data in enumerate(indicator_data_list):
                     if indicator_data is None:
                         continue
@@ -1205,11 +1589,17 @@ Keep the summary concise but comprehensive. Preserve important numerical values 
                         progress = 20.0 + (i / total_indicators) * 20.0  # 20-40% for indicators
                         self._emit_progress(ProgressState.UPDATE, progress, f"Formatting {indicator_name or f'indicator {i+1}'}...")
                     
+                    # Force summary_only=True if we have many symbols (>5) to prevent token explosion
+                    force_summary = total_symbols > 5
+                    
+                    # Call _format_generic_indicator with all parameters including batch_size
                     formatted_text = self._format_generic_indicator(
-                        indicator_data, indicator_name, effective_recent_bars, input_name, summary_only, max_symbols
+                        indicator_data, indicator_name, effective_recent_bars, input_name, summary_only, max_symbols, batch_size
                     )
+                        
                     if formatted_text:
                         formatted_sections.append(formatted_text)
+                        ind_text_len += len(formatted_text)
                     
                     # Store in combined_data with meaningful key
                     # Use detected name or fallback to numbered key
@@ -1220,12 +1610,14 @@ Keep the summary concise but comprehensive. Preserve important numerical values 
                         combined_data[f"indicator_{i+1}"] = indicator_data  # Also keep numbered key for compatibility
                     else:
                         combined_data[f"indicator_{i+1}"] = indicator_data
+                
+                logger.info(f"🔍 IndicatorDataSynthesizer: Indicator data formatted size: {ind_text_len} chars (Force Summary: {force_summary})")
 
             if include_ohlcv and ohlcv_bundle:
                 self._emit_progress(ProgressState.UPDATE, 45.0, f"Formatting OHLCV data ({len(ohlcv_bundle)} symbols)...")
-                formatted_sections.append(
-                    self._format_ohlcv_bundle(ohlcv_bundle, effective_ohlcv_bars, summary_only, max_symbols)
-                )
+                ohlcv_text = self._format_ohlcv_bundle(ohlcv_bundle, effective_ohlcv_bars, summary_only, max_symbols)
+                formatted_sections.append(ohlcv_text)
+                logger.info(f"🔍 IndicatorDataSynthesizer: OHLCV data formatted size: {len(ohlcv_text)} chars")
                 combined_data["ohlcv_bundle"] = {
                     str(symbol): bars for symbol, bars in ohlcv_bundle.items()
                 }
@@ -1377,8 +1769,10 @@ Keep the summary concise but comprehensive. Preserve important numerical values 
                         input_name = input_names[i] if i < len(input_names) else None
                         indicator_name = self._detect_indicator_name(indicator_data, input_name)
                         logger.warning(f"🔍 DEBUG: Formatting indicator {i} ({indicator_name}) with recent_detail_bars={recent_detail_bars}")
+                        # Force summary_only=True if we have many symbols (>5), otherwise 5 bars of detail is still too big
+                        force_summary = total_symbols > 5
                         detail_text = self._format_generic_indicator(
-                            indicator_data, indicator_name, recent_detail_bars, input_name, False, max_symbols  # summary_only=False, but fewer bars
+                            indicator_data, indicator_name, recent_detail_bars, input_name, force_summary, max_symbols
                         )
                         logger.warning(f"🔍 DEBUG: Indicator {i} formatted to {len(detail_text) if detail_text else 0} chars")
                         if detail_text:
@@ -1516,8 +1910,12 @@ Keep the summary concise but comprehensive. Preserve important numerical values 
                         logger.info(f"   ... ({len(summarized_text.split('\n')) - 20} more lines)")
                     
                     self._emit_progress(ProgressState.UPDATE, 90.0, f"Summarization complete ({reduction_pct:.1f}% reduction)")
-                    formatted_text = summarized_text
-                    estimated_tokens = summarized_tokens
+                    
+                    # APPEND Summary to Data instead of replacing it
+                    # This gives the LLM both the high-level summary AND the hard data (condensed) to verify.
+                    formatted_text = f"=== AI EXECUTIVE SUMMARY ===\n{summarized_text}\n\n=== DETAILED INDICATOR DATA ===\n{formatted_text}"
+                    
+                    estimated_tokens = len(formatted_text) // 4
                     formatted_text_size = len(formatted_text)
                 else:
                     logger.warning(
