@@ -1,13 +1,37 @@
 # Chart Analysis Prompt - Bullish Setup Identification
 
-Please analyze ALL chart images provided. Each chart shows a different symbol with the most recent volume, EMAs, Hurst data, MESA stochastics, Cycle Channel Oscillator (CCO), and Volume-by-Price (VBP) bars. Also included is longer-term Hurst, MESA, CCO, and OHLCV data.
+## CRITICAL: DATA ANALYSIS FIRST
+
+**PRIMARY ANALYSIS METHOD**: You will receive structured numeric data values for each symbol, formatted as text. This data includes:
+- **Most recent indicator values** (Hurst Composite, MESA Stochastic values, CCO Fast/Slow Oscillators, EMA values, Volume, VBP levels)
+- **Historical data** (batched summaries and recent detailed bars)
+- **Time-series data** showing trends and recent changes
+
+**ANALYZE THE NUMERIC DATA VALUES FIRST** - Use the structured data to determine indicator values, trends, crossovers, and signal strength. The numeric values are the PRIMARY source of truth.
+
+**Chart images are supplementary** - Charts can help visualize patterns, but your analysis MUST be based on the actual numeric data values provided in the formatted text data. Do NOT rely solely on visual chart interpretation.
+
+**For each symbol, you will have:**
+- Structured indicator data with numeric values (Hurst, MESA, CCO, EMAs, Volume, VBP)
+- Most recent values (last 1-50 bars depending on configuration)
+- Historical summaries (batched data for longer-term context)
+- Chart images (for visual reference, but analyze data values first)
+
+**CRITICAL**: When analyzing indicators, use the ACTUAL NUMERIC VALUES from the data, not just visual chart patterns. For example:
+- Check MESA Stochastic VALUES (0.0-1.0) from the data, not just chart position
+- Check CCO Fast/Slow Oscillator VALUES from the data, not just chart lines
+- Check Hurst Composite VALUE (positive/negative) from the data, not just chart direction
+- Compare EMA VALUES numerically, not just visually
+- Use VBP price levels and volume percentages from the data, not just bar thickness
+
+Please analyze ALL symbols provided. Each symbol includes structured numeric data with the most recent volume, EMAs, Hurst data, MESA stochastics, Cycle Channel Oscillator (CCO), and Volume-by-Price (VBP) data. Also included is longer-term Hurst, MESA, CCO, and OHLCV data. Chart images are provided for visual reference but analyze the numeric data values first.
 
 ## CRITICAL OBJECTIVE
-After analyzing all symbols, select and report ONLY the TOP 3 BEST BULLISH (LONG) setups for short-term trading (next few days to 1-2 weeks maximum).
+After analyzing all symbols, select and report ONLY the TOP 3 BEST BULLISH (LONG) setups for short-term trading (next few hours to 1-2 days maximum).
 
 **CRITICAL: Look ONLY for BULLISH (LONG) setups. Focus on signals indicating upward price movement. Rank the top 3 best bullish opportunities based on signal strength.**
 
-**CRITICAL: Focus on VERY SHORT-TERM signals (next few days to 1-2 weeks maximum). Prioritize immediate momentum, recent crosses, and current price action over longer-term patterns.**
+**CRITICAL: Focus on VERY SHORT-TERM signals (next few hours to 1-2 days maximum). Prioritize immediate momentum, recent crosses, and current price action over longer-term patterns.**
 
 ## PRIMARY INDICATORS (Required - Use These to Determine Bullish/Bearish)
 
@@ -22,7 +46,9 @@ These three indicators are REQUIRED and carry PRIMARY WEIGHT in determining if a
 
 ### 2. MESA Stochastic Multi Length - PRIMARY INDICATOR
 
-**CHECK RIGHT SIDE OF CHART (most recent bars) - this is what matters for next few hours**
+**CHECK MOST RECENT DATA VALUES (last 1-3 bars) - this is what matters for next few hours**
+
+**CRITICAL**: Use the ACTUAL NUMERIC VALUES from the structured data, not just visual chart patterns. Look at the most recent MESA1, MESA2, MESA3, MESA4 values and their trigger line values from the data.
 
 - **MESA Stochastic values range from 0.0 to 1.0** (similar to standard stochastic oscillator)
 - **IMMEDIATE CROSSOVER SIGNALS (Bullish - HIGHEST PRIORITY):**
@@ -57,7 +83,9 @@ These three indicators are REQUIRED and carry PRIMARY WEIGHT in determining if a
 
 ### 3. Cycle Channel Oscillator (CCO) - PRIMARY INDICATOR
 
-**CHECK RIGHT SIDE OF CHART (current values) - this determines next few hours direction**
+**CHECK MOST RECENT DATA VALUES (current values) - this determines next few hours direction**
+
+**CRITICAL**: Use the ACTUAL NUMERIC VALUES from the structured data. Look at the most recent Fast Osc and Slow Osc values from the data and compare them numerically.
 
 - **Fast Oscillator**: Price position within medium-term channel (0.0 to 1.0 range) - CURRENT value matters most
 - **Slow Oscillator**: Short cycle midline position within medium-term channel (0.0 to 1.0 range) - CURRENT value matters most
@@ -103,12 +131,12 @@ These three indicators are REQUIRED and carry PRIMARY WEIGHT in determining if a
   * Use EMAs to confirm direction suggested by PRIMARY indicators, not as primary determinant
   * Recent crosses are MORE VALUABLE than perfect butterfly patterns for short-term trading
 
-- **Verify using numeric values** from annotations - focus on RIGHT SIDE of chart (most recent)
+- **Verify using numeric values** from the structured data - focus on MOST RECENT VALUES (last 1-5 bars) from the data
 
 ### 5. Volume Analysis (Secondary - Use at Discretion)
 
 - **RECENT VOLUME SPIKES**: Volume spikes in last 1-5 bars = Strong immediate signal
-- **Volume supporting CURRENT price movement** (right side of chart) = Confirmation for next few hours
+- **Volume supporting CURRENT price movement** (most recent bars from data) = Confirmation for next few hours
 - **Volume relative to recent averages** (last 20 bars) - above average = stronger signal
 - **Volume divergence**: Decreasing volume on price moves = weakening momentum (bearish for continuation)
 - **Current volume vs price**: High volume + price up = Strong buy signal, High volume + price down = Strong sell signal
@@ -116,8 +144,14 @@ These three indicators are REQUIRED and carry PRIMARY WEIGHT in determining if a
 
 ### 6. Volume-by-Price (VBP) Analysis (Secondary - Use at Discretion)
 
-- **VBP bars appear as horizontal bars** on the LEFT SIDE of the price chart, extending into the chart area
+- **VBP data includes**: Price levels, volume percentages, Point of Control (POC), Value Area High/Low, and volume distribution
 - **CURRENT PRICE POSITION (RIGHT NOW) - MOST IMPORTANT:**
+
+**CRITICAL**: Use the ACTUAL NUMERIC VALUES from the VBP data:
+- Check POC (Point of Control) price level from the data
+- Check Value Area High/Low levels from the data  
+- Check volume percentages at each price level from the data
+- Compare current price (from OHLCV data) to VBP price levels numerically
   * Price ABOVE big VBP bars RIGHT NOW = Strong support below, bullish for next few hours
   * Price BELOW big VBP bars RIGHT NOW = Strong resistance above, bearish for next few hours
   * Price IN low-volume zone RIGHT NOW = Easy movement potential (can go either direction quickly)
@@ -140,7 +174,7 @@ Follow these steps in order. Do NOT skip ahead or analyze symbols that don't pas
 
 ### STEP 1: QUICK SCREENING
 
-Review ALL symbols present in the provided charts/images. For each symbol, quickly check PRIMARY indicators:
+Review ALL symbols present in the provided data. For each symbol, quickly check PRIMARY indicators using the ACTUAL NUMERIC VALUES from the structured data:
 
 **BULLISH SIGNALS (must have these PRIMARY indicators to pass filter):**
 - **Hurst Composite**: Above zero = BULLISH momentum (or trending upward)
@@ -212,24 +246,24 @@ For each symbol that passed the bullish filter, provide complete analysis:
 - Recent trend: [Direction in last 1-5 bars]
 
 **MESA Stochastic Multi Length (PRIMARY):**
-- MESA1: [Current value, position relative to trigger, trend direction]
-- MESA2: [Current value, position relative to trigger, trend direction]
-- MESA3: [Current value, position relative to trigger, trend direction]
-- MESA4: [Current value, position relative to trigger, trend direction]
-- Crossovers/Crossunders: [Any crossovers in top half (PUMP) or crossunders in bottom half (DUMP)?]
-- Good Entry Signals: [Are MESA lines turning upward from low points? Multiple lines aligning upward?]
-- Bad Entry Signals: [Are MESA lines turning downward from high points? Multiple lines aligning downward?]
-- Overbought/Oversold: [Any values near 1.0 (overbought) or 0.0 (oversold)?]
-- Multi-Length Alignment: [Are all MESA lines (1-4) aligned in same direction? Any divergence?]
-- Assessment: [Bullish/Neutral/Bearish signal strength based on crossover positions, entry signals, and alignment]
+- MESA1: [Current VALUE from data (0.0-1.0), trigger VALUE, trend direction from recent values]
+- MESA2: [Current VALUE from data (0.0-1.0), trigger VALUE, trend direction from recent values]
+- MESA3: [Current VALUE from data (0.0-1.0), trigger VALUE, trend direction from recent values]
+- MESA4: [Current VALUE from data (0.0-1.0), trigger VALUE, trend direction from recent values]
+- Crossovers/Crossunders: [Compare MESA values to trigger values numerically - any crossovers above 0.5 (PUMP) or crossunders below 0.5 (DUMP)?]
+- Good Entry Signals: [Are MESA VALUES increasing from low points (<0.5)? Multiple lines VALUES aligning upward?]
+- Bad Entry Signals: [Are MESA VALUES decreasing from high points (>0.5)? Multiple lines VALUES aligning downward?]
+- Overbought/Oversold: [Any VALUES near 1.0 (overbought) or 0.0 (oversold) from the data?]
+- Multi-Length Alignment: [Compare all MESA VALUES (1-4) - are they all aligned in same direction? Any divergence?]
+- Assessment: [Bullish/Neutral/Bearish signal strength based on numeric crossover positions, entry signals, and alignment]
 
 **Cycle Channel Oscillator - CCO (PRIMARY):**
-- Fast Osc: [Current value, position in channel (0.0-1.0), trend direction]
-- Slow Osc: [Current value, position in channel (0.0-1.0), trend direction]
-- Relationship: [Fast Osc ABOVE Slow Osc = BULLISH, Fast Osc BELOW Slow Osc = BEARISH]
-- Trend: [Both oscillators trending upward = bullish, both trending downward = bearish]
-- Extreme Conditions: [Any values above 1.0 (overbought) or below 0.0 (oversold)]
-- Assessment: [Bullish/Neutral/Bearish signal strength based on oscillator positions and relationship]
+- Fast Osc: [Current VALUE from data (0.0-1.0 range), trend direction from recent values]
+- Slow Osc: [Current VALUE from data (0.0-1.0 range), trend direction from recent values]
+- Relationship: [Compare Fast Osc VALUE to Slow Osc VALUE numerically - Fast Osc > Slow Osc = BULLISH, Fast Osc < Slow Osc = BEARISH]
+- Trend: [Compare recent Fast/Slow Osc VALUES - both trending upward = bullish, both trending downward = bearish]
+- Extreme Conditions: [Any VALUES above 1.0 (overbought) or below 0.0 (oversold) from the data?]
+- Assessment: [Bullish/Neutral/Bearish signal strength based on numeric oscillator positions and relationship]
 
 **SECONDARY INDICATORS (Use at Discretion - For Confirmation Only):**
 
@@ -247,11 +281,13 @@ For each symbol that passed the bullish filter, provide complete analysis:
 - [Use volume only to confirm momentum suggested by PRIMARY indicators]
 
 **Volume-by-Price (VBP) Analysis (Secondary - Use at Discretion):**
-- VBP Bar Distribution: [Describe the pattern - clustered big bars, scattered bars, gaps, etc.]
-- Big Bars (Support/Resistance): [Identify price levels with thick VBP bars and their significance]
-- Current Price Position: [Where is current price relative to VBP bars? Above/below big bars? In low-volume zone?]
-- Support/Resistance Assessment: [Strong support below / Strong resistance above / Free flow zone / Approaching key level]
-- Assessment: [Use VBP only to identify support/resistance levels, not as primary determinant]
+- POC (Point of Control): [Price level VALUE from VBP data - highest volume price level]
+- Value Area High: [Price level VALUE from VBP data]
+- Value Area Low: [Price level VALUE from VBP data]
+- Top Volume Levels: [List price levels with highest volume percentages from VBP data]
+- Current Price Position: [Compare current price VALUE (from OHLCV) to POC and Value Area levels numerically - above/below? In low-volume zone?]
+- Support/Resistance Assessment: [Strong support below / Strong resistance above / Free flow zone / Approaching key level - based on numeric price comparisons]
+- Assessment: [Use VBP numeric price levels and volume percentages to identify support/resistance levels, not as primary determinant]
 
 **Overall Assessment (PRIMARY Indicators First - BULLISH ONLY):**
 - **Direction**: This MUST be a STRONG BULLISH (LONG) setup based on PRIMARY indicators

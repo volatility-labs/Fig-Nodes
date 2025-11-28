@@ -1662,12 +1662,14 @@ IMPORTANT: You must respond in ENGLISH only.
             
             # Check if recursive summarization is enabled
             recursive_summarization = self.params.get("recursive_summarization", False)
+            logger.warning(f"🔍 DEBUG: recursive_summarization={recursive_summarization}, text_tokens={text_tokens:,}, MAX_CHUNK_TOKENS={MAX_CHUNK_TOKENS:,}")
             
             # Chunk large text if needed
             if text_tokens > MAX_CHUNK_TOKENS:
                 chunks = self._chunk_text(text, MAX_CHUNK_TOKENS * 4)
                 num_chunks = len(chunks)
                 logger.info(f"IndicatorDataSynthesizer: Text is large ({text_tokens:,} tokens), chunking into {num_chunks} chunks for summarization...")
+                logger.warning(f"🔍 DEBUG: Chunking required! {text_tokens:,} tokens > {MAX_CHUNK_TOKENS:,} tokens. Created {num_chunks} chunks.")
                 
                 # Warn if too many chunks (will take very long)
                 if num_chunks > 100:
@@ -1681,6 +1683,7 @@ IMPORTANT: You must respond in ENGLISH only.
                     # Recursive summarization: each chunk incorporates previous summary
                     # M_i = summarize(M_{i-1} + Chunk_i)
                     logger.info("Using recursive summarization mode (better coherence, sequential processing)")
+                    logger.warning(f"🔍 DEBUG: RECURSIVE SUMMARIZATION ACTIVE! Processing {num_chunks} chunks sequentially with memory.")
                     previous_memory = None
                     
                     for i, chunk in enumerate(chunks):
@@ -1740,6 +1743,7 @@ IMPORTANT: You must respond in ENGLISH only.
                     return None
                 else:
                     # Standard parallel summarization: summarize chunks independently, then combine
+                    logger.warning(f"🔍 DEBUG: STANDARD (NON-RECURSIVE) SUMMARIZATION. Processing {num_chunks} chunks in parallel.")
                     summaries = []
                     
                     for i, chunk in enumerate(chunks):
@@ -1772,6 +1776,7 @@ IMPORTANT: You must respond in ENGLISH only.
                     return None
             else:
                 # Single chunk - summarize directly
+                logger.warning(f"🔍 DEBUG: Single chunk mode (no chunking needed). {text_tokens:,} tokens <= {MAX_CHUNK_TOKENS:,} tokens. recursive_summarization has no effect here.")
                 self._emit_progress(ProgressState.UPDATE, 60.0, f"Summarizing single chunk (~{text_tokens:,} tokens)...")
                 return await self._summarize_chunk(text, summarization_prompt, ollama_host, effective_model)
         
