@@ -1745,7 +1745,11 @@ export class LGraphCanvas implements CustomEventDispatcher<LGraphCanvasEventMap>
     this._mousecancel_callback = this.processMouseCancel.bind(this)
 
     canvas.addEventListener("pointerdown", this._mousedown_callback, true)
-    canvas.addEventListener("wheel", this._mousewheel_callback, false)
+    // Use { passive: false } to allow preventDefault() for wheel events (required for trackpad scrolling)
+    // Listen on canvas for normal cases
+    canvas.addEventListener("wheel", this._mousewheel_callback, { passive: false, capture: false })
+    // Also listen on document as fallback for Mac trackpad (wheel events might not always reach canvas)
+    document.addEventListener("wheel", this._mousewheel_callback, { passive: false, capture: true })
 
     canvas.addEventListener("pointerup", this._mouseup_callback, true)
     canvas.addEventListener("pointermove", this._mousemove_callback)
@@ -1788,6 +1792,7 @@ export class LGraphCanvas implements CustomEventDispatcher<LGraphCanvasEventMap>
     canvas.removeEventListener("pointerup", this._mouseup_callback!)
     canvas.removeEventListener("pointerdown", this._mousedown_callback!)
     canvas.removeEventListener("wheel", this._mousewheel_callback!)
+    document.removeEventListener("wheel", this._mousewheel_callback!, true)
     canvas.removeEventListener("keydown", this._key_callback!)
     document.removeEventListener("keyup", this._key_callback!)
     canvas.removeEventListener("contextmenu", this._doNothing)
@@ -2309,13 +2314,39 @@ export class LGraphCanvas implements CustomEventDispatcher<LGraphCanvasEventMap>
       !pointer.onDrag &&
       this.allow_dragcanvas
     ) {
-      // allow dragging canvas if canvas is not in standard, or read-only (pan mode in standard)
-      if (LiteGraph.canvasNavigationMode !== "standard" || this.read_only) {
+      // Check if middle mouse button or spacebar is pressed for panning
+      const isMiddleButton = e.button === 1
+      const isSpacePressed = e.getModifierState && e.getModifierState('Space')
+      
+      // allow dragging canvas if:
+      // 1. Canvas is not in standard mode, or read-only (pan mode in standard)
+      // 2. Middle mouse button is pressed (pan mode)
+      // 3. Spacebar is held down (pan mode)
+      // 4. In standard mode with left click on background: pan instead of select
+      if (LiteGraph.canvasNavigationMode !== "standard" || this.read_only || isMiddleButton || isSpacePressed) {
         pointer.onClick = () => this.processSelect(null, e)
         pointer.finally = () => this.dragging_canvas = false
         this.dragging_canvas = true
       } else {
-        this.#setupNodeSelectionDrag(e, pointer)
+        // In standard mode: left-click on background
+        // If modifier keys are pressed, create selection rectangle
+        // Otherwise, deselect all nodes (making canvas "selected") and allow panning
+        if (e.ctrlKey || e.metaKey || e.shiftKey) {
+          this.#setupNodeSelectionDrag(e, pointer)
+        } else {
+          // Click on background: deselect all nodes (canvas becomes "selected")
+          // This allows scrolling to pan the canvas (like image nodes)
+          pointer.onClick = () => {
+            this.processSelect(null, e)
+            // Focus canvas to ensure it receives wheel events
+            if (this.canvas && typeof this.canvas.focus === 'function') {
+              this.canvas.focus()
+            }
+          }
+          // Allow drag-to-pan as well
+          pointer.finally = () => this.dragging_canvas = false
+          this.dragging_canvas = true
+        }
       }
     }
   }
@@ -3196,51 +3227,144 @@ export class LGraphCanvas implements CustomEventDispatcher<LGraphCanvasEventMap>
    * Called when a mouse wheel event has to be processed
    */
   processMouseWheel(e: WheelEvent): void {
-    if (!this.graph || !this.allow_dragcanvas) return
+    // Debug: Log immediately at function entry
+    console.log('🔵 processMouseWheel ENTERED:', { 
+      hasGraph: !!this.graph, 
+      allow_dragcanvas: this.allow_dragcanvas,
+      viewport: this.viewport,
+      clientX: e.clientX,
+      clientY: e.clientY,
+      deltaX: e.deltaX,
+      deltaY: e.deltaY
+    })
+    
+    if (!this.graph || !this.allow_dragcanvas) {
+      console.log('❌ processMouseWheel EARLY RETURN: no graph or drag disabled')
+      return
+    }
+
+    // Check if mouse is over canvas viewport (for document-level listener)
+    const pos: Point = [e.clientX, e.clientY]
+    if (this.viewport && !isPointInRect(pos, this.viewport)) {
+      // Mouse is outside canvas viewport - ignore
+      console.log('❌ processMouseWheel EARLY RETURN: outside viewport', { viewport: this.viewport, pos })
+      return
+    }
+    
+    // Also check if event target is within our canvas (for document-level listener)
+    const target = e.target as HTMLElement
+    if (target && this.canvas && !this.canvas.contains(target) && target !== this.canvas) {
+      // Check if mouse is actually over canvas area (might be document-level event)
+      const canvasRect = this.canvas.getBoundingClientRect()
+      if (pos[0] < canvasRect.left || pos[0] > canvasRect.right || 
+          pos[1] < canvasRect.top || pos[1] > canvasRect.bottom) {
+        // Mouse is outside canvas bounds - ignore
+        console.log('❌ processMouseWheel EARLY RETURN: outside canvas bounds', { canvasRect, pos })
+        return
+      }
+    }
+    
+    console.log('✅ processMouseWheel PASSED all checks, proceeding to pan logic')
 
     // TODO: Mouse wheel zoom rewrite
+    // Use deltaY directly (modern browsers) or fallback to wheelDeltaY/detail
     // @ts-expect-error
-    const delta = e.wheelDeltaY ?? e.detail * -60
+    const delta = e.deltaY !== undefined ? e.deltaY : (e.wheelDeltaY ?? e.detail * -60)
 
     this.adjustMouseEvent(e)
+    
+    // Debug: Log wheel event to verify it's being received (enable temporarily for debugging)
+    console.log('Canvas Wheel event:', { 
+      deltaX: e.deltaX, 
+      deltaY: e.deltaY, 
+      delta, 
+      ctrlKey: e.ctrlKey, 
+      shiftKey: e.shiftKey,
+      hasSelectedNodes: Object.keys(this.selected_nodes || {}).length,
+      allow_dragcanvas: this.allow_dragcanvas
+    })
 
-    const pos: Point = [e.clientX, e.clientY]
-    if (this.viewport && !isPointInRect(pos, this.viewport)) return
+    // Check if any nodes are selected
+    const selectedNodes = this.selected_nodes || {}
+    const hasSelectedNode = Object.keys(selectedNodes).length > 0
+    
+    // If nodes are selected, let them handle wheel events via patch (they'll return true if handled)
+    // The patch already checks selected nodes, so if we reach here and nodes are selected,
+    // they didn't handle it, so we can proceed with canvas panning
+    
+    // Check if mouse is over a node - only check if nodes are selected
+    // If canvas background is "selected" (no nodes selected), always pan regardless of mouse position
+    const canvasX = (e as any).canvasX ?? e.clientX
+    const canvasY = (e as any).canvasY ?? e.clientY
+    const nodeAtPos = hasSelectedNode ? this.graph?.getNodeOnPos?.(canvasX, canvasY, this.graph.visible_nodes) : null
+    
+    // If a node is at mouse position and can handle wheel events, let it handle it
+    // But only check this if nodes are selected (when canvas is "selected", always pan)
+    if (hasSelectedNode && nodeAtPos && typeof nodeAtPos.onMouseWheel === 'function') {
+      // Let the node handle it - don't prevent default here
+      return
+    }
+    
+    // Canvas background is "selected" (no nodes selected) - always pan on scroll
+    // This matches image node behavior: click to select, then scroll to pan
 
     let { scale } = this.ds
-
-    if (LiteGraph.canvasNavigationMode === "legacy" || (LiteGraph.canvasNavigationMode === "standard" && e.ctrlKey)) {
+    const shiftPressed = e.shiftKey || (e.getModifierState && e.getModifierState('Shift'))
+    
+    // Match image node behavior exactly: Shift+scroll = zoom, regular scroll = pan
+    // On Mac, browsers auto-set ctrlKey on trackpad pinch gestures, which causes unwanted zoom
+    // Solution: IGNORE ctrlKey/metaKey and ONLY use Shift for zoom (matching image nodes)
+    // This ensures consistent behavior: regular scroll always pans, Shift+scroll zooms
+    
+    if (shiftPressed) {
+      // Shift + scroll: ZOOM (like image nodes)
       if (delta > 0) {
         scale *= this.zoom_speed
       } else if (delta < 0) {
         scale *= 1 / (this.zoom_speed)
       }
       this.ds.changeScale(scale, [e.clientX, e.clientY])
-    } else if (
-      LiteGraph.macTrackpadGestures &&
-      (!LiteGraph.macGesturesRequireMac || navigator.userAgent.includes("Mac"))
-    ) {
-      if (e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) {
-        if (e.deltaY > 0) {
-          scale *= 1 / this.zoom_speed
-        } else if (e.deltaY < 0) {
-          scale *= this.zoom_speed
-        }
-        this.ds.changeScale(scale, [e.clientX, e.clientY])
-      } else if (e.ctrlKey) {
-        scale *= 1 + e.deltaY * (1 - this.zoom_speed) * 0.18
-        this.ds.changeScale(scale, [e.clientX, e.clientY], false)
-      } else if (e.shiftKey) {
-        this.ds.offset[0] -= e.deltaY * 1.18 * (1 / scale)
-      } else {
-        this.ds.offset[0] -= e.deltaX * 1.18 * (1 / scale)
-        this.ds.offset[1] -= e.deltaY * 1.18 * (1 / scale)
+    } else if (LiteGraph.canvasNavigationMode === "legacy") {
+      // Legacy mode: wheel zooms directly (backward compatibility)
+      if (delta > 0) {
+        scale *= this.zoom_speed
+      } else if (delta < 0) {
+        scale *= 1 / (this.zoom_speed)
       }
+      this.ds.changeScale(scale, [e.clientX, e.clientY])
+    } else {
+      // DEFAULT: Regular scroll = PAN (like image nodes)
+      // Always pan when scrolling on background canvas (ignoring ctrlKey/metaKey to prevent Mac trackpad zoom issues)
+      // Pan both directions (up/down and sideways) when scrolling on background
+      // Handle both deltaX and deltaY for trackpad gestures (Mac trackpads can scroll in both directions)
+      const panSpeed = 1.18 * (1 / scale)
+      
+      // Use actual delta values from the event (not wheelDeltaY which might be 0 for horizontal scroll)
+      const deltaX = e.deltaX || 0
+      const deltaY = e.deltaY || 0
+      
+      console.log('🎯 PANNING CANVAS:', { 
+        deltaX, 
+        deltaY, 
+        panSpeed, 
+        scale,
+        oldOffset: [this.ds.offset[0], this.ds.offset[1]]
+      })
+      
+      // Always pan (even with small deltas) to ensure trackpad scrolling works smoothly
+      this.ds.offset[0] -= deltaX * panSpeed
+      this.ds.offset[1] -= deltaY * panSpeed
+      
+      console.log('✅ NEW OFFSET:', [this.ds.offset[0], this.ds.offset[1]])
+      
+      // Force immediate redraw
+      this.#dirty()
     }
 
-    this.graph.change()
-
+    // Prevent default browser scrolling behavior since we're handling it
     e.preventDefault()
+    e.stopPropagation()
+    this.graph.change()
     return
   }
 
