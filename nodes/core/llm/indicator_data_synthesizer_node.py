@@ -21,6 +21,7 @@ from typing import Any
 from core.api_key_vault import APIKeyVault
 from core.types_registry import AssetSymbol, ConfigDict, NodeCategory, OHLCVBar, OHLCVBundle, ProgressState, get_type
 from nodes.base.base_node import Base
+from services.indicator_calculators.vbp_calculator import calculate_vbp
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +79,9 @@ class IndicatorDataSynthesizer(Base):
         "ollama_host": "http://localhost:11434",  # Ollama server URL
         "enable_advanced_analysis": True,  # Enable divergence detection and confluence scoring
         "adaptive_compression": True,  # Enable adaptive recent count based on volatility/asset type
+        "include_vbp_analysis": True,  # Include Volume-by-Price analysis for key support/resistance levels
+        "vbp_bins": 20,  # Number of price bins for VBP histogram (10-100 range)
+        "vbp_dollar_weighted": False,  # Use dollar-weighted volume (volume * price) instead of raw volume
     }
 
     params_meta = [
@@ -225,6 +229,32 @@ class IndicatorDataSynthesizer(Base):
             "label": "Adaptive Compression",
             "description": "Automatically adjust recent bar count based on asset volatility and type (stablecoins get less detail)",
         },
+        {
+            "name": "include_vbp_analysis",
+            "type": "combo",
+            "default": True,
+            "options": [True, False],
+            "label": "Volume Profile Analysis",
+            "description": "Include Volume-by-Price analysis showing Point of Control (POC) and Value Area for key support/resistance levels",
+        },
+        {
+            "name": "vbp_bins",
+            "type": "number",
+            "default": 20,
+            "min": 10,
+            "max": 100,
+            "step": 1,
+            "label": "VBP Bins",
+            "description": "Number of price bins for Volume Profile histogram (more bins = higher resolution, fewer bins = broader levels)",
+        },
+        {
+            "name": "vbp_dollar_weighted",
+            "type": "combo",
+            "default": False,
+            "options": [True, False],
+            "label": "Dollar-Weighted VBP",
+            "description": "Use dollar-weighted volume (volume × price) instead of raw volume for VBP calculations",
+        },
     ]
 
     def _format_timestamp(self, timestamp: int | float) -> str:
@@ -233,6 +263,112 @@ class IndicatorDataSynthesizer(Base):
             dt = datetime.fromtimestamp(timestamp / 1000)
             return dt.strftime("%Y-%m-%d %H:%M:%S")
         return str(timestamp)
+
+    def _detect_bar_interval(self, bars: list[dict[str, Any]]) -> str:
+        """Detect bar interval from timestamps.
+        
+        Returns a human-readable interval string like "1-hour", "5-minute", "1-day", etc.
+        """
+        if len(bars) < 2:
+            return "unknown"
+        
+        # Get timestamps (assume milliseconds)
+        timestamps = []
+        for bar in bars[:min(10, len(bars))]:  # Check first 10 bars for consistency
+            ts = bar.get("timestamp", 0)
+            if isinstance(ts, (int, float)) and ts > 1e10:
+                timestamps.append(ts)
+        
+        if len(timestamps) < 2:
+            return "unknown"
+        
+        # Calculate average interval between consecutive bars
+        intervals = []
+        for i in range(1, len(timestamps)):
+            diff_ms = timestamps[i] - timestamps[i-1]
+            intervals.append(diff_ms)
+        
+        if not intervals:
+            return "unknown"
+        
+        avg_interval_ms = sum(intervals) / len(intervals)
+        avg_interval_sec = avg_interval_ms / 1000
+        
+        # Convert to human-readable format
+        if avg_interval_sec <= 60:
+            minutes = round(avg_interval_sec / 60, 1)
+            if minutes < 1:
+                return f"{int(avg_interval_sec)}-second"
+            return f"{int(minutes)}-minute" if minutes == int(minutes) else f"{minutes}-minute"
+        elif avg_interval_sec <= 3600:
+            hours = round(avg_interval_sec / 3600, 1)
+            return f"{int(hours)}-hour" if hours == int(hours) else f"{hours}-hour"
+        elif avg_interval_sec <= 86400:
+            days = round(avg_interval_sec / 86400, 1)
+            return f"{int(days)}-day" if days == int(days) else f"{days}-day"
+        else:
+            weeks = round(avg_interval_sec / (86400 * 7), 1)
+            if weeks < 4:
+                return f"{int(weeks)}-week" if weeks == int(weeks) else f"{weeks}-week"
+            else:
+                months = round(avg_interval_sec / (86400 * 30), 1)
+                return f"{int(months)}-month" if months == int(months) else f"{months}-month"
+
+    def _calculate_time_period(self, bar_count: int, interval_str: str) -> str:
+        """Calculate actual time period from bar count and interval string.
+        
+        Examples:
+        - 20 bars, "1-hour" -> "20 hours"
+        - 48 bars, "5-minute" -> "4 hours" (240 minutes)
+        - 10 bars, "1-day" -> "10 days"
+        """
+        if interval_str == "unknown" or bar_count == 0:
+            return f"{bar_count} bars"
+        
+        # Parse interval string (e.g., "1-hour", "5-minute", "1-day")
+        parts = interval_str.split("-")
+        if len(parts) != 2:
+            return f"{bar_count} bars ({interval_str})"
+        
+        try:
+            interval_value = float(parts[0])
+            interval_unit = parts[1].lower()
+            
+            # Calculate total time in hours for comparison
+            if "second" in interval_unit:
+                total_hours = (bar_count * interval_value) / 3600
+            elif "minute" in interval_unit:
+                total_hours = (bar_count * interval_value) / 60
+            elif "hour" in interval_unit:
+                total_hours = bar_count * interval_value
+            elif "day" in interval_unit:
+                total_hours = bar_count * interval_value * 24
+            elif "week" in interval_unit:
+                total_hours = bar_count * interval_value * 168
+            elif "month" in interval_unit:
+                total_hours = bar_count * interval_value * 730  # Approximate
+            else:
+                return f"{bar_count} bars ({interval_str})"
+            
+            # Format in most appropriate unit
+            if total_hours < 1:
+                total_minutes = total_hours * 60
+                if total_minutes < 1:
+                    return f"{int(total_minutes * 60)} seconds"
+                return f"{int(total_minutes)} minutes"
+            elif total_hours < 24:
+                return f"{int(total_hours)} hours" if total_hours == int(total_hours) else f"{total_hours:.1f} hours"
+            elif total_hours < 168:
+                days = total_hours / 24
+                return f"{int(days)} days" if days == int(days) else f"{days:.1f} days"
+            elif total_hours < 730:
+                weeks = total_hours / 168
+                return f"{int(weeks)} weeks" if weeks == int(weeks) else f"{weeks:.1f} weeks"
+            else:
+                months = total_hours / 730
+                return f"{int(months)} months" if months == int(months) else f"{months:.1f} months"
+        except (ValueError, IndexError):
+            return f"{bar_count} bars ({interval_str})"
 
     def _format_ohlcv_bar(self, bar: dict[str, Any]) -> str:
         """Format a single OHLCV bar."""
@@ -1215,7 +1351,11 @@ class IndicatorDataSynthesizer(Base):
             
             symbol_str = str(symbol)
             lines.append(f"Symbol: {symbol_str}")
-            lines.append(f"Total Bars: {len(bars)}")
+            
+            # Detect bar interval from timestamps
+            bar_interval = self._detect_bar_interval(bars)
+            total_time_period = self._calculate_time_period(len(bars), bar_interval)
+            lines.append(f"Total Bars: {len(bars)} ({bar_interval} intervals = {total_time_period})")
             
             # ADAPTIVE COMPRESSION for OHLCV
             recent_unbatched = self._get_adaptive_recent_count(ohlcv_bundle, symbol_str, base_recent_unbatched)
@@ -1227,7 +1367,8 @@ class IndicatorDataSynthesizer(Base):
                 
                 # Process history batches
                 if history_bars:
-                    lines.append(f"History (Batched x{batch_size}):")
+                    history_time_period = self._calculate_time_period(len(history_bars), bar_interval)
+                    lines.append(f"History (Batched x{batch_size}, {bar_interval} intervals = {history_time_period}):")
                     for i in range(0, len(history_bars), batch_size):
                         batch = history_bars[i:i+batch_size]
                         if not batch: continue
@@ -1250,7 +1391,8 @@ class IndicatorDataSynthesizer(Base):
                             lines.append(f"  [Error aggregating batch starting at {i}]")
 
                 # Process recent unbatched bars
-                lines.append(f"Recent (Raw, {len(recent_bars)} bars):")
+                recent_time_period = self._calculate_time_period(len(recent_bars), bar_interval)
+                lines.append(f"Recent (Raw, {len(recent_bars)} bars, {bar_interval} intervals = Last {recent_time_period}):")
                 for i, bar in enumerate(recent_bars):
                     lines.append(f"  [{len(history_bars) + i}] {self._format_ohlcv_bar(bar)}")
             
@@ -1258,11 +1400,33 @@ class IndicatorDataSynthesizer(Base):
                 # Summary mode: Only show recent price info (ignore batching as we only show stats)
                 if bars:
                     recent_bar = bars[-1]
-                    lines.append(f"Recent: {self._format_ohlcv_bar(recent_bar)}")
+                    lines.append(f"Recent ({bar_interval} intervals): {self._format_ohlcv_bar(recent_bar)}")
                     if len(bars) > 1:
                         first_bar = bars[0]
                         price_range = f"O:{first_bar.get('open', 'N/A')}-{recent_bar.get('close', 'N/A')}"
-                        lines.append(f"Price Range: {price_range}")
+                        price_time_period = self._calculate_time_period(len(bars), bar_interval)
+                        lines.append(f"Price Range ({len(bars)} {bar_interval} bars = {price_time_period}): {price_range}")
+                        
+                        # Add VBP summary in summary mode
+                        if self.params.get("include_vbp_analysis", True) and len(bars) >= 10:
+                            try:
+                                vbp_bins = int(self.params.get("vbp_bins", 20))
+                                vbp_dollar_weighted = self.params.get("vbp_dollar_weighted", False)
+                                
+                                vbp_result = calculate_vbp(
+                                    bars, 
+                                    number_of_bins=vbp_bins,
+                                    use_dollar_weighted=vbp_dollar_weighted,
+                                    use_close_only=False
+                                )
+                                
+                                if vbp_result and vbp_result.get("pointOfControl"):
+                                    poc = vbp_result["pointOfControl"]
+                                    va_high = vbp_result.get("valueAreaHigh")
+                                    va_low = vbp_result.get("valueAreaLow")
+                                    lines.append(f"Volume Profile: POC=${poc:.4f}, VA=${va_low:.4f}-${va_high:.4f}")
+                            except Exception as e:
+                                logger.warning(f"VBP summary calculation failed for {symbol_str}: {e}")
             
             else:
                 # Standard unbatched formatting (if batch_size=1 or not enough bars)
@@ -1292,6 +1456,46 @@ class IndicatorDataSynthesizer(Base):
                         if len(closes) > 1:
                             change_pct = ((closes[-1] - closes[0]) / closes[0]) * 100
                             lines.append(f"  Change: {change_pct:+.2f}%")
+            
+            # Add Volume-by-Price analysis if enabled
+            if self.params.get("include_vbp_analysis", True) and len(bars) >= 10:
+                try:
+                    vbp_bins = int(self.params.get("vbp_bins", 20))
+                    vbp_dollar_weighted = self.params.get("vbp_dollar_weighted", False)
+                    
+                    vbp_result = calculate_vbp(
+                        bars, 
+                        number_of_bins=vbp_bins,
+                        use_dollar_weighted=vbp_dollar_weighted,
+                        use_close_only=False  # Use HLC average for better distribution
+                    )
+                    
+                    if vbp_result and vbp_result.get("pointOfControl"):
+                        lines.append(f"\nVolume Profile Analysis ({vbp_bins} bins, {bar_interval} intervals):")
+                        lines.append(f"  Point of Control (POC): ${vbp_result['pointOfControl']:.4f}")
+                        
+                        if vbp_result.get("valueAreaHigh") and vbp_result.get("valueAreaLow"):
+                            va_high = vbp_result["valueAreaHigh"]
+                            va_low = vbp_result["valueAreaLow"]
+                            va_range = va_high - va_low
+                            lines.append(f"  Value Area High: ${va_high:.4f}")
+                            lines.append(f"  Value Area Low: ${va_low:.4f}")
+                            lines.append(f"  Value Area Range: ${va_range:.4f} (70% of volume)")
+                        
+                        # Show top 5 volume levels for key support/resistance
+                        histogram = vbp_result.get("histogram", [])
+                        if histogram:
+                            # Sort by volume to find highest activity levels
+                            sorted_bins = sorted(histogram, key=lambda x: x.get("volume", 0), reverse=True)
+                            lines.append(f"  Top Volume Levels:")
+                            for i, bin_data in enumerate(sorted_bins[:5]):
+                                volume = bin_data.get("volume", 0)
+                                price = bin_data.get("priceLevel", 0)
+                                if volume > 0:
+                                    volume_pct = (volume / sum(h.get("volume", 0) for h in histogram)) * 100
+                                    lines.append(f"    {i+1}. ${price:.4f} ({volume_pct:.1f}% of volume)")
+                except Exception as e:
+                    logger.warning(f"VBP calculation failed for {symbol_str}: {e}")
             
             lines.append("")
         
@@ -1343,14 +1547,21 @@ CRITICAL INSTRUCTIONS:
 2. If the data contains specific indicators like "Hurst", "MESA", "Composite", or "Bandpasses", focus your analysis strictly on those.
 3. Look for alignment (confluence) between different signals in the provided data.
 4. Identify key trends (rising/falling values in the lists).
+5. CRITICAL - TIME PERIOD INTERPRETATION: The data includes explicit time period calculations. Look for labels like:
+   - "Recent (Raw, 20 bars, 1-hour intervals = Last 20 hours)" means LAST 20 HOURS, NOT 20 days
+   - "Total Bars: 100 (1-hour intervals = 100 hours)" means 100 HOURS of data, NOT 100 days
+   - "Price Range (48 bars = 48 hours)" means 48 HOURS, NOT 48 days
+   ALWAYS use the explicit time period shown after the "=" sign. If you see "Last 20 hours", say "last 20 hours" NOT "last 20 days" or "last 1 day".
+   The bar interval (e.g., "1-hour") tells you the resolution, and the calculated time period (e.g., "20 hours") tells you the actual duration.
 
 Focus on:
 - Key trends and patterns in the values provided
 - Recent signal changes (look at the 'Recent' values vs 'History')
 - Critical values and crossovers based on the numbers shown
 - Overall market direction implied by THIS specific data
+- ACCURATE TIME PERIODS: Use the explicit time period calculations shown in the data (e.g., if it says "Last 20 hours", use "last 20 hours" in your summary)
 
-Keep the summary concise but comprehensive. Preserve important numerical values.
+Keep the summary concise but comprehensive. Preserve important numerical values and use the EXACT time periods shown in the data labels (the part after "=").
 IMPORTANT: You must respond in ENGLISH only.
 """
         

@@ -69,6 +69,7 @@ export class NumberWidget extends BaseSteppedWidget<INumericWidget> implements I
       if (/^[\d\s()*+/-]+|\d+\.\d+$/.test(v)) {
         // Solve the equation if possible
         try {
+          // eslint-disable-next-line no-eval
           v = eval(v)
         } catch {}
       }
