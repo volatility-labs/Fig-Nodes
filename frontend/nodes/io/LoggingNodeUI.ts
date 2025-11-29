@@ -17,6 +17,9 @@ export default class LoggingNodeUI extends BaseCustomNode {
     private copyButton: any = null;
     private copyFeedbackTimeout: number | null = null;
     private scrollOffset: number = 0; // Vertical scroll offset for text content
+    private cachedWrappedLines: string[] | null = null;
+    private cachedTextHash: string = '';
+    private cachedMaxWidth: number = 0;
 
     constructor(title: string, data: any, serviceRegistry: any) {
         super(title, data, serviceRegistry);
@@ -45,6 +48,7 @@ export default class LoggingNodeUI extends BaseCustomNode {
     onMouseWheel(event: WheelEvent, pos: [number, number], canvas: any): boolean {
         const nodeWithFlags = this as { flags?: { collapsed?: boolean }; size: [number, number]; selected?: boolean };
         
+        // Early exit checks (fast)
         if (nodeWithFlags.flags?.collapsed || !this.displayText) {
             return false;
         }
@@ -64,18 +68,36 @@ export default class LoggingNodeUI extends BaseCustomNode {
         
         // Always allow scrolling if node is selected, regardless of mouse position
         if (!isInScrollBounds && !isSelected) {
-            return false;
+            return false; // Fast exit - don't interfere with canvas scrolling
         }
 
-        // Calculate total content height
-        const tempCanvas = document.createElement('canvas');
-        const tempCtx = tempCanvas.getContext('2d');
-        if (!tempCtx) return false;
-
-        tempCtx.font = '12px Arial';
+        // Quick check: if we have cached lines, use them. Otherwise, estimate without full wrapping
         const maxWidth = nodeWithFlags.size[0] - 20;
-        const lines = this.wrapText(this.displayText, maxWidth, tempCtx);
-        const totalContentHeight = lines.length * 15;
+        let totalContentHeight: number;
+        
+        if (this.cachedWrappedLines && this.cachedMaxWidth === maxWidth) {
+            // Use cached lines - very fast!
+            totalContentHeight = this.cachedWrappedLines.length * 15;
+        } else {
+            // No cache - do quick estimate without expensive wrapping
+            // Estimate: ~80 chars per line, ~15px per line
+            const estimatedLines = Math.ceil(this.displayText.length / 80);
+            totalContentHeight = estimatedLines * 15;
+            
+            // If estimate suggests scrolling might be needed, do full wrap (but cache it)
+            const estimatedMaxScroll = Math.max(0, totalContentHeight - contentHeight);
+            if (estimatedMaxScroll <= 0) {
+                return false; // Quick exit - definitely no scrolling needed
+            }
+            
+            // Need to scroll - do full wrap (will be cached for next time)
+            const tempCanvas = document.createElement('canvas');
+            const tempCtx = tempCanvas.getContext('2d');
+            if (!tempCtx) return false;
+            tempCtx.font = '12px Arial';
+            const lines = this.wrapText(this.displayText, maxWidth, tempCtx);
+            totalContentHeight = lines.length * 15;
+        }
 
         // Only allow scrolling if content exceeds visible area
         const maxScroll = Math.max(0, totalContentHeight - contentHeight);
@@ -105,52 +127,62 @@ export default class LoggingNodeUI extends BaseCustomNode {
 
     private wrapText(text: string, maxWidth: number, ctx: CanvasRenderingContext2D): string[] {
         if (typeof text !== 'string') return [];
+        
+        // Check cache first - this is the key performance optimization
+        const textHash = `${text.length}-${maxWidth}`;
+        if (this.cachedWrappedLines && this.cachedTextHash === textHash && this.cachedMaxWidth === maxWidth) {
+            return this.cachedWrappedLines;
+        }
+        
+        // Cache miss - recalculate (but only happens when text changes, not every frame)
         const lines: string[] = [];
         const paragraphs = text.split('\n');
+        
+        // Optimize: Use approximate character width instead of measuring every word
+        const avgCharWidth = ctx.measureText('M').width; // 'M' is typically widest
+        const charsPerLine = Math.floor(maxWidth / avgCharWidth);
+        
         for (const p of paragraphs) {
-            const words = p.split(' ');
-            let currentLine = words[0] || '';
-            for (let i = 1; i < words.length; i++) {
-                const word = words[i];
-                const testLine = currentLine ? `${currentLine} ${word}` : word;
-                const testWidth = ctx.measureText(testLine).width;
+            if (p.length <= charsPerLine) {
+                // Short line - no wrapping needed
+                lines.push(p);
+            } else {
+                // Long line - wrap it
+                const words = p.split(' ');
+                let currentLine = words[0] || '';
                 
-                if (testWidth > maxWidth) {
-                    if (currentLine) {
-                        lines.push(currentLine);
-                        currentLine = '';
-                    }
+                for (let i = 1; i < words.length; i++) {
+                    const word = words[i];
+                    const testLine = currentLine ? `${currentLine} ${word}` : word;
                     
-                    const wordWidth = ctx.measureText(word).width;
-                    if (wordWidth > maxWidth) {
-                        let remainingWord = word;
-                        while (remainingWord) {
-                            let chunk = '';
-                            for (let j = 0; j < remainingWord.length; j++) {
-                                const testChunk = chunk + remainingWord[j];
-                                if (ctx.measureText(testChunk).width > maxWidth && chunk) {
-                                    break;
-                                }
-                                chunk = testChunk;
-                            }
-                            if (chunk) {
-                                lines.push(chunk);
-                                remainingWord = remainingWord.slice(chunk.length);
-                            } else {
-                                lines.push(remainingWord[0] || '');
-                                remainingWord = remainingWord.slice(1);
-                            }
+                    // Quick check using character count (much faster than measureText)
+                    if (testLine.length > charsPerLine) {
+                        if (currentLine) {
+                            lines.push(currentLine);
+                            currentLine = '';
                         }
-                        currentLine = '';
+                        
+                        // If word itself is too long, split by character
+                        if (word.length > charsPerLine) {
+                            for (let j = 0; j < word.length; j += charsPerLine) {
+                                lines.push(word.substring(j, j + charsPerLine));
+                            }
+                        } else {
+                            currentLine = word;
+                        }
                     } else {
-                        currentLine = word;
+                        currentLine = testLine;
                     }
-                } else {
-                    currentLine = testLine;
                 }
+                if (currentLine) lines.push(currentLine);
             }
-            if (currentLine) lines.push(currentLine);
         }
+        
+        // Cache the result
+        this.cachedWrappedLines = lines;
+        this.cachedTextHash = textHash;
+        this.cachedMaxWidth = maxWidth;
+        
         return lines;
     }
 
@@ -291,6 +323,8 @@ export default class LoggingNodeUI extends BaseCustomNode {
     reset() {
         this.displayText = '';
         this.scrollOffset = 0; // Reset scroll when clearing
+        this.cachedWrappedLines = null; // Clear cache
+        this.cachedTextHash = '';
         this.setDirtyCanvas(true, true);
     }
 
@@ -305,6 +339,13 @@ export default class LoggingNodeUI extends BaseCustomNode {
             return;
         }
         const formatted = this.tryFormat(result);
+        
+        // Clear cache if text changed
+        if (this.displayText !== formatted) {
+            this.cachedWrappedLines = null;
+            this.cachedTextHash = '';
+        }
+        
         this.displayText = formatted;
         this.scrollOffset = 0; // Reset scroll when new content is loaded
         console.log('displayText set to:', this.displayText);
@@ -314,9 +355,10 @@ export default class LoggingNodeUI extends BaseCustomNode {
     onStreamUpdate(result: any) {
         let chunk: string = '';
         const format = this.getSelectedFormat();
+        let newText: string;
 
         if (result.done) {
-            this.displayText = this.tryFormat(result.message || result);
+            newText = this.tryFormat(result.message || result);
             this.scrollOffset = 0; // Reset scroll when stream completes
         } else {
             const candidate = (result.output || result);
@@ -331,32 +373,40 @@ export default class LoggingNodeUI extends BaseCustomNode {
             const prev = this.displayText || '';
 
             if (prev && chunk.startsWith(prev)) {
-                this.displayText = chunk;
+                newText = chunk;
             } else {
                 if (format === 'json') {
                     try {
                         const parsed = JSON.parse(chunk);
-                        this.displayText = JSON.stringify(parsed, null, 2);
+                        newText = JSON.stringify(parsed, null, 2);
                     } catch {
-                        this.displayText = chunk;
+                        newText = chunk;
                     }
                 } else if (format === 'auto') {
                     const trimmed = chunk.trim();
                     if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
                         try {
                             const parsed = JSON.parse(chunk);
-                            this.displayText = JSON.stringify(parsed, null, 2);
+                            newText = JSON.stringify(parsed, null, 2);
                         } catch {
-                            this.displayText = chunk;
+                            newText = chunk;
                         }
                     } else {
-                        this.displayText = chunk;
+                        newText = chunk;
                     }
                 } else {
-                    this.displayText = chunk;
+                    newText = chunk;
                 }
             }
         }
+        
+        // Clear cache if text changed
+        if (this.displayText !== newText) {
+            this.cachedWrappedLines = null;
+            this.cachedTextHash = '';
+        }
+        
+        this.displayText = newText;
         this.setDirtyCanvas(true, true);
     }
 
@@ -369,3 +419,4 @@ export default class LoggingNodeUI extends BaseCustomNode {
         super.onRemoved?.();
     }
 }
+

@@ -6,21 +6,21 @@ export default class PriceDataFetchingNodeUI extends BaseCustomNode {
         
         this.size = [500, 300];
         
-        // Enable default text display
-        this.displayResults = true;
+        // Disable default text display to prevent lag with large datasets
+        this.displayResults = false;
     }
 
     updateDisplay(result: any) {
-        // Extract formatted_output from result
-        if (result && typeof result === 'object' && result.formatted_output) {
-            this.displayText = result.formatted_output;
-        } else if (typeof result === 'string') {
-            this.displayText = result;
-        } else if (result && typeof result === 'object' && result.csv_file) {
-            // If only csv_file is present, show that
-            this.displayText = `✅ CSV saved: ${result.csv_file.split('/').pop() || result.csv_file}`;
+        // Store result but don't display large JSONs
+        this.result = result;
+        
+        // Only show simple status messages
+        if (result && typeof result === 'object' && result.csv_file) {
+             this.displayText = `✅ CSV saved: ${result.csv_file.split('/').pop() || result.csv_file}`;
+        } else if (typeof result === 'string' && result.length < 100) {
+             this.displayText = result;
         } else {
-            this.displayText = 'Waiting for price data...';
+             this.displayText = '';
         }
         
         this.setDirtyCanvas(true, true);

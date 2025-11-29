@@ -253,6 +253,7 @@ function handleStoppedMessage(data: any) {
 
 function handleDataMessage(data: any, graph: LGraph) {
     const statusService = getStatusService();
+    const profiler = (window as any).performanceProfiler;
     
     if (Object.keys(data.results).length === 0) {
         statusService?.setProgress(null, undefined, 'Running...');
@@ -260,6 +261,11 @@ function handleDataMessage(data: any, graph: LGraph) {
     }
 
     const results: ExecutionResults = data.results;
+    const nodeCount = Object.keys(results).length;
+    
+    // Profile batch update performance
+    profiler?.startMetric('handleDataMessage', { nodeCount });
+    
     for (const nodeId in results) {
         const node: any = graph.getNodeById(parseInt(nodeId));
         if (!node) continue;
@@ -277,6 +283,9 @@ function handleDataMessage(data: any, graph: LGraph) {
             node.updateDisplay.call(node, results[nodeId]);
         }
     }
+    
+    profiler?.endMetric('handleDataMessage');
+    profiler?.trackNodeUpdate(nodeCount);
 
     statusService?.setProgress(null, undefined, 'Running...');
 }

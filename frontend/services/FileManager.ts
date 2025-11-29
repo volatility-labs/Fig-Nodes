@@ -2,6 +2,7 @@ import { LGraph, LGraphCanvas } from '@fig-node/litegraph';
 import type { SerialisableGraph } from '@fig-node/litegraph/dist/types/serialisation';
 import { APIKeyManager } from './APIKeyManager';
 import { updateStatus } from './EditorInitializer';
+import { PerformanceProfiler } from './PerformanceProfiler';
 
 export class FileManager {
     private graph: LGraph;
@@ -9,6 +10,7 @@ export class FileManager {
     private apiKeyManager: APIKeyManager;
     private currentGraphName: string = 'untitled.json';
     private lastSavedGraphJson: string = '';
+    private lastSavedVersion: number = -1;
 
     constructor(graph: LGraph, canvas: LGraphCanvas) {
         this.graph = graph;
@@ -114,6 +116,10 @@ export class FileManager {
                     return;
                 }
                 this.graph.configure(graphData);
+                
+                if (typeof (this.graph as any)._version === 'number') {
+                    this.lastSavedVersion = (this.graph as any)._version;
+                }
 
                 try {
                     this.lastSavedGraphJson = JSON.stringify(this.graph.asSerialisable({ sortNodes: true }));
@@ -170,15 +176,30 @@ export class FileManager {
 
     // Autosave functionality
     doAutosave(): void {
+        const profiler = PerformanceProfiler.getInstance();
+        
         try {
-            const data = this.graph.asSerialisable({ sortNodes: true });
-
-            const json = JSON.stringify(data);
-            if (json !== this.lastSavedGraphJson) {
-                const payload = { graph: data, name: this.getCurrentGraphName() };
-                this.safeLocalStorageSet('fig-nodes:autosave:v1', JSON.stringify(payload));
-                this.lastSavedGraphJson = json;
+            // Optimization: Check if graph version changed
+            // This prevents heavy serialization when user is just scrolling/panning (which doesn't change graph version)
+            if (typeof (this.graph as any)._version === 'number') {
+                if ((this.graph as any)._version === this.lastSavedVersion) {
+                    return;
+                }
             }
+
+            profiler?.measure('autosave', () => {
+                const data = this.graph.asSerialisable({ sortNodes: true });
+                const json = JSON.stringify(data);
+                
+                if (json !== this.lastSavedGraphJson) {
+                    const payload = { graph: data, name: this.getCurrentGraphName() };
+                    this.safeLocalStorageSet('fig-nodes:autosave:v1', JSON.stringify(payload));
+                    this.lastSavedGraphJson = json;
+                    if (typeof (this.graph as any)._version === 'number') {
+                        this.lastSavedVersion = (this.graph as any)._version;
+                    }
+                }
+            }, { graphSize: this.graph._nodes?.length || 0 });
         } catch { /* ignore */ }
     }
 
@@ -194,6 +215,9 @@ export class FileManager {
                         this.graph.configure(parsed.graph);
                     } catch (configError) {
                         console.error('Failed to configure graph from autosave:', configError);
+                    }
+                    if (typeof (this.graph as any)._version === 'number') {
+                        this.lastSavedVersion = (this.graph as any)._version;
                     }
                     try { this.canvas.draw(true); } catch { /* ignore */ }
                     try {

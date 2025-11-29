@@ -8,6 +8,7 @@ import { NodeRenderer } from '../utils/NodeRenderer';
 import { NodeInteractions } from '../utils/NodeInteractions';
 import { ServiceRegistry } from '../../services/ServiceRegistry';
 import { TypeColorRegistry, TypeInfo } from '../../services/TypeColorRegistry';
+import { PerformanceProfiler } from '../../services/PerformanceProfiler';
 
 // Reinstate module augmentation at top:
 declare module '@fig-node/litegraph' {
@@ -160,13 +161,40 @@ export default class BaseCustomNode extends LGraphNode {
     }
 
     updateDisplay(result: unknown) {
-        this.result = result;
-        if (this.displayResults) {
-            const outputs = Object.values(result as Record<string, unknown>);
-            const primaryOutput = outputs.length === 1 ? outputs[0] : result;
-            this.displayText = typeof primaryOutput === 'string' ? primaryOutput : JSON.stringify(primaryOutput, null, 2);
+        const profiler = PerformanceProfiler.getInstance();
+        
+        profiler?.measure('updateDisplay', () => {
+            this.result = result;
+            if (this.displayResults) {
+                const outputs = Object.values(result as Record<string, unknown>);
+                const primaryOutput = outputs.length === 1 ? outputs[0] : result;
+                this.displayText = typeof primaryOutput === 'string' ? primaryOutput : JSON.stringify(primaryOutput, null, 2);
+            } else {
+                // Skip expensive JSON.stringify when displayResults is false
+                this.displayText = '';
+            }
+        }, { nodeType: this.title, displayResults: this.displayResults });
+        
+        // Use debounced canvas redraw to prevent lag when many nodes update simultaneously
+        this.debouncedSetDirtyCanvas();
+    }
+
+    // Debounced canvas redraw to prevent lag during batch updates (e.g. scan completion)
+    private static canvasRedrawTimeout: number | null = null;
+    private debouncedSetDirtyCanvas() {
+        const profiler = PerformanceProfiler.getInstance();
+        
+        // Clear existing timeout
+        if (BaseCustomNode.canvasRedrawTimeout !== null) {
+            clearTimeout(BaseCustomNode.canvasRedrawTimeout);
         }
-        this.setDirtyCanvas(true, true);
+        
+        // Set new timeout - all updates within 16ms (1 frame) will be batched
+        BaseCustomNode.canvasRedrawTimeout = window.setTimeout(() => {
+            profiler?.trackRenderCall();
+            this.setDirtyCanvas(true, true);
+            BaseCustomNode.canvasRedrawTimeout = null;
+        }, 16);
     }
 
     pulseHighlight() {

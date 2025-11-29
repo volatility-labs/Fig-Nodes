@@ -3296,11 +3296,11 @@ export class LGraphCanvas implements CustomEventDispatcher<LGraphCanvasEventMap>
     // If canvas background is "selected" (no nodes selected), always pan regardless of mouse position
     const canvasX = (e as any).canvasX ?? e.clientX
     const canvasY = (e as any).canvasY ?? e.clientY
-    const nodeAtPos = hasSelectedNode ? this.graph?.getNodeOnPos?.(canvasX, canvasY, this.graph.visible_nodes) : null
+    const nodeAtPos = hasSelectedNode && this.graph ? this.graph.getNodeOnPos(canvasX, canvasY) : null
     
     // If a node is at mouse position and can handle wheel events, let it handle it
     // But only check this if nodes are selected (when canvas is "selected", always pan)
-    if (hasSelectedNode && nodeAtPos && typeof nodeAtPos.onMouseWheel === 'function') {
+    if (hasSelectedNode && nodeAtPos && typeof (nodeAtPos as any).onMouseWheel === 'function') {
       // Let the node handle it - don't prevent default here
       return
     }

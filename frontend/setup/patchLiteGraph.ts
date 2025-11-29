@@ -6,6 +6,37 @@ import { LiteGraph } from '@fig-node/litegraph';
 // Only patch once
 if (!(LiteGraph as any)._wheelPatched) {
     const proto = (LiteGraph as any).LGraphCanvas?.prototype;
+    
+    // Patch processMouseDown to track when canvas background is clicked (for sticky panning)
+    if (proto && typeof proto.processMouseDown === 'function') {
+        const originalMouseDown = proto.processMouseDown;
+        proto.processMouseDown = function (e: PointerEvent): void {
+            // Call original first
+            originalMouseDown.call(this, e);
+            
+            // After original processes, check if canvas background was clicked (no node selected)
+            const selectedNodes = this.selected_nodes || {};
+            const hasSelectedNode = Object.keys(selectedNodes).length > 0;
+            
+            // If no nodes selected, canvas background is "active" for panning
+            // This allows scrolling to continue even when mouse moves over nodes
+            (this as any)._canvasPanActive = !hasSelectedNode;
+        };
+    }
+    
+    // Patch processMouseUp to clear sticky panning state
+    if (proto && typeof proto.processMouseUp === 'function') {
+        const originalMouseUp = proto.processMouseUp;
+        proto.processMouseUp = function (e: PointerEvent): void {
+            // Call original first
+            originalMouseUp.call(this, e);
+            
+            // Clear sticky panning state on mouse up
+            // User can click again to reactivate if needed
+            (this as any)._canvasPanActive = false;
+        };
+    }
+    
     if (proto && typeof proto.processMouseWheel === 'function') {
         const original = proto.processMouseWheel;
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -28,69 +59,73 @@ if (!(LiteGraph as any)._wheelPatched) {
             const canvasY = (event as any).canvasY ?? event.clientY;
             
             const graph = this.graph;
+            const selectedNodes = this.selected_nodes || {};
+            const hasSelectedNode = Object.keys(selectedNodes).length > 0;
             
-            if (graph && typeof graph.getNodeOnPos === 'function') {
-                try {
-                    // Get node at mouse position - check visible nodes
-                    const node = graph.getNodeOnPos(canvasX, canvasY, graph.visible_nodes);
-                    
-                    // Also check if any node is selected (for zoom when selected)
-                    const selectedNodes = this.selected_nodes || {};
-                    const hasSelectedNode = Object.keys(selectedNodes).length > 0;
-                    
-                    // Debug logging removed for smoother performance
-                    
-                    // Handle wheel events when mouse is over a node that has onMouseWheel
-                    // OR when a node is selected (for zoom when selected)
-                    if (node && typeof node.onMouseWheel === 'function') {
-                        // Local coords relative to node
-                        const nodePos = node.pos ?? [0, 0];
-                        const local: [number, number] = [canvasX - nodePos[0], canvasY - nodePos[1]];
-                        const handled = node.onMouseWheel(event, local, this);
-                        if (handled) {
-                            // Node handled it - prevent canvas zoom/pan by not calling original
-                            event.preventDefault();
-                            event.stopPropagation();
-                            console.log('Node handled wheel event');
-                            // Also stop the graph change
-                            return;
+            // Check if shift is pressed (zoom mode) - only then check nodes
+            const shiftPressed = event.shiftKey === true || (event.getModifierState && event.getModifierState('Shift') === true);
+            
+            // Only check nodes if:
+            // 1. Shift is pressed (zoom mode - nodes might want to handle zoom)
+            // 2. Nodes are selected (nodes might want to handle zoom when selected)
+            // Otherwise, skip node checks entirely for faster panning
+            if (shiftPressed || hasSelectedNode) {
+                if (graph && typeof graph.getNodeOnPos === 'function') {
+                    try {
+                        // Get node at mouse position
+                        const node = graph.getNodeOnPos(canvasX, canvasY);
+                        
+                        // Handle wheel events when mouse is over a node that has onMouseWheel
+                        // Only check if shift is pressed (zoom) or node is selected
+                        if (node && typeof (node as any).onMouseWheel === 'function') {
+                            // Local coords relative to node
+                            const nodePos = node.pos ?? [0, 0];
+                            const local: [number, number] = [canvasX - nodePos[0], canvasY - nodePos[1]];
+                            const handled = (node as any).onMouseWheel(event, local, this);
+                            if (handled) {
+                                // Node handled it - prevent canvas zoom/pan
+                                event.preventDefault();
+                                event.stopPropagation();
+                                return;
+                            }
                         }
-                    }
-                    
-                    // Also check selected nodes (for zoom when selected, even if mouse is outside)
-                    if (hasSelectedNode) {
-                        for (const nodeId in selectedNodes) {
-                            const selectedNode = selectedNodes[nodeId];
-                            if (selectedNode && typeof selectedNode.onMouseWheel === 'function') {
-                                // Use node's position for local coords
-                                const nodePos = selectedNode.pos ?? [0, 0];
-                                const local: [number, number] = [canvasX - nodePos[0], canvasY - nodePos[1]];
-                                const handled = selectedNode.onMouseWheel(event, local, this);
-                                if (handled) {
-                                    // Node handled it - prevent canvas zoom/pan
-                                    event.preventDefault();
-                                    event.stopPropagation();
-                                    console.log('Selected node handled wheel event');
-                                    return;
+                        
+                        // Also check selected nodes (for zoom when selected, even if mouse is outside)
+                        if (hasSelectedNode) {
+                            for (const nodeId in selectedNodes) {
+                                const selectedNode = selectedNodes[nodeId];
+                                if (selectedNode && typeof (selectedNode as any).onMouseWheel === 'function') {
+                                    // Use node's position for local coords
+                                    const nodePos = selectedNode.pos ?? [0, 0];
+                                    const local: [number, number] = [canvasX - nodePos[0], canvasY - nodePos[1]];
+                                    const handled = (selectedNode as any).onMouseWheel(event, local, this);
+                                    if (handled) {
+                                        // Node handled it - prevent canvas zoom/pan
+                                        event.preventDefault();
+                                        event.stopPropagation();
+                                        return;
+                                    }
                                 }
                             }
                         }
+                    } catch (err) {
+                        // Log error but continue with original behavior
+                        console.warn('❌ Error in wheel patch:', err);
                     }
-                    
-                    // No node handled it - let canvas handle it (for panning when background is selected)
-                } catch (err) {
-                    // Log error but continue with original behavior
-                    console.warn('❌ Error in wheel patch:', err);
                 }
             }
             
             // Canvas panning logic (when no nodes selected or no node handled the event)
             // This matches the behavior we want: scroll to pan when canvas background is selected
-            const selectedNodes = this.selected_nodes || {};
-            const hasSelectedNode = Object.keys(selectedNodes).length > 0;
+            // Use already-declared variables from above
             
-            // Only pan if no nodes are selected (canvas background is "selected")
-            if (!hasSelectedNode) {
+            // Pan if canvas is active (background clicked) OR no nodes selected
+            // Canvas becomes "active" when clicked on background (no nodes selected)
+            // This allows panning to continue even when mouse moves over nodes
+            const canvasPanActive = (this as any)._canvasPanActive === true;
+            const shouldPan = canvasPanActive || !hasSelectedNode;
+            
+            if (shouldPan) {
                 
                 // Check if mouse is over canvas viewport
                 const pos: [number, number] = [event.clientX, event.clientY];
@@ -114,11 +149,8 @@ if (!(LiteGraph as any)._wheelPatched) {
                 }
                 
                 const scale = ds.scale || 1;
-                // Strict shift detection - only zoom if shift is explicitly pressed
-                // Check both shiftKey and getModifierState to be sure
-                const shiftPressed = event.shiftKey === true || (event.getModifierState && event.getModifierState('Shift') === true);
-                
-                    // Pan/Zoom check - debug logging removed for smoother performance
+                // Use already-declared shiftPressed from above
+                // Pan/Zoom check - debug logging removed for smoother performance
                 
                 if (shiftPressed) {
                     // Shift + scroll: ZOOM

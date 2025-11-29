@@ -12,6 +12,7 @@ import { registerExecutionStatusService } from './ExecutionStatusService';
 import { ThemeManager } from './ThemeManager';
 import { TypeColorRegistry } from './TypeColorRegistry';
 import { CanvasScrollbars } from './CanvasScrollbars';
+import { PerformanceProfiler } from './PerformanceProfiler';
 
 export function updateStatus(status: 'connected' | 'disconnected' | 'loading' | 'executing', message?: string) {
     const sr: ServiceRegistry | undefined = (window as any).serviceRegistry;
@@ -159,6 +160,40 @@ export class EditorInitializer {
 
             // Expose services globally for debugging if needed (avoid relying on globals in production code)
             ; (window as any).serviceRegistry = this.serviceRegistry;
+            
+            // Expose performance profiler globally for debugging
+            const profiler = PerformanceProfiler.getInstance();
+            (window as any).performanceProfiler = profiler;
+            
+            // Add console commands for profiling
+            (window as any).startProfiling = () => {
+                profiler.start();
+                console.log('✅ Profiling started. Run stopProfiling() to stop and see results.');
+            };
+            (window as any).stopProfiling = () => {
+                profiler.stop();
+                profiler.logResults();
+            };
+            (window as any).getProfilingStats = () => {
+                return profiler.getStats();
+            };
+            (window as any).exportProfilingData = () => {
+                const data = profiler.exportData();
+                const blob = new Blob([data], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `profiling-${Date.now()}.json`;
+                a.click();
+                URL.revokeObjectURL(url);
+                console.log('📊 Profiling data exported');
+            };
+            
+            console.log('🔍 Performance profiler available. Commands:');
+            console.log('  startProfiling() - Start profiling');
+            console.log('  stopProfiling() - Stop profiling and show results');
+            console.log('  getProfilingStats() - Get current stats');
+            console.log('  exportProfilingData() - Export profiling data as JSON');
             // Attempt to restore from autosave first; fallback to default graph
             const restoredFromAutosave = await fileManager.restoreFromAutosave();
             if (!restoredFromAutosave) {
@@ -801,9 +836,10 @@ export class EditorInitializer {
 
     private setupAutosave(fileManager: FileManager): void {
         // Autosave on interval and on unload
+        // Increased interval to 10s to prevent lag during heavy graph operations (e.g. scans)
         const autosaveInterval = window.setInterval(() => {
             fileManager.doAutosave();
-        }, 2000);
+        }, 10000);
 
         window.addEventListener('beforeunload', () => {
             fileManager.doAutosave();

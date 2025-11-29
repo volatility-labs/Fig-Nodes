@@ -18,7 +18,11 @@ export class CanvasScrollbars {
     private dragStartY: number = 0;
     private dragStartOffsetX: number = 0;
     private dragStartOffsetY: number = 0;
-    private updateInterval: number | null = null;
+    private updateAnimationFrame: number | null = null;
+    private lastBoundsUpdate: number = 0;
+    private cachedBounds: { minX: number; minY: number; maxX: number; maxY: number; width: number; height: number } | null = null;
+    private cachedContainerRect: DOMRect | null = null;
+    private cachedScrollbarRects: { h: DOMRect, v: DOMRect } | null = null;
 
     constructor(canvas: LGraphCanvas, container: HTMLElement) {
         this.canvas = canvas;
@@ -30,8 +34,20 @@ export class CanvasScrollbars {
         // Set up event listeners
         this.setupEventListeners();
         
+        // Initialize cached rects
+        this.updateCachedRects();
+        window.addEventListener('resize', () => this.updateCachedRects());
+
         // Start update loop
         this.startUpdateLoop();
+    }
+
+    private updateCachedRects(): void {
+        this.cachedContainerRect = this.container.getBoundingClientRect();
+        this.cachedScrollbarRects = {
+            h: this.horizontalScrollbar.getBoundingClientRect(),
+            v: this.verticalScrollbar.getBoundingClientRect()
+        };
     }
 
     private createScrollbars(): void {
@@ -170,7 +186,7 @@ export class CanvasScrollbars {
         // Global mouse move and up handlers
         document.addEventListener('mousemove', (e) => {
             if (this.isDraggingHorizontal) {
-                const rect = this.horizontalScrollbar.getBoundingClientRect();
+                const rect = this.cachedScrollbarRects?.h || this.horizontalScrollbar.getBoundingClientRect();
                 const deltaX = e.clientX - this.dragStartX;
                 const trackWidth = rect.width;
                 const thumbWidth = this.horizontalThumb.offsetWidth;
@@ -189,7 +205,7 @@ export class CanvasScrollbars {
             }
             
             if (this.isDraggingVertical) {
-                const rect = this.verticalScrollbar.getBoundingClientRect();
+                const rect = this.cachedScrollbarRects?.v || this.verticalScrollbar.getBoundingClientRect();
                 const deltaY = e.clientY - this.dragStartY;
                 const trackHeight = rect.height;
                 const thumbHeight = this.verticalThumb.offsetHeight;
@@ -223,9 +239,15 @@ export class CanvasScrollbars {
     }
 
     private getGraphBounds(): { minX: number; minY: number; maxX: number; maxY: number; width: number; height: number } {
+        const now = Date.now();
+        // Only recalculate bounds every 200ms unless dragging/interacting
+        if (this.cachedBounds && (now - this.lastBoundsUpdate < 200) && !this.isDraggingHorizontal && !this.isDraggingVertical) {
+            return this.cachedBounds;
+        }
+
         const graph = (this.canvas as any).graph;
         const ds = (this.canvas as any).ds;
-        const containerRect = this.container.getBoundingClientRect();
+        const containerRect = this.cachedContainerRect || this.container.getBoundingClientRect();
         const scale = ds?.scale || 1;
         
         // Get all nodes from the graph
@@ -240,7 +262,7 @@ export class CanvasScrollbars {
             const viewportCenterX = -currentOffsetX / scale;
             const viewportCenterY = -currentOffsetY / scale;
             
-            return {
+            const bounds = {
                 minX: viewportCenterX - viewportWidth,
                 minY: viewportCenterY - viewportHeight,
                 maxX: viewportCenterX + viewportWidth,
@@ -248,6 +270,9 @@ export class CanvasScrollbars {
                 width: viewportWidth * 2,
                 height: viewportHeight * 2
             };
+            this.cachedBounds = bounds;
+            this.lastBoundsUpdate = now;
+            return bounds;
         }
         
         // Calculate bounds from actual node positions
@@ -297,7 +322,7 @@ export class CanvasScrollbars {
             maxY = centerY + minHeight / 2;
         }
 
-        return {
+        const bounds = {
             minX,
             minY,
             maxX,
@@ -305,13 +330,17 @@ export class CanvasScrollbars {
             width: maxX - minX,
             height: maxY - minY
         };
+        
+        this.cachedBounds = bounds;
+        this.lastBoundsUpdate = now;
+        return bounds;
     }
 
     private updateCanvasFromScrollbars(): void {
         const ds = (this.canvas as any).ds;
         if (!ds || !ds.offset) return;
 
-        const containerRect = this.container.getBoundingClientRect();
+        const containerRect = this.cachedContainerRect || this.container.getBoundingClientRect();
         const scale = ds.scale || 1;
         const canvasWidth = containerRect.width;
         const canvasHeight = containerRect.height;
@@ -320,8 +349,8 @@ export class CanvasScrollbars {
         const bounds = this.getGraphBounds();
         
         // Get scrollbar positions
-        const horizontalRect = this.horizontalScrollbar.getBoundingClientRect();
-        const verticalRect = this.verticalScrollbar.getBoundingClientRect();
+        const horizontalRect = this.cachedScrollbarRects?.h || this.horizontalScrollbar.getBoundingClientRect();
+        const verticalRect = this.cachedScrollbarRects?.v || this.verticalScrollbar.getBoundingClientRect();
         
         const thumbLeft = parseFloat(this.horizontalThumb.style.left || '0');
         const thumbTop = parseFloat(this.verticalThumb.style.top || '0');
@@ -361,7 +390,7 @@ export class CanvasScrollbars {
         const ds = (this.canvas as any).ds;
         if (!ds || !ds.offset || !ds.scale) return;
 
-        const containerRect = this.container.getBoundingClientRect();
+        const containerRect = this.cachedContainerRect || this.container.getBoundingClientRect();
         const scale = ds.scale || 1;
         const offsetX = ds.offset[0] || 0;
         const offsetY = ds.offset[1] || 0;
@@ -376,8 +405,8 @@ export class CanvasScrollbars {
         const contentHeight = bounds.height * scale;
         
         // Calculate scrollbar track dimensions
-        const horizontalRect = this.horizontalScrollbar.getBoundingClientRect();
-        const verticalRect = this.verticalScrollbar.getBoundingClientRect();
+        const horizontalRect = this.cachedScrollbarRects?.h || this.horizontalScrollbar.getBoundingClientRect();
+        const verticalRect = this.cachedScrollbarRects?.v || this.verticalScrollbar.getBoundingClientRect();
         const trackWidth = horizontalRect.width;
         const trackHeight = verticalRect.height;
         
@@ -413,20 +442,24 @@ export class CanvasScrollbars {
     }
 
     private startUpdateLoop(): void {
-        // Update scrollbars periodically to reflect canvas changes
-        // Since getGraphBounds() recalculates from nodes each time, this will automatically
-        // pick up new nodes, moved nodes, etc.
-        this.updateInterval = window.setInterval(() => {
+        // Use requestAnimationFrame for smooth UI updates
+        const loop = () => {
             if (!this.isDraggingHorizontal && !this.isDraggingVertical) {
                 this.updateScrollbarsFromCanvas();
             }
-        }, 50); // Update every 50ms for smooth, responsive updates
+            this.updateAnimationFrame = requestAnimationFrame(loop);
+        };
+        this.updateAnimationFrame = requestAnimationFrame(loop);
     }
 
     public destroy(): void {
+        if (this.updateAnimationFrame !== null) {
+            cancelAnimationFrame(this.updateAnimationFrame);
+        }
         if (this.updateInterval !== null) {
             clearInterval(this.updateInterval);
         }
+        window.removeEventListener('resize', () => this.updateCachedRects());
         this.horizontalScrollbar.remove();
         this.verticalScrollbar.remove();
     }
