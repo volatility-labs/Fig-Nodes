@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import random
 from typing import Any, Literal, TypeGuard
 
@@ -8,6 +9,8 @@ from pydantic import BaseModel
 from core.api_key_vault import APIKeyVault
 from core.types_registry import ConfigDict, NodeCategory, ProgressState, get_type
 from nodes.base.base_node import Base
+
+logger = logging.getLogger(__name__)
 
 
 # Pydantic models for validation
@@ -302,12 +305,41 @@ class OpenRouterChat(Base):
                 if self._is_stopped:
                     raise asyncio.CancelledError("Node stopped during HTTP request")
 
-                response.raise_for_status()
+                # Check status before parsing response
+                if response.status >= 400:
+                    error_text = await response.text()
+                    raise aiohttp.ClientResponseError(
+                        request_info=response.request_info,
+                        history=response.history,
+                        status=response.status,
+                        message=f"OpenRouter API error ({response.status}): {error_text[:500]}",
+                    )
+
                 resp_data_raw = await response.json()
+                
+                # Validate response is not None/empty
+                if resp_data_raw is None:
+                    raise ValueError("OpenRouter API returned empty/null response")
+                
+                # Check for error in response body (OpenRouter returns errors with 200 status)
+                if isinstance(resp_data_raw, dict) and "error" in resp_data_raw:
+                    error_info = resp_data_raw.get("error", {})
+                    error_message = error_info.get("message", "Unknown error") if isinstance(error_info, dict) else str(error_info)
+                    error_type = error_info.get("type", "APIError") if isinstance(error_info, dict) else "APIError"
+                    raise ValueError(f"OpenRouter API error ({error_type}): {error_message}")
+                
                 return OpenRouterChatResponseModel.model_validate(resp_data_raw)
         except asyncio.CancelledError:
             print(f"STOP_TRACE: HTTP request cancelled for node {self.id}")
             raise
+        except aiohttp.ClientResponseError as e:
+            error_msg = f"OpenRouter API HTTP error ({e.status}): {e.message}"
+            logger.error(f"Node {self.id}: {error_msg}")
+            raise ValueError(error_msg) from e
+        except Exception as e:
+            error_msg = f"OpenRouter API error: {str(e)}"
+            logger.error(f"Node {self.id}: {error_msg}")
+            raise ValueError(error_msg) from e
 
     def _parse_bool_param(self, param_name: str, default: bool = False) -> bool:
         """Parse a combo boolean parameter that can be string 'true'/'false' or actual bool."""
@@ -576,7 +608,18 @@ class OpenRouterChat(Base):
         self._emit_progress(ProgressState.UPDATE, 50.0, "Calling LLM...")
 
         # Single LLM call with web search enabled via :online suffix
-        resp_data_model = await self._call_llm(messages, options, api_key)
+        try:
+            resp_data_model = await self._call_llm(messages, options, api_key)
+        except ValueError as e:
+            # Handle API errors (HTTP errors, empty responses, etc.)
+            error_msg = str(e)
+            logger.error(f"Node {self.id}: OpenRouter API call failed: {error_msg}")
+            return self._create_error_response(f"OpenRouter API error: {error_msg}")
+        except Exception as e:
+            # Handle any other unexpected errors
+            error_msg = f"Unexpected error calling OpenRouter API: {str(e)}"
+            logger.error(f"Node {self.id}: {error_msg}", exc_info=True)
+            return self._create_error_response(error_msg)
 
         # Emit progress update after receiving response
         self._emit_progress(ProgressState.UPDATE, 90.0, "Received...")

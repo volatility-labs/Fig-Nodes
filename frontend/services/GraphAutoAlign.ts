@@ -7,6 +7,11 @@ export class GraphAutoAlign {
     private static readonly START_X = 100; // Starting X position
     private static readonly START_Y = 100; // Starting Y position
     private static readonly COMPONENT_SPACING = 400; // Vertical spacing between disconnected components
+    
+    // Compact mode spacing (more box-like, tighter)
+    private static readonly COMPACT_LEVEL_SPACING = 50; // Much tighter horizontal spacing
+    private static readonly COMPACT_NODE_SPACING = 30; // Much tighter vertical spacing
+    private static readonly COMPACT_COMPONENT_SPACING = 50; // Much tighter component spacing
 
     /**
      * Auto-aligns all nodes in the graph based on flow topology
@@ -299,6 +304,192 @@ export class GraphAutoAlign {
                 // Update currentX for next level
                 currentX = levelX + maxWidthInLevel + this.LEVEL_SPACING;
             });
+        });
+    }
+
+    /**
+     * Auto-aligns all nodes in a compact, box-like grid layout
+     */
+    static alignGraphCompact(graph: LGraph): void {
+        const nodes = graph._nodes || [];
+        if (nodes.length === 0) return;
+
+        console.log('Aligning graph in compact mode...');
+
+        // Ensure all nodes have unique IDs
+        nodes.forEach((node: LGraphNode, index: number) => {
+            if (!(node as any).id) {
+                (node as any).id = `node_${index}_${Date.now()}`;
+            }
+        });
+
+        // Get serialized graph data to access links and node IDs
+        const serialized = graph.asSerialisable({ sortNodes: true }) as any;
+        const links = serialized.links || [];
+        const serializedNodes = serialized.nodes || [];
+
+        // Build node ID to node map
+        const nodeMap = new Map<number, LGraphNode>();
+        
+        serializedNodes.forEach((serializedNode: any) => {
+            const nodeId = serializedNode.id;
+            const node = nodes.find((n: any) => (n as any).id === nodeId) ||
+                        nodes.find((n: any) => 
+                            n.pos &&
+                            Math.abs(n.pos[0] - serializedNode.pos[0]) < 0.1 &&
+                            Math.abs(n.pos[1] - serializedNode.pos[1]) < 0.1 &&
+                            n.size &&
+                            n.size[0] === serializedNode.size[0] &&
+                            n.size[1] === serializedNode.size[1]
+                        );
+            if (node) {
+                nodeMap.set(nodeId, node);
+            }
+        });
+
+        // Build dependency graph
+        const inEdges = new Map<number, number[]>();
+        const outEdges = new Map<number, number[]>();
+
+        // Initialize all nodes
+        nodeMap.forEach((_, nodeId) => {
+            inEdges.set(nodeId, []);
+            outEdges.set(nodeId, []);
+        });
+
+        // Process links to build edges
+        links.forEach((link: any) => {
+            const fromId = link.origin_id;
+            const toId = link.target_id;
+            if (inEdges.has(toId) && outEdges.has(fromId)) {
+                inEdges.get(toId)!.push(fromId);
+                outEdges.get(fromId)!.push(toId);
+            }
+        });
+
+        // Detect disconnected components
+        const components = this.detectComponents(nodeMap, inEdges, outEdges);
+
+        // Topological sort to assign levels for each component
+        const nodeLevels = new Map<number, number>();
+        components.forEach((componentNodes, componentIndex) => {
+            const componentLevels = this.topologicalLevels(componentNodes, inEdges, outEdges);
+            componentLevels.forEach((level, nodeId) => {
+                nodeLevels.set(nodeId, level);
+            });
+        });
+
+        // Position nodes with compact spacing
+        this.positionNodesCompact(nodeLevels, nodeMap, components);
+
+        // Redraw canvas
+        const canvas = graph.list_of_graphcanvas?.[0];
+        if (canvas) {
+            canvas.draw(true, true);
+        }
+    }
+
+    /**
+     * Positions nodes in a compact, box-like grid layout
+     * Arranges nodes left-to-right, top-to-bottom in a grid
+     */
+    private static positionNodesCompact(
+        nodeLevels: Map<number, number>,
+        nodeMap: Map<number, LGraphNode>,
+        components: Map<number, Set<number>>
+    ): void {
+        // Sort components by size (largest first)
+        const sortedComponents = Array.from(components.keys()).sort((a, b) => {
+            return components.get(b)!.size - components.get(a)!.size;
+        });
+
+        let currentY = this.START_Y;
+
+        sortedComponents.forEach((componentIndex) => {
+            const componentNodesSet = components.get(componentIndex)!;
+            const componentNodes = Array.from(componentNodesSet)
+                .map(id => nodeMap.get(id)!)
+                .filter(n => n); // Ensure node exists
+
+            console.log(`Positioning component ${componentIndex} with ${componentNodes.length} nodes`);
+
+            // Sort nodes by topological level, then by ID for stability
+            componentNodes.sort((a, b) => {
+                const levelA = nodeLevels.get((a as any).id) ?? 0;
+                const levelB = nodeLevels.get((b as any).id) ?? 0;
+                if (levelA !== levelB) return levelA - levelB;
+                
+                const idA = (a as any).id;
+                const idB = (b as any).id;
+                
+                if (typeof idA === 'number' && typeof idB === 'number') {
+                    return idA - idB;
+                }
+                return String(idA).localeCompare(String(idB));
+            });
+
+            // Masonry layout parameters
+            const COLUMN_COUNT = 6; // Fixed number of columns for a boxy look
+            const columnWidths = new Array(COLUMN_COUNT).fill(0);
+            const columnY = new Array(COLUMN_COUNT).fill(currentY);
+            
+            // First pass: Estimate column widths based on node widths
+            // (Simplification: just assume a standard width or take max of first N nodes)
+            // Better: Just use a standard column width + spacing, or dynamic
+            // Let's track X positions for each column
+            const columnX = new Array(COLUMN_COUNT).fill(0);
+            let currentColumnX = this.START_X;
+            
+            // We need to know max width of nodes to set column spacing effectively
+            // Or we can just pack them tightly. Let's assume a standard width for column steps
+            // but allow nodes to be wider.
+            
+            // Revised approach:
+            // 1. Sort nodes (already done).
+            // 2. Place node in the column with the lowest current Y.
+            // 3. Update that column's Y.
+            // 4. Update column widths dynamically if needed, but for a strict grid, fixed columns are better.
+            // Let's try a flexible masonry where we just track "slots"
+            
+            // Let's use a simple multi-column layout where we place in the shortest column
+            // We need to define column X positions.
+            // Let's estimate average node width to determine column stride.
+            const avgNodeWidth = componentNodes.reduce((sum, n) => sum + (n.size?.[0] ?? 200), 0) / componentNodes.length || 200;
+            const columnStride = avgNodeWidth + this.COMPACT_LEVEL_SPACING;
+            
+            for (let i = 0; i < COLUMN_COUNT; i++) {
+                columnX[i] = this.START_X + (i * columnStride);
+            }
+
+            let componentMaxY = currentY;
+
+            componentNodes.forEach((node) => {
+                const nodeHeight = node.size?.[1] ?? 100;
+                
+                // Find column with minimum Y
+                let minColIndex = 0;
+                let minColY = columnY[0];
+                
+                for (let i = 1; i < COLUMN_COUNT; i++) {
+                    if (columnY[i] < minColY) {
+                        minColY = columnY[i];
+                        minColIndex = i;
+                    }
+                }
+                
+                // Place node in this column
+                node.pos = [columnX[minColIndex], minColY];
+                node.setDirtyCanvas(true, true);
+                
+                // Update column Y
+                columnY[minColIndex] += nodeHeight + this.COMPACT_NODE_SPACING;
+                
+                // Update component max Y
+                componentMaxY = Math.max(componentMaxY, columnY[minColIndex]);
+            });
+
+            // Move start Y for next component
+            currentY = componentMaxY + this.COMPACT_COMPONENT_SPACING;
         });
     }
 }

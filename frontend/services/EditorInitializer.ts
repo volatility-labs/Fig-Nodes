@@ -4,6 +4,7 @@ import { AppState } from './AppState';
 import { APIKeyManager } from './APIKeyManager';
 import { DialogManager } from './DialogManager';
 import { LinkModeManager } from './LinkModeManager';
+import { AlignModeManager } from './AlignModeManager';
 import { FileManager } from './FileManager';
 import { UIModuleLoader } from './UIModuleLoader';
 import { ServiceRegistry } from './ServiceRegistry';
@@ -38,6 +39,7 @@ export class EditorInitializer {
     private apiKeyManager: APIKeyManager;
     private themeManager: ThemeManager;
     private linkModeManager!: LinkModeManager;
+    private alignModeManager!: AlignModeManager;
 
     constructor() {
         this.appState = AppState.getInstance();
@@ -84,9 +86,11 @@ export class EditorInitializer {
 
             // Initialize services
             const linkModeManager = new LinkModeManager(canvas as any);
+            const alignModeManager = new AlignModeManager(graph);
             const fileManager = new FileManager(graph as any, canvas as any);
             const uiModuleLoader = new UIModuleLoader(this.serviceRegistry);
             this.linkModeManager = linkModeManager;
+            this.alignModeManager = alignModeManager;
 
             // Apply theme (must be done after canvas creation)
             this.themeManager.applyTheme(canvas, graph);
@@ -530,27 +534,32 @@ export class EditorInitializer {
             apiKeysBtn.addEventListener('click', () => this.apiKeyManager.openSettings());
             footerCenter.appendChild(apiKeysBtn);
 
-            // Add Auto-Align button
+            // Add Auto-Align button (cycles between Align and Compact)
             const autoAlignBtn = document.createElement('button');
             autoAlignBtn.id = 'auto-align-btn';
             autoAlignBtn.className = 'btn-secondary';
             autoAlignBtn.textContent = 'Align';
-            autoAlignBtn.title = 'Automatically align nodes based on graph flow';
+            autoAlignBtn.title = 'Layout mode: Align (click to cycle)';
             autoAlignBtn.addEventListener('click', () => {
                 try {
-                    const graph = this.serviceRegistry.get('graph') as LGraph;
-                    if (graph) {
-                        import('./GraphAutoAlign').then(({ GraphAutoAlign }) => {
-                            GraphAutoAlign.alignGraph(graph);
-                        }).catch((error) => {
-                            console.error('Failed to auto-align graph:', error);
-                        });
+                    if (this.alignModeManager) {
+                        this.alignModeManager.cycleAlignMode();
                     }
                 } catch (error) {
-                    console.error('Failed to auto-align graph:', error);
+                    console.error('Failed to cycle align mode:', error);
                 }
             });
             footerCenter.appendChild(autoAlignBtn);
+            
+            // Update button label from saved preference
+            if (this.alignModeManager) {
+                // Use setTimeout to ensure button is in DOM
+                setTimeout(() => {
+                    const modeName = this.alignModeManager.getModeName();
+                    autoAlignBtn.textContent = modeName;
+                    autoAlignBtn.title = `Layout mode: ${modeName} (click to cycle)`;
+                }, 0);
+            }
 
             // Add Reset Charts button
             const resetChartsBtn = document.createElement('button');

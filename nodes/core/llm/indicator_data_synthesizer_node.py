@@ -1938,14 +1938,27 @@ IMPORTANT: You must respond in ENGLISH only.
         summary_only_default = False if enable_summarization else True  # Show data if summarization will compress it
         summary_only = self.params.get("summary_only", summary_only_default) or format_style == "summary"
         
+        # Check if user explicitly set summary_only=False (not just default)
+        user_explicitly_set_summary_only = "summary_only" in self.params
+        
         # CRITICAL OVERRIDE: Force summary_only=True if many symbols are present to prevent 20MB text explosion.
-        # This overrides user setting to ensure system stability.
-        # EXCEPTION: If batching is enabled (batch_size > 1), we are already compressing history, so we can skip this force.
+        # EXCEPTION 1: If batching is enabled (batch_size > 1), we are already compressing history, so we can skip this force.
+        # EXCEPTION 2: If user explicitly set summary_only=False, respect their choice (they want raw data even with many symbols).
         batch_size_param = int(self.params.get("batch_size", 1))
         total_symbols_check = len(ohlcv_bundle) if ohlcv_bundle else 0
         if total_symbols_check > 5 and not summary_only and batch_size_param <= 1:
-            logger.warning(f"⚠️ IndicatorDataSynthesizer: Forcing summary_only=True because total_symbols={total_symbols_check} > 5 and batching is disabled. This prevents massive token usage.")
-            summary_only = True
+            if user_explicitly_set_summary_only and not summary_only:
+                # User explicitly wants raw data - respect their choice but warn strongly
+                logger.warning(
+                    f"⚠️ IndicatorDataSynthesizer: User explicitly set summary_only=False with {total_symbols_check} symbols. "
+                    f"This will generate a LARGE amount of data (~{total_symbols_check * recent_bars_count} bars). "
+                    f"Consider using batch_size > 1 or enable_summarization=True to reduce token usage."
+                )
+                # Don't override - respect user's explicit choice
+            else:
+                # Auto-override for safety when user hasn't explicitly set it
+                logger.warning(f"⚠️ IndicatorDataSynthesizer: Forcing summary_only=True because total_symbols={total_symbols_check} > 5 and batching is disabled. This prevents massive token usage.")
+                summary_only = True
         
         # Log current settings for debugging - CRITICAL DEBUG
         logger.warning(

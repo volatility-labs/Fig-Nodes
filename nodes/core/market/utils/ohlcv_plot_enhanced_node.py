@@ -625,17 +625,14 @@ class OHLCVPlotEnhanced(Base):
                     logger.warning(f"OHLCVPlotEnhanced: Skipping {sym} - only {len(norm)} bars (minimum {MIN_BARS_REQUIRED} required)")
                     continue
 
-                # Calculate overlays with warm-up period (like HurstPlot node)
-                # Use display bars + longest overlay period to ensure overlays are initialized
+                # Calculate overlays using ALL available bars (full_norm) to match filter calculations
+                # Only limit the DISPLAY to lookback_bars, but calculate EMA/SMA on full dataset
+                # This ensures consistency with MovingAverageFilter which uses all bars
                 plot_overlays: list[tuple[list[float | None], str, str]] = []
                 if overlay_configs:
-                    # Find longest overlay period for warm-up calculation
-                    longest_period = max((period for period, _ in overlay_configs), default=0)
-                    overlay_warmup_bars = len(norm) + longest_period  # Display bars + warm-up
-                    
-                    # Use more bars for calculation to ensure proper initialization
-                    overlay_calc_bars = min(overlay_warmup_bars, len(full_norm))
-                    overlay_calc_norm = full_norm[-overlay_calc_bars:] if len(full_norm) > overlay_calc_bars else full_norm
+                    # Use ALL bars for calculation to match filter behavior
+                    # The filter uses all bars, so the plot should too for consistency
+                    overlay_calc_norm = full_norm
                     overlay_calc_closes = [bar[4] for bar in overlay_calc_norm]
                     
                     colors = ["#2196F3", "#FF9800"]
@@ -653,7 +650,7 @@ class OHLCVPlotEnhanced(Base):
                         non_none_count = sum(1 for v in overlay_values if v is not None)
                         logger.info(
                             f"Computed {ma_type}({period}) for {sym}: {len(overlay_values)} total, "
-                            f"{non_none_count} non-None in plot of {len(norm)} bars (warm-up: {overlay_calc_bars} bars)"
+                            f"{non_none_count} non-None in plot of {len(norm)} bars (calculated on {len(overlay_calc_norm)} bars to match filter)"
                         )
                         label = f"{ma_type} {period}"
                         color = colors[i % len(colors)]
