@@ -164,11 +164,11 @@ export default class BaseCustomNode extends LGraphNode {
         const profiler = PerformanceProfiler.getInstance();
         
         profiler?.measure('updateDisplay', () => {
-            this.result = result;
-            if (this.displayResults) {
-                const outputs = Object.values(result as Record<string, unknown>);
-                const primaryOutput = outputs.length === 1 ? outputs[0] : result;
-                this.displayText = typeof primaryOutput === 'string' ? primaryOutput : JSON.stringify(primaryOutput, null, 2);
+        this.result = result;
+        if (this.displayResults) {
+            const outputs = Object.values(result as Record<string, unknown>);
+            const primaryOutput = outputs.length === 1 ? outputs[0] : result;
+            this.displayText = typeof primaryOutput === 'string' ? primaryOutput : JSON.stringify(primaryOutput, null, 2);
             } else {
                 // Skip expensive JSON.stringify when displayResults is false
                 this.displayText = '';
@@ -192,7 +192,7 @@ export default class BaseCustomNode extends LGraphNode {
         // Set new timeout - all updates within 16ms (1 frame) will be batched
         BaseCustomNode.canvasRedrawTimeout = window.setTimeout(() => {
             profiler?.trackRenderCall();
-            this.setDirtyCanvas(true, true);
+        this.setDirtyCanvas(true, true);
             BaseCustomNode.canvasRedrawTimeout = null;
         }, 16);
     }

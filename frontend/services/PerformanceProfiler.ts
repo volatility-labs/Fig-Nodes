@@ -103,6 +103,7 @@ export class PerformanceProfiler {
 
     /**
      * Measure a specific operation
+     * Automatically tracks duration and handles errors
      */
     measure(name: string, fn: () => void): void;
     measure<T>(name: string, fn: () => T): T;
@@ -114,8 +115,12 @@ export class PerformanceProfiler {
 
         const startTime = performance.now();
         let result: T;
+        let error: Error | null = null;
         try {
             result = fn();
+        } catch (e) {
+            error = e instanceof Error ? e : new Error(String(e));
+            throw e;
         } finally {
             const endTime = performance.now();
             this.metrics.push({
@@ -123,7 +128,10 @@ export class PerformanceProfiler {
                 startTime,
                 endTime,
                 duration: endTime - startTime,
-                metadata
+                metadata: {
+                    ...metadata,
+                    ...(error ? { error: error.message } : {})
+                }
             });
         }
         return result;
@@ -288,7 +296,7 @@ export class PerformanceProfiler {
     }
 
     /**
-     * Display profiling results in console
+     * Display profiling results in console with detailed analysis
      */
     logResults(): void {
         const stats = this.getStats();
@@ -298,12 +306,23 @@ export class PerformanceProfiler {
         console.log(`Average Frame Time: ${stats.averageFrameTime.toFixed(2)}ms`);
         console.log(`Max Frame Time: ${stats.maxFrameTime.toFixed(2)}ms`);
         console.log(`Min Frame Time: ${stats.minFrameTime.toFixed(2)}ms`);
-        console.log(`Dropped Frames: ${stats.droppedFrames} (${((stats.droppedFrames / stats.totalFrames) * 100).toFixed(1)}%)`);
+        const dropPercentage = stats.totalFrames > 0 
+            ? ((stats.droppedFrames / stats.totalFrames) * 100).toFixed(1)
+            : '0.0';
+        console.log(`Dropped Frames: ${stats.droppedFrames} (${dropPercentage}%)`);
         console.log(`Total Render Calls: ${stats.totalRenderCalls}`);
         console.log(`Total Node Updates: ${stats.totalNodeUpdates}`);
         
         if (stats.peakMemoryUsage) {
             console.log(`Peak Memory Usage: ${(stats.peakMemoryUsage / 1024 / 1024).toFixed(2)} MB`);
+        }
+
+        // Performance warnings
+        if (stats.averageFrameTime > 16.67) {
+            console.warn(`⚠️ Average frame time (${stats.averageFrameTime.toFixed(2)}ms) exceeds 16.67ms target for 60fps`);
+        }
+        if (stats.droppedFrames > stats.totalFrames * 0.1) {
+            console.warn(`⚠️ High dropped frame rate: ${dropPercentage}%`);
         }
 
         // Group metrics by name
@@ -317,14 +336,28 @@ export class PerformanceProfiler {
 
         console.group('📊 Custom Metrics');
         metricGroups.forEach((metrics, name) => {
-            const avg = metrics.reduce((sum, m) => sum + (m.duration || 0), 0) / metrics.length;
-            const max = Math.max(...metrics.map(m => m.duration || 0));
-            const min = Math.min(...metrics.map(m => m.duration || 0));
-            console.log(`${name}: avg=${avg.toFixed(2)}ms, max=${max.toFixed(2)}ms, min=${min.toFixed(2)}ms, count=${metrics.length}`);
+            const durations = metrics.map(m => m.duration || 0);
+            const avg = durations.reduce((sum, d) => sum + d, 0) / durations.length;
+            const max = Math.max(...durations);
+            const min = Math.min(...durations);
+            const total = durations.reduce((sum, d) => sum + d, 0);
+            console.log(`${name}: avg=${avg.toFixed(2)}ms, max=${max.toFixed(2)}ms, min=${min.toFixed(2)}ms, total=${total.toFixed(2)}ms, count=${metrics.length}`);
+            
+            // Highlight slow operations
+            if (avg > 10) {
+                console.warn(`  ⚠️ ${name} is slow (avg ${avg.toFixed(2)}ms)`);
+            }
         });
         console.groupEnd();
 
         console.groupEnd();
+    }
+
+    /**
+     * Print profiling results to console (alias for logResults for consistency)
+     */
+    printStatsToConsole(): void {
+        this.logResults();
     }
 
     /**

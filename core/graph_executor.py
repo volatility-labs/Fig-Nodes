@@ -7,8 +7,10 @@ import rustworkx as rx
 
 from core.api_key_vault import APIKeyVault
 from core.types_registry import (
+    ExecutionResults,
     NodeCategory,
     NodeExecutionError,
+    NodeOutput,
     ProgressCallback,
     ResultCallback,
     SerialisableGraph,
@@ -19,7 +21,6 @@ from nodes.base.base_node import Base
 logger = logging.getLogger(__name__)
 
 NodeId = int
-ExecutionResults = dict[NodeId, dict[str, Any]]
 
 
 class _GraphExecutionState(Enum):
@@ -45,7 +46,7 @@ class GraphExecutor:
         self._result_callback: ResultCallback | None = None
         self.vault = APIKeyVault()
         self._active_tasks: list[
-            asyncio.Task[tuple[int, dict[str, Any]]]
+            asyncio.Task[tuple[int, NodeOutput]]
         ] = []  # Track active tasks for cancellation
         self._build_graph()
 
@@ -104,7 +105,7 @@ class GraphExecutor:
     # ============================================================================
 
     async def execute(self) -> ExecutionResults:
-        results: dict[int, dict[str, Any]] = {}
+        results: ExecutionResults = {}
         levels = _rx_levels(self.dag)
         self._active_tasks.clear()
         self._state = _GraphExecutionState.RUNNING
@@ -119,14 +120,14 @@ class GraphExecutor:
         return results
 
     async def _execute_levels(
-        self, levels: list[list[int]], results: dict[int, dict[str, Any]]
+        self, levels: list[list[int]], results: ExecutionResults
     ) -> None:
         """Execute all levels of the graph."""
         for level in levels:
             if self._should_stop():
                 break
 
-            tasks: list[asyncio.Task[tuple[int, dict[str, Any]]]] = []
+            tasks: list[asyncio.Task[tuple[int, NodeOutput]]] = []
             for node_idx in level:
                 node_id = self._idx_to_id[node_idx]
                 if self.dag.in_degree(node_idx) == 0 and self.dag.out_degree(node_idx) == 0:
@@ -169,7 +170,7 @@ class GraphExecutor:
                         self._process_level_results([level_result], results)
                     except asyncio.CancelledError:
                         # Task was cancelled - force_stop() was already called in _execute_node_with_error_handling
-                        print("RESULT_TRACE: Task cancelled in as_completed loop, stopping")
+                        logger.debug("RESULT_TRACE: Task cancelled in as_completed loop, stopping")
                         self._cancel_all_tasks(tasks)
                         break
                     except Exception as e:
@@ -181,7 +182,7 @@ class GraphExecutor:
                         self._process_level_results([e], results)
 
     def _process_level_results(
-        self, level_results: list[Any], results: dict[int, dict[str, Any]]
+        self, level_results: list[Any], results: ExecutionResults
     ) -> None:
         """Process results from a level execution."""
         for level_result in level_results:
@@ -193,18 +194,18 @@ class GraphExecutor:
                 node_id, output = level_result  # type: ignore[assignment]
                 if isinstance(node_id, int) and isinstance(output, dict):
                     node = self.nodes[node_id]
-                    print(
+                    logger.debug(
                         f"RESULT_TRACE: Processing result for node {node_id}, type={type(node).__name__}, category={node.CATEGORY}"
                     )
                     # Emit immediately for IO category nodes
                     should_emit = self._should_emit_immediately(node)
                     has_callback = self._result_callback is not None
-                    print(
+                    logger.debug(
                         f"RESULT_TRACE: Node {node_id} - should_emit={should_emit}, has_callback={has_callback}"
                     )
                     if should_emit and self._result_callback:
-                        print(f"RESULT_TRACE: Emitting immediate result for node {node_id}")
-                        output_dict: dict[str, Any] = output
+                        logger.debug(f"RESULT_TRACE: Emitting immediate result for node {node_id}")
+                        output_dict: NodeOutput = output
                         self._result_callback(node_id, output_dict)
                     results[node_id] = output
 
@@ -219,29 +220,29 @@ class GraphExecutor:
 
     async def _execute_node_with_error_handling(
         self, node_id: int, node: Base, merged_inputs: dict[str, Any]
-    ) -> tuple[int, dict[str, Any]]:
+    ) -> tuple[int, NodeOutput]:
         try:
             outputs = await node.execute(merged_inputs)
             return node_id, outputs
         except NodeExecutionError as e:
             if hasattr(e, "original_exc") and e.original_exc:
-                print(
+                logger.debug(
                     f"ERROR_TRACE: Original exception: {type(e.original_exc).__name__}: {str(e.original_exc)}"
                 )
             logger.error(f"Node {node_id} failed: {str(e)}")
             return node_id, {"error": str(e)}
         except asyncio.CancelledError:
-            print("STOP_TRACE: Caught CancelledError in node.execute await in GraphExecutor")
+            logger.debug("STOP_TRACE: Caught CancelledError in node.execute await in GraphExecutor")
             self.force_stop()
             raise
         except Exception as e:
-            print(
+            logger.debug(
                 f"ERROR_TRACE: Unexpected exception in node {node_id}: {type(e).__name__}: {str(e)}"
             )
             logger.error(f"Unexpected error in node {node_id}: {str(e)}", exc_info=True)
             return node_id, {"error": f"Unexpected error: {str(e)}"}
 
-    def _get_node_inputs(self, node_id: int, results: dict[int, dict[str, Any]]) -> dict[str, Any]:
+    def _get_node_inputs(self, node_id: int, results: ExecutionResults) -> dict[str, Any]:
         inputs: dict[str, Any] = {}
         # Derive inputs solely from the link table to avoid index/weight ambiguity
         for link in self.graph.get("links", []) or []:
@@ -273,7 +274,7 @@ class GraphExecutor:
                 inputs[input_key] = value
         return inputs
 
-    def _cancel_all_tasks(self, tasks: list[asyncio.Task[tuple[int, dict[str, Any]]]]):
+    def _cancel_all_tasks(self, tasks: list[asyncio.Task[tuple[int, NodeOutput]]]):
         """Cancel all active tasks immediately."""
         for task in tasks:
             if not task.done():
@@ -291,19 +292,19 @@ class GraphExecutor:
         self._cancellation_reason = reason
 
         # Cancel all active tasks FIRST
-        print(f"STOP_TRACE: Cancelling {len(self._active_tasks)} active tasks")
+        logger.debug(f"STOP_TRACE: Cancelling {len(self._active_tasks)} active tasks")
         self._cancel_all_tasks(self._active_tasks)
 
         # Then force stop all nodes
         for node_id, node in self.nodes.items():
-            print(f"STOP_TRACE: Calling force_stop on node {node_id} ({type(node).__name__})")
+            logger.debug(f"STOP_TRACE: Calling force_stop on node {node_id} ({type(node).__name__})")
             node.force_stop()
 
-        print("STOP_TRACE: Force stop completed in GraphExecutor")
+        logger.debug("STOP_TRACE: Force stop completed in GraphExecutor")
         self._state = _GraphExecutionState.STOPPED
 
     async def stop(self, reason: str = "user"):
-        print("STOP_TRACE: GraphExecutor.stop called")
+        logger.debug("STOP_TRACE: GraphExecutor.stop called")
         self.force_stop(reason=reason)
 
     # ============================================================================
@@ -359,7 +360,7 @@ class GraphExecutor:
     def _should_emit_immediately(self, node: Base) -> bool:
         """Check if node should emit results immediately (IO category nodes)."""
         result = node.CATEGORY == NodeCategory.IO
-        print(
+        logger.debug(
             f"RESULT_TRACE: _should_emit_immediately(node={type(node).__name__}, category={node.CATEGORY}) -> {result}"
         )
         return result

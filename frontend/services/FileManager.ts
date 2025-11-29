@@ -188,17 +188,17 @@ export class FileManager {
             }
 
             profiler?.measure('autosave', () => {
-                const data = this.graph.asSerialisable({ sortNodes: true });
+            const data = this.graph.asSerialisable({ sortNodes: true });
                 const json = JSON.stringify(data);
-                
-                if (json !== this.lastSavedGraphJson) {
-                    const payload = { graph: data, name: this.getCurrentGraphName() };
-                    this.safeLocalStorageSet('fig-nodes:autosave:v1', JSON.stringify(payload));
-                    this.lastSavedGraphJson = json;
+
+            if (json !== this.lastSavedGraphJson) {
+                const payload = { graph: data, name: this.getCurrentGraphName() };
+                this.safeLocalStorageSet('fig-nodes:autosave:v1', JSON.stringify(payload));
+                this.lastSavedGraphJson = json;
                     if (typeof (this.graph as any)._version === 'number') {
                         this.lastSavedVersion = (this.graph as any)._version;
                     }
-                }
+            }
             }, { graphSize: this.graph._nodes?.length || 0 });
         } catch { /* ignore */ }
     }

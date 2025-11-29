@@ -335,7 +335,7 @@ async def execute_endpoint(websocket: WebSocket):
         )
         return
     except Exception as e:
-        print(f"ERROR_TRACE: Failed to establish session: {type(e).__name__}: {str(e)}")
+        logger.error(f"Failed to establish session: {type(e).__name__}: {str(e)}", exc_info=True)
         return
 
     # Now handle normal messages
@@ -372,23 +372,23 @@ async def execute_endpoint(websocket: WebSocket):
                 registry.set_job(session_id, None)
 
     except WebSocketDisconnect as e:
-        print(
+        logger.info(
             f"Client disconnected: code={e.code}, reason={e.reason or 'none'}, session={session_id}"
         )
         # Clean up session on disconnect (pass websocket to prevent race conditions)
         registry.unregister(session_id, websocket)
 
     except Exception as e:
-        print(f"ERROR_TRACE: Exception in execute_endpoint: {type(e).__name__}: {str(e)}")
-        traceback.print_exc()
+        logger.error(f"Exception in execute_endpoint: {type(e).__name__}: {str(e)}", exc_info=True)
 
         # Try to send error, but don't fail if websocket is closed
         if websocket.client_state == WebSocketState.CONNECTED:
             try:
                 await _send_error_message(websocket, message=str(e))
             except Exception as send_error:
-                print(
-                    f"ERROR_TRACE: Failed to send error message: {type(send_error).__name__}: {str(send_error)}"
+                logger.error(
+                    f"Failed to send error message: {type(send_error).__name__}: {str(send_error)}",
+                    exc_info=True
                 )
 
         # Clean up session on error (pass websocket to prevent race conditions)

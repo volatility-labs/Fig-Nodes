@@ -3,6 +3,8 @@ from __future__ import annotations
 from typing import Any, Dict, List, Union, cast
 import logging
 
+from core.types_registry import ExecutionResults
+
 logger = logging.getLogger(__name__)
 
 # Type definitions for serialized values
@@ -14,8 +16,7 @@ SerializedValue = Union[
     List[Dict[str, "SerializedValue"]],
 ]
 
-# Type aliases for input/output
-ExecutionResults = Dict[int, Dict[str, Any]]
+# Type alias for serialized results (node IDs as strings for JSON)
 SerializedResults = Dict[str, Dict[str, SerializedValue]]
 
 

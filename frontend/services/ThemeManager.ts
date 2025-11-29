@@ -257,6 +257,10 @@ export class ThemeManager {
         };
         
         // 3. Update link type colors (basic types)
+        // Initialize link_type_colors if it doesn't exist (e.g., in test environments)
+        if (!LGraphCanvas.link_type_colors) {
+            LGraphCanvas.link_type_colors = {} as any;
+        }
         LGraphCanvas.link_type_colors["-1"] = colors.eventLinkColor;
         LGraphCanvas.link_type_colors["number"] = colors.linkTypeNumber;
         LGraphCanvas.link_type_colors["node"] = colors.linkTypeNode;

@@ -855,7 +855,12 @@ def _plot_mesa_stochastic(
                 trigger = []
                 for i in range(len(values)):
                     if i >= trigger_length - 1:
-                        trigger.append(np.mean(values[i - trigger_length + 1:i + 1]))
+                        # Filter out None values before calculating mean
+                        slice_values = [v for v in values[i - trigger_length + 1:i + 1] if v is not None]
+                        if slice_values:
+                            trigger.append(np.mean(slice_values))
+                        else:
+                            trigger.append(None)
                     else:
                         trigger.append(values[i])
                 # Increased linewidth and alpha for better AI visibility
@@ -883,7 +888,12 @@ def _plot_mesa_stochastic(
                             trigger_values = []
                             for i in range(len(values)):
                                 if i >= trigger_length - 1:
-                                    trigger_values.append(np.mean(values[i - trigger_length + 1:i + 1]))
+                                    # Filter out None values before calculating mean
+                                    slice_values = [v for v in values[i - trigger_length + 1:i + 1] if v is not None]
+                                    if slice_values:
+                                        trigger_values.append(np.mean(slice_values))
+                                    else:
+                                        trigger_values.append(None)
                                 else:
                                     trigger_values.append(values[i])
                             if last_index < len(trigger_values):

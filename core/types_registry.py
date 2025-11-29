@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from collections.abc import AsyncGenerator, Callable
 from dataclasses import dataclass, field
 from enum import Enum, auto
@@ -70,7 +72,7 @@ class ExecutionResult:
     """Immutable result of graph execution."""
 
     outcome: ExecutionOutcome
-    results: dict[int, dict[str, Any]] | None = None
+    results: ExecutionResults | None = None
     error: str | None = None
     cancelled_by: str | None = None  # "user" | "disconnect" | "monitor"
 
@@ -83,7 +85,7 @@ class ExecutionResult:
         return self.outcome == ExecutionOutcome.CANCELLED
 
     @classmethod
-    def success(cls, results: dict[int, dict[str, Any]]) -> "ExecutionResult":
+    def success(cls, results: ExecutionResults) -> "ExecutionResult":
         return cls(outcome=ExecutionOutcome.SUCCESS, results=results)
 
     @classmethod
@@ -184,6 +186,14 @@ class ParamMeta(TypedDict, total=False):
 DefaultParams: TypeAlias = dict[str, ParamValue]
 NodeInputs: TypeAlias = dict[str, Any]
 NodeOutputs: TypeAlias = dict[str, Any]
+
+# Type aliases for node execution
+NodeId: TypeAlias = int
+# Base type for all node outputs - a dictionary with string keys
+# The values can be any type defined in the type registry
+NodeOutput: TypeAlias = dict[str, Any]
+# Execution results map node IDs to their outputs
+ExecutionResults: TypeAlias = dict[NodeId, NodeOutput]
 
 # Type alias for the node registry
 NodeRegistry: TypeAlias = dict[str, type[Any]]
@@ -361,7 +371,7 @@ class ProgressEvent(TypedDict, total=False):
 
 ProgressCallback = Callable[[ProgressEvent], None]
 
-ResultCallback = Callable[[int, dict[str, Any]], None]
+ResultCallback = Callable[[int, NodeOutput], None]
 
 TYPE_REGISTRY: dict[str, type[Any]] = {
     "AssetSymbol": AssetSymbol,
@@ -454,4 +464,7 @@ __all__ = [
     "ResultCallback",
     "ExecutionOutcome",
     "ExecutionResult",
+    "NodeId",
+    "NodeOutput",
+    "ExecutionResults",
 ]

@@ -70,49 +70,49 @@ if (!(LiteGraph as any)._wheelPatched) {
             // 2. Nodes are selected (nodes might want to handle zoom when selected)
             // Otherwise, skip node checks entirely for faster panning
             if (shiftPressed || hasSelectedNode) {
-                if (graph && typeof graph.getNodeOnPos === 'function') {
-                    try {
+            if (graph && typeof graph.getNodeOnPos === 'function') {
+                try {
                         // Get node at mouse position
                         const node = graph.getNodeOnPos(canvasX, canvasY);
-                        
-                        // Handle wheel events when mouse is over a node that has onMouseWheel
+                    
+                    // Handle wheel events when mouse is over a node that has onMouseWheel
                         // Only check if shift is pressed (zoom) or node is selected
                         if (node && typeof (node as any).onMouseWheel === 'function') {
-                            // Local coords relative to node
-                            const nodePos = node.pos ?? [0, 0];
-                            const local: [number, number] = [canvasX - nodePos[0], canvasY - nodePos[1]];
+                        // Local coords relative to node
+                        const nodePos = node.pos ?? [0, 0];
+                        const local: [number, number] = [canvasX - nodePos[0], canvasY - nodePos[1]];
                             const handled = (node as any).onMouseWheel(event, local, this);
-                            if (handled) {
+                        if (handled) {
                                 // Node handled it - prevent canvas zoom/pan
-                                event.preventDefault();
-                                event.stopPropagation();
-                                return;
-                            }
+                            event.preventDefault();
+                            event.stopPropagation();
+                            return;
                         }
-                        
-                        // Also check selected nodes (for zoom when selected, even if mouse is outside)
-                        if (hasSelectedNode) {
-                            for (const nodeId in selectedNodes) {
-                                const selectedNode = selectedNodes[nodeId];
+                    }
+                    
+                    // Also check selected nodes (for zoom when selected, even if mouse is outside)
+                    if (hasSelectedNode) {
+                        for (const nodeId in selectedNodes) {
+                            const selectedNode = selectedNodes[nodeId];
                                 if (selectedNode && typeof (selectedNode as any).onMouseWheel === 'function') {
-                                    // Use node's position for local coords
-                                    const nodePos = selectedNode.pos ?? [0, 0];
-                                    const local: [number, number] = [canvasX - nodePos[0], canvasY - nodePos[1]];
+                                // Use node's position for local coords
+                                const nodePos = selectedNode.pos ?? [0, 0];
+                                const local: [number, number] = [canvasX - nodePos[0], canvasY - nodePos[1]];
                                     const handled = (selectedNode as any).onMouseWheel(event, local, this);
-                                    if (handled) {
-                                        // Node handled it - prevent canvas zoom/pan
-                                        event.preventDefault();
-                                        event.stopPropagation();
-                                        return;
-                                    }
+                                if (handled) {
+                                    // Node handled it - prevent canvas zoom/pan
+                                    event.preventDefault();
+                                    event.stopPropagation();
+                                    return;
                                 }
                             }
                         }
-                    } catch (err) {
-                        // Log error but continue with original behavior
-                        console.warn('❌ Error in wheel patch:', err);
                     }
+                } catch (err) {
+                    // Log error but continue with original behavior
+                        console.warn('❌ Error in wheel patch:', err);
                 }
+            }
             }
             
             // Canvas panning logic (when no nodes selected or no node handled the event)

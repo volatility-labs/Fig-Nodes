@@ -4,6 +4,7 @@
  */
 
 import { LGraphCanvas } from '@fig-node/litegraph';
+import { PerformanceProfiler } from './PerformanceProfiler';
 
 export class CanvasScrollbars {
     private canvas: LGraphCanvas;

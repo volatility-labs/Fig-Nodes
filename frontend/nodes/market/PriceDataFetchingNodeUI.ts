@@ -18,7 +18,7 @@ export default class PriceDataFetchingNodeUI extends BaseCustomNode {
         if (result && typeof result === 'object' && result.csv_file) {
              this.displayText = `✅ CSV saved: ${result.csv_file.split('/').pop() || result.csv_file}`;
         } else if (typeof result === 'string' && result.length < 100) {
-             this.displayText = result;
+            this.displayText = result;
         } else {
              this.displayText = '';
         }

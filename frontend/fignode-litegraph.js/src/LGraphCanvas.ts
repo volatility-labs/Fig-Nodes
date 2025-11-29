@@ -2332,7 +2332,7 @@ export class LGraphCanvas implements CustomEventDispatcher<LGraphCanvasEventMap>
         // If modifier keys are pressed, create selection rectangle
         // Otherwise, deselect all nodes (making canvas "selected") and allow panning
         if (e.ctrlKey || e.metaKey || e.shiftKey) {
-          this.#setupNodeSelectionDrag(e, pointer)
+        this.#setupNodeSelectionDrag(e, pointer)
         } else {
           // Click on background: deselect all nodes (canvas becomes "selected")
           // This allows scrolling to pan the canvas (like image nodes)
@@ -3272,7 +3272,7 @@ export class LGraphCanvas implements CustomEventDispatcher<LGraphCanvasEventMap>
     const delta = e.deltaY !== undefined ? e.deltaY : (e.wheelDeltaY ?? e.detail * -60)
 
     this.adjustMouseEvent(e)
-    
+
     // Debug: Log wheel event to verify it's being received (enable temporarily for debugging)
     console.log('Canvas Wheel event:', { 
       deltaX: e.deltaX, 
@@ -3327,12 +3327,12 @@ export class LGraphCanvas implements CustomEventDispatcher<LGraphCanvasEventMap>
     } else if (LiteGraph.canvasNavigationMode === "legacy") {
       // Legacy mode: wheel zooms directly (backward compatibility)
       if (delta > 0) {
-        scale *= this.zoom_speed
+          scale *= this.zoom_speed
       } else if (delta < 0) {
         scale *= 1 / (this.zoom_speed)
-      }
-      this.ds.changeScale(scale, [e.clientX, e.clientY])
-    } else {
+        }
+        this.ds.changeScale(scale, [e.clientX, e.clientY])
+      } else {
       // DEFAULT: Regular scroll = PAN (like image nodes)
       // Always pan when scrolling on background canvas (ignoring ctrlKey/metaKey to prevent Mac trackpad zoom issues)
       // Pan both directions (up/down and sideways) when scrolling on background

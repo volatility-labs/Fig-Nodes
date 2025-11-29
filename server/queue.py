@@ -11,7 +11,9 @@ from core.node_registry import NodeRegistry
 from core.serialization import serialize_results
 from core.types_registry import (
     ExecutionResult,
+    ExecutionResults,
     NodeCategory,
+    NodeOutput,
     ProgressEvent,
     SerialisableGraph,
 )
@@ -31,7 +33,8 @@ logger = logging.getLogger(__name__)
 
 
 def _debug(message: str) -> None:
-    print(message)
+    """Debug logging helper - use logger.debug instead of print for better control."""
+    logger.debug(message)
 
 
 class JobState(Enum):
@@ -97,7 +100,7 @@ class ExecutionQueue:
                 job.state = JobState.CANCELLED
                 job.cancel_event.set()
             else:
-                print(f"Queue: Job {job.id} not found in pending or running lists")
+                logger.warning(f"Queue: Job {job.id} not found in pending or running lists")
             self._wakeup_event.set()
 
     async def position(self, job: ExecutionJob) -> int:
@@ -244,26 +247,26 @@ async def execution_worker(queue: ExecutionQueue, node_registry: NodeRegistry):
             progress_msg = ServerToClientProgressMessage(**kwargs)
             _ws_send_async(websocket, progress_msg)
 
-        def guarded_result_callback(node_id: int, outputs: dict[str, Any]) -> None:
-            print(
+        def guarded_result_callback(node_id: int, outputs: NodeOutput) -> None:
+            logger.debug(
                 f"RESULT_TRACE: guarded_result_callback called for node {node_id}, outputs keys: {list(outputs.keys())}"
             )
             # Same guards as progress callback
             if executor and (executor.is_stopped or executor.is_stopping):
-                print(f"RESULT_TRACE: Skipping node {node_id} - executor stopped/stopping")
+                logger.debug(f"RESULT_TRACE: Skipping node {node_id} - executor stopped/stopping")
                 return
             if websocket.client_state == WebSocketState.DISCONNECTED:
-                print(f"RESULT_TRACE: Skipping node {node_id} - websocket disconnected")
+                logger.debug(f"RESULT_TRACE: Skipping node {node_id} - websocket disconnected")
                 return
 
-            print(f"RESULT_TRACE: Sending immediate result for node {node_id} via websocket")
+            logger.debug(f"RESULT_TRACE: Sending immediate result for node {node_id} via websocket")
             data_msg = ServerToClientDataMessage(
                 type="data",
                 results=serialize_results({node_id: outputs}),
                 job_id=job_id,
             )
             _ws_send_async(websocket, data_msg)
-            print(f"RESULT_TRACE: Sent immediate result for node {node_id}")
+            logger.debug(f"RESULT_TRACE: Sent immediate result for node {node_id}")
 
         def _should_emit_immediately_for_node_id(
             node_id: int, executor: GraphExecutor | None
@@ -285,12 +288,12 @@ async def execution_worker(queue: ExecutionQueue, node_registry: NodeRegistry):
             executor = GraphExecutor(job.graph_data, node_registry)
             executor.set_progress_callback(guarded_progress_callback)
             executor.set_result_callback(guarded_result_callback)
-            print(
+            logger.debug(
                 f"RESULT_TRACE: Executor created, result_callback set: {hasattr(executor, '_result_callback') and getattr(executor, '_result_callback') is not None}"
             )
-            # Print node categories for debugging
+            # Log node categories for debugging
             for node_id, node in executor.nodes.items():
-                print(
+                logger.debug(
                     f"RESULT_TRACE: Node {node_id} ({type(node).__name__}) has category: {node.CATEGORY}"
                 )
 

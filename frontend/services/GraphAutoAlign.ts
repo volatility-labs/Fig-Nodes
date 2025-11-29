@@ -7,7 +7,7 @@ export class GraphAutoAlign {
     private static readonly START_X = 100; // Starting X position
     private static readonly START_Y = 100; // Starting Y position
     private static readonly COMPONENT_SPACING = 400; // Vertical spacing between disconnected components
-    
+
     // Compact mode spacing (more box-like, tighter)
     private static readonly COMPACT_LEVEL_SPACING = 50; // Much tighter horizontal spacing
     private static readonly COMPACT_NODE_SPACING = 30; // Much tighter vertical spacing

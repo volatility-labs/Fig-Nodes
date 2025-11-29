@@ -52,9 +52,14 @@ import { LGraph, LGraphCanvas } from '@fig-node/litegraph';
 import { ServiceRegistry } from './services/ServiceRegistry';
 import { APIKeyManager } from './services/APIKeyManager';
 import type { ExecutionResults } from './types/resultTypes';
+import type { SerialisableGraph } from '@fig-node/litegraph/dist/types/serialisation';
 import type {
     ClientToServerMessage,
-    ServerToClientMessage
+    ServerToClientMessage,
+    ServerToClientErrorMessage,
+    ServerToClientStoppedMessage,
+    ServerToClientDataMessage,
+    ServerToClientProgressMessage
 } from './types/websocketType';
 import {
     isErrorMessage,
@@ -70,7 +75,7 @@ import {
 } from './types/websocketType';
 import type { ExecutionStatusService } from './services/ExecutionStatusService';
 import type { ConnectionStatus } from './services/ExecutionStatusService';
-
+import type { NodeWithMethods } from './types/node';
 
 // State
 let ws: WebSocket | null = null;
@@ -79,7 +84,7 @@ let sessionId: string | null = localStorage.getItem('session_id');
 let graphInstance: LGraph | null = null;
 
 function getStatusService(): ExecutionStatusService | null {
-    const sr: ServiceRegistry | undefined = (window as any).serviceRegistry;
+    const sr = window.serviceRegistry;
     return (sr?.get?.('statusService') as ExecutionStatusService) || null;
 }
 
@@ -110,10 +115,10 @@ function hideOverlay() {
 
 function clearAllHighlights() {
     if (!graphInstance) return;
-    const nodes = ((graphInstance as any)._nodes as any[]) || [];
-    nodes.forEach((node: any) => {
+    const nodes = (graphInstance._nodes as NodeWithMethods[]) || [];
+    nodes.forEach((node) => {
         try {
-            if (typeof node.clearHighlight === 'function') {
+            if (node.clearHighlight) {
                 node.clearHighlight();
             } else {
                 // Fallback: clear highlight properties directly
@@ -123,7 +128,7 @@ function clearAllHighlights() {
                 if (node.isExecuting !== undefined) {
                     node.isExecuting = false;
                 }
-                if (typeof node.setDirtyCanvas === 'function') {
+                if (node.setDirtyCanvas) {
                     node.setDirtyCanvas(true, true);
                 }
             }
@@ -182,7 +187,7 @@ function closeWebSocket() {
 }
 
 // Message Handlers
-function handleErrorMessage(data: any, apiKeyManager: APIKeyManager) {
+function handleErrorMessage(data: ServerToClientErrorMessage, apiKeyManager: APIKeyManager) {
     console.error('Execution error:', data.message);
     
     const statusService = getStatusService();
@@ -201,10 +206,10 @@ function handleErrorMessage(data: any, apiKeyManager: APIKeyManager) {
     }
     
     try {
-        const sr: ServiceRegistry | undefined = (window as any).serviceRegistry;
-        const dm = sr?.get?.('dialogManager');
-        if (dm && typeof (dm as any).showError === 'function') {
-            (dm as any).showError(data.message);
+        const sr = window.serviceRegistry;
+        const dm = sr?.get?.('dialogManager') as { showError?: (message: string) => void } | undefined;
+        if (dm?.showError) {
+            dm.showError(data.message);
         }
     } catch { /* ignore */ }
     
@@ -230,7 +235,7 @@ function handleStatusMessage(message: ServerToClientStatusMessage) {
     }
 }
 
-function handleStoppedMessage(data: any) {
+function handleStoppedMessage(data: ServerToClientStoppedMessage) {
     console.log('Stop execution: Received stopped confirmation from backend:', data.message);
     
     // Show execute button and hide stop button
@@ -251,9 +256,9 @@ function handleStoppedMessage(data: any) {
     }
 }
 
-function handleDataMessage(data: any, graph: LGraph) {
+function handleDataMessage(data: ServerToClientDataMessage, graph: LGraph) {
     const statusService = getStatusService();
-    const profiler = (window as any).performanceProfiler;
+    const profiler = window.performanceProfiler;
     
     if (Object.keys(data.results).length === 0) {
         statusService?.setProgress(null, undefined, 'Running...');
@@ -263,39 +268,40 @@ function handleDataMessage(data: any, graph: LGraph) {
     const results: ExecutionResults = data.results;
     const nodeCount = Object.keys(results).length;
     
-    // Profile batch update performance
-    profiler?.startMetric('handleDataMessage', { nodeCount });
-    
+    // Profile batch update performance using measure() for automatic cleanup
+    profiler?.measure('handleDataMessage', () => {
     for (const nodeId in results) {
-        const node: any = graph.getNodeById(parseInt(nodeId));
+            const node = graph.getNodeById(parseInt(nodeId)) as NodeWithMethods | null;
         if (!node) continue;
 
         // Streaming nodes always receive results via onStreamUpdate
         // Only call onStreamUpdate for actual streaming nodes (not just nodes that have the method)
-        if (node.isStreaming === true && typeof node.onStreamUpdate === 'function') {
-            node.onStreamUpdate.call(node, results[nodeId]);
+            if (node.isStreaming === true && node.onStreamUpdate) {
+                node.onStreamUpdate(results[nodeId]);
         }
         
         // Call updateDisplay if node has the method
         // Nodes with displayResults=false can still override updateDisplay for custom rendering (e.g., images)
         // Base implementation handles displayResults=false correctly (won't display text)
-        if (typeof node.updateDisplay === 'function') {
-            node.updateDisplay.call(node, results[nodeId]);
+            if (node.updateDisplay) {
+                node.updateDisplay(results[nodeId]);
+            }
         }
-    }
+    }, { nodeCount });
     
-    profiler?.endMetric('handleDataMessage');
     profiler?.trackNodeUpdate(nodeCount);
 
     statusService?.setProgress(null, undefined, 'Running...');
 }
 
-function handleProgressMessage(data: any, graph: LGraph) {
-    const node: any = graph.getNodeById(data.node_id as number);
+function handleProgressMessage(data: ServerToClientProgressMessage, graph: LGraph) {
+    if (data.node_id === undefined) return;
+    
+    const node = graph.getNodeById(data.node_id) as NodeWithMethods | null;
     if (!node) return;
     
     // Handle progress updates
-    if (typeof node.setProgress === 'function') {
+    if (node.setProgress) {
         const progress = data.progress ?? 0;
         // Only pass text if it's explicitly provided and non-empty
         if (data.text !== undefined && data.text !== '') {
@@ -306,20 +312,20 @@ function handleProgressMessage(data: any, graph: LGraph) {
     }
     
     // Handle highlight based on execution state
-    const state = data.state as ProgressState | undefined;
-    if ((state === ProgressState.START || state === ProgressState.UPDATE) && typeof node.pulseHighlight === 'function') {
+    const state = data.state;
+    if ((state === ProgressState.START || state === ProgressState.UPDATE) && node.pulseHighlight) {
         // Node is starting or actively executing - pulse highlight
         node.pulseHighlight();
     } else if (
         (state === ProgressState.DONE || state === ProgressState.ERROR || state === ProgressState.STOPPED) &&
-        typeof node.clearHighlight === 'function'
+        node.clearHighlight
     ) {
         // Node execution finished - clear highlight
         node.clearHighlight();
     }
     
     // Handle polygon data status metadata
-    if (data.meta?.polygon_data_status) {
+    if (data.meta?.polygon_data_status && typeof data.meta.polygon_data_status === 'string') {
         updatePolygonStatus(data.meta.polygon_data_status);
     }
 }
@@ -368,9 +374,9 @@ export function setupWebSocket(graph: LGraph, _canvas: LGraphCanvas, apiKeyManag
         }
 
         // Preflight API key check
-        const graphData = graph.asSerialisable({ sortNodes: true });
+        const graphData: SerialisableGraph = graph.asSerialisable({ sortNodes: true });
         try {
-            const requiredKeys = await apiKeyManager.getRequiredKeysForGraph(graphData as any);
+            const requiredKeys = await apiKeyManager.getRequiredKeysForGraph(graphData);
             if (requiredKeys.length > 0) {
                 const missing = await apiKeyManager.checkMissingKeys(requiredKeys);
                 if (missing.length > 0) {
@@ -387,16 +393,16 @@ export function setupWebSocket(graph: LGraph, _canvas: LGraphCanvas, apiKeyManag
         }
 
         // Reset all nodes' visual state before starting new execution
-        const nodes = ((graph as any)._nodes as any[]) || [];
-        nodes.forEach((node: any) => {
+        const nodes = (graph._nodes as NodeWithMethods[]) || [];
+        nodes.forEach((node) => {
             try {
                 // Clear progress indicators
-                if (typeof node.clearProgress === 'function') {
+                if (node.clearProgress) {
                     node.clearProgress();
                 }
                 
                 // Clear error state
-                if (typeof node.setError === 'function') {
+                if (node.setError) {
                     node.setError('');
                 } else if (node.error !== undefined) {
                     node.error = '';
@@ -413,12 +419,12 @@ export function setupWebSocket(graph: LGraph, _canvas: LGraphCanvas, apiKeyManag
                 }
                 
                 // For Logging nodes specifically, also reset display text and results
-                if (node?.type === 'Logging' && typeof node.reset === 'function') {
+                if (node.type === 'Logging' && node.reset) {
                     node.reset();
                 }
                 
                 // Force canvas redraw
-                if (typeof node.setDirtyCanvas === 'function') {
+                if (node.setDirtyCanvas) {
                     node.setDirtyCanvas(true, true);
                 }
             } catch (err) {
@@ -462,7 +468,7 @@ export function setupWebSocket(graph: LGraph, _canvas: LGraphCanvas, apiKeyManag
                     // Now send the graph execution message
                     const statusService = getStatusService();
                     statusService?.setConnection('executing', 'Executing...');
-                    const message: ClientToServerMessage = { type: 'graph', graph_data: graphData as any };
+                    const message: ClientToServerMessage = { type: 'graph', graph_data: graphData };
                     ws?.send(JSON.stringify(message));
                     return;
                 }
@@ -501,7 +507,7 @@ export function setupWebSocket(graph: LGraph, _canvas: LGraphCanvas, apiKeyManag
             // Reuse existing connection - send graph execution directly
             const statusService = getStatusService();
             statusService?.setConnection('executing', 'Executing...');
-            const message: ClientToServerMessage = { type: 'graph', graph_data: graphData as any };
+            const message: ClientToServerMessage = { type: 'graph', graph_data: graphData };
             ws.send(JSON.stringify(message));
         }
     });

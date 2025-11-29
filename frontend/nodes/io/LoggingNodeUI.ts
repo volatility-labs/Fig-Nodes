@@ -91,11 +91,11 @@ export default class LoggingNodeUI extends BaseCustomNode {
             }
             
             // Need to scroll - do full wrap (will be cached for next time)
-            const tempCanvas = document.createElement('canvas');
-            const tempCtx = tempCanvas.getContext('2d');
-            if (!tempCtx) return false;
-            tempCtx.font = '12px Arial';
-            const lines = this.wrapText(this.displayText, maxWidth, tempCtx);
+        const tempCanvas = document.createElement('canvas');
+        const tempCtx = tempCanvas.getContext('2d');
+        if (!tempCtx) return false;
+        tempCtx.font = '12px Arial';
+        const lines = this.wrapText(this.displayText, maxWidth, tempCtx);
             totalContentHeight = lines.length * 15;
         }
 
@@ -148,34 +148,34 @@ export default class LoggingNodeUI extends BaseCustomNode {
                 lines.push(p);
             } else {
                 // Long line - wrap it
-                const words = p.split(' ');
-                let currentLine = words[0] || '';
+            const words = p.split(' ');
+            let currentLine = words[0] || '';
                 
-                for (let i = 1; i < words.length; i++) {
-                    const word = words[i];
-                    const testLine = currentLine ? `${currentLine} ${word}` : word;
-                    
+            for (let i = 1; i < words.length; i++) {
+                const word = words[i];
+                const testLine = currentLine ? `${currentLine} ${word}` : word;
+                
                     // Quick check using character count (much faster than measureText)
                     if (testLine.length > charsPerLine) {
-                        if (currentLine) {
-                            lines.push(currentLine);
-                            currentLine = '';
-                        }
-                        
+                    if (currentLine) {
+                        lines.push(currentLine);
+                        currentLine = '';
+                    }
+                    
                         // If word itself is too long, split by character
                         if (word.length > charsPerLine) {
                             for (let j = 0; j < word.length; j += charsPerLine) {
                                 lines.push(word.substring(j, j + charsPerLine));
                             }
-                        } else {
-                            currentLine = word;
-                        }
                     } else {
-                        currentLine = testLine;
+                        currentLine = word;
                     }
+                } else {
+                    currentLine = testLine;
                 }
-                if (currentLine) lines.push(currentLine);
             }
+            if (currentLine) lines.push(currentLine);
+        }
         }
         
         // Cache the result
