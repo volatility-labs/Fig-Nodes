@@ -11,12 +11,7 @@ if (!(LiteGraph as any)._wheelPatched) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         proto.processMouseWheel = function (event: WheelEvent): void {
             // `this` is LGraphCanvas
-            console.log('🔵 PATCHED processMouseWheel called:', {
-                hasGraph: !!this.graph,
-                allow_dragcanvas: this.allow_dragcanvas,
-                deltaX: event.deltaX,
-                deltaY: event.deltaY
-            });
+            // Debug logging removed for smoother performance
             
             // Early return if canvas zoom is disabled
             if (!this.graph || !this.allow_dragcanvas) {
@@ -43,11 +38,7 @@ if (!(LiteGraph as any)._wheelPatched) {
                     const selectedNodes = this.selected_nodes || {};
                     const hasSelectedNode = Object.keys(selectedNodes).length > 0;
                     
-                    console.log('Wheel patch check:', { 
-                        hasNode: !!node, 
-                        hasSelectedNode, 
-                        nodeHasWheel: node && typeof node.onMouseWheel === 'function' 
-                    });
+                    // Debug logging removed for smoother performance
                     
                     // Handle wheel events when mouse is over a node that has onMouseWheel
                     // OR when a node is selected (for zoom when selected)
@@ -87,7 +78,6 @@ if (!(LiteGraph as any)._wheelPatched) {
                     }
                     
                     // No node handled it - let canvas handle it (for panning when background is selected)
-                    console.log('✅ No node handled, proceeding to canvas panning');
                 } catch (err) {
                     // Log error but continue with original behavior
                     console.warn('❌ Error in wheel patch:', err);
@@ -101,7 +91,6 @@ if (!(LiteGraph as any)._wheelPatched) {
             
             // Only pan if no nodes are selected (canvas background is "selected")
             if (!hasSelectedNode) {
-                console.log('🎯 Canvas background selected - panning on scroll');
                 
                 // Check if mouse is over canvas viewport
                 const pos: [number, number] = [event.clientX, event.clientY];
@@ -129,12 +118,7 @@ if (!(LiteGraph as any)._wheelPatched) {
                 // Check both shiftKey and getModifierState to be sure
                 const shiftPressed = event.shiftKey === true || (event.getModifierState && event.getModifierState('Shift') === true);
                 
-                console.log('🎯 Pan/Zoom check:', { 
-                    shiftPressed, 
-                    shiftKey: event.shiftKey, 
-                    getModifierState: event.getModifierState ? event.getModifierState('Shift') : 'N/A',
-                    deltaY: event.deltaY 
-                });
+                    // Pan/Zoom check - debug logging removed for smoother performance
                 
                 if (shiftPressed) {
                     // Shift + scroll: ZOOM
@@ -162,7 +146,6 @@ if (!(LiteGraph as any)._wheelPatched) {
                         ds.changeScale(newScale, [event.clientX, event.clientY]);
                         event.preventDefault();
                         event.stopPropagation();
-                        console.log('🔍 Zoomed to scale:', newScale, { delta, effectiveZoomSpeed, oldScale: scale });
                         
                         // Force redraw
                         if ((this as any).graph && typeof (this as any).graph.change === 'function') {
@@ -174,21 +157,24 @@ if (!(LiteGraph as any)._wheelPatched) {
                         return;
                     }
                 } else {
-                    // Regular scroll: PAN
-                    const panSpeed = 1.18 * (1 / scale);
+                    // Regular scroll: PAN with smooth, fluid motion
+                    // Use a smoother pan speed calculation that feels more natural and "rolly"
+                    const basePanSpeed = 0.6; // Lower base speed for smoother, more controlled feel
+                    const panSpeed = basePanSpeed * (1 / scale);
+                    
                     const deltaX = event.deltaX || 0;
                     const deltaY = event.deltaY || 0;
                     
                     if (deltaX !== 0 || deltaY !== 0) {
                         if (ds.offset) {
-                            // Reverse the direction: scroll right should pan right, scroll down should pan down
+                            // Smooth, fluid panning: scroll right should pan right, scroll down should pan down
+                            // Apply deltas with smooth speed multiplier for natural feel
                             ds.offset[0] += deltaX * panSpeed;
                             ds.offset[1] += deltaY * panSpeed;
                             event.preventDefault();
                             event.stopPropagation();
-                            console.log('🎯 Panned canvas:', { deltaX, deltaY, newOffset: [ds.offset[0], ds.offset[1]] });
                             
-                            // Force redraw
+                            // Force immediate redraw for responsive feel
                             if ((this as any).graph && typeof (this as any).graph.change === 'function') {
                                 (this as any).graph.change();
                             }
@@ -203,7 +189,6 @@ if (!(LiteGraph as any)._wheelPatched) {
             }
             
             // Fallback to original behaviour if we didn't handle it
-            console.log('⚠️ Falling back to original.processMouseWheel');
             original.call(this, event);
         };
         (LiteGraph as any)._wheelPatched = true;

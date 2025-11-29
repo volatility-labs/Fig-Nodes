@@ -10,6 +10,7 @@ import { ServiceRegistry } from './ServiceRegistry';
 import { registerExecutionStatusService } from './ExecutionStatusService';
 import { ThemeManager } from './ThemeManager';
 import { TypeColorRegistry } from './TypeColorRegistry';
+import { CanvasScrollbars } from './CanvasScrollbars';
 
 export function updateStatus(status: 'connected' | 'disconnected' | 'loading' | 'executing', message?: string) {
     const sr: ServiceRegistry | undefined = (window as any).serviceRegistry;
@@ -89,6 +90,15 @@ export class EditorInitializer {
 
             // Apply theme (must be done after canvas creation)
             this.themeManager.applyTheme(canvas, graph);
+
+            // Initialize canvas scrollbars
+            const mainContent = container.querySelector('#main-content') as HTMLElement;
+            if (mainContent) {
+                mainContent.style.position = 'relative';
+                const scrollbars = new CanvasScrollbars(canvas, mainContent);
+                // Store scrollbars in service registry for cleanup if needed
+                this.serviceRegistry.register('canvasScrollbars', scrollbars);
+            }
 
             // Register services in ServiceRegistry
             this.serviceRegistry.register('graph', graph as any);
@@ -604,6 +614,16 @@ export class EditorInitializer {
                                 zoom: 0.95, // Less aggressive zoom - closer to 1.0 for better view
                                 easing: 'easeInOutQuad'
                             });
+                            
+                            // Ensure minimum zoom after animation to keep text visible
+                            // low_quality threshold is 0.6, so we enforce 0.7 minimum
+                            setTimeout(() => {
+                                const ds = (canvas as any).ds;
+                                if (ds && ds.scale < 0.7) {
+                                    ds.scale = 0.7;
+                                    canvas.setDirty(true, true);
+                                }
+                            }, 350); // Wait for animation to complete (300ms + buffer)
                         } catch (err) {
                             console.warn('fitViewToSelectionAnimated failed, trying fallback:', err);
                             // Fallback to manual calculation
@@ -668,8 +688,22 @@ export class EditorInitializer {
                 zoom: 0.95, // Less aggressive zoom - closer to 1.0 for better view
                 easing: 'easeInOutQuad'
             });
+            
+            // Ensure minimum zoom after animation to keep text visible
+            // low_quality threshold is 0.6, so we enforce 0.7 minimum
+            setTimeout(() => {
+                const ds = (canvas as any).ds;
+                if (ds && ds.scale < 0.7) {
+                    ds.scale = 0.7;
+                    canvas.setDirty(true, true);
+                }
+            }, 350); // Wait for animation to complete (300ms + buffer)
         } else if (canvas.ds && canvas.ds.fitToBounds && typeof canvas.ds.fitToBounds === 'function') {
             canvas.ds.fitToBounds(bounds, { zoom: 0.95 }); // Less aggressive zoom
+            // Ensure minimum zoom to keep text visible (low_quality threshold is 0.6)
+            if (canvas.ds.scale < 0.7) {
+                canvas.ds.scale = 0.7;
+            }
             canvas.setDirty(true, true);
         } else {
             console.warn('No method available to fit bounds to view');
