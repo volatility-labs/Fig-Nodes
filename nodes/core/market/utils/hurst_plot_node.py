@@ -20,8 +20,8 @@ import matplotlib.pyplot as plt
 # These settings ensure crisp, professional-looking charts similar to StockCharts
 plt.rcParams.update({
     # High-quality rendering
-    'figure.dpi': 60,  # Further reduced DPI for maximum speed
-    'savefig.dpi': 60,  # Save at reduced DPI to keep file sizes manageable
+    'figure.dpi': 250,  # High base DPI for crisp rendering
+    'savefig.dpi': 250,  # Save at high DPI
     'figure.facecolor': 'white',
     'axes.facecolor': 'white',
     
@@ -87,20 +87,20 @@ from services.polygon_service import fetch_current_snapshot
 logger = logging.getLogger(__name__)
 
 
-def _encode_fig_to_data_url(fig: "Figure", dpi: int = 60) -> str:
+def _encode_fig_to_data_url(fig: "Figure", dpi: int = 250) -> str:
     """Encode matplotlib figure to base64 data URL with StockCharts-quality rendering.
     
-    Uses configurable DPI (default 60) with optimized PNG compression to achieve crisp, 
+    Uses configurable DPI (default 250) with optimized PNG compression to achieve crisp, 
     professional charts similar to StockCharts while keeping file sizes reasonable.
     
     Args:
         fig: Matplotlib figure to encode
-        dpi: DPI for image rendering (default 60). Lower values (60) reduce file size
-             for API calls, higher values (150+) provide better quality for display.
+        dpi: DPI for image rendering (default 250). Lower values (150-200) reduce file size
+             for API calls, higher values (250-300) provide better quality for display.
     """
     buf = io.BytesIO()
     # StockCharts-quality settings:
-    # - Configurable DPI: 72 default for balance of quality and size
+    # - Configurable DPI: 250 default for high quality, can be reduced to 150-200 for API calls
     # - metadata={'Software': None}: Remove metadata to reduce size
     # - bbox_inches='tight': Remove extra whitespace
     # - pad_inches=0.1: Small padding for clean edges
@@ -112,7 +112,7 @@ def _encode_fig_to_data_url(fig: "Figure", dpi: int = 60) -> str:
         format="png",
         bbox_inches="tight",
         pad_inches=0.1,
-        dpi=dpi,  # Configurable DPI (default 72)
+        dpi=dpi,  # Configurable DPI (default 250 for quality, can reduce to 150-200 for API)
         facecolor='#ffffff',
         edgecolor='none',
         transparent=False,
@@ -173,6 +173,49 @@ def _normalize_bars(bars: list[OHLCVBar]) -> tuple[list[tuple[int, float, float,
         logger.warning(f"🔍 Normalized bars: Last bar ts={last_ts}, price=${last_c:.4f} (should be snapshot)")
     
     return ohlc_data, volume_data
+
+
+def _round_hurst_values(data: dict[str, Any], precision: int = 6) -> dict[str, Any]:
+    """
+    Round Hurst oscillator values to specified precision to reduce data size.
+    
+    Args:
+        data: Dictionary containing Hurst results with 'bandpasses' and 'composite' keys
+        precision: Number of decimal places (default: 6, matching legend display)
+    
+    Returns:
+        Dictionary with rounded values
+    """
+    rounded_data = data.copy()
+    
+    # Round bandpasses values
+    if "bandpasses" in rounded_data:
+        rounded_bandpasses = {}
+        for period_name, values in rounded_data["bandpasses"].items():
+            if isinstance(values, list):
+                rounded_bandpasses[period_name] = [
+                    round(v, precision) if v is not None and isinstance(v, (int, float)) else v
+                    for v in values
+                ]
+            else:
+                rounded_bandpasses[period_name] = values
+        rounded_data["bandpasses"] = rounded_bandpasses
+    
+    # Round composite values
+    if "composite" in rounded_data and isinstance(rounded_data["composite"], list):
+        rounded_data["composite"] = [
+            round(v, precision) if v is not None and isinstance(v, (int, float)) else v
+            for v in rounded_data["composite"]
+        ]
+    
+    # Round wavelength and amplitude if present
+    if "wavelength" in rounded_data and isinstance(rounded_data["wavelength"], (int, float)):
+        rounded_data["wavelength"] = round(rounded_data["wavelength"], precision)
+    
+    if "amplitude" in rounded_data and isinstance(rounded_data["amplitude"], (int, float)):
+        rounded_data["amplitude"] = round(rounded_data["amplitude"], precision)
+    
+    return rounded_data
 
 
 def _plot_candles(ax: "Axes", series: list[tuple[int, float, float, float, float]], volumes: list[float] | None = None, ema_10: list[float | None] | None = None, ema_30: list[float | None] | None = None, ema_100: list[float | None] | None = None, show_current_price: bool = True, current_price_override: float | None = None, show_volume_by_price: bool = False, volume_by_price_bars: int = 12, volume_by_price_color_volume: bool = False, volume_by_price_opacity: float = 0.3) -> None:
@@ -710,20 +753,25 @@ def _plot_hurst_waves(
     
     x_indices = list(range(len(timestamps)))
     
-    # Color map for different periods (matching TradingView colors)
+    # Color map for different periods - using highly distinct, vibrant colors for maximum visibility
+    # Using bright, saturated colors that are maximally different from each other
     period_colors = {
-        "5_day": "#9c27b0",      # purple
-        "10_day": "#2196f3",    # blue
-        "20_day": "#00bcd4",    # aqua
-        "40_day": "#4caf50",    # green
-        "80_day": "#ffeb3b",    # yellow
-        "20_week": "#ff9800",   # orange
-        "40_week": "#f44336",   # red
-        "18_month": "#856c44",  # brown
-        "54_month": "#000000",  # black
-        "9_year": "#9e9e9e",    # gray
-        "18_year": "#ffffff",   # white
+        "5_day": "#9c27b0",      # purple - vibrant purple
+        "10_day": "#00bcd4",     # bright cyan - very distinct cyan
+        "20_day": "#4caf50",     # bright green - distinct green
+        "40_day": "#ffeb3b",     # bright yellow - very distinct yellow
+        "80_day": "#00bcd4",     # bright cyan - very distinct from orange/red
+        "20_week": "#ffeb3b",    # bright yellow - very distinct from red/orange
+        "40_week": "#9c27b0",    # bright purple - very distinct from pink/red
+        "18_month": "#4caf50",   # bright green - very distinct from brown
+        "54_month": "#607d8b",   # blue-gray - distinct gray-blue
+        "9_year": "#9e9e9e",     # medium gray
+        "18_year": "#424242",    # dark gray - visible on light background
     }
+    
+    # Store line handles for legend
+    period_lines: dict[str, Any] = {}
+    composite_line: Any = None
     
     # Plot individual bandpasses if selected
     if selected_periods:
@@ -753,7 +801,9 @@ def _plot_hurst_waves(
                     
                     # Plot all waves - don't filter by amplitude (let user see even small waves)
                     # TradingView shows all waves, even if they're small
-                    ax.plot(valid_x, valid_values, color=color, linewidth=linewidth, alpha=alpha, label=period_name.replace("_", " ").title())
+                    period_label = period_name.replace("_", " ").title()
+                    line, = ax.plot(valid_x, valid_values, color=color, linewidth=linewidth, alpha=alpha, label=period_label)
+                    period_lines[period_name] = line
                     
                     # Log wave amplitude for debugging
                     if wave_range < 1e-6:
@@ -766,7 +816,7 @@ def _plot_hurst_waves(
         valid_x = [x_indices[i] for i in valid_indices]
         if valid_x:
             # Increased linewidth from 1.5 to 2.0 for optimal AI analysis
-            ax.plot(valid_x, valid_values, color="#ff6600", linewidth=2.0, alpha=0.95, label="Composite", zorder=10)
+            composite_line, = ax.plot(valid_x, valid_values, color="#ff6600", linewidth=2.0, alpha=0.95, label="Composite", zorder=10)
             
             # Add numeric annotation for composite oscillator current value
             if valid_indices:
@@ -813,10 +863,44 @@ def _plot_hurst_waves(
         spine.set_color('#cccccc')
         spine.set_linewidth(0.8)
     
-    if selected_periods or show_composite:
-        # TradingView-style compact legend - top left to avoid covering recent data
-        ax.legend(fontsize=8, loc="upper left", framealpha=0.9, edgecolor="#cccccc", 
-                 fancybox=False, shadow=False, frameon=True, ncol=1, columnspacing=0.5)
+    # Add legend with current values (similar to EMA legend style)
+    legend_handles = []
+    legend_labels = []
+    
+    # Add current values for individual bandpasses
+    if selected_periods:
+        for period_name in selected_periods:
+            if period_name in bandpasses and period_name in period_lines:
+                values = bandpasses[period_name]
+                if values:
+                    # Find the last valid (non-None) value
+                    last_valid_value = None
+                    for i in range(len(values) - 1, -1, -1):
+                        if values[i] is not None:
+                            last_valid_value = values[i]
+                            break
+                    
+                    if last_valid_value is not None and isinstance(last_valid_value, (int, float)):
+                        period_label = period_name.replace("_", " ").title()
+                        legend_labels.append(f"{period_label}: {last_valid_value:.6f}")
+                        legend_handles.append(period_lines[period_name])
+    
+    # Add current value for composite
+    if show_composite and composite and composite_line:
+        # Find the last valid (non-None) composite value
+        last_valid_composite = None
+        for i in range(len(composite) - 1, -1, -1):
+            if composite[i] is not None:
+                last_valid_composite = composite[i]
+                break
+        
+        if last_valid_composite is not None and isinstance(last_valid_composite, (int, float)):
+            legend_labels.append(f"Composite: {last_valid_composite:.6f}")
+            legend_handles.append(composite_line)
+    
+    # Display legend if we have any labels (similar to EMA legend style)
+    if legend_handles and legend_labels:
+        ax.legend(legend_handles, legend_labels, loc='upper left', fontsize=8, framealpha=0.9, fancybox=False, shadow=False, frameon=True, ncol=1, columnspacing=0.5)
 
 
 def _plot_mesa_stochastic(
@@ -1144,7 +1228,7 @@ class HurstPlot(Base):
         "show_current_price": True,  # Annotate current price on chart
         "source": "hl2",
         "bandwidth": 0.025,
-        "dpi": 60,  # Image DPI: 60 (default) for maximum speed and smaller payloads
+        "dpi": 250,  # Image DPI: 250 for high quality (default), reduce to 150-200 for smaller API payloads
         # Show individual waves (up to 18 Month)
         # Default: Show first 5 cycles for good visibility without clutter
         "show_5_day": True,
@@ -1236,11 +1320,11 @@ class HurstPlot(Base):
                {
                    "name": "dpi",
                    "type": "number",
-                   "default": 60,
-                   "min": 50,
+                   "default": 250,
+                   "min": 100,
                    "max": 300,
-                   "step": 10,
-                   "description": "Image DPI (dots per inch): 60 for maximum speed (default), increase to 100+ for higher quality",
+                   "step": 50,
+                   "description": "Image DPI (dots per inch): 250 for high quality (default), reduce to 150-200 for smaller API payloads when sending many charts",
                },
         {
             "name": "source",
@@ -1324,50 +1408,58 @@ class HurstPlot(Base):
         # Composite selection (up to 18 Month)
         {
             "name": "composite_5_day",
-            "type": "boolean",
+            "type": "combo",
             "default": True,
+            "options": [True, False],
             "description": "Include 5 Day in composite",
         },
         {
             "name": "composite_10_day",
-            "type": "boolean",
+            "type": "combo",
             "default": True,
+            "options": [True, False],
             "description": "Include 10 Day in composite",
         },
         {
             "name": "composite_20_day",
-            "type": "boolean",
+            "type": "combo",
             "default": True,
+            "options": [True, False],
             "description": "Include 20 Day in composite",
         },
         {
             "name": "composite_40_day",
-            "type": "boolean",
+            "type": "combo",
             "default": True,
+            "options": [True, False],
             "description": "Include 40 Day in composite",
         },
         {
             "name": "composite_80_day",
-            "type": "boolean",
+            "type": "combo",
             "default": True,
+            "options": [True, False],
             "description": "Include 80 Day in composite",
         },
         {
             "name": "composite_20_week",
-            "type": "boolean",
+            "type": "combo",
             "default": True,
+            "options": [True, False],
             "description": "Include 20 Week in composite",
         },
         {
             "name": "composite_40_week",
-            "type": "boolean",
+            "type": "combo",
             "default": True,
+            "options": [True, False],
             "description": "Include 40 Week in composite",
         },
         {
             "name": "composite_18_month",
-            "type": "boolean",
+            "type": "combo",
             "default": True,
+            "options": [True, False],
             "description": "Include 18 Month in composite",
         },
         # Period parameters (up to 18 Month)
@@ -1674,6 +1766,18 @@ class HurstPlot(Base):
             show_periods.append("18_month")
         
         show_composite = bool(self.params.get("show_composite", True))
+        
+        # Determine which periods need to be calculated:
+        # - Periods that are shown individually (show_periods), OR
+        # - Periods that are included in composite (composite_selection)
+        # This optimizes performance by skipping calculation of unused periods
+        periods_to_calculate = set(show_periods)
+        for period_name, include_in_composite in composite_selection.items():
+            if include_in_composite:
+                periods_to_calculate.add(period_name)
+        
+        # Filter periods dict to only include periods that need to be calculated
+        periods_to_use = {name: value for name, value in periods.items() if name in periods_to_calculate}
 
         items = list(bundle.items())[:max_syms]
         for sym, bars in items:
@@ -1869,6 +1973,13 @@ class HurstPlot(Base):
             lows = [x[3] for x in display_norm]
 
             # Calculate Hurst oscillator with FULL history (calculate once, use for both display and output)
+            # Only calculate periods that are either shown individually OR included in composite
+            # Filter composite_selection to only include periods that are being calculated
+            filtered_composite_selection = {
+                name: value for name, value in composite_selection.items() 
+                if name in periods_to_use
+            }
+            
             try:
                 full_hurst_result = calculate_hurst_oscillator(
                     closes=full_closes,  # Use FULL history for calculation
@@ -1876,12 +1987,13 @@ class HurstPlot(Base):
                     lows=full_lows,
                     source=source,
                     bandwidth=bandwidth,
-                    periods=periods,
-                    composite_selection=composite_selection,
+                    periods=periods_to_use,  # Only calculate needed periods
+                    composite_selection=filtered_composite_selection,  # Only include calculated periods
                 )
                 
                 # Store full Hurst data for AI analysis (before slicing for display)
-                hurst_data_by_symbol[str(sym)] = {
+                # Round values to 6 decimal places to match legend display and reduce data size
+                raw_hurst_data = {
                     "bandpasses": full_hurst_result.get("bandpasses", {}),
                     "composite": full_hurst_result.get("composite", []),
                     "peaks": full_hurst_result.get("peaks", []),
@@ -1898,6 +2010,7 @@ class HurstPlot(Base):
                         "display_bars": len(norm),
                     }
                 }
+                hurst_data_by_symbol[str(sym)] = _round_hurst_values(raw_hurst_data, precision=6)
                 
                 # Store bars used for calculation (full history)
                 ohlcv_bundle_output[sym] = bars  # Original bars from input
@@ -1990,16 +2103,16 @@ class HurstPlot(Base):
             # Price chart (ax1) is 125% bigger than indicator panels (2.25 vs 1.0) for better visibility
             # Top spacing increased significantly to accommodate titles above charts (completely outside)
             if num_subplots == 2:
-                fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8, 6), sharex=True, height_ratios=[2.25, 1.0])
+                fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 9.75), sharex=True, height_ratios=[2.25, 1.0])
                 fig.subplots_adjust(hspace=0.20, top=0.88, bottom=0.07, left=0.08, right=0.95)  # More top space for titles
             elif num_subplots == 3:
                 if show_mesa:
-                    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(8, 8), sharex=True, height_ratios=[2.25, 1.0, 1.0])
+                    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(12, 11.5), sharex=True, height_ratios=[2.25, 1.0, 1.0])
                 else:  # show_cco
-                    fig, (ax1, ax2, ax4) = plt.subplots(3, 1, figsize=(8, 8), sharex=True, height_ratios=[2.25, 1.0, 1.0])
+                    fig, (ax1, ax2, ax4) = plt.subplots(3, 1, figsize=(12, 11.5), sharex=True, height_ratios=[2.25, 1.0, 1.0])
                 fig.subplots_adjust(hspace=0.18, top=0.88, bottom=0.07, left=0.08, right=0.95)  # More top space for titles
             else:  # num_subplots == 4 (both MESA and CCO)
-                fig, (ax1, ax2, ax3, ax4) = plt.subplots(4, 1, figsize=(8, 10), sharex=True, height_ratios=[2.25, 1.0, 1.0, 1.0])
+                fig, (ax1, ax2, ax3, ax4) = plt.subplots(4, 1, figsize=(12, 13.5), sharex=True, height_ratios=[2.25, 1.0, 1.0, 1.0])
                 fig.subplots_adjust(hspace=0.15, top=0.88, bottom=0.07, left=0.08, right=0.95)  # More top space for titles
             
             # Apply StockCharts-style panel separation to all axes
@@ -2588,8 +2701,8 @@ class HurstPlot(Base):
                                         edgecolor='#d0d0d0', linewidth=1.5, alpha=0.95),
                                zorder=100)
             
-            # Get DPI from params (default 60)
-            dpi = int(self.params.get("dpi", self.default_params.get("dpi", 60)))
+            # Get DPI from params (default 250)
+            dpi = int(self.params.get("dpi", self.default_params.get("dpi", 250)))
             image_data = _encode_fig_to_data_url(fig, dpi=dpi)
             images[str(sym)] = image_data
             
