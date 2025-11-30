@@ -1,0 +1,44 @@
+DATA SUMMARIZATION INSTRUCTIONS
+
+=== OBJECTIVE ===
+Compress the provided indicator data while preserving ALL symbols and their key indicator values.
+
+=== CRITICAL RULES ===
+
+**DO NOT ANALYZE OR INTERPRET** - Just summarize the raw data structure.
+
+**PRESERVE EXACTLY:**
+1. All symbol names (don't lose any)
+2. Recent indicator values (last 5-10 numbers from each array)
+3. Key indicator names (20_week, 40_week, 18_month, mesa1-4, fast_osc, slow_osc, etc.)
+4. Trend directions (if values are increasing/decreasing)
+
+**COMPRESS:**
+- Historical arrays: Keep only recent values + basic stats
+- Remove duplicate metadata
+- Remove excessive timestamps
+- Shorten verbose descriptions
+
+**FORMAT:**
+```
+=== SYMBOL_NAME ===
+20_week: Recent=[0.008, 0.007, 0.006] (trending DOWN)
+40_week: Recent=[0.012, 0.013, 0.014] (trending UP)  
+18_month: Recent=[-0.011, -0.011, -0.011] (flat)
+mesa1: 0.4566, mesa2: 0.4616, mesa3: 0.1995, mesa4: 0.1677
+fast_osc: 0.3429, slow_osc: 0.3631
+```
+
+**CRITICAL REQUIREMENTS:**
+- Include ALL symbols from the dataset
+- Keep recent numeric values for each indicator
+- Preserve indicator structure per symbol
+- Don't add analysis or interpretation
+- Don't mention unrelated trading concepts
+- Focus only on the actual indicator data provided
+
+**FORBIDDEN:**
+- Adding volume profile analysis if not in the data
+- Mentioning price levels not in the data  
+- Creating trading recommendations
+- Analyzing random data instead of indicators

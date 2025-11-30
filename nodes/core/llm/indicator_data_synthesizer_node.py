@@ -28,24 +28,30 @@ logger = logging.getLogger(__name__)
 
 class IndicatorDataSynthesizer(Base):
     """
-    Generic synthesizer that formats any indicator data and images for LLM analysis.
+    Universal synthesizer that formats ANY indicator data and images for LLM analysis.
+    Works with any indicators - not tied to specific trading strategies.
     
     Inputs:
-    - images: ConfigDict (optional) - Chart images from any chart node
+    - images: ConfigDict (optional) - Chart images from any source
     - indicator_data: Any (optional) - Primary indicator data input
-    - indicator_data_1 through indicator_data_5: Any (optional) - Additional explicit indicator inputs
-      You can connect multiple indicators to these separate inputs for better organization
-    - ohlcv_bundle: OHLCVBundle (optional) - OHLCV bars for additional context
+    - indicator_data_1 through indicator_data_5: Any (optional) - Additional indicator inputs
+    - ohlcv_bundle: OHLCVBundle (optional) - OHLCV price/volume data
     
     Outputs:
-    - images: ConfigDict - Chart images ready for OpenRouterChat (passes through)
-    - formatted_text: str - Formatted indicator data as readable text for prompt
-    - combined_data: ConfigDict - All data combined in structured format
+    - images: ConfigDict - Images ready for LLM analysis
+    - formatted_text: str - Formatted data as readable text with optional analysis prompt
+    - combined_data: ConfigDict - All data in structured format
+    
+    Features:
+    - Generic formatting works with any indicator types
+    - Configurable analysis prompts or use built-in generic analysis
+    - Automatic data summarization for large datasets
+    - Support for multiple LLM models (Ollama/OpenRouter)
     
     Usage:
-    - Connect one indicator to 'indicator_data' (primary input)
-    - Connect additional indicators to 'indicator_data_1' through 'indicator_data_5' (up to 5 additional)
-    - All connected indicators will be formatted and combined in the output
+    - Connect any indicators to the inputs
+    - Set analysis_prompt_file for custom analysis instructions
+    - Enable use_streamlined_prompt for generic trading analysis
     """
 
     inputs = {
@@ -64,88 +70,119 @@ class IndicatorDataSynthesizer(Base):
     CATEGORY = NodeCategory.LLM
 
     default_params = {
-        "include_ohlcv": False,  # Disable OHLCV by default (was causing token explosion) - enable only if needed
-        "include_indicators": True,
-        "ohlcv_max_bars": 20,  # Increased from 3 - summarization handles large data efficiently
-        "format_style": "readable",  # "readable" (svens-branch style), "json", "compact", "summary"
-        "recent_bars_count": 50,  # Number of recent bars to include (always limited to this count)
-        "summary_only": False,  # Default False (will be True if summarization disabled). False = show individual values, True = stats only
-        "max_symbols": 20,  # Increased from 3 - summarization handles large data efficiently
-        "enable_summarization": False,  # Enable AI summarization before sending to OpenRouter
-        "summarize_full_dataset": False,  # If True, summarize full dataset (historical) + recent bars (detail). If False, only summarize formatted output.
-        "recursive_summarization": False,  # Use recursive summarization (better coherence, sequential processing)
-        "summarization_mode": "ollama",  # "ollama" (local, free) or "openrouter" (cheaper model)
-        "summarization_model": "qwen2.5:7b",  # Ollama model name - prefer Qwen for large contexts (qwen2.5:7b=128k, qwen2.5-1m=1M tokens)
+        # === BASIC SETTINGS ===
+        "recent_bars_count": 100,  # How many recent data points to include
+        "max_symbols": 50,  # Maximum symbols to process (prevents overload)
+        
+        # === DATA INCLUSION ===
+        "include_indicators": True,  # Include indicator data
+        "include_ohlcv": True,  # Include price/volume data
+        "ohlcv_max_bars": 100,  # Recent price bars to include
+        
+        # === SUMMARIZATION (for large datasets) ===
+        "enable_summarization": True,  # Auto-summarize large data to prevent token overload
+        "summarization_model": "qwen3:8b",  # Your local AI model for summarization
         "ollama_host": "http://localhost:11434",  # Ollama server URL
-        "enable_advanced_analysis": True,  # Enable divergence detection and confluence scoring
-        "adaptive_compression": True,  # Enable adaptive recent count based on volatility/asset type
-        "include_vbp_analysis": True,  # Include Volume-by-Price analysis for key support/resistance levels
-        "vbp_bins": 20,  # Number of price bins for VBP histogram (10-100 range)
-        "vbp_dollar_weighted": False,  # Use dollar-weighted volume (volume * price) instead of raw volume
+        
+        # === ADVANCED (leave as defaults) ===
+        "format_style": "readable",  # Data format style
+        "summary_only": False,  # Show full data, not just stats
+        "batch_size": 4,  # Batch historical data to reduce size
+        "recursive_summarization": True,  # Better summarization for large datasets
+        "summarization_mode": "ollama",  # Use local Ollama for summarization
+        "enable_advanced_analysis": True,  # Enable advanced signal detection
+        "adaptive_compression": True,  # Smart data reduction based on volatility
+        "include_vbp_analysis": True,  # Include volume profile analysis
+        "vbp_bins": 20,  # Volume profile resolution
+        "vbp_dollar_weighted": False,  # Volume calculation method
+        "summarize_full_dataset": False,  # Summarization strategy
     }
 
     params_meta = [
+        # === ESSENTIAL SETTINGS ===
+        {
+            "name": "recent_bars_count",
+            "type": "number",
+            "default": 100,
+            "min": 10,
+            "max": 500,
+            "step": 10,
+            "label": "📊 Recent Data Points",
+            "description": "How many recent data points to include per indicator/symbol",
+        },
+        {
+            "name": "max_symbols",
+            "type": "number",
+            "default": 50,
+            "min": 1,
+            "max": 100,
+            "step": 1,
+            "label": "🎯 Max Symbols",
+            "description": "Maximum symbols to process (prevents data overload)",
+        },
+        {
+            "name": "enable_summarization",
+            "type": "boolean",
+            "default": True,
+            "label": "🤖 Auto-Summarize",
+            "description": "Let AI summarize large datasets to prevent token overload",
+        },
+        {
+            "name": "summarization_model",
+            "type": "combo",
+            "default": "qwen3:8b",
+            "options": [
+                "qwen3:8b",
+                "qwen3:14b",
+                "qwen2.5:7b",
+                "qwen2.5:14b",
+                "qwen2.5:32b",
+            ],
+            "label": "🧠 AI Model",
+            "description": "Local model for summarization (qwen3:8b recommended for speed)",
+        },
+        
+        # === DATA OPTIONS ===
         {
             "name": "include_ohlcv",
-            "type": "combo",
-            "default": False,
-            "options": [True, False],
-            "label": "Include OHLCV Data",
-            "description": "Include OHLCV bars in formatted output (disabled by default - images already show price data, reduces token usage)",
+            "type": "boolean",
+            "default": True,
+            "label": "📈 Include Price Data",
+            "description": "Include OHLCV price/volume data along with indicators",
         },
         {
             "name": "include_indicators",
-            "type": "combo",
+            "type": "boolean",
             "default": True,
-            "options": [True, False],
-            "label": "Include Indicator Data",
-            "description": "Include indicator data in formatted output",
+            "label": "📊 Include Indicators",
+            "description": "Include indicator data in output",
         },
         {
             "name": "ohlcv_max_bars",
             "type": "number",
-            "default": 20,
-            "min": 1,
-            "max": 1000,
-            "step": 1,
-            "label": "Max OHLCV Bars",
-            "description": "Number of OHLCV bars to show per symbol (increased default - summarization handles large data efficiently)",
+            "default": 100,
+            "min": 10,
+            "max": 500,
+            "step": 10,
+            "label": "📈 Price Data Points",
+            "description": "Number of recent price bars to include per symbol",
         },
+        
+        # === ADVANCED OPTIONS ===
         {
             "name": "format_style",
             "type": "combo",
             "default": "readable",
             "options": ["readable", "summary", "json", "compact"],
-            "label": "Format Style",
-            "description": "How to format the indicator data: readable (svens-branch style: last 10-20 values + stats), summary (stats only), json (structured), compact (minimal JSON)",
+            "label": "🔧 Format Style",
+            "description": "Data format: readable (detailed), summary (stats only), json (structured)",
         },
         {
             "name": "summary_only",
-            "type": "combo",
+            "type": "boolean",
             "default": False,
-            "options": [True, False],
-            "label": "Summary Only",
-            "description": "True = Only stats (min/max/recent). False = Shows last N individual values + stats. Defaults to False when summarization enabled (show data, let AI compress). Defaults to True when summarization disabled (save tokens).",
-        },
-        {
-            "name": "recent_bars_count",
-            "type": "number",
-            "default": 50,
-            "min": 1,
-            "max": 500,
-            "step": 1,
-            "label": "Recent Bars Count",
-            "description": "Number of recent bars/values to include for all indicators (always limited to this count - no option to show all values)",
-        },
-        {
-            "name": "max_symbols",
-            "type": "number",
-            "default": 20,
-            "min": 1,
-            "max": 100,
-            "step": 1,
-            "label": "Max Symbols",
-            "description": "Maximum number of symbols to process per indicator (increased default - summarization handles large data efficiently)",
+            "label": "🔧 Stats Only",
+            "description": "Show only statistics instead of individual values (advanced option)",
         },
         {
             "name": "batch_size",
@@ -201,10 +238,23 @@ class IndicatorDataSynthesizer(Base):
         },
         {
             "name": "summarization_model",
-            "type": "string",
+            "type": "combo",
             "default": "qwen2.5:7b",
+            "options": [
+                "qwen2.5:7b",
+                "qwen2.5:14b",
+                "qwen2.5:32b",
+                "qwen2.5:72b",
+                "qwen2.5:3b",
+                "qwen3:8b",
+                "qwen3:14b",
+                "qwen3:32b",
+                "qwen2:7b",
+                "llama3.2:3b",
+                "llama3.2:1b",
+            ],
             "label": "Summarization Model",
-            "description": "Ollama model: 'qwen2.5:7b' (128k context, recommended), 'qwen2.5:3b' (128k, smaller), or 'llama3.2:1b' (128k, tiny). OpenRouter: use model names from their docs.",
+            "description": "Ollama model: 'qwen3:8b' (fast), 'qwen2.5:7b' (good), 'qwen2.5:14b' (better), 'qwen2.5:32b' (best), 'qwen2.5:72b' (ultimate). Qwen 3.0: 'qwen3:8b', 'qwen3:14b', 'qwen3:32b'. OpenRouter: use model names from their docs.",
         },
         {
             "name": "ollama_host",
@@ -443,6 +493,88 @@ class IndicatorDataSynthesizer(Base):
                         continue  # Skip this series if calculation fails
         
         return base_count  # Default
+
+    def _extract_all_symbols(self, indicator_data_list: list[Any], ohlcv_bundle: dict[Any, Any]) -> set[str]:
+        """Extract all unique symbols from indicator data and OHLCV bundle."""
+        symbols: set[str] = set()
+        
+        # Extract symbols from OHLCV bundle
+        if ohlcv_bundle:
+            for symbol in ohlcv_bundle.keys():
+                symbols.add(str(symbol))
+        
+        # Extract symbols from indicator data
+        for indicator_data in indicator_data_list:
+            if indicator_data is None:
+                continue
+            
+            if isinstance(indicator_data, dict):
+                # Check if it's a per-symbol structure (dict of dicts)
+                first_value = next(iter(indicator_data.values())) if indicator_data.values() else None
+                if isinstance(first_value, dict):
+                    # Per-symbol structure - keys are symbols
+                    for key in indicator_data.keys():
+                        if key != "metadata":
+                            symbols.add(str(key))
+                elif isinstance(first_value, list):
+                    # Check if there are many keys (likely symbols)
+                    symbol_count = len([k for k in indicator_data.keys() if k != "metadata"])
+                    if symbol_count > 3:
+                        # Likely per-symbol structure
+                        for key in indicator_data.keys():
+                            if key != "metadata":
+                                symbols.add(str(key))
+        
+        return symbols
+
+    def _add_streamlined_key_values(self, formatted_text: str, indicator_data_list: list[Any]) -> str:
+        """Add key indicator values in a streamlined format for easier AI extraction."""
+        if not indicator_data_list:
+            return formatted_text
+        
+        key_values_section = "\n=== KEY INDICATOR VALUES (For AI Analysis) ===\n"
+        
+        # Extract key values from each indicator
+        for indicator_data in indicator_data_list:
+            if indicator_data is None or not isinstance(indicator_data, dict):
+                continue
+            
+            # Check if it's per-symbol data
+            first_value = next(iter(indicator_data.values())) if indicator_data.values() else None
+            if isinstance(first_value, dict):
+                # Per-symbol structure
+                for symbol, symbol_data in indicator_data.items():
+                    if symbol == "metadata" or not isinstance(symbol_data, dict):
+                        continue
+                    
+                    key_values_section += f"\n{symbol} KEY VALUES:\n"
+                    
+                    # Extract Hurst periods (20-week, 40-week, 18-month)
+                    for period in ["20_week", "40_week", "18_month"]:
+                        if period in symbol_data and isinstance(symbol_data[period], list):
+                            values = symbol_data[period]
+                            if values:
+                                last_value = values[-1] if values else 0
+                                key_values_section += f"  {period}: {last_value:.6f}\n"
+                    
+                    # Extract MESA values and triggers
+                    for mesa_key in ["mesa1", "mesa2", "mesa3", "mesa4"]:
+                        if mesa_key in symbol_data and isinstance(symbol_data[mesa_key], list):
+                            values = symbol_data[mesa_key]
+                            if values:
+                                last_value = values[-1] if values else 0
+                                key_values_section += f"  {mesa_key}: {last_value:.4f}\n"
+                    
+                    # Extract CCO values
+                    for cco_key in ["fast_osc", "slow_osc"]:
+                        if cco_key in symbol_data and isinstance(symbol_data[cco_key], list):
+                            values = symbol_data[cco_key]
+                            if values:
+                                last_value = values[-1] if values else 0
+                                key_values_section += f"  {cco_key}: {last_value:.4f}\n"
+        
+        key_values_section += "=== END KEY VALUES ===\n"
+        return formatted_text + key_values_section
 
     def _detect_divergences(self, data: dict[str, Any], symbol: str = "") -> list[str]:
         """Detect divergences between timeframes for any indicator type."""
@@ -1540,30 +1672,23 @@ class IndicatorDataSynthesizer(Base):
         
         logger.warning(f"🔍 DEBUG _summarize_text: mode={summarization_mode}, model={model}, params={self.params.get('summarization_model')}")
         
-        summarization_prompt = """You are a financial data analyst. Summarize the following indicator data.
+        # Load data summarization prompt
+        try:
+            with open("DATA_SUMMARIZATION_PROMPT.txt", "r") as f:
+                summarization_prompt = f.read()
+            logger.info("📋 Using DATA_SUMMARIZATION_PROMPT.txt for summarization")
+        except FileNotFoundError:
+            # Fallback to basic prompt
+            summarization_prompt = """Summarize the following indicator data while preserving all critical information for trading analysis.
 
-CRITICAL INSTRUCTIONS:
-1. ANALYZE ONLY THE PROVIDED DATA. Do NOT mention standard indicators like RSI, MACD, or Bollinger Bands unless they are explicitly present in the text below.
-2. If the data contains specific indicators like "Hurst", "MESA", "Composite", or "Bandpasses", focus your analysis strictly on those.
-3. Look for alignment (confluence) between different signals in the provided data.
-4. Identify key trends (rising/falling values in the lists).
-5. CRITICAL - TIME PERIOD INTERPRETATION: The data includes explicit time period calculations. Look for labels like:
-   - "Recent (Raw, 20 bars, 1-hour intervals = Last 20 hours)" means LAST 20 HOURS, NOT 20 days
-   - "Total Bars: 100 (1-hour intervals = 100 hours)" means 100 HOURS of data, NOT 100 days
-   - "Price Range (48 bars = 48 hours)" means 48 HOURS, NOT 48 days
-   ALWAYS use the explicit time period shown after the "=" sign. If you see "Last 20 hours", say "last 20 hours" NOT "last 20 days" or "last 1 day".
-   The bar interval (e.g., "1-hour") tells you the resolution, and the calculated time period (e.g., "20 hours") tells you the actual duration.
-
-Focus on:
-- Key trends and patterns in the values provided
-- Recent signal changes (look at the 'Recent' values vs 'History')
-- Critical values and crossovers based on the numbers shown
-- Overall market direction implied by THIS specific data
-- ACCURATE TIME PERIODS: Use the explicit time period calculations shown in the data (e.g., if it says "Last 20 hours", use "last 20 hours" in your summary)
-
-Keep the summary concise but comprehensive. Preserve important numerical values and use the EXACT time periods shown in the data labels (the part after "=").
-IMPORTANT: You must respond in ENGLISH only.
-"""
+CRITICAL: 
+- Keep ALL symbol names and recent numeric values
+- Preserve trend directions (UP/DOWN/FLAT)  
+- Maintain recent data points (last 5-10 values)
+- Compress historical data to key stats only
+- Keep volume profile levels and percentages
+- Do not lose any symbols during summarization"""
+            logger.info("📋 Using fallback summarization prompt")
         
         # Estimate text size - adjust chunk size based on model context window
         text_tokens = len(text) // 4
@@ -1575,11 +1700,30 @@ IMPORTANT: You must respond in ENGLISH only.
         if "qwen2.5" in model_name and ("1m" in model_name or "1-m" in model_name):
             MAX_CHUNK_TOKENS = 800000  # Qwen 2.5-1M has 1M context window
             logger.info("Using Qwen 2.5-1M model with 1M token context window")
-        elif "qwen2.5" in model_name or "qwen3" in model_name:
-            # Default 100k-token chunks take >5 min on CPU-only boxes and often hit the
-            # 300-second HTTP timeout.  Empirically 20 k-token chunks finish in ~60 s.
-            MAX_CHUNK_TOKENS = 20000  # keep below 20 k to avoid Ollama timeouts
-            logger.info("Using Qwen model (chunk size capped at 20 k tokens for speed)")
+        elif "qwen2.5" in model_name:
+            # Qwen 2.5 models: Use size-appropriate chunk sizes
+            if "72b" in model_name or "32b" in model_name:
+                MAX_CHUNK_TOKENS = 120000  # Larger models handle bigger chunks better
+            elif "14b" in model_name:
+                MAX_CHUNK_TOKENS = 110000  # 14b can handle larger chunks efficiently
+            else:
+                # Default 100k-token chunks take >5 min on CPU-only boxes and often hit the
+                # 300-second HTTP timeout.  Empirically 20 k-token chunks finish in ~60 s.
+                MAX_CHUNK_TOKENS = 20000  # Conservative for 7b/3b to avoid timeouts
+            logger.info(f"Using Qwen 2.5 model (chunk size: {MAX_CHUNK_TOKENS} tokens)")
+        elif "qwen3" in model_name:
+            # Qwen 3.0 models: Smaller models are faster, so can use larger chunks
+            # Larger models may be slower, so use more conservative chunk sizes
+            if "32b" in model_name:
+                MAX_CHUNK_TOKENS = 80000  # Large but conservative for Qwen 3.0:32b
+            elif "14b" in model_name:
+                MAX_CHUNK_TOKENS = 60000  # Moderate chunk size for Qwen 3.0:14b
+            elif "8b" in model_name or "7b" in model_name:
+                # Smaller Qwen 3.0 models are faster, can handle larger chunks efficiently
+                MAX_CHUNK_TOKENS = 80000  # Larger chunks OK since model processes faster
+            else:
+                MAX_CHUNK_TOKENS = 20000  # Conservative for unknown Qwen 3.0 models
+            logger.info(f"Using Qwen 3.0 model (chunk size: {MAX_CHUNK_TOKENS} tokens)")
         elif "qwen2" in model_name:
             MAX_CHUNK_TOKENS = 30000  # Qwen 2 has 32k context
             logger.info("Using Qwen 2 model with 32k token context window")
@@ -1608,12 +1752,18 @@ IMPORTANT: You must respond in ENGLISH only.
                     
                     # Check if requested model exists, try alternatives
                     # Prefer models with larger context windows for large data
+                    # Order: larger/better models first, then fallback to smaller
                     model_variants = [
                         model,  # User's requested model
-                        "qwen2.5:7b",  # 128k context - BEST for large data (already installed!)
+                        "qwen2.5:72b",  # 128k context - ULTIMATE performance (needs 60GB+ VRAM)
+                        "qwen3:32b",  # Qwen 3.0 - 128k+ context - Latest generation best balance
+                        "qwen2.5:32b",  # 128k context - BEST performance (needs ~32GB VRAM)
+                        "qwen3:14b",  # Qwen 3.0 - 128k+ context - Latest generation better performance
+                        "qwen2.5:14b",  # 128k context - BETTER performance (needs ~16GB VRAM)
+                        "qwen3:8b",  # Qwen 3.0 - 128k+ context - Latest generation good performance
+                        "qwen2.5:7b",  # 128k context - Good performance (needs ~8GB VRAM, default)
                         f"{model}-it",
                         model.replace(":", ":latest"),
-                        "qwen3:8b",  # 128k+ context
                         "qwen2.5:3b",  # 128k context (smaller model)
                         "qwen2:7b",  # 32k context
                         "llama3.2:3b",  # 128k context
@@ -1639,12 +1789,31 @@ IMPORTANT: You must respond in ENGLISH only.
                         # Update model_name after fallback so warning logic uses correct model
                         model_name = model.lower()
                         # Re-check context window after fallback
+                        # All Qwen 2.5 models support 128k context, but larger models handle it better
                         if "qwen2.5" in model_name and ("1m" in model_name or "1-m" in model_name):
-                            MAX_CHUNK_TOKENS = 800000
-                        elif "qwen2.5" in model_name or "qwen3" in model_name:
-                            MAX_CHUNK_TOKENS = 100000
+                            MAX_CHUNK_TOKENS = 800000  # 1M token model
+                        elif "qwen2.5" in model_name:
+                            # All Qwen 2.5 models (7b, 14b, 32b, 72b) support 128k context
+                            # Larger models can handle larger chunks more efficiently
+                            if "72b" in model_name or "32b" in model_name:
+                                MAX_CHUNK_TOKENS = 120000  # Larger models handle bigger chunks better
+                            elif "14b" in model_name:
+                                MAX_CHUNK_TOKENS = 110000  # Slightly larger chunks for 14b
+                            else:
+                                MAX_CHUNK_TOKENS = 100000  # Standard 128k context for 7b/3b
+                        elif "qwen3" in model_name:
+                            # Qwen 3.0 models: Smaller models are faster, so can use larger chunks
+                            if "32b" in model_name:
+                                MAX_CHUNK_TOKENS = 80000  # Large but conservative for Qwen 3.0:32b
+                            elif "14b" in model_name:
+                                MAX_CHUNK_TOKENS = 60000  # Moderate chunk size for Qwen 3.0:14b
+                            elif "8b" in model_name or "7b" in model_name:
+                                # Smaller Qwen 3.0 models are faster, can handle larger chunks efficiently
+                                MAX_CHUNK_TOKENS = 80000  # Larger chunks OK since model processes faster
+                            else:
+                                MAX_CHUNK_TOKENS = 20000  # Conservative for unknown Qwen 3.0 models
                         elif "qwen2" in model_name:
-                            MAX_CHUNK_TOKENS = 30000
+                            MAX_CHUNK_TOKENS = 30000  # 32k context
                         elif "llama3.2" in model_name:
                             MAX_CHUNK_TOKENS = 100000
                         else:
@@ -2436,12 +2605,35 @@ IMPORTANT: You must respond in ENGLISH only.
         # Finalize
         self._emit_progress(ProgressState.DONE, 100.0, f"Complete (~{estimated_tokens:,} tokens)")
 
-        # Final logging: Show what's being sent to OpenRouter
+        # Add symbol count header for data context
+        all_symbols = self._extract_all_symbols(indicator_data_list, ohlcv_bundle)
+        if all_symbols:
+            symbol_list = sorted(list(all_symbols))
+            symbol_count = len(symbol_list)
+            symbol_header = (
+                f"=== DATASET OVERVIEW ===\n"
+                f"Total symbols in this dataset: {symbol_count}\n"
+                f"Symbols: {', '.join(symbol_list)}\n"
+                f"\n"
+                f"Note: This dataset contains indicator data for {symbol_count} symbols. "
+                f"Each symbol has structured data with numeric values for analysis.\n"
+                f"=== END OVERVIEW ===\n\n"
+            )
+            
+            # Only add header if it doesn't already exist
+            if "=== DATASET OVERVIEW ===" not in formatted_text:
+                formatted_text = symbol_header + formatted_text
+                logger.info(f"📊 IndicatorDataSynthesizer: Added dataset overview - {symbol_count} symbols")
+
+        # Note: Analysis prompts are handled by OpenRouter Chat node, not here
+        # The synthesizer's job is just to format data for consumption
+
+        # Final logging: Show what's being sent to OpenRouter Chat node
         final_tokens = len(formatted_text) // 4 if formatted_text else 0
         logger.info(
             f"📤 IndicatorDataSynthesizer: Final output ready - "
-            f"~{final_tokens:,} tokens of text data, {len(output_images)} images. "
-            f"This will be sent to OpenRouter for analysis."
+            f"~{final_tokens:,} tokens of formatted data, {len(output_images)} images. "
+            f"This will be sent to OpenRouter Chat node for analysis."
         )
         
         return {
