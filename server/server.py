@@ -9,10 +9,13 @@ This module provides:
 """
 
 import asyncio
+import logging
 import os
 import traceback
 from contextlib import asynccontextmanager
 from typing import Any, Literal
+
+logger = logging.getLogger(__name__)
 
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect, status
 from fastapi.exceptions import RequestValidationError

@@ -48,6 +48,7 @@ class IndicatorType(Enum):
     EVWMA = auto()  # Exponential Volume Weighted Moving Average
     CCO = auto()  # Cycle Channel Oscillator
     WEEK52_HIGH_LOW = auto()  # 52-Week High/Low
+    CUSTOM = auto()  # Custom Indicator
 
 
 # Progress/lifecycle enums for node execution

@@ -2096,23 +2096,23 @@ class HurstPlot(Base):
             if show_cco:
                 num_subplots += 1
             
-            # Increased figure sizes for better detail and AI analysis
-            # Larger width (12 vs 10) provides more horizontal space for last candle visibility
-            # Maintain aspect ratios but with more pixels for sharper rendering
-            # StockCharts-style spacing: increased hspace and better panel separation
+            # Use taller aspect ratio to avoid narrow charts - wider width with proportional height
             # Price chart (ax1) is 125% bigger than indicator panels (2.25 vs 1.0) for better visibility
             # Top spacing increased significantly to accommodate titles above charts (completely outside)
             if num_subplots == 2:
-                fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 9.75), sharex=True, height_ratios=[2.25, 1.0])
+                # For 2 subplots: wider width (12) with taller height (12) for better proportions
+                fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 12), sharex=True, height_ratios=[2.25, 1.0])
                 fig.subplots_adjust(hspace=0.20, top=0.88, bottom=0.07, left=0.08, right=0.95)  # More top space for titles
             elif num_subplots == 3:
+                # For 3 subplots: wider width (12) with taller height (14) for better proportions
                 if show_mesa:
-                    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(12, 11.5), sharex=True, height_ratios=[2.25, 1.0, 1.0])
+                    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(12, 14), sharex=True, height_ratios=[2.25, 1.0, 1.0])
                 else:  # show_cco
-                    fig, (ax1, ax2, ax4) = plt.subplots(3, 1, figsize=(12, 11.5), sharex=True, height_ratios=[2.25, 1.0, 1.0])
+                    fig, (ax1, ax2, ax4) = plt.subplots(3, 1, figsize=(12, 14), sharex=True, height_ratios=[2.25, 1.0, 1.0])
                 fig.subplots_adjust(hspace=0.18, top=0.88, bottom=0.07, left=0.08, right=0.95)  # More top space for titles
             else:  # num_subplots == 4 (both MESA and CCO)
-                fig, (ax1, ax2, ax3, ax4) = plt.subplots(4, 1, figsize=(12, 13.5), sharex=True, height_ratios=[2.25, 1.0, 1.0, 1.0])
+                # For 4 subplots: wider width (12) with taller height (16) for better proportions
+                fig, (ax1, ax2, ax3, ax4) = plt.subplots(4, 1, figsize=(12, 16), sharex=True, height_ratios=[2.25, 1.0, 1.0, 1.0])
                 fig.subplots_adjust(hspace=0.15, top=0.88, bottom=0.07, left=0.08, right=0.95)  # More top space for titles
             
             # Apply StockCharts-style panel separation to all axes
@@ -2350,6 +2350,9 @@ class HurstPlot(Base):
                 last_bar_before_plot = display_norm[-1]
                 logger.warning(f"🔍 DEBUG: About to plot {sym} - Last bar in display_norm: ts={last_bar_before_plot[0]}, O={last_bar_before_plot[1]:.4f}, H={last_bar_before_plot[2]:.4f}, L={last_bar_before_plot[3]:.4f}, C={last_bar_before_plot[4]:.4f}")
             
+            # Disable autoscaling to prevent matplotlib from overriding our Y-axis limits
+            ax1.set_autoscaley_on(False)
+            
             _plot_candles(
                 ax1, display_norm, display_volumes, display_ema_10, display_ema_30, display_ema_100,
                 show_current_price, current_price_override=fresh_price,
@@ -2443,35 +2446,35 @@ class HurstPlot(Base):
                     
                     logger.warning(f"📊 {str(sym)} Y-axis range: ${y_min:.4f} to ${y_max:.4f} (FULL range for {effective_scale} scale, current: ${current_price:.4f}, range: ${range_min:.4f}-${range_max:.4f}, padding: ${padding:.4f})")
                 else:
-                    # For linear scale, use FULL range to show complete price action over the lookback period
-                    # This allows users to see what the symbol did in its entirety for the period
+                    # For linear scale, ensure charts use full vertical space even for tight price ranges
                     range_min = min(full_min, current_price)
                     range_max = max(full_max, current_price)
-                    
-                    # Calculate padding: use percentage of range, but ensure minimum padding
-                    # For narrow ranges (like stablecoins), use larger percentage padding
-                    price_range = range_max - range_min
-                    if price_range < current_price * 0.01:  # Very narrow range (<1% of price)
-                        # For very narrow ranges, use larger padding (20% of price)
-                        padding = current_price * 0.20
-                    elif price_range < current_price * 0.05:  # Narrow range (<5% of price)
-                        # For narrow ranges, use moderate padding (10% of price)
-                        padding = current_price * 0.10
-                    else:
-                        # For normal ranges, use 10% of range
-                        padding = price_range * 0.10
+                    price_range = max(range_max - range_min, 1e-9)
+
+                    # Minimum chart range: at least 2.5% of price or $0.05, whichever is greater
+                    min_range_threshold = max(current_price * 0.025, 0.05)
+
+                    # Use 10% of actual range as padding (or a tiny fallback if range is nearly flat)
+                    padding = price_range * 0.10 if price_range > 0 else max(current_price * 0.0025, 0.01)
                     
                     y_min = range_min - padding
                     y_max = range_max + padding
                     
-                    # Ensure current price is always visible with extra margin
-                    if current_price > y_max * 0.98:
-                        y_max = current_price * 1.15  # 15% above current
-                    if current_price < y_min * 1.02:
-                        y_min = current_price * 0.85  # 15% below current
-                    
-                    # Ensure we don't go below 0
-                    y_min = max(y_min, 0.01 * current_price)
+                    # Determine desired range after padding
+                    final_range = y_max - y_min
+                    target_range = max(price_range, min_range_threshold)
+                    if final_range < target_range:
+                        extra = (target_range - final_range) / 2
+                        y_min -= extra
+                        y_max += extra
+
+                    # Add a small additional margin (2% of target range) for visual breathing room
+                    margin = target_range * 0.02
+                    y_min -= margin
+                    y_max += margin
+
+                    # Prevent negative price axis
+                    y_min = max(y_min, 0.0)
                     
                     fresh_price_str = f"${fresh_price:.4f}" if fresh_price else "N/A"
                     logger.warning(f"📊 {str(sym)} Y-axis range: ${y_min:.4f} to ${y_max:.4f} (FULL range for {effective_scale} scale, current: ${current_price:.4f}, range: ${range_min:.4f}-${range_max:.4f}, padding: ${padding:.4f})")

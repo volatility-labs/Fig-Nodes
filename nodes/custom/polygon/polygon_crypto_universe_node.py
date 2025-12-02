@@ -112,7 +112,9 @@ class PolygonCryptoUniverse(Base):
         if filter_symbols:
             filter_ticker_strings = massive_build_snapshot_tickers(filter_symbols)
 
-        async with httpx.AsyncClient() as client:
+        # Use longer timeout for snapshot fetch (can be slow with many tickers)
+        timeout = httpx.Timeout(30.0, connect=10.0)
+        async with httpx.AsyncClient(timeout=timeout) as client:
             tickers_data = await massive_fetch_snapshot(
                 client,
                 api_key,

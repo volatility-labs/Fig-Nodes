@@ -20,3 +20,7 @@ export { default as EVWMAFilterNodeUI } from './EVWMAFilterNodeUI';
 export { default as HurstPlotNodeUI } from './HurstPlotNodeUI';
 export { default as ImageDisplayNodeUI } from './ImageDisplayNodeUI';
 export { default as Week52HighLowFilterNodeUI } from './Week52HighLowFilterNodeUI';
+export { default as FractalDimensionPlotNodeUI } from './FractalDimensionPlotNodeUI';
+export { default as FractalsATRFilterNodeUI } from './FractalsATRFilterNodeUI';
+export { default as FractalDimensionAdaptiveFilterNodeUI } from './FractalDimensionAdaptiveFilterNodeUI';
+export { default as SymbolQuickPlotNodeUI } from './SymbolQuickPlotNodeUI';

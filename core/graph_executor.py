@@ -48,6 +48,9 @@ class GraphExecutor:
         self._active_tasks: list[
             asyncio.Task[tuple[int, NodeOutput]]
         ] = []  # Track active tasks for cancellation
+        self.force_execute_all = bool(
+            (self.graph.get("extra") or {}).get("force_execute_all", False)
+        )
         self._build_graph()
 
     def _build_graph_context(self, node_id: int) -> dict[str, Any]:
@@ -130,7 +133,11 @@ class GraphExecutor:
             tasks: list[asyncio.Task[tuple[int, NodeOutput]]] = []
             for node_idx in level:
                 node_id = self._idx_to_id[node_idx]
-                if self.dag.in_degree(node_idx) == 0 and self.dag.out_degree(node_idx) == 0:
+                if (
+                    not self.force_execute_all
+                    and self.dag.in_degree(node_idx) == 0
+                    and self.dag.out_degree(node_idx) == 0
+                ):
                     continue
 
                 node = self.nodes[node_id]
