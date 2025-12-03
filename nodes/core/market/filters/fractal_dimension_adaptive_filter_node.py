@@ -45,7 +45,7 @@ class FractalDimensionAdaptiveFilter(BaseIndicatorFilter):
     params_meta = [
         {
             "name": "filter_type",
-            "type": "string",
+            "type": "combo",
             "default": "bullish",
             "options": ["bullish", "bearish"],
             "description": "Filter for bullish or bearish signals",

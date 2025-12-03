@@ -32,6 +32,8 @@ export class NodeWidgetManager {
                 this.createNumberWidget(param);
             } else if (typeLower === 'combo') {
                 this.createComboWidget(param);
+            } else if (typeLower === 'boolean' || typeLower === 'bool') {
+                this.createBooleanWidget(param);
             } else {
                 this.createDefaultWidget(param);
             }
@@ -105,6 +107,17 @@ export class NodeWidgetManager {
         (widget as unknown as { options: { values: unknown[] }; paramName: string }).paramName = param.name;
     }
 
+    private createBooleanWidget(param: { name: string; default?: unknown }) {
+        const defaultValue = param.default !== undefined ? Boolean(param.default) : false;
+        this.node.properties[param.name] = defaultValue as NodeProperty | undefined;
+        const widget = this.node.addWidget('toggle', param.name, defaultValue, (v: unknown) => {
+            this.node.properties[param.name] = Boolean(v) as NodeProperty | undefined;
+            this.node.setDirtyCanvas(true, true);
+        }, {});
+        widget.value = defaultValue;
+        (widget as unknown as { paramName: string }).paramName = param.name;
+    }
+
     private createDefaultWidget(param: { name: string; default?: unknown }) {
         const widget = this.node.addWidget('text', param.name, param.default as string, (v: unknown) => {
             this.node.properties[param.name] = v as NodeProperty | undefined;
@@ -119,9 +132,12 @@ export class NodeWidgetManager {
             const key = widget.paramName;
             if (!key) return;
 
-            if ((widget.type === 'number' || widget.type === 'text' || widget.type === 'button') && Object.prototype.hasOwnProperty.call(this.node.properties, key)) {
+            if ((widget.type === 'number' || widget.type === 'text' || widget.type === 'button' || widget.type === 'toggle') && Object.prototype.hasOwnProperty.call(this.node.properties, key)) {
                 if (widget.type === 'button' && widget.options?.values) {
                     // combo-style button: do not overwrite value, only label below
+                } else if (widget.type === 'toggle') {
+                    // For toggle widgets, ensure boolean value
+                    widget.value = Boolean(this.node.properties[key]);
                 } else {
                     widget.value = this.node.properties[key];
                 }
