@@ -68,7 +68,7 @@ class OpenRouterChat(Base):
 
     inputs = {
         "prompt": str | None,
-        "system": str | dict[str, Any] | None,
+        "system": Any | None,  # Accept Any type to allow flexible connections (str, LLMChatMessage, dict, etc.)
         "images": ConfigDict | None,
         **{f"message_{i}": get_type("LLMChatMessage") | None for i in range(5)},
     }
@@ -94,6 +94,8 @@ class OpenRouterChat(Base):
         "seed_mode": "fixed",  # fixed | random | increment
         "use_vision": "false",
         "inject_graph_context": "false",
+        "endpoint_type": "OpenRouter API",  # "OpenRouter API" or "Local Ollama"
+        "api_endpoint": "",  # Auto-set based on endpoint_type, or manually override
     }
 
     params_meta = [
@@ -135,6 +137,19 @@ class OpenRouterChat(Base):
             "options": ["true", "false"],
             "description": "Inject graph context (nodes and data flow) into the first user message",
         },
+        {
+            "name": "endpoint_type",
+            "type": "combo",
+            "default": "OpenRouter API",
+            "options": ["OpenRouter API", "Local Ollama"],
+            "description": "Select API endpoint: 'OpenRouter API' for cloud service (requires API key), 'Local Ollama' for local models (no API key needed)",
+        },
+        {
+            "name": "api_endpoint",
+            "type": "text",
+            "default": "",
+            "description": "Custom API endpoint (auto-set based on endpoint_type, or manually override). Default: http://localhost:11434/v1/ for Local Ollama",
+        },
     ]
 
     def __init__(
@@ -158,7 +173,23 @@ class OpenRouterChat(Base):
     async def _get_session(self) -> aiohttp.ClientSession:
         """Get or create aiohttp session."""
         if self._session is None or self._session.closed:
-            timeout = aiohttp.ClientTimeout(total=120)
+            # Use longer timeout for local endpoints (they can take longer for large multimodal requests)
+            # Check if we're using local endpoint
+            endpoint_type = str(self.params.get("endpoint_type", "OpenRouter API")).strip()
+            api_endpoint = str(self.params.get("api_endpoint", "")).strip()
+            is_local = endpoint_type == "Local Ollama" or (api_endpoint and api_endpoint != "")
+            
+            # Local endpoints need more time for large vision model requests (15+ images can take 5-10+ minutes)
+            # Also need longer timeouts for large text-only requests (186K+ tokens can take 15-20+ minutes)
+            if is_local:
+                # Very long timeouts for local: connection (5 min), read (30 min), total (35 min)
+                timeout = aiohttp.ClientTimeout(
+                    connect=300,  # 5 minutes to establish connection
+                    sock_read=1800,  # 30 minutes to read response
+                    total=2100  # 35 minutes total
+                )
+            else:
+                timeout = aiohttp.ClientTimeout(total=120)  # 2 minutes for OpenRouter
             self._session = aiohttp.ClientSession(timeout=timeout)
         return self._session
 
@@ -188,20 +219,67 @@ class OpenRouterChat(Base):
         system_input: dict[str, Any] | str | None,
         images: ConfigDict | None = None,
     ) -> list[dict[str, Any]]:
-        result: list[dict[str, Any]] = list(existing_messages or []) if existing_messages else []
+        result: list[dict[str, Any]] = []
+        
+        # Collect text content from existing messages (for merging with images)
+        existing_text_parts: list[str] = []
+        for msg in (existing_messages or []):
+            role = msg.get("role", "")
+            content = msg.get("content", "")
+            
+            # Keep system and assistant messages as-is
+            if role == "system":
+                result.append(msg)
+            elif role == "assistant":
+                result.append(msg)
+            elif role == "user":
+                # Extract text from user messages to merge with final message
+                if isinstance(content, str):
+                    if content.strip():
+                        existing_text_parts.append(content.strip())
+                elif isinstance(content, list):
+                    # Extract text parts from multimodal content
+                    text_items = [item.get("text", "") for item in content if isinstance(item, dict) and item.get("type") == "text"]
+                    if text_items:
+                        existing_text_parts.extend([t for t in text_items if t.strip()])
+        
+        # Add system input if not already present
         if system_input and not any(m.get("role") == "system" for m in result):
             if isinstance(system_input, str):
                 result.insert(0, {"role": "system", "content": system_input})
             else:
                 result.insert(0, system_input)
 
-        # Build final user message with images if provided
-        text_content = prompt or ""
-        if text_content.strip() or images:
+        # Build final user message combining all text + images
+        # Merge existing text content with prompt
+        all_text_parts = existing_text_parts.copy()
+        if prompt and prompt.strip():
+            all_text_parts.append(prompt.strip())
+        
+        # Prepend system message content to user message if system message exists
+        # This ensures instructions are seen BEFORE data, even if model ignores system role
+        # Only prepend if we have text parts to prepend to (avoid creating empty user message)
+        if system_input and all_text_parts:
+            system_content_prepend = ""
+            if isinstance(system_input, str):
+                system_content_prepend = system_input.strip()
+            elif isinstance(system_input, dict):
+                system_content_prepend = system_input.get("content", "").strip() if isinstance(system_input.get("content"), str) else ""
+            
+            if system_content_prepend:
+                # Prepend system instructions at the very beginning (only once)
+                all_text_parts.insert(0, f"🚨🚨🚨 CRITICAL INSTRUCTIONS - READ FIRST 🚨🚨🚨\n\n{system_content_prepend}\n\n=== DATA BELOW - FOLLOW INSTRUCTIONS ABOVE ===\n")
+        
+        # Create final user message if we have text or images
+        if all_text_parts or images:
             user_content: list[dict[str, Any]] = []
-            if text_content.strip():
-                user_content.append({"type": "text", "text": text_content})
-            else:
+            
+            # Combine all text into one text part
+            combined_text = "\n\n".join(all_text_parts) if all_text_parts else ""
+            if combined_text.strip():
+                user_content.append({"type": "text", "text": combined_text})
+            elif images:
+                # Need at least empty text if we have images
                 user_content.append({"type": "text", "text": ""})
 
             if images:
@@ -215,6 +293,10 @@ class OpenRouterChat(Base):
                             }
                         )
             result.append({"role": "user", "content": user_content})
+        elif existing_messages:
+            # If no prompt/images but we had existing messages, keep them
+            result.extend([m for m in existing_messages if m.get("role") != "user"])
+        
         return result
 
     def _prepare_generation_options(self) -> dict[str, Any]:
@@ -258,16 +340,26 @@ class OpenRouterChat(Base):
         options["seed"] = int(effective_seed)
         return options
 
-    def _get_model_with_web_search(self, base_model: str, use_vision: bool = False) -> str:
-        """Get model name with web search suffix (always enabled). Switch to vision model if needed."""
+    def _get_model_with_web_search(self, base_model: str, use_vision: bool = False, is_local_endpoint: bool = False) -> str:
+        """Get model name with web search suffix (always enabled for OpenRouter). Switch to vision model if needed."""
         model = base_model
         if use_vision:
             # Map to a vision-capable model if the base isn't (customize as needed)
-            vision_models = ["google/gemini-2.0-flash-001", "openai/gpt-4o"]  # Examples
-            if not any(vm in model for vm in vision_models):
-                model = "google/gemini-2.0-flash-001"  # Default vision fallback
-        # Add :online suffix to enable web search
-        if not model.endswith(":online"):
+            vision_models = [
+                "google/gemini-2.0-flash-001", "openai/gpt-4o", 
+                "qwen2.5vl", "qwen2.5-vl", "qwen/qwen-vl", "qwen/vl",
+                "qwen3-vl", "qwen/qwen3-vl", "qwen3vl",  # Qwen3-VL models
+            ]
+            # Check if model already supports vision (don't override if it does)
+            is_vision_capable = any(vm.lower() in model.lower() for vm in vision_models)
+            if not is_vision_capable:
+                # For local endpoints, use qwen3-vl:8b if available, otherwise qwen2.5vl:7b
+                if is_local_endpoint:
+                    model = "qwen3-vl:8b"  # Default local vision model (prefer newer)
+                else:
+                    model = "google/gemini-2.0-flash-001"  # Default OpenRouter vision fallback
+        # Add :online suffix to enable web search (only for OpenRouter, not local endpoints)
+        if not is_local_endpoint and not model.endswith(":online"):
             model = f"{model}:online"
         return model
 
@@ -280,7 +372,70 @@ class OpenRouterChat(Base):
         """Single entry point for LLM API calls."""
         use_vision_param = self._parse_bool_param("use_vision", False)
         base_model = str(self.params.get("model", "z-ai/glm-4.6"))
-        model_with_web_search = self._get_model_with_web_search(base_model, use_vision_param)
+        
+        # Determine endpoint based on endpoint_type selection FIRST
+        endpoint_type = str(self.params.get("endpoint_type", "OpenRouter API")).strip()
+        api_endpoint = str(self.params.get("api_endpoint", "")).strip()
+        
+        print(f"🔍 OpenRouterChat Node {self.id}: endpoint_type='{endpoint_type}', api_endpoint='{api_endpoint}'")
+        
+        # Auto-set endpoint based on endpoint_type if not manually overridden
+        if endpoint_type == "Local Ollama":
+            if not api_endpoint:
+                api_endpoint = "http://localhost:11434/v1/"
+                print(f"🔄 OpenRouterChat Node {self.id}: Auto-set api_endpoint to '{api_endpoint}' for Local Ollama")
+        else:  # OpenRouter API
+            if api_endpoint:
+                # User manually set endpoint, use it
+                print(f"🔄 OpenRouterChat Node {self.id}: Using manually set api_endpoint: '{api_endpoint}'")
+            else:
+                # Clear endpoint to use OpenRouter
+                api_endpoint = ""
+                print(f"🔄 OpenRouterChat Node {self.id}: Using OpenRouter (api_endpoint cleared)")
+        
+        is_local_endpoint = bool(api_endpoint and api_endpoint != "")
+        print(f"🔍 OpenRouterChat Node {self.id}: is_local_endpoint={is_local_endpoint}")
+        
+        # Transform model name for local Ollama endpoints (OpenRouter model names don't match Ollama)
+        # Map common OpenRouter vision model names to Ollama equivalents
+        if is_local_endpoint:
+            model_mapping = {
+                # Qwen3-VL models (newest)
+                "qwen/qwen3-vl-8b-instruct": "qwen3-vl:8b",
+                "qwen/qwen3-vl-8b-thinking": "qwen3-vl:8b",
+                "qwen/qwen3-vl-30b-a3b-instruct": "qwen3-vl:8b",  # Fallback to 8b if 30b not available
+                "qwen/qwen3-vl": "qwen3-vl:8b",
+                # Qwen2.5-VL models
+                "qwen/qwen-vl-max": "qwen2.5vl:7b",
+                "qwen/qwen-2.5-vl-7b-instruct": "qwen2.5vl:7b",
+                "qwen/qwen-2.5-vl-max": "qwen2.5vl:7b",
+                "qwen/qwen-2.5-vl-32b-instruct": "qwen2.5vl:7b",  # Fallback to 7b if 32b not available
+                "qwen2.5vl": "qwen2.5vl:7b",
+                "qwen2.5-vl": "qwen2.5vl:7b",
+            }
+            # Check if we need to map the model name
+            for openrouter_name, ollama_name in model_mapping.items():
+                if openrouter_name.lower() in base_model.lower():
+                    base_model = ollama_name
+                    print(f"🔄 OpenRouterChat Node {self.id}: Mapped model '{self.params.get('model')}' to Ollama model '{base_model}'")
+                    break
+        
+        # Determine API URL
+        if is_local_endpoint:
+            # Use custom endpoint (e.g., Ollama at http://localhost:11434/v1/)
+            api_url = api_endpoint.rstrip("/")
+            if not api_url.endswith("/chat/completions"):
+                if api_url.endswith("/v1"):
+                    api_url = f"{api_url}/chat/completions"
+                elif api_url.endswith("/v1/"):
+                    api_url = f"{api_url}chat/completions"
+                else:
+                    api_url = f"{api_url}/v1/chat/completions"
+        else:
+            # Use OpenRouter
+            api_url = "https://openrouter.ai/api/v1/chat/completions"
+        
+        model_with_web_search = self._get_model_with_web_search(base_model, use_vision_param, is_local_endpoint)
 
         request_body = {
             "model": model_with_web_search,
@@ -293,13 +448,45 @@ class OpenRouterChat(Base):
             raise asyncio.CancelledError("Node stopped before HTTP request")
 
         session = await self._get_session()
+        
+        # Prepare headers - Ollama doesn't require auth, but some setups might
+        headers = {"Content-Type": "application/json"}
+        if api_key:
+            # Add auth header if API key is provided (required for OpenRouter, optional for local)
+            headers["Authorization"] = f"Bearer {api_key}"
+        
         try:
+            print(f"🔵 OpenRouterChat Node {self.id}: Using {'local' if is_local_endpoint else 'OpenRouter'} endpoint: {api_url}")
+            print(f"   Model: {model_with_web_search}")
+            
+            # Debug: Log request details for local endpoints
+            if is_local_endpoint:
+                total_chars = sum(len(str(msg.get("content", ""))) for msg in messages)
+                image_count = sum(1 for msg in messages for item in (msg.get("content", []) if isinstance(msg.get("content"), list) else []) if isinstance(item, dict) and item.get("type") == "image_url")
+                print(f"   📤 Local request: {len(messages)} message(s), ~{total_chars:,} chars, {image_count} image(s)")
+                
+                # Log each message's role and content preview
+                for idx, msg in enumerate(messages):
+                    role = msg.get("role", "unknown")
+                    content = msg.get("content", "")
+                    if isinstance(content, list):
+                        # Multimodal content (text + images)
+                        text_parts = [item.get("text", "") for item in content if isinstance(item, dict) and item.get("type") == "text"]
+                        image_parts = [item for item in content if isinstance(item, dict) and item.get("type") == "image_url"]
+                        text_preview = " ".join(text_parts)[:300] if text_parts else ""
+                        print(f"   📨 Message {idx} ({role}): {len(text_parts)} text part(s), {len(image_parts)} image(s)")
+                        if text_preview:
+                            print(f"      Text preview: {text_preview}...")
+                    elif isinstance(content, str):
+                        print(f"   📨 Message {idx} ({role}): {len(content):,} chars")
+                        if content:
+                            print(f"      Content preview: {content[:300]}...")
+                    else:
+                        print(f"   📨 Message {idx} ({role}): {type(content).__name__}")
+            
             async with session.post(
-                "https://openrouter.ai/api/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json",
-                },
+                api_url,
+                headers=headers,
                 json=request_body,
             ) as response:
                 if self._is_stopped:
@@ -308,14 +495,26 @@ class OpenRouterChat(Base):
                 # Check status before parsing response
                 if response.status >= 400:
                     error_text = await response.text()
+                    endpoint_name = "Local API" if is_local_endpoint else "OpenRouter API"
                     raise aiohttp.ClientResponseError(
                         request_info=response.request_info,
                         history=response.history,
                         status=response.status,
-                        message=f"OpenRouter API error ({response.status}): {error_text[:500]}",
+                        message=f"{endpoint_name} error ({response.status}): {error_text[:500]}",
                     )
 
                 resp_data_raw = await response.json()
+                
+                # Debug: Log response details for local endpoints
+                if is_local_endpoint:
+                    if isinstance(resp_data_raw, dict) and "choices" in resp_data_raw:
+                        choice = resp_data_raw.get("choices", [{}])[0] if resp_data_raw.get("choices") else {}
+                        message = choice.get("message", {})
+                        response_text = message.get("content", "")
+                        print(f"   📥 Local response: {len(response_text):,} chars")
+                        if response_text:
+                            preview = response_text[:300] if len(response_text) > 300 else response_text
+                            print(f"   📝 Response preview: {preview}...")
                 
                 # Validate response is not None/empty
                 if resp_data_raw is None:
@@ -333,12 +532,34 @@ class OpenRouterChat(Base):
             print(f"STOP_TRACE: HTTP request cancelled for node {self.id}")
             raise
         except aiohttp.ClientResponseError as e:
-            error_msg = f"OpenRouter API HTTP error ({e.status}): {e.message}"
+            endpoint_name = "Local Ollama" if is_local_endpoint else "OpenRouter API"
+            error_msg = f"{endpoint_name} HTTP error ({e.status}): {e.message}"
+            if not e.message or e.message.strip() == "":
+                if is_local_endpoint:
+                    error_msg = f"Local Ollama error ({e.status}): No error message. Check if Ollama is running: 'ollama serve'"
+                else:
+                    error_msg = f"{endpoint_name} error ({e.status}): No error message provided"
             logger.error(f"Node {self.id}: {error_msg}")
+            print(f"❌ OpenRouterChat Node {self.id}: HTTP error - Status: {e.status}, Message: {e.message}, URL: {api_url}")
+            raise ValueError(error_msg) from e
+        except aiohttp.ClientError as e:
+            # Handle connection errors (Ollama not running, network issues, etc.)
+            endpoint_name = "Local Ollama" if is_local_endpoint else "OpenRouter API"
+            if is_local_endpoint:
+                error_msg = f"Local Ollama connection failed: {str(e)}. Make sure Ollama is running: 'ollama serve'"
+            else:
+                error_msg = f"{endpoint_name} connection failed: {str(e)}"
+            logger.error(f"Node {self.id}: {error_msg}")
+            print(f"❌ OpenRouterChat Node {self.id}: Connection error - {type(e).__name__}: {str(e)}")
             raise ValueError(error_msg) from e
         except Exception as e:
-            error_msg = f"OpenRouter API error: {str(e)}"
-            logger.error(f"Node {self.id}: {error_msg}")
+            # Handle any other unexpected errors
+            endpoint_name = "Local Ollama" if is_local_endpoint else "OpenRouter API"
+            error_msg = f"{endpoint_name} error: {type(e).__name__}: {str(e)}"
+            logger.error(f"Node {self.id}: {error_msg}", exc_info=True)
+            print(f"❌ OpenRouterChat Node {self.id}: Unexpected error - {type(e).__name__}: {str(e)}")
+            import traceback
+            print(f"   Traceback: {traceback.format_exc()}")
             raise ValueError(error_msg) from e
 
     def _parse_bool_param(self, param_name: str, default: bool = False) -> bool:
@@ -595,11 +816,35 @@ class OpenRouterChat(Base):
                     f"{'includes symbol/indicator data' if has_symbols else 'no symbol data detected'}"
                 )
 
-        # Early explicit API key check so the graph surfaces a clear failure without silent fallthrough
-        api_key = self.vault.get("OPENROUTER_API_KEY")
-        if not api_key:
+        # Determine endpoint based on endpoint_type selection
+        endpoint_type = str(self.params.get("endpoint_type", "OpenRouter API")).strip()
+        api_endpoint = str(self.params.get("api_endpoint", "")).strip()
+        
+        print(f"🔍 OpenRouterChat Node {self.id} (_execute_impl): endpoint_type='{endpoint_type}', api_endpoint='{api_endpoint}'")
+        print(f"🔍 OpenRouterChat Node {self.id} (_execute_impl): All params keys: {list(self.params.keys())}")
+        
+        # Auto-set endpoint based on endpoint_type if not manually overridden
+        if endpoint_type == "Local Ollama":
+            if not api_endpoint:
+                api_endpoint = "http://localhost:11434/v1/"
+                print(f"🔄 OpenRouterChat Node {self.id} (_execute_impl): Auto-set api_endpoint to '{api_endpoint}' for Local Ollama")
+        else:  # OpenRouter API
+            if api_endpoint:
+                # User manually set endpoint, use it
+                print(f"🔄 OpenRouterChat Node {self.id} (_execute_impl): Using manually set api_endpoint: '{api_endpoint}'")
+            else:
+                # Clear endpoint to use OpenRouter
+                api_endpoint = ""
+                print(f"🔄 OpenRouterChat Node {self.id} (_execute_impl): Using OpenRouter (api_endpoint cleared)")
+        
+        is_local_endpoint = bool(api_endpoint and api_endpoint != "")
+        print(f"🔍 OpenRouterChat Node {self.id} (_execute_impl): is_local_endpoint={is_local_endpoint}")
+        
+        # Early explicit API key check for OpenRouter (local endpoints don't need it)
+        api_key = self.vault.get("OPENROUTER_API_KEY") or ""
+        if not is_local_endpoint and not api_key:
             return self._create_error_response(
-                "OpenRouter API key missing. Set OPENROUTER_API_KEY."
+                "OpenRouter API key missing. Set OPENROUTER_API_KEY, or select 'Local Ollama' as endpoint_type"
             )
 
         options = self._prepare_generation_options()
@@ -613,12 +858,20 @@ class OpenRouterChat(Base):
         except ValueError as e:
             # Handle API errors (HTTP errors, empty responses, etc.)
             error_msg = str(e)
-            logger.error(f"Node {self.id}: OpenRouter API call failed: {error_msg}")
-            return self._create_error_response(f"OpenRouter API error: {error_msg}")
+            if not error_msg or error_msg.strip() == "":
+                endpoint_name = "Local Ollama" if is_local_endpoint else "OpenRouter API"
+                error_msg = f"{endpoint_name} returned empty error. Check if Ollama is running: 'ollama serve'"
+            logger.error(f"Node {self.id}: {endpoint_name if is_local_endpoint else 'OpenRouter'} API call failed: {error_msg}")
+            print(f"❌ OpenRouterChat Node {self.id}: Error details - {error_msg}")
+            return self._create_error_response(error_msg)
         except Exception as e:
             # Handle any other unexpected errors
-            error_msg = f"Unexpected error calling OpenRouter API: {str(e)}"
+            endpoint_name = "Local Ollama" if is_local_endpoint else "OpenRouter API"
+            error_msg = f"Unexpected error calling {endpoint_name}: {type(e).__name__}: {str(e)}"
             logger.error(f"Node {self.id}: {error_msg}", exc_info=True)
+            print(f"❌ OpenRouterChat Node {self.id}: Unexpected error - {type(e).__name__}: {str(e)}")
+            import traceback
+            print(f"   Traceback: {traceback.format_exc()}")
             return self._create_error_response(error_msg)
 
         # Emit progress update after receiving response

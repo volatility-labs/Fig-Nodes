@@ -981,12 +981,14 @@ class IndicatorDataSynthesizer(Base):
                                 
                             # Ensure we have enough data to batch
                             recent_unbatched = adaptive_recent_unbatched
+                            batch_vals = []  # Initialize before conditional block
+                            recent_vals = series_value  # Default to all values if not batching
+                            
                             if len(series_value) > recent_unbatched:
                                 history_vals = series_value[:-recent_unbatched]
                                 recent_vals = series_value[-recent_unbatched:]
                                 
                                 # Aggregate history
-                                batch_vals = []
                                 for i in range(0, len(history_vals), batch_size):
                                     batch = history_vals[i:i+batch_size]
                                     # Filter Nones for averaging
@@ -1075,11 +1077,13 @@ class IndicatorDataSynthesizer(Base):
                     # ADAPTIVE COMPRESSION: Adjust based on data characteristics
                     base_recent_unbatched = int(self.params.get("recent_unbatched_count", 20))
                     recent_unbatched = self._get_adaptive_recent_count(data, key, base_recent_unbatched)
+                    batch_vals = []  # Initialize before conditional block
+                    recent_vals = value  # Default to all values if not batching
+                    
                     if len(value) > recent_unbatched:
                         history_vals = value[:-recent_unbatched]
                         recent_vals = value[-recent_unbatched:]
                         
-                        batch_vals = []
                         for i in range(0, len(history_vals), batch_size):
                             batch = history_vals[i:i+batch_size]
                             valid_batch = [v for v in batch if v is not None and isinstance(v, (int, float))]
@@ -1331,12 +1335,14 @@ class IndicatorDataSynthesizer(Base):
                             # Ensure we have enough data to batch - ADAPTIVE
                             base_recent_unbatched = int(self.params.get("recent_unbatched_count", 20))
                             recent_unbatched = self._get_adaptive_recent_count(data, key, base_recent_unbatched)
+                            batch_vals = []  # Initialize before conditional block
+                            recent_vals = value  # Default to all values if not batching
+                            
                             if len(value) > recent_unbatched:
                                 history_vals = value[:-recent_unbatched]
                             recent_vals = value[-recent_unbatched:]
                             
                             # Aggregate history
-                            batch_vals = []
                             for i in range(0, len(history_vals), batch_size):
                                 batch = history_vals[i:i+batch_size]
                                 # Filter Nones for averaging
@@ -2126,7 +2132,7 @@ CRITICAL:
                 # Don't override - respect user's explicit choice
             else:
                 # Auto-override for safety when user hasn't explicitly set it
-                logger.warning(f"⚠️ IndicatorDataSynthesizer: Forcing summary_only=True because total_symbols={total_symbols_check} > 5 and batching is disabled. This prevents massive token usage.")
+                logger.warning(f"⚠️ IndicatorDataSynthesizer: Forcing summary_only=True because total_symbols_check={total_symbols_check} > 5 and batching is disabled. This prevents massive token usage.")
                 summary_only = True
         
         # Log current settings for debugging - CRITICAL DEBUG
