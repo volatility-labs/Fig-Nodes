@@ -27,6 +27,16 @@ export default class ImageDisplayNodeUI extends BaseCustomNode {
         this.size = [500, 360];
         this.displayResults = false; // custom canvas rendering
         this.renderer = new ImageDisplayRenderer(this);
+        
+        // Add share button
+        this.addWidget('button', '🔗 Share', '', () => {
+            this.shareImages();
+        });
+        
+        // Add clear chart button
+        this.addWidget('button', '🗑️ Clear', '', () => {
+            this.clearChart();
+        });
     }
 
     // Override onMouseDown to ensure node can be selected properly
@@ -46,6 +56,28 @@ export default class ImageDisplayNodeUI extends BaseCustomNode {
         this.scrollOffsetY = 0;
         this.gridScrollOffset = 0;
         this.gridScrollOffsetX = 0;
+        this.setDirtyCanvas(true, true);
+        if (this.graph) {
+            this.graph.setDirtyCanvas(true);
+        }
+    }
+
+    /**
+     * Clear all images from the chart
+     */
+    clearChart(): void {
+        this.images = {};
+        this.loadedImages.clear();
+        this.imageAspectRatios.clear();
+        this.scrollOffsetX = 0;
+        this.scrollOffsetY = 0;
+        this.gridScrollOffset = 0;
+        this.gridScrollOffsetX = 0;
+        this.zoomLevel = 1.0;
+        
+        // Reset node size to default
+        this.size = [500, 360];
+        
         this.setDirtyCanvas(true, true);
         if (this.graph) {
             this.graph.setDirtyCanvas(true);
@@ -549,5 +581,321 @@ export default class ImageDisplayNodeUI extends BaseCustomNode {
 
         this.setDirtyCanvas(true, true);
         return true;
+    }
+
+    /**
+     * Share images to social media platforms (X/Twitter, etc.)
+     */
+    private async shareImages(): Promise<void> {
+        const labels = Object.keys(this.images || {});
+        if (!labels.length) {
+            alert('No images to share');
+            return;
+        }
+
+        try {
+            // Create a share menu
+            const shareMenu = document.createElement('div');
+            shareMenu.style.cssText = `
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                background: #1c2128;
+                border: 1px solid #373e47;
+                border-radius: 8px;
+                padding: 16px;
+                z-index: 10000;
+                box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+                min-width: 300px;
+            `;
+
+            const title = document.createElement('div');
+            title.textContent = 'Share Images';
+            title.style.cssText = 'color: #c9d1d9; font-size: 16px; font-weight: bold; margin-bottom: 12px;';
+            shareMenu.appendChild(title);
+
+            // Function to create share button
+            const createShareButton = (platform: string, icon: string, action: () => void) => {
+                const button = document.createElement('button');
+                button.textContent = `${icon} Share to ${platform}`;
+                button.style.cssText = `
+                    width: 100%;
+                    padding: 10px;
+                    margin: 4px 0;
+                    background: #21262d;
+                    border: 1px solid #373e47;
+                    border-radius: 4px;
+                    color: #c9d1d9;
+                    cursor: pointer;
+                    font-size: 14px;
+                    text-align: left;
+                `;
+                button.onmouseover = () => {
+                    button.style.background = '#2d333b';
+                };
+                button.onmouseout = () => {
+                    button.style.background = '#21262d';
+                };
+                button.onclick = () => {
+                    action();
+                    document.body.removeChild(shareMenu);
+                };
+                return button;
+            };
+
+            // Export images as data URLs (they're already base64 encoded)
+            const exportImage = async (label: string): Promise<Blob> => {
+                try {
+                    const dataUrl = this.images[label];
+                    if (!dataUrl) {
+                        throw new Error(`No image data for ${label}`);
+                    }
+                    // Convert data URL to blob
+                    const response = await fetch(dataUrl);
+                    if (!response.ok) {
+                        throw new Error(`Failed to fetch image: ${response.statusText}`);
+                    }
+                    const blob = await response.blob();
+                    if (!blob || blob.size === 0) {
+                        throw new Error('Image blob is empty');
+                    }
+                    return blob;
+                } catch (error: any) {
+                    console.error('Error exporting image:', error);
+                    throw new Error(`Failed to export image: ${error?.message || 'Unknown error'}`);
+                }
+            };
+
+            // Share to X/Twitter
+            const shareToTwitter = async () => {
+                try {
+                    // For multiple images, share the first one
+                    const label = labels[0];
+                    
+                    // Format symbol with $ prefix and remove USD suffix for crypto
+                    // Examples: IRENUSD -> $IREN, IREN -> $IREN, $IREN -> $IREN
+                    let formattedSymbol = label;
+                    if (label.includes('USD')) {
+                        formattedSymbol = `$${label.replace('USD', '')}`;
+                    } else if (!label.startsWith('$')) {
+                        formattedSymbol = `$${label}`;
+                    }
+                    
+                    // Tweet text is just the symbol
+                    const text = encodeURIComponent(formattedSymbol);
+                    const url = `https://twitter.com/intent/tweet?text=${text}`;
+                    
+                    // Try to copy image to clipboard (don't fail if this doesn't work)
+                    let clipboardSuccess = false;
+                    try {
+                        const blob = await exportImage(label);
+                        if (typeof ClipboardItem !== 'undefined' && navigator.clipboard && navigator.clipboard.write) {
+                            const item = new ClipboardItem({ 'image/png': blob });
+                            await navigator.clipboard.write([item]);
+                            clipboardSuccess = true;
+                        }
+                    } catch (clipboardError: any) {
+                        console.log('Clipboard copy failed (this is OK):', clipboardError?.message || clipboardError);
+                        clipboardSuccess = false;
+                    }
+                    
+                    // Open Twitter (this should always work)
+                    const twitterWindow = window.open(url, '_blank', 'width=550,height=420');
+                    
+                    if (!twitterWindow) {
+                        alert('Popup blocked. Please allow popups for this site and try again.');
+                        return;
+                    }
+                    
+                    // Show helpful message based on clipboard success
+                    setTimeout(() => {
+                        if (clipboardSuccess) {
+                            // Create a more helpful notification
+                            const notification = document.createElement('div');
+                            notification.style.cssText = `
+                                position: fixed;
+                                top: 20px;
+                                right: 20px;
+                                background: #1c2128;
+                                border: 2px solid #4caf50;
+                                border-radius: 8px;
+                                padding: 16px;
+                                color: #c9d1d9;
+                                z-index: 10001;
+                                box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+                                max-width: 350px;
+                                font-size: 14px;
+                            `;
+                            notification.innerHTML = `
+                                <div style="font-weight: bold; margin-bottom: 8px; color: #4caf50;">✓ Image Copied!</div>
+                                <div style="margin-bottom: 8px;">The chart image is in your clipboard.</div>
+                                <div style="margin-bottom: 8px;"><strong>Next step:</strong> Click in the Twitter compose box and press <kbd style="background: #21262d; padding: 2px 6px; border-radius: 3px;">Ctrl+V</kbd> (or <kbd style="background: #21262d; padding: 2px 6px; border-radius: 3px;">Cmd+V</kbd> on Mac) to paste the image.</div>
+                                <button onclick="this.parentElement.remove()" style="width: 100%; margin-top: 8px; padding: 6px; background: #21262d; border: 1px solid #373e47; border-radius: 4px; color: #c9d1d9; cursor: pointer;">Got it</button>
+                            `;
+                            document.body.appendChild(notification);
+                            
+                            // Auto-remove after 10 seconds
+                            setTimeout(() => {
+                                if (notification.parentElement) {
+                                    notification.remove();
+                                }
+                            }, 10000);
+                        } else {
+                            alert('Twitter opened! To add the image, use the Download button first, then upload it to Twitter.');
+                        }
+                    }, 500);
+                    
+                } catch (error: any) {
+                    console.error('Error sharing to Twitter:', error);
+                    const errorMsg = error?.message || 'Unknown error';
+                    
+                    // Still try to open Twitter even if there was an error
+                    try {
+                        const label = labels[0];
+                        let formattedSymbol = label || '';
+                        if (label?.includes('USD')) {
+                            formattedSymbol = `$${label.replace('USD', '')}`;
+                        } else if (label && !label.startsWith('$')) {
+                            formattedSymbol = `$${label}`;
+                        }
+                        const text = encodeURIComponent(formattedSymbol);
+                        const url = `https://twitter.com/intent/tweet?text=${text}`;
+                        window.open(url, '_blank', 'width=550,height=420');
+                        alert(`Twitter opened! Error: ${errorMsg}\n\nUse the Download button to get the image, then upload it manually.`);
+                    } catch (fallbackError) {
+                        alert(`Failed to open Twitter: ${errorMsg}\n\nPlease use the Download button to save the image, then share it manually.`);
+                    }
+                }
+            };
+
+            // Share using Web Share API (if available)
+            const shareNative = async () => {
+                try {
+                    if (!navigator.share) {
+                        alert('Web Share API not supported in this browser');
+                        return;
+                    }
+
+                    // For native share, we'll share the first image
+                    const label = labels[0];
+                    const blob = await exportImage(label);
+                    
+                    // Format symbol with $ prefix and remove USD suffix for crypto
+                    let formattedSymbol = label;
+                    if (label.includes('USD')) {
+                        formattedSymbol = `$${label.replace('USD', '')}`;
+                    } else if (!label.startsWith('$')) {
+                        formattedSymbol = `$${label}`;
+                    }
+                    
+                    const file = new File([blob], `${label}.png`, { type: 'image/png' });
+                    
+                    const shareData: any = {
+                        title: formattedSymbol,
+                        text: formattedSymbol,
+                    };
+                    
+                    // Try to include file if supported
+                    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                        shareData.files = [file];
+                    }
+
+                    await navigator.share(shareData);
+                } catch (error: any) {
+                    if (error.name !== 'AbortError') {
+                        console.error('Error sharing:', error);
+                        alert('Failed to share');
+                    }
+                }
+            };
+
+            // Download images
+            const downloadImages = async () => {
+                try {
+                    for (const label of labels) {
+                        const blob = await exportImage(label);
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `${label}.png`;
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        URL.revokeObjectURL(url);
+                    }
+                } catch (error) {
+                    console.error('Error downloading images:', error);
+                    alert('Failed to download images');
+                }
+            };
+
+            // Copy image to clipboard
+            const copyToClipboard = async () => {
+                try {
+                    if (labels.length > 1) {
+                        alert('Copy to clipboard works best with a single image');
+                        return;
+                    }
+                    const label = labels[0];
+                    const blob = await exportImage(label);
+                    const item = new ClipboardItem({ 'image/png': blob });
+                    await navigator.clipboard.write([item]);
+                    alert('Image copied to clipboard!');
+                } catch (error) {
+                    console.error('Error copying to clipboard:', error);
+                    alert('Failed to copy to clipboard. Your browser may not support this feature.');
+                }
+            };
+
+            // Add share buttons
+            if (navigator.share) {
+                shareMenu.appendChild(createShareButton('Native Share', '📱', shareNative));
+            }
+            shareMenu.appendChild(createShareButton('X (Twitter)', '🐦', shareToTwitter));
+            shareMenu.appendChild(createShareButton('Download', '💾', downloadImages));
+            shareMenu.appendChild(createShareButton('Copy to Clipboard', '📋', copyToClipboard));
+
+            // Close button
+            const closeButton = document.createElement('button');
+            closeButton.textContent = 'Cancel';
+            closeButton.style.cssText = `
+                width: 100%;
+                padding: 8px;
+                margin-top: 8px;
+                background: #30363d;
+                border: 1px solid #373e47;
+                border-radius: 4px;
+                color: #c9d1d9;
+                cursor: pointer;
+                font-size: 14px;
+            `;
+            closeButton.onclick = () => {
+                document.body.removeChild(shareMenu);
+            };
+            shareMenu.appendChild(closeButton);
+
+            // Add overlay
+            const overlay = document.createElement('div');
+            overlay.style.cssText = `
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: rgba(0, 0, 0, 0.5);
+                z-index: 9999;
+            `;
+            overlay.onclick = () => {
+                document.body.removeChild(overlay);
+                document.body.removeChild(shareMenu);
+            };
+
+            document.body.appendChild(overlay);
+            document.body.appendChild(shareMenu);
+        } catch (error) {
+            console.error('Error in shareImages:', error);
+            alert('Failed to open share menu');
+        }
     }
 }

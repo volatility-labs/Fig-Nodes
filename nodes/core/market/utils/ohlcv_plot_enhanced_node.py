@@ -183,14 +183,31 @@ def _plot_candles(
         logger.debug(f"Attempting to plot {len(overlays)} overlays for series len {len(series)}")
         for overlay_values, overlay_label, overlay_color in overlays:
             if overlay_values and len(overlay_values) == len(series):
-                # Filter out None values for plotting
+                # Find first valid value to extend backwards (forward-fill from first valid value)
+                # This ensures EMAs show on the full chart, similar to Hurst plot behavior
+                first_valid_idx = None
+                first_valid_value = None
+                for i, val in enumerate(overlay_values):
+                    if val is not None:
+                        first_valid_idx = i
+                        first_valid_value = val
+                        break
+                
+                # Extend EMA backwards to show on full chart (like Hurst plot does)
+                # Forward-fill from first valid value to beginning
+                extended_values = list(overlay_values)
+                if first_valid_value is not None and first_valid_idx is not None and first_valid_idx > 0:
+                    for i in range(first_valid_idx):
+                        extended_values[i] = first_valid_value
+                
+                # Filter out None values for plotting (should be none after extension, but keep as safety)
                 valid_indices: list[int] = []
                 valid_values: list[float] = []
-                for i, val in enumerate(overlay_values):
+                for i, val in enumerate(extended_values):
                     if val is not None:
                         valid_indices.append(i)
                         valid_values.append(val)
-                logger.debug(f"  {overlay_label}: plotting {len(valid_values)} points")
+                logger.debug(f"  {overlay_label}: plotting {len(valid_values)} points (extended from first valid at index {first_valid_idx})")
                 if valid_indices and valid_values:
                     ax.plot(  # pyright: ignore
                         valid_indices,
