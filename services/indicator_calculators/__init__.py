@@ -4,6 +4,7 @@ from .atrx_calculator import calculate_atrx
 from .cco_calculator import calculate_cco
 from .ema_calculator import calculate_ema
 from .evwma_calculator import calculate_evwma, calculate_rolling_correlation
+from .fractal_resonance_calculator import calculate_fractal_resonance
 from .hurst_calculator import calculate_hurst_oscillator
 from .lod_calculator import calculate_lod
 from .mesa_stochastic_calculator import (
@@ -34,6 +35,7 @@ __all__ = [
     "calculate_tr",
     "calculate_ema",
     "calculate_evwma",
+    "calculate_fractal_resonance",
     "calculate_hurst_oscillator",
     "calculate_lod",
     "calculate_mesa_stochastic",

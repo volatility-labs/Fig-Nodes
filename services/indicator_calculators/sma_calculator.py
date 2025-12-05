@@ -28,16 +28,13 @@ def calculate_sma(values: Sequence[float | None], period: int) -> dict[str, Any]
             period_values.append(value)
             sum_val += value
 
-        if i >= period:
+        # Maintain a rolling window of at most `period` elements
+        if len(period_values) > period:
             exiting_value = period_values.pop(0)
             sum_val -= exiting_value
 
-        if i >= period - 1:
-            valid_count = len(period_values)
-            if valid_count > 0:
-                results.append(sum_val / valid_count)
-            else:
-                results.append(None)
+        if len(period_values) == period:
+            results.append(sum_val / period)
         else:
             results.append(None)
 
