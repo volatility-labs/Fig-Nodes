@@ -310,7 +310,7 @@ class FractalsATRFilter(BaseIndicatorFilter):
                 bullish_signal_timestamp = float(ohlcv_data[last_bullish_signal_idx]["timestamp"])
             if last_bearish_signal_idx >= 0 and last_bearish_signal_idx < len(ohlcv_data):
                 bearish_signal_timestamp = float(ohlcv_data[last_bearish_signal_idx]["timestamp"])
-            
+
             # Store signals in lines dict (IndicatorValue supports lines dict)
             # Note: Bullish signals come from DOWN fractals (marks a low), Bearish from UP fractals (marks a high)
             signals_dict = {
@@ -375,7 +375,7 @@ class FractalsATRFilter(BaseIndicatorFilter):
         last_bearish_idx = signals.get("last_bearish_signal_idx", -1.0)
         bullish_ts = signals.get("last_bullish_signal_timestamp", -1.0)
         bearish_ts = signals.get("last_bearish_signal_timestamp", -1.0)
-        
+
         if self.filter_type == "bullish":
             # Bullish signals: downFractal + ROC up OR ATR up break
             # Per Pine Script: downFractal and rocup > roclevel OR atrup > atrlevel
@@ -409,7 +409,7 @@ class FractalsATRFilter(BaseIndicatorFilter):
                         bullish_ts,
                     )
                     return False
-            
+
             # If specific requirements are set, the signal must match those requirements
             # Note: A signal is EITHER (fractal+ROC) OR (ATR break), not both
             # So if all three are required, it's impossible - log warning and use OR logic
@@ -491,7 +491,7 @@ class FractalsATRFilter(BaseIndicatorFilter):
                         bearish_ts,
                     )
                     return False
-            
+
             # If specific requirements are set, the signal must match those requirements
             # Note: A signal is EITHER (fractal+ROC) OR (ATR break), not both
             # So if all three are required, it's impossible - log warning and use OR logic

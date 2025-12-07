@@ -400,10 +400,43 @@ class FractalResonancePlot(Base):
     }
 
     async def _execute_impl(self, inputs: dict[str, Any]) -> dict[str, Any]:
-        bundle: dict[AssetSymbol, list[OHLCVBar]] | None = inputs.get("ohlcv_bundle")
-        single_bundle: dict[AssetSymbol, list[OHLCVBar]] | None = inputs.get("ohlcv")
+        bundle_raw = inputs.get("ohlcv_bundle")
+        single_bundle_raw = inputs.get("ohlcv")
 
-        logger.warning(f"🔵 FractalResonancePlot: Starting execution. Bundle keys: {list(bundle.keys()) if bundle else 'None'}, Single bundle keys: {list(single_bundle.keys()) if single_bundle else 'None'}")
+        logger.warning(f"🔵 FractalResonancePlot: Starting execution. Bundle type: {type(bundle_raw)}, Single bundle type: {type(single_bundle_raw)}")
+        logger.warning(f"🔵 FractalResonancePlot: Bundle keys: {list(bundle_raw.keys()) if bundle_raw and isinstance(bundle_raw, dict) else 'None'}, Single bundle keys: {list(single_bundle_raw.keys()) if single_bundle_raw and isinstance(single_bundle_raw, dict) else 'None'}")
+
+        # Normalize bundles - handle None values and ensure dict type
+        bundle: dict[AssetSymbol, list[OHLCVBar]] | None = None
+        bundle_received_but_empty = False
+        if bundle_raw is not None and isinstance(bundle_raw, dict):
+            # Normalize: filter out None values and ensure all values are lists
+            normalized_bundle: dict[AssetSymbol, list[OHLCVBar]] = {}
+            for key, value in bundle_raw.items():
+                if isinstance(key, AssetSymbol):
+                    if value is None:
+                        normalized_bundle[key] = []
+                    elif isinstance(value, list):
+                        normalized_bundle[key] = value
+            if normalized_bundle:
+                bundle = normalized_bundle
+            elif len(bundle_raw) == 0:
+                # Empty dict was received
+                bundle_received_but_empty = True
+        
+        single_bundle: dict[AssetSymbol, list[OHLCVBar]] | None = None
+        if single_bundle_raw is not None and isinstance(single_bundle_raw, dict):
+            normalized_single: dict[AssetSymbol, list[OHLCVBar]] = {}
+            for key, value in single_bundle_raw.items():
+                if isinstance(key, AssetSymbol):
+                    if value is None:
+                        normalized_single[key] = []
+                    elif isinstance(value, list):
+                        normalized_single[key] = value
+            if normalized_single:
+                single_bundle = normalized_single
+            elif len(single_bundle_raw) == 0:
+                bundle_received_but_empty = True
 
         # Merge both inputs if both provided
         if bundle and single_bundle:
@@ -411,11 +444,33 @@ class FractalResonancePlot(Base):
         elif single_bundle:
             bundle = single_bundle
 
-        if not bundle:
-            logger.error(f"❌ FractalResonancePlot: No bundle provided. Inputs keys: {list(inputs.keys())}")
-            raise NodeValidationError(self.id, "Provide either 'ohlcv_bundle' or 'ohlcv'")
+        if not bundle or len(bundle) == 0:
+            if bundle_received_but_empty or (bundle_raw is not None and isinstance(bundle_raw, dict) and len(bundle_raw) == 0):
+                logger.error(f"❌ FractalResonancePlot: Empty bundle received (likely all symbols filtered out by upstream filter). Inputs keys: {list(inputs.keys())}")
+                logger.error(f"❌ FractalResonancePlot: bundle_raw type={type(bundle_raw)}, bundle_raw keys={list(bundle_raw.keys()) if bundle_raw and isinstance(bundle_raw, dict) else 'N/A'}")
+                raise NodeValidationError(
+                    self.id, 
+                    "Received empty bundle - upstream filter may have filtered out all symbols. "
+                    "Check your filter node settings or ensure symbols are passing through."
+                )
+            else:
+                logger.error(f"❌ FractalResonancePlot: No bundle provided. Inputs keys: {list(inputs.keys())}")
+                logger.error(f"❌ FractalResonancePlot: bundle_raw={bundle_raw}, single_bundle_raw={single_bundle_raw}")
+                raise NodeValidationError(self.id, "Provide either 'ohlcv_bundle' or 'ohlcv' with at least one symbol")
         
-        logger.warning(f"🔵 FractalResonancePlot: Processing {len(bundle)} symbols")
+        # Filter out symbols with empty data
+        original_bundle_size = len(bundle)
+        filtered_bundle: dict[AssetSymbol, list[OHLCVBar]] = {}
+        for sym, bars in bundle.items():
+            if bars and len(bars) > 0:
+                filtered_bundle[sym] = bars
+        
+        if not filtered_bundle:
+            logger.error(f"❌ FractalResonancePlot: All symbols have empty data. Original bundle had {original_bundle_size} symbols")
+            raise NodeValidationError(self.id, "All symbols in bundle have empty or no data")
+        
+        bundle = filtered_bundle
+        logger.warning(f"🔵 FractalResonancePlot: Processing {len(bundle)} symbols (filtered from {original_bundle_size} original)")
 
         lookback_raw = self.params.get("lookback_bars")
         lookback: int | None = None
@@ -505,7 +560,26 @@ class FractalResonancePlot(Base):
             
             # Calculate Fractal Resonance with FULL history
             try:
-                logger.warning(f"🔵 FractalResonancePlot: Calculating FR for {sym} with {len(full_closes)} bars (displaying {len(display_closes)} bars)")
+                # Calculate minimum bars needed for each timeframe
+                # Max period needed: n2 * time_multiplier (for TCI EMA)
+                min_bars_needed = {}
+                usable_timeframes = []
+                for tm_str in TIMEFRAMES:
+                    tm = int(tm_str)  # Convert string to int
+                    min_bars = n2 * tm  # TCI period is the longest
+                    min_bars_needed[tm] = min_bars
+                    if len(full_closes) >= min_bars:
+                        usable_timeframes.append(tm)
+                
+                logger.warning(
+                    f"🔵 FractalResonancePlot: Calculating FR for {sym} with {len(full_closes)} bars "
+                    f"(displaying {len(display_closes)} bars)\n"
+                    f"   📊 Timeframe requirements:\n"
+                    f"   {'   '.join([f'WT{tm}: {bars} bars min' for tm, bars in min_bars_needed.items()])}\n"
+                    f"   ✅ Usable timeframes: {usable_timeframes if usable_timeframes else 'NONE!'}\n"
+                    f"   ⚠️  For WT128, you need {min_bars_needed[128]} bars (~{min_bars_needed[128]//365:.1f} years of daily data)"
+                )
+                
                 fr_result = calculate_fractal_resonance(
                     closes=full_closes,
                     n1=n1,
@@ -627,19 +701,22 @@ class FractalResonancePlot(Base):
             
             # Encode figure to data URL with high resolution
             dpi = int(self.params.get("dpi", 400))
-            label = f"{sym}_fractal_resonance"
+            label = str(sym)  # Use symbol string directly, matching HurstPlot pattern
             image_data = _encode_fig_to_data_url(fig, dpi=dpi)
             images[label] = image_data
-            logger.warning(f"✅ FractalResonancePlot: Generated chart for {sym}, image size: {len(image_data)} chars, DPI: {dpi}")
+            logger.warning(f"✅ FractalResonancePlot: Generated chart for {sym}, image size: {len(image_data)} chars, DPI: {dpi}, label: {label}")
             
             # Emit partial result so images show up incrementally
             self.emit_partial_result({"images": {label: image_data}})
 
         logger.warning(f"🔵 FractalResonancePlot: Completed. Generated {len(images)} images")
+        logger.warning(f"🔵 FractalResonancePlot: Returning images with keys: {list(images.keys())}")
         
-        return {
+        result = {
             "images": images,
             "fractal_resonance_data": fr_data_by_symbol,
             "ohlcv_bundle": ohlcv_bundle_output,
         }
+        logger.warning(f"🔵 FractalResonancePlot: Final result keys: {list(result.keys())}, images count: {len(result.get('images', {}))}")
+        return result
 

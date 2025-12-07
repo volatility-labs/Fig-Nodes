@@ -24,4 +24,5 @@ export { default as Week52HighLowFilterNodeUI } from './Week52HighLowFilterNodeU
 export { default as FractalDimensionPlotNodeUI } from './FractalDimensionPlotNodeUI';
 export { default as FractalsATRFilterNodeUI } from './FractalsATRFilterNodeUI';
 export { default as FractalDimensionAdaptiveFilterNodeUI } from './FractalDimensionAdaptiveFilterNodeUI';
+export { default as FractalResonanceFilterNodeUI } from './FractalResonanceFilterNodeUI';
 export { default as SymbolQuickPlotNodeUI } from './SymbolQuickPlotNodeUI';

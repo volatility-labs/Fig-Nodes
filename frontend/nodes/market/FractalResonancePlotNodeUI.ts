@@ -44,6 +44,35 @@ export default class FractalResonancePlotNodeUI extends BaseCustomNode {
         this.setDirtyCanvas(true, true);
     }
 
+    onExecute(nodeData: any): void {
+        // Images are output via the output port - propagate to connected nodes
+        // Find the "images" output slot and set its data
+        const imagesOutputIndex = this.findOutputSlotIndex('images');
+        if (imagesOutputIndex >= 0 && nodeData.images) {
+            // Set output data so connected nodes can receive it
+            this.setOutputData(imagesOutputIndex, nodeData.images);
+            
+            // Manually propagate to connected nodes (like ImageDisplay)
+            // This is needed because standalone execution doesn't automatically trigger connected nodes
+            if (this.graph && this.outputs && this.outputs[imagesOutputIndex]) {
+                const outputSlot = this.outputs[imagesOutputIndex];
+                if (outputSlot.links) {
+                    for (const linkId of outputSlot.links) {
+                        const link = this.graph._links.get(linkId);
+                        if (link) {
+                            const targetNode = this.graph.getNodeById(link.target_id);
+                            if (targetNode && typeof (targetNode as any).updateDisplay === 'function') {
+                                // Call updateDisplay on the connected node with the images data
+                                (targetNode as any).updateDisplay({ images: nodeData.images });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        this.setDirtyCanvas(true, true);
+    }
+
     drawPlots(ctx: CanvasRenderingContext2D) {
         if (!ctx || typeof ctx.fillRect !== 'function') {
             return;
