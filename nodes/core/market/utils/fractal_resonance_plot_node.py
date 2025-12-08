@@ -155,7 +155,7 @@ def _plot_fractal_resonance_bars(
     # Draw horizontal bars for each timeframe
     for idx, tf in enumerate(TIMEFRAMES):
         if tf not in colors or tf not in block_colors:
-            logger.warning(f"Missing colors for timeframe {tf}: colors keys={list(colors.keys())}, block_colors keys={list(block_colors.keys())}")
+            logger.debug(f"Missing colors for timeframe {tf}: colors keys={list(colors.keys())}, block_colors keys={list(block_colors.keys())}")
             continue
         
         regular_colors = colors[tf]
@@ -168,11 +168,11 @@ def _plot_fractal_resonance_bars(
         non_white_block = sum(1 for c in block_colors_tf if c and c != "#ffffff")
         
         if idx == 0:  # Log for first timeframe only
-            logger.warning(f"WT{tf}: {len(regular_colors)} regular colors ({non_white_regular} non-white), {len(block_colors_tf)} block colors ({non_white_block} non-white)")
+            logger.debug(f"WT{tf}: {len(regular_colors)} regular colors ({non_white_regular} non-white), {len(block_colors_tf)} block colors ({non_white_block} non-white)")
             if len(regular_colors) > 0:
                 # Show LAST 10 colors (most recent, should be colored) not first (which are warm-up white)
                 sample_colors = regular_colors[-min(10, len(regular_colors)):]
-                logger.warning(f"WT{tf} sample colors (last 10): {sample_colors}")
+                logger.debug(f"WT{tf} sample colors (last 10): {sample_colors}")
         
         # Draw horizontal bars for each time point
         for i in range(len(timestamps)):
@@ -227,7 +227,7 @@ def _plot_fractal_resonance_bars(
                 zorder=bar['zorder'],
             )
             ax.add_patch(rect)
-        logger.warning(f"Drew {len(bars_to_draw)} bars total")
+        logger.debug(f"Drew {len(bars_to_draw)} bars total")
     else:
         logger.error("No bars to draw! Colors dict might be empty or all None")
     
@@ -416,8 +416,8 @@ class FractalResonancePlot(Base):
         bundle_raw = inputs.get("ohlcv_bundle")
         single_bundle_raw = inputs.get("ohlcv")
 
-        logger.warning(f"🔵 FractalResonancePlot: Starting execution. Bundle type: {type(bundle_raw)}, Single bundle type: {type(single_bundle_raw)}")
-        logger.warning(f"🔵 FractalResonancePlot: Bundle keys: {list(bundle_raw.keys()) if bundle_raw and isinstance(bundle_raw, dict) else 'None'}, Single bundle keys: {list(single_bundle_raw.keys()) if single_bundle_raw and isinstance(single_bundle_raw, dict) else 'None'}")
+        logger.debug(f"🔵 FractalResonancePlot: Starting execution. Bundle type: {type(bundle_raw)}, Single bundle type: {type(single_bundle_raw)}")
+        logger.debug(f"🔵 FractalResonancePlot: Bundle keys: {list(bundle_raw.keys()) if bundle_raw and isinstance(bundle_raw, dict) else 'None'}, Single bundle keys: {list(single_bundle_raw.keys()) if single_bundle_raw and isinstance(single_bundle_raw, dict) else 'None'}")
 
         # Normalize bundles - handle None values and ensure dict type
         bundle: dict[AssetSymbol, list[OHLCVBar]] | None = None
@@ -483,7 +483,7 @@ class FractalResonancePlot(Base):
             raise NodeValidationError(self.id, "All symbols in bundle have empty or no data")
         
         bundle = filtered_bundle
-        logger.warning(f"🔵 FractalResonancePlot: Processing {len(bundle)} symbols (filtered from {original_bundle_size} original)")
+        logger.debug(f"🔵 FractalResonancePlot: Processing {len(bundle)} symbols (filtered from {original_bundle_size} original)")
 
         lookback_raw = self.params.get("lookback_bars")
         lookback: int | None = None
@@ -519,20 +519,20 @@ class FractalResonancePlot(Base):
         component_multiplier = int(self.params.get("component_multiplier", 1))
 
         items = list(bundle.items())[:max_syms]
-        logger.warning(f"🔵 FractalResonancePlot: Processing {len(items)} symbols (max: {max_syms})")
+        logger.info(f"🔵 FractalResonancePlot: Processing {len(items)} symbols (max: {max_syms})")
         
         for sym, bars in items:
             if not bars:
-                logger.warning(f"⚠️ FractalResonancePlot: No bars provided for {sym}")
+                logger.debug(f"⚠️ FractalResonancePlot: No bars provided for {sym}")
                 continue
             
-            logger.warning(f"🔵 FractalResonancePlot: Processing {sym}: received {len(bars)} bars")
+            logger.debug(f"🔵 FractalResonancePlot: Processing {sym}: received {len(bars)} bars")
             
             norm, volumes = _normalize_bars(bars)
-            logger.warning(f"🔵 FractalResonancePlot: Normalized {sym}: {len(norm)} bars")
+            logger.debug(f"🔵 FractalResonancePlot: Normalized {sym}: {len(norm)} bars")
             
             if len(norm) < 10:
-                logger.warning(f"Insufficient bars for {sym}: {len(norm)} bars (need at least 10)")
+                logger.debug(f"Insufficient bars for {sym}: {len(norm)} bars (need at least 10)")
                 continue
             
             # Use FULL history for calculation (needed for higher timeframes like 128x)
@@ -584,7 +584,7 @@ class FractalResonancePlot(Base):
                     if len(full_closes) >= min_bars:
                         usable_timeframes.append(tm)
                 
-                logger.warning(
+                logger.debug(
                     f"🔵 FractalResonancePlot: Calculating FR for {sym} with {len(full_closes)} bars "
                     f"(displaying {len(display_closes)} bars)\n"
                     f"   📊 Timeframe requirements:\n"
@@ -647,10 +647,10 @@ class FractalResonancePlot(Base):
             fr_block_colors = fr_result.get("block_colors", {})
             fr_debug = fr_result.get("debug", {})
             
-            logger.warning(f"FR result colors keys: {list(fr_colors.keys())}, block_colors keys: {list(fr_block_colors.keys())}")
+            logger.debug(f"FR result colors keys: {list(fr_colors.keys())}, block_colors keys: {list(fr_block_colors.keys())}")
             dbg_tm1 = fr_debug.get("1") if isinstance(fr_debug, dict) else None
             if dbg_tm1:
-                logger.warning(f"WT1 debug: {dbg_tm1}")
+                logger.debug(f"WT1 debug: {dbg_tm1}")
             
             # Process ALL 8 timeframes (even if some are missing from results - they'll be all white)
             # This ensures we always show 16 rows (8 timeframes * 2 rows each) like TradingView
@@ -700,7 +700,7 @@ class FractalResonancePlot(Base):
                     sample = display_colors[tf][-min(20, len(display_colors[tf])):]
                     unique_colors = set(sample)
                     non_white_count = sum(1 for c in display_colors[tf] if c and c != "#ffffff")
-                    logger.warning(f"WT{tf} display colors sample (last 20): {sample[:10]}, unique: {unique_colors}, total non-white: {non_white_count}/{len(display_colors[tf])}")
+                    logger.debug(f"WT{tf} display colors sample (last 20): {sample[:10]}, unique: {unique_colors}, total non-white: {non_white_count}/{len(display_colors[tf])}")
             
             # Top panel: Price candlesticks (simplified)
             ax1.set_facecolor('#f5f5f5')
@@ -748,26 +748,26 @@ class FractalResonancePlot(Base):
                 label = str(sym)  # Use symbol string directly, matching HurstPlot pattern
                 image_data = _encode_fig_to_data_url(fig, dpi=dpi)
                 images[label] = image_data
-                logger.warning(f"✅ FractalResonancePlot: Generated chart for {sym}, image size: {len(image_data)} chars, DPI: {dpi}, label: {label}")
+                logger.debug(f"✅ FractalResonancePlot: Generated chart for {sym}, image size: {len(image_data)} chars, DPI: {dpi}, label: {label}")
                 
                 # Emit partial result so images show up incrementally
                 try:
                     self.emit_partial_result({"images": {label: image_data}})
                 except Exception as emit_err:
-                    logger.warning(f"⚠️ FractalResonancePlot: Failed to emit partial result for {sym}: {emit_err}")
+                    logger.error(f"⚠️ FractalResonancePlot: Failed to emit partial result for {sym}: {emit_err}")
                     # Continue anyway - we'll include it in final results
             except Exception as img_err:
                 logger.error(f"❌ FractalResonancePlot: Failed to generate image for {sym}: {img_err}", exc_info=True)
                 # Continue with next symbol instead of failing completely
 
-        logger.warning(f"🔵 FractalResonancePlot: Completed. Generated {len(images)} images")
-        logger.warning(f"🔵 FractalResonancePlot: Returning images with keys: {list(images.keys())}")
+        logger.info(f"🔵 FractalResonancePlot: Completed. Generated {len(images)} images")
+        logger.debug(f"🔵 FractalResonancePlot: Returning images with keys: {list(images.keys())}")
         
         result = {
             "images": images,
             "fractal_resonance_data": fr_data_by_symbol,
             "ohlcv_bundle": ohlcv_bundle_output,
         }
-        logger.warning(f"🔵 FractalResonancePlot: Final result keys: {list(result.keys())}, images count: {len(result.get('images', {}))}")
+        logger.debug(f"🔵 FractalResonancePlot: Final result keys: {list(result.keys())}, images count: {len(result.get('images', {}))}")
         return result
 
