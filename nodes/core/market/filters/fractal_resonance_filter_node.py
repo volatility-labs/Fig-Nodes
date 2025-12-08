@@ -155,7 +155,7 @@ class FractalResonanceFilter(BaseIndicatorFilter):
         # Validate we have data
         valid_closes = [c for c in closes if c is not None and c != 0]
         if len(valid_closes) < 100:  # Need at least some data for calculation
-            logger.warning(
+            logger.debug(
                 f"FractalResonanceFilter: Insufficient data - only {len(valid_closes)}/{len(closes)} valid closes"
             )
             return IndicatorResult(
@@ -183,7 +183,7 @@ class FractalResonanceFilter(BaseIndicatorFilter):
 
         # Calculate Fractal Resonance
         try:
-            logger.warning(
+            logger.debug(
                 f"FractalResonanceFilter: Starting calculation for symbol with {len(closes)} closes "
                 f"({len(valid_closes)} initially valid)"
             )
@@ -203,14 +203,14 @@ class FractalResonanceFilter(BaseIndicatorFilter):
             wt_b_dict = fr_result.get("wt_b", {})
             
             # Debug: Log what we got from the calculation
-            logger.warning(
+            logger.debug(
                 f"FractalResonanceFilter: Calculation result - wt_a_dict keys: {list(wt_a_dict.keys())}, "
                 f"wt_b_dict keys: {list(wt_b_dict.keys())}, "
                 f"data length: {len(ohlcv_data)}"
             )
             if wt_a_dict:
                 sample_tm = list(wt_a_dict.keys())[0]
-                logger.warning(
+                logger.debug(
                     f"FractalResonanceFilter: Sample timeframe {sample_tm} - "
                     f"wt_a length: {len(wt_a_dict[sample_tm])}, "
                     f"wt_b length: {len(wt_b_dict.get(sample_tm, []))}"
@@ -271,7 +271,7 @@ class FractalResonanceFilter(BaseIndicatorFilter):
                 if valid_timeframes_count == 0:
                     # No valid timeframes at all - fail
                     if len(all_green_bars) == 0:
-                        logger.warning(
+                        logger.debug(
                             f"❌ FractalResonanceFilter: FAIL - No valid timeframes at bar {bar_idx}"
                         )
                     continue
@@ -288,7 +288,7 @@ class FractalResonanceFilter(BaseIndicatorFilter):
                 # Skip if we have too few valid timeframes (less than minimum threshold)
                 if valid_timeframes_count < min_required_valid:
                     if len(all_green_bars) == 0:
-                        logger.warning(
+                        logger.debug(
                             f"❌ FractalResonanceFilter: FAIL - Only {valid_timeframes_count} valid timeframes "
                             f"(need at least {min_required_valid} for filter to apply, ideal: {self.min_green_timeframes})"
                         )
@@ -296,14 +296,14 @@ class FractalResonanceFilter(BaseIndicatorFilter):
                 
                 if green_count >= required_count:
                     all_green_bars.append(bar_idx)
-                    logger.warning(
+                    logger.debug(
                         f"✅ FractalResonanceFilter: PASS - Symbol has {green_count}/{valid_timeframes_count} green timeframes "
                         f"at bar {bar_idx} (required: {required_count} = ALL valid TFs must be green)"
                     )
                 else:
                     # Only log first few failures to avoid spam, but make them visible
                     if len(all_green_bars) == 0:  # Only log if this is the first check and it failed
-                        logger.warning(
+                        logger.debug(
                             f"❌ FractalResonanceFilter: FAIL - Symbol has only {green_count}/{valid_timeframes_count} green timeframes "
                             f"at bar {bar_idx} (required: {required_count} = ALL valid TFs). "
                             f"Failed: {', '.join(failed_timeframes[:5])}"
@@ -349,7 +349,7 @@ class FractalResonanceFilter(BaseIndicatorFilter):
             }
             
             required_at_last_bar = max(self.min_green_timeframes, valid_timeframes_at_last_bar) if valid_timeframes_at_last_bar > 0 else self.min_green_timeframes
-            logger.warning(
+            logger.debug(
                 f"FractalResonanceFilter: Symbol result - {len(all_green_bars)} qualifying bars "
                 f"(checked {len(check_indices)} bars, required: {required_at_last_bar} = ALL valid TFs must be green, "
                 f"last bar has {max_green_count}/{valid_timeframes_at_last_bar} green timeframes, {valid_timeframes_at_last_bar} valid TFs)"
@@ -364,7 +364,7 @@ class FractalResonanceFilter(BaseIndicatorFilter):
 
         except Exception as e:
             import traceback
-            logger.warning(
+            logger.error(
                 f"❌ FractalResonanceFilter: Failed to calculate Fractal Resonance: {e}\n"
                 f"Traceback: {traceback.format_exc()}"
             )
@@ -399,12 +399,12 @@ class FractalResonanceFilter(BaseIndicatorFilter):
         min_required = result_dict.get("min_required_green", 8.0)
         
         if has_signal:
-            logger.warning(
+            logger.debug(
                 f"✅ FractalResonanceFilter: PASSED - Found {total_green_bars} qualifying bar(s), "
                 f"last at index {last_green_idx}, max green: {max_green:.0f}/{min_required:.0f}"
             )
         else:
-            logger.warning(
+            logger.debug(
                 f"❌ FractalResonanceFilter: FAILED - No qualifying bars found. "
                 f"Last bar has {max_green:.0f}/{min_required:.0f} green timeframes (need {min_required:.0f})"
             )
@@ -432,7 +432,7 @@ class FractalResonanceFilter(BaseIndicatorFilter):
         except Exception:
             pass
 
-        logger.warning(f"🔵 FractalResonanceFilter: Starting filter on {total_symbols} symbols (STRICT MODE: ALL valid timeframes must be green, min: {self.min_green_timeframes})")
+        logger.info(f"🔵 FractalResonanceFilter: Starting filter on {total_symbols} symbols (STRICT MODE: ALL valid timeframes must be green, min: {self.min_green_timeframes})")
 
         for symbol, ohlcv_data in ohlcv_bundle.items():
             if not ohlcv_data:
@@ -455,7 +455,7 @@ class FractalResonanceFilter(BaseIndicatorFilter):
                     failed_count += 1
 
             except Exception as e:
-                logger.warning(f"❌ FractalResonanceFilter: Failed to process {symbol}: {e}")
+                logger.error(f"❌ FractalResonanceFilter: Failed to process {symbol}: {e}")
                 failed_count += 1
                 processed_symbols += 1
                 try:
@@ -473,7 +473,7 @@ class FractalResonanceFilter(BaseIndicatorFilter):
             except Exception:
                 pass
 
-        logger.warning(
+        logger.info(
             f"🔵 FractalResonanceFilter: COMPLETE - {passed_count} passed, {failed_count} failed "
             f"(out of {total_symbols} total symbols, STRICT MODE: ALL valid timeframes must be green)"
         )
