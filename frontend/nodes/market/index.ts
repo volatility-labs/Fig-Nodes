@@ -19,6 +19,7 @@ export { default as WildersADXFilterNodeUI } from './WildersADXFilterNodeUI';
 export { default as EVWMAFilterNodeUI } from './EVWMAFilterNodeUI';
 export { default as HurstPlotNodeUI } from './HurstPlotNodeUI';
 export { default as FractalResonancePlotNodeUI } from './FractalResonancePlotNodeUI';
+export { default as StochasticHeatmapPlotNodeUI } from './StochasticHeatmapPlotNodeUI';
 export { default as ImageDisplayNodeUI } from './ImageDisplayNodeUI';
 export { default as Week52HighLowFilterNodeUI } from './Week52HighLowFilterNodeUI';
 export { default as FractalDimensionPlotNodeUI } from './FractalDimensionPlotNodeUI';

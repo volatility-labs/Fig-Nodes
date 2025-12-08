@@ -15,6 +15,7 @@ from .orb_calculator import calculate_orb
 from .rma_calculator import calculate_rma
 from .rsi_calculator import calculate_rsi
 from .sma_calculator import calculate_sma
+from .stochastic_heatmap_calculator import calculate_stochastic_heatmap
 from .utils import (
     calculate_rolling_mean,
     calculate_rolling_std_dev,
@@ -48,6 +49,7 @@ __all__ = [
     "calculate_rolling_std_dev",
     "calculate_rolling_sum_strict",
     "calculate_sma",
+    "calculate_stochastic_heatmap",
     "calculate_vbp",
     "calculate_wilder_ma",
     "calculate_wma",

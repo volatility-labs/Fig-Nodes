@@ -36,12 +36,12 @@ async def fetch_bars(
         - api_status: "OK" or "DELAYED" from API response
         - market_open: bool indicating if US market is open
     """
-    multiplier = params.get("multiplier", 1)
+    multiplier = int(params.get("multiplier", 1))  # Ensure multiplier is an integer (used in URL path)
     timespan = params.get("timespan", "day")
     lookback_period = params.get("lookback_period", "3 months")
     adjusted = params.get("adjusted", True)
     sort = params.get("sort", "asc")
-    limit = params.get("limit", 5000)
+    limit = int(params.get("limit", 5000))  # Ensure limit is an integer (API requires int, not float)
 
     # Massive.com aggregates API has a hard cap of 5000 bars per request
     # Even if you request more, API will only return max 5000
@@ -166,8 +166,15 @@ async def fetch_bars(
         logger.warning(f"POLYGON_SERVICE: HTTP response status: {response.status_code}")
 
         if response.status_code != 200:
-            logger.error(f"POLYGON_SERVICE: HTTP error {response.status_code} for {symbol.ticker}")
-            raise ValueError(f"Failed to fetch bars: HTTP {response.status_code}")
+            # Try to get error message from response
+            error_msg = f"HTTP {response.status_code}"
+            try:
+                error_data = response.json()
+                error_msg = error_data.get("error", error_data.get("message", error_msg))
+                logger.error(f"POLYGON_SERVICE: HTTP error {response.status_code} for {symbol.ticker}: {error_msg}")
+            except Exception:
+                logger.error(f"POLYGON_SERVICE: HTTP error {response.status_code} for {symbol.ticker} (could not parse error response)")
+            raise ValueError(f"Failed to fetch bars: {error_msg}")
 
         data = response.json()
         api_status = data.get("status")

@@ -117,7 +117,7 @@ class FractalResonanceFilter(BaseIndicatorFilter):
             "min": 1,
             "max": 8,
             "step": 1,
-            "description": "Minimum number of timeframes (out of 8) that must be green. 8 = all must be green (strictest), lower values = more lenient",
+            "description": "Ideal number of timeframes to check (8 = all timeframes). Filter will accept symbols with 3-4+ timeframes if all are green. For daily data: 3 months = 4 TFs, 2 years = 6 TFs, 7+ years = 8 TFs",
         },
     ]
 
@@ -276,9 +276,23 @@ class FractalResonanceFilter(BaseIndicatorFilter):
                         )
                     continue
                 
-                # Require: ALL valid timeframes must be green, OR at least min_green_timeframes (whichever is stricter)
+                # Require: ALL valid timeframes must be green
                 # For symbols with full data (8 timeframes), this means all 8 must be green
-                required_count = max(self.min_green_timeframes, valid_timeframes_count)
+                # For symbols with partial data (e.g., 4 timeframes), all 4 must be green
+                required_count = valid_timeframes_count  # Require ALL valid timeframes to be green
+                
+                # Minimum threshold: require at least 3-4 valid timeframes (to avoid false positives from very limited data)
+                # But be flexible: if symbol has fewer than min_green_timeframes but at least 3-4, still allow it if all are green
+                min_required_valid = max(3, min(4, self.min_green_timeframes - 2))  # At least 3-4, but prefer min_green_timeframes
+                
+                # Skip if we have too few valid timeframes (less than minimum threshold)
+                if valid_timeframes_count < min_required_valid:
+                    if len(all_green_bars) == 0:
+                        logger.warning(
+                            f"❌ FractalResonanceFilter: FAIL - Only {valid_timeframes_count} valid timeframes "
+                            f"(need at least {min_required_valid} for filter to apply, ideal: {self.min_green_timeframes})"
+                        )
+                    continue
                 
                 if green_count >= required_count:
                     all_green_bars.append(bar_idx)
