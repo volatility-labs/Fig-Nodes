@@ -10,14 +10,14 @@ Based on TradingView Pine Script by Violent (https://www.tradingview.com/v/7PRbC
 import logging
 from typing import Any, Dict, List
 
-from core.types_registry import AssetSymbol, NodeCategory, OHLCVBar, get_type
-from nodes.base.base_node import Base
+from core.types_registry import AssetSymbol, OHLCVBar, get_type
+from nodes.core.market.filters.base.base_indicator_filter_node import BaseIndicatorFilter
 from services.indicator_calculators.stochastic_heatmap_calculator import calculate_stochastic_heatmap
 
 logger = logging.getLogger(__name__)
 
 
-class StochasticHeatmapFilter(Base):
+class StochasticHeatmapFilter(BaseIndicatorFilter):
     """
     Filters OHLCV bundle based on Stochastic Heatmap crossover conditions.
     
@@ -29,7 +29,6 @@ class StochasticHeatmapFilter(Base):
     Outputs: 'filtered_ohlcv_bundle' (Dict[AssetSymbol, List[OHLCVBar]])
     """
 
-    category = NodeCategory.MARKET_FILTER
     description = "Filter symbols by Stochastic Heatmap crossover (fast > slow or slow > fast)"
 
     inputs = [
