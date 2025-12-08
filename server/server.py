@@ -421,4 +421,13 @@ if __name__ == "__main__":
     host = os.environ.get("HOST", "0.0.0.0")
     port_str = os.environ.get("PORT", "8000")
     port = int(port_str) if port_str.isdigit() else 8000
-    run(app, host=host, port=port)
+    # Disable WebSocket ping/pong to prevent timeouts during large image transfers
+    # The default 20s ping timeout causes connection drops when sending ~20MB+ of images
+    # Setting to None disables the keepalive mechanism entirely
+    run(
+        app,
+        host=host,
+        port=port,
+        ws_ping_interval=None,  # Disable ping (default: 20s)
+        ws_ping_timeout=None,   # Disable ping timeout (default: 20s)
+    )

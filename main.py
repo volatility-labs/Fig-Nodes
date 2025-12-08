@@ -128,6 +128,7 @@ def run_dev(host: str, backend_port: int, vite_port: int) -> int:
     litegraph_watch_proc = _start_process(litegraph_watch_cmd, cwd=LITEGRAPH_DIR)
 
     # Backend (Uvicorn) with auto-reload
+    # Disable WebSocket ping/pong to prevent timeouts during large image transfers
     backend_cmd = [
         sys.executable,
         "-m",
@@ -138,6 +139,10 @@ def run_dev(host: str, backend_port: int, vite_port: int) -> int:
         "--port",
         str(backend_port),
         "--reload",
+        "--ws-ping-interval",
+        "300",  # Very long ping interval (5 minutes)
+        "--ws-ping-timeout",
+        "300",  # Very long ping timeout (5 minutes)
     ]
 
     backend_proc = _start_process(backend_cmd, cwd=REPO_ROOT)
@@ -248,6 +253,7 @@ def run_prod(host: str, backend_port: int, force_build: bool) -> int:
     if force_build or _needs_build():
         _build_frontend()
 
+    # Disable WebSocket ping/pong to prevent timeouts during large image transfers
     backend_cmd = [
         sys.executable,
         "-m",
@@ -257,6 +263,10 @@ def run_prod(host: str, backend_port: int, force_build: bool) -> int:
         host,
         "--port",
         str(backend_port),
+        "--ws-ping-interval",
+        "300",  # Very long ping interval (5 minutes)
+        "--ws-ping-timeout",
+        "300",  # Very long ping timeout (5 minutes)
     ]
 
     print(f"Starting backend on http://{host}:{backend_port} serving built UI at root '/' ...")

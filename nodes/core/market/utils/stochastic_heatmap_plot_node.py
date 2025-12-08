@@ -68,7 +68,7 @@ from services.indicator_calculators.stochastic_heatmap_calculator import calcula
 logger = logging.getLogger(__name__)
 
 
-def _encode_fig_to_data_url(fig: "Figure", dpi: int = 400) -> str:
+def _encode_fig_to_data_url(fig: "Figure", dpi: int = 150) -> str:
     """Encode matplotlib figure to base64 data URL with high resolution."""
     buf = io.BytesIO()
     fig.patch.set_facecolor('#1a1a1a')  # Dark background

@@ -127,15 +127,28 @@ class ExecutionQueue:
 
 
 def _ws_send_async(websocket: WebSocket, payload: ServerToClientMessage):
-    """Send JSON async, swallowing exceptions."""
+    """Send JSON async, swallowing exceptions but logging errors."""
     if websocket.client_state != WebSocketState.CONNECTED:
+        logger.warning(f"_ws_send_async: Skipping send - websocket not connected (state: {websocket.client_state})")
         return
 
     async def _send():
         try:
-            await websocket.send_json(payload.model_dump(exclude_none=True))
-        except Exception:
-            pass
+            data = payload.model_dump(exclude_none=True)
+            # Log payload size for debugging large messages
+            payload_type = data.get("type", "unknown")
+            if payload_type == "data" and "results" in data:
+                results = data.get("results", {})
+                for node_id, node_result in results.items():
+                    if isinstance(node_result, dict) and "images" in node_result:
+                        images = node_result.get("images", {})
+                        for label, img_data in images.items():
+                            if isinstance(img_data, str):
+                                size_kb = len(img_data) / 1024
+                                logger.warning(f"_ws_send_async: Sending image '{label}' ({size_kb:.1f} KB)")
+            await websocket.send_json(data)
+        except Exception as e:
+            logger.error(f"_ws_send_async: Failed to send payload type={payload.type}: {e}", exc_info=True)
 
     asyncio.create_task(_send())
 

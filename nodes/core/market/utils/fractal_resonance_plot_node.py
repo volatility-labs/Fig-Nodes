@@ -74,7 +74,7 @@ from services.indicator_calculators.fractal_resonance_calculator import (
 logger = logging.getLogger(__name__)
 
 
-def _encode_fig_to_data_url(fig: "Figure", dpi: int = 400) -> str:
+def _encode_fig_to_data_url(fig: "Figure", dpi: int = 200) -> str:
     """Encode matplotlib figure to base64 data URL with high resolution."""
     buf = io.BytesIO()
     fig.savefig(
@@ -82,7 +82,7 @@ def _encode_fig_to_data_url(fig: "Figure", dpi: int = 400) -> str:
         format="png",
         bbox_inches="tight",
         pad_inches=0.1,
-        dpi=dpi,  # Increased to 400 for much better resolution
+        dpi=dpi,  # Default 200 for balance of quality and size
         facecolor='#ffffff',
         edgecolor='none',
         transparent=False,
@@ -127,8 +127,8 @@ def _plot_fractal_resonance_bars(
     if not timestamps:
         return
     
-    # Use light background for better visibility and AI analysis
-    ax.set_facecolor('#ffffff')
+    # Use light gray background so white bars are visible
+    ax.set_facecolor('#f5f5f5')
     
     x_indices = list(range(len(timestamps)))
     
@@ -170,8 +170,9 @@ def _plot_fractal_resonance_bars(
         if idx == 0:  # Log for first timeframe only
             logger.warning(f"WT{tf}: {len(regular_colors)} regular colors ({non_white_regular} non-white), {len(block_colors_tf)} block colors ({non_white_block} non-white)")
             if len(regular_colors) > 0:
-                sample_colors = regular_colors[:min(10, len(regular_colors))]
-                logger.warning(f"WT{tf} sample colors: {sample_colors}")
+                # Show LAST 10 colors (most recent, should be colored) not first (which are warm-up white)
+                sample_colors = regular_colors[-min(10, len(regular_colors)):]
+                logger.warning(f"WT{tf} sample colors (last 10): {sample_colors}")
         
         # Draw horizontal bars for each time point
         for i in range(len(timestamps)):
@@ -204,12 +205,24 @@ def _plot_fractal_resonance_bars(
     
     if bars_to_draw:
         for bar in bars_to_draw:
+            # For white bars, use a light gray color instead so they're visible
+            # Also add a subtle border to distinguish rows
+            if bar['color'] == '#ffffff':
+                face_color = '#e8e8e8'  # Light gray instead of white
+                edge_color = '#d0d0d0'  # Slightly darker border
+                edge_width = 0.5
+            else:
+                face_color = bar['color']
+                edge_color = 'none'
+                edge_width = 0.0
+            
             rect = Rectangle(
                 (bar['left'], bar['y'] - bar['height'] / 2),
                 bar['width'],
                 bar['height'],
-                facecolor=bar['color'],
-                edgecolor='none',
+                facecolor=face_color,
+                edgecolor=edge_color,
+                linewidth=edge_width,
                 alpha=1.0,
                 zorder=bar['zorder'],
             )
@@ -353,7 +366,7 @@ def _plot_fr_component(
     # Grid and styling - clear grid on light background
     ax.grid(True, alpha=0.3, linestyle='-', linewidth=0.5, color='#cccccc', zorder=0)
     ax.set_axisbelow(True)
-    ax.set_facecolor('#ffffff')
+    ax.set_facecolor('#f5f5f5')
     for spine in ax.spines.values():
         spine.set_color('#000000')
         spine.set_linewidth(1.0)
@@ -622,10 +635,9 @@ class FractalResonancePlot(Base):
             
             # Slice FR results to match display range
             # FR results are calculated on full_closes, but we only display display_closes
-            # So we need to slice the results to match the display range
+            # display_closes is already the RECENT bars, so we need to take the LAST N bars from FR results
             full_length = len(full_closes)
             display_length = len(display_closes)
-            start_idx = max(0, full_length - display_length)
             
             # Slice colors and block_colors to match display range
             display_colors: dict[str, list[str]] = {}
@@ -640,28 +652,58 @@ class FractalResonancePlot(Base):
             if dbg_tm1:
                 logger.warning(f"WT1 debug: {dbg_tm1}")
             
-            for tf in fr_colors.keys():
-                colors_tf = fr_colors[tf]
+            # Process ALL 8 timeframes (even if some are missing from results - they'll be all white)
+            # This ensures we always show 16 rows (8 timeframes * 2 rows each) like TradingView
+            for tf in TIMEFRAMES:
+                colors_tf = fr_colors.get(tf, [])
                 block_colors_tf = fr_block_colors.get(tf, [])
                 
-                if len(colors_tf) == full_length:
-                    display_colors[tf] = colors_tf[start_idx:]
-                    if len(block_colors_tf) == full_length:
-                        display_block_colors[tf] = block_colors_tf[start_idx:]
-                    else:
-                        display_block_colors[tf] = block_colors_tf[start_idx:] if len(block_colors_tf) > start_idx else []
+                # Process colors for this timeframe
+                if not colors_tf:
+                    # Timeframe missing from results - create white arrays
+                    display_colors[tf] = ["#ffffff"] * display_length
+                elif len(colors_tf) == full_length:
+                    # Take the LAST display_length bars (most recent) to match display_closes
+                    display_colors[tf] = colors_tf[-display_length:] if display_length <= len(colors_tf) else colors_tf
                 else:
-                    display_colors[tf] = colors_tf
-                    display_block_colors[tf] = block_colors_tf
+                    # Already matches display length (or shorter) - take last N bars
+                    display_colors[tf] = colors_tf[-display_length:] if display_length <= len(colors_tf) else colors_tf
                 
-                # Debug: check color distribution
+                # Process block colors for this timeframe
+                if not block_colors_tf:
+                    # Timeframe missing from results - create white arrays
+                    display_block_colors[tf] = ["#ffffff"] * display_length
+                elif len(block_colors_tf) == full_length:
+                    # Take the LAST display_length bars (most recent) to match display_closes
+                    display_block_colors[tf] = block_colors_tf[-display_length:] if display_length <= len(block_colors_tf) else block_colors_tf
+                else:
+                    # Already matches display length (or shorter) - take last N bars
+                    display_block_colors[tf] = block_colors_tf[-display_length:] if display_length <= len(block_colors_tf) else block_colors_tf
+                
+                # Ensure arrays match display_length (pad or truncate if needed)
+                if len(display_colors[tf]) < display_length:
+                    # Pad with white
+                    display_colors[tf] = display_colors[tf] + ["#ffffff"] * (display_length - len(display_colors[tf]))
+                elif len(display_colors[tf]) > display_length:
+                    # Truncate
+                    display_colors[tf] = display_colors[tf][:display_length]
+                
+                if len(display_block_colors[tf]) < display_length:
+                    # Pad with white
+                    display_block_colors[tf] = display_block_colors[tf] + ["#ffffff"] * (display_length - len(display_block_colors[tf]))
+                elif len(display_block_colors[tf]) > display_length:
+                    # Truncate
+                    display_block_colors[tf] = display_block_colors[tf][:display_length]
+                
+                # Debug: check color distribution (check LAST 20 bars, not first, since we're showing recent data)
                 if tf == "1" and len(display_colors[tf]) > 0:
-                    sample = display_colors[tf][:min(20, len(display_colors[tf]))]
+                    sample = display_colors[tf][-min(20, len(display_colors[tf])):]
                     unique_colors = set(sample)
-                    logger.warning(f"WT{tf} display colors sample (first 20): {sample[:10]}, unique: {unique_colors}")
+                    non_white_count = sum(1 for c in display_colors[tf] if c and c != "#ffffff")
+                    logger.warning(f"WT{tf} display colors sample (last 20): {sample[:10]}, unique: {unique_colors}, total non-white: {non_white_count}/{len(display_colors[tf])}")
             
             # Top panel: Price candlesticks (simplified)
-            ax1.set_facecolor('#ffffff')
+            ax1.set_facecolor('#f5f5f5')
             x_indices = list(range(len(timestamps)))
             
             # Plot simple line chart for price
@@ -683,9 +725,10 @@ class FractalResonancePlot(Base):
             comp_wta_full, comp_wtb_full, comp_wtdiff_full = stochastic_trend(
                 full_closes, n1, n2, crossover_sma_len, component_multiplier
             )
-            comp_wta = comp_wta_full[start_idx:] if len(comp_wta_full) == full_length else comp_wta_full
-            comp_wtb = comp_wtb_full[start_idx:] if len(comp_wtb_full) == full_length else comp_wtb_full
-            comp_wtdiff = comp_wtdiff_full[start_idx:] if len(comp_wtdiff_full) == full_length else comp_wtdiff_full
+            # Take the LAST display_length bars (most recent) to match display_closes
+            comp_wta = comp_wta_full[-display_length:] if len(comp_wta_full) >= display_length else comp_wta_full
+            comp_wtb = comp_wtb_full[-display_length:] if len(comp_wtb_full) >= display_length else comp_wtb_full
+            comp_wtdiff = comp_wtdiff_full[-display_length:] if len(comp_wtdiff_full) >= display_length else comp_wtdiff_full
 
             fr_data_by_symbol[str(sym)]["component"] = {
                 "wt_a": comp_wta,
@@ -700,14 +743,22 @@ class FractalResonancePlot(Base):
             ax3.set_ylabel(f'FR Component x{component_multiplier}', fontsize=10)
             
             # Encode figure to data URL with high resolution
-            dpi = int(self.params.get("dpi", 400))
-            label = str(sym)  # Use symbol string directly, matching HurstPlot pattern
-            image_data = _encode_fig_to_data_url(fig, dpi=dpi)
-            images[label] = image_data
-            logger.warning(f"✅ FractalResonancePlot: Generated chart for {sym}, image size: {len(image_data)} chars, DPI: {dpi}, label: {label}")
-            
-            # Emit partial result so images show up incrementally
-            self.emit_partial_result({"images": {label: image_data}})
+            try:
+                dpi = int(self.params.get("dpi", 200))  # Reduced from 400 to decrease payload size
+                label = str(sym)  # Use symbol string directly, matching HurstPlot pattern
+                image_data = _encode_fig_to_data_url(fig, dpi=dpi)
+                images[label] = image_data
+                logger.warning(f"✅ FractalResonancePlot: Generated chart for {sym}, image size: {len(image_data)} chars, DPI: {dpi}, label: {label}")
+                
+                # Emit partial result so images show up incrementally
+                try:
+                    self.emit_partial_result({"images": {label: image_data}})
+                except Exception as emit_err:
+                    logger.warning(f"⚠️ FractalResonancePlot: Failed to emit partial result for {sym}: {emit_err}")
+                    # Continue anyway - we'll include it in final results
+            except Exception as img_err:
+                logger.error(f"❌ FractalResonancePlot: Failed to generate image for {sym}: {img_err}", exc_info=True)
+                # Continue with next symbol instead of failing completely
 
         logger.warning(f"🔵 FractalResonancePlot: Completed. Generated {len(images)} images")
         logger.warning(f"🔵 FractalResonancePlot: Returning images with keys: {list(images.keys())}")
