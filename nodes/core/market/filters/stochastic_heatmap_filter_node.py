@@ -38,6 +38,7 @@ class StochasticHeatmapFilter(BaseIndicatorFilter):
         "smooth_fast": 2,  # Fast line smoothing
         "smooth_slow": 21,  # Slow line smoothing
         "plot_number": 28,  # Number of stochastics to plot
+        "waves": True,  # Use weighted increments (True) or linear increments (False)
         "filter_crossover": "fast_above_slow",  # Filter condition
         "check_last_bar_only": True,  # Check only last bar vs any bar in lookback
         "lookback_bars": 5,  # Number of bars to check if check_last_bar_only is False
@@ -83,6 +84,12 @@ class StochasticHeatmapFilter(BaseIndicatorFilter):
             "max": 100,
             "step": 1,
             "description": "Number of stochastic periods to calculate (Theme 3 = 28)",
+        },
+        {
+            "name": "waves",
+            "type": "boolean",
+            "default": True,
+            "description": "Use weighted increments (True) or linear increments (False)",
         },
         {
             "name": "filter_crossover",
@@ -132,6 +139,7 @@ class StochasticHeatmapFilter(BaseIndicatorFilter):
         smooth_fast = int(self.params.get("smooth_fast", 2))
         smooth_slow = int(self.params.get("smooth_slow", 21))
         plot_number = int(self.params.get("plot_number", 28))
+        waves = bool(self.params.get("waves", True))
         filter_crossover = str(self.params.get("filter_crossover", "fast_above_slow"))
         check_last_bar_only = bool(self.params.get("check_last_bar_only", True))
         lookback_bars = int(self.params.get("lookback_bars", 5))
@@ -167,6 +175,7 @@ class StochasticHeatmapFilter(BaseIndicatorFilter):
                     smooth_fast=smooth_fast,
                     smooth_slow=smooth_slow,
                     plot_number=plot_number,
+                    waves=waves,
                 )
 
                 fast_line = shm_result["fast_line"]
