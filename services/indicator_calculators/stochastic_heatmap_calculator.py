@@ -118,16 +118,27 @@ def calculate_stochastic_heatmap(
             "average_stoch": [],
         }
     
-    # Define stochastic lengths based on waves option
-    if waves:
-        # Weighted increments: 1, 2, 3, ..., 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 70, 80, 90, 100, 110, 120, 140, 160
-        stoch_lengths = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 70, 80, 90, 100, 110, 120, 140, 160]
-    else:
-        # Linear increments: 1*inc, 2*inc, 3*inc, ..., 28*inc
-        stoch_lengths = [(i + 1) * increment for i in range(28)]
+    # Define stochastic lengths and smoothing periods based on waves option
+    # Pine Script logic:
+    # - When Waves=false: getStoch(i, 0) where i=1..28, so c=i*inc, s=smooth+0
+    # - When Waves=true: getStoch(i, i) where i=1..10, then getStoch(15,11), getStoch(20,12), etc.
+    stoch_lengths: list[int] = []
+    smooth_lengths: list[int] = []
     
-    # Calculate smoothing lengths for each stochastic
-    smooth_lengths = [smooth_fast + (i if waves else 0) for i in range(28)]
+    if waves:
+        # Waves mode: i values are [1,2,3,4,5,6,7,8,9,10,15,20,25,30,35,40,45,50,55,60,70,80,90,100,110,120,140,160]
+        # c = i * inc, s = smooth + i (where i is the second parameter)
+        wave_i_values = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 70, 80, 90, 100, 110, 120, 140, 160]
+        wave_incr_values = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28]
+        for i_val, incr_val in zip(wave_i_values, wave_incr_values):
+            stoch_lengths.append(i_val * increment)  # c = i * inc
+            smooth_lengths.append(smooth_fast + incr_val)  # s = smooth + incr
+    else:
+        # Non-waves mode: i values are [1,2,3,...,28], incr=0
+        # c = i * inc, s = smooth + 0
+        for i in range(1, 29):  # i from 1 to 28
+            stoch_lengths.append(i * increment)  # c = i * inc
+            smooth_lengths.append(smooth_fast)  # s = smooth + 0
     
     # Calculate all stochastics
     stochastics: dict[int, list[float | None]] = {}
@@ -158,17 +169,25 @@ def calculate_stochastic_heatmap(
         smoothed_stochastics[idx] = smoothed_stoch
     
     # Calculate average of all smoothed stochastics
+    # Pine Script: getAverage = (stoch1 + stoch2 + ... + stoch28) / plotNumber
+    # Note: Pine Script divides by plotNumber, not by count of valid values
     average_stoch: list[float | None] = []
     for i in range(len(closes)):
-        valid_values = []
+        sum_values = 0.0
+        count_valid = 0
         for idx in range(1, min(plot_number, 28) + 1):
             if idx in smoothed_stochastics:
                 val = smoothed_stochastics[idx][i]
                 if val is not None:
-                    valid_values.append(val)
+                    sum_values += val
+                    count_valid += 1
         
-        if valid_values:
-            average_stoch.append(sum(valid_values) / len(valid_values))
+        # Match Pine Script: divide by plotNumber, but only if we have at least some valid values
+        # If all are None, result is None
+        if count_valid > 0:
+            # Pine Script divides by plotNumber regardless of how many are valid
+            # This matches: getAverage = (stoch1 + stoch2 + ... + stoch28) / plotNumber
+            average_stoch.append(sum_values / plot_number)
         else:
             average_stoch.append(None)
     

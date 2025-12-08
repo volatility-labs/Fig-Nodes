@@ -126,6 +126,8 @@ class StochasticHeatmapPlot(Base):
         "zoom_to_recent": False,  # Auto-zoom to last 500 bars for better visibility
         "max_symbols": 50,  # Maximum symbols to process
         "dpi": 400,  # High resolution
+        "filter_crossover": "none",  # Filter by crossover: "none" (no filter), "fast_above_slow" (bullish), "slow_above_fast" (bearish)
+        "check_last_bar_only": True,  # If True, check only the last bar; if False, check if condition is true for any bar in display range
     }
 
     params_meta = [
@@ -204,6 +206,19 @@ class StochasticHeatmapPlot(Base):
             "type": "boolean",
             "default": False,
             "description": "Auto-zoom to last 500 bars for better visibility",
+        },
+        {
+            "name": "filter_crossover",
+            "type": "combo",
+            "options": ["none", "fast_above_slow", "slow_above_fast"],
+            "default": "none",
+            "description": "Filter symbols by fast/slow crossover: none (no filter), fast_above_slow (bullish - fast > slow), slow_above_fast (bearish - slow > fast)",
+        },
+        {
+            "name": "check_last_bar_only",
+            "type": "boolean",
+            "default": True,
+            "description": "If True, check only the last bar for filter condition; if False, check if condition is true for any bar in display range",
         },
         {
             "name": "dpi",
@@ -384,6 +399,47 @@ class StochasticHeatmapPlot(Base):
                     plot_number=plot_number,
                     waves=waves,
                 )
+
+                # Apply filter if specified
+                filter_crossover = self.params.get("filter_crossover", "none")
+                check_last_bar_only = bool(self.params.get("check_last_bar_only", True))
+                
+                if filter_crossover and filter_crossover != "none":
+                    fast_line_display = shm_result["fast_line"][display_start:]
+                    slow_line_display = shm_result["slow_line"][display_start:]
+                    
+                    # Check filter condition
+                    passes_filter = False
+                    
+                    if check_last_bar_only:
+                        # Check only the last bar
+                        if len(fast_line_display) > 0 and len(slow_line_display) > 0:
+                            last_fast = fast_line_display[-1]
+                            last_slow = slow_line_display[-1]
+                            
+                            if last_fast is not None and last_slow is not None:
+                                if filter_crossover == "fast_above_slow":
+                                    passes_filter = last_fast > last_slow
+                                elif filter_crossover == "slow_above_fast":
+                                    passes_filter = last_slow > last_fast
+                    else:
+                        # Check if condition is true for any bar in display range
+                        for fast_val, slow_val in zip(fast_line_display, slow_line_display):
+                            if fast_val is not None and slow_val is not None:
+                                if filter_crossover == "fast_above_slow" and fast_val > slow_val:
+                                    passes_filter = True
+                                    break
+                                elif filter_crossover == "slow_above_fast" and slow_val > fast_val:
+                                    passes_filter = True
+                                    break
+                    
+                    if not passes_filter:
+                        logger.warning(f"⏭️  StochasticHeatmapPlot: Skipping chart for {sym} - filter condition not met ({filter_crossover})")
+                        # Still store OHLCV data for downstream nodes, but skip chart generation
+                        ohlcv_bundle_output[sym] = ohlcv_data
+                        continue
+                    else:
+                        logger.warning(f"✅ StochasticHeatmapPlot: {sym} passes filter ({filter_crossover})")
 
                 # Store data
                 shm_data_by_symbol[str(sym)] = {
