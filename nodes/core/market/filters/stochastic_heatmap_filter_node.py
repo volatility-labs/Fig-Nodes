@@ -10,7 +10,7 @@ Based on TradingView Pine Script by Violent (https://www.tradingview.com/v/7PRbC
 import logging
 from typing import Any, Dict, List
 
-from core.types_registry import AssetSymbol, OHLCVBar, get_type
+from core.types_registry import AssetSymbol, OHLCVBar
 from nodes.core.market.filters.base.base_indicator_filter_node import BaseIndicatorFilter
 from services.indicator_calculators.stochastic_heatmap_calculator import calculate_stochastic_heatmap
 
@@ -25,26 +25,12 @@ class StochasticHeatmapFilter(BaseIndicatorFilter):
     - fast_above_slow: Bullish (fast line > slow line)
     - slow_above_fast: Bearish (slow line > fast line)
     
-    Inputs: 'ohlcv_bundle' (Dict[AssetSymbol, List[OHLCVBar]])
-    Outputs: 'filtered_ohlcv_bundle' (Dict[AssetSymbol, List[OHLCVBar]])
+    Inherits inputs/outputs from BaseFilter:
+    - Input: 'ohlcv_bundle' (OHLCVBundle)
+    - Output: 'filtered_ohlcv_bundle' (OHLCVBundle)
     """
 
     description = "Filter symbols by Stochastic Heatmap crossover (fast > slow or slow > fast)"
-
-    inputs = [
-        {
-            "name": "ohlcv_bundle",
-            "type": get_type("Dict[AssetSymbol, List[OHLCVBar]]"),
-            "description": "Input OHLCV bundle to filter",
-        }
-    ]
-    outputs = [
-        {
-            "name": "filtered_ohlcv_bundle",
-            "type": get_type("Dict[AssetSymbol, List[OHLCVBar]]"),
-            "description": "Filtered OHLCV bundle containing only symbols that pass the filter",
-        }
-    ]
 
     default_params = {
         "ma_type": "EMA",  # Moving average type
@@ -121,19 +107,21 @@ class StochasticHeatmapFilter(BaseIndicatorFilter):
         },
     ]
 
-    def _execute_impl(
+    async def _execute_impl(
         self,
-        ohlcv_bundle: Dict[AssetSymbol, List[OHLCVBar]],
+        inputs: Dict[str, Any],
     ) -> Dict[str, Any]:
         """
         Filter OHLCV bundle by Stochastic Heatmap crossover condition.
         
         Args:
-            ohlcv_bundle: Dictionary mapping symbols to OHLCV data
+            inputs: Dictionary containing 'ohlcv_bundle' key
             
         Returns:
             Dictionary with 'filtered_ohlcv_bundle' containing only passing symbols
         """
+        ohlcv_bundle: Dict[AssetSymbol, List[OHLCVBar]] = inputs.get("ohlcv_bundle", {})
+        
         if not ohlcv_bundle:
             logger.info("StochasticHeatmapFilter: Empty input bundle")
             return {"filtered_ohlcv_bundle": {}}
