@@ -202,9 +202,13 @@ async def _monitor_cancel(
             execution_task.cancel()
         await executor.stop(reason=reason)
 
-    # Cancel remaining monitor tasks
+    # Cancel remaining monitor tasks and await them to clean up properly
     for t in pending:
         t.cancel()
+        try:
+            await t
+        except asyncio.CancelledError:
+            pass  # Expected when cancelling a task
 
     return reason
 
