@@ -201,11 +201,13 @@ class FractalResonanceFilter(BaseIndicatorFilter):
             # Get wt_a and wt_b for all timeframes
             wt_a_dict = fr_result.get("wt_a", {})
             wt_b_dict = fr_result.get("wt_b", {})
+            block_colors_dict = fr_result.get("block_colors", {})
             
             # Debug: Log what we got from the calculation
             logger.debug(
                 f"FractalResonanceFilter: Calculation result - wt_a_dict keys: {list(wt_a_dict.keys())}, "
                 f"wt_b_dict keys: {list(wt_b_dict.keys())}, "
+                f"block_colors keys: {list(block_colors_dict.keys())}, "
                 f"data length: {len(ohlcv_data)}"
             )
             if wt_a_dict:
@@ -213,13 +215,15 @@ class FractalResonanceFilter(BaseIndicatorFilter):
                 logger.debug(
                     f"FractalResonanceFilter: Sample timeframe {sample_tm} - "
                     f"wt_a length: {len(wt_a_dict[sample_tm])}, "
-                    f"wt_b length: {len(wt_b_dict.get(sample_tm, []))}"
+                    f"wt_b length: {len(wt_b_dict.get(sample_tm, []))}, "
+                    f"block_colors length: {len(block_colors_dict.get(sample_tm, []))}"
                 )
             
             # Time multipliers: 1, 2, 4, 8, 16, 32, 64, 128
             time_multipliers = [1, 2, 4, 8, 16, 32, 64, 128]
             
-            # Find bars where ALL timeframes are green (wtA > wtB)
+            # Find bars where ALL 16 visual rows are green (8 color rows + 8 block rows)
+            # This means: wtA > wtB for all timeframes AND block_color is NOT white (not embedded)
             all_green_bars = []
             
             # Determine which bars to check
@@ -234,7 +238,7 @@ class FractalResonanceFilter(BaseIndicatorFilter):
                 if bar_idx < 0 or bar_idx >= len(ohlcv_data):
                     continue
                 
-                # Count how many timeframes are green at this bar
+                # Count how many timeframes have ALL 16 rows green (color + block)
                 green_count = 0
                 valid_timeframes_count = 0  # Count only timeframes with valid data
                 failed_timeframes = []
@@ -244,6 +248,7 @@ class FractalResonanceFilter(BaseIndicatorFilter):
                     tm_key = str(tm)
                     wt_a_list = wt_a_dict.get(tm_key, [])
                     wt_b_list = wt_b_dict.get(tm_key, [])
+                    block_colors_list = block_colors_dict.get(tm_key, [])
                     
                     if bar_idx >= len(wt_a_list) or bar_idx >= len(wt_b_list):
                         failed_timeframes.append(f"WT{tm}(missing)")
@@ -260,10 +265,20 @@ class FractalResonanceFilter(BaseIndicatorFilter):
                     # This timeframe has valid data
                     valid_timeframes_count += 1
                     
-                    if a_val > b_val:  # Green (bullish)
+                    # Check both conditions:
+                    # 1. Color row must be green (wtA > wtB)
+                    # 2. Block row must NOT be white (not embedded)
+                    is_color_green = a_val > b_val
+                    block_color = block_colors_list[bar_idx] if bar_idx < len(block_colors_list) else None
+                    is_block_green = block_color not in [None, "#ffffff", "#FFFFFF"]
+                    
+                    if is_color_green and is_block_green:
                         green_count += 1
                     else:
-                        failed_timeframes.append(f"WT{tm}(a={a_val:.2f}<=b={b_val:.2f})")
+                        if not is_color_green:
+                            failed_timeframes.append(f"WT{tm}(a={a_val:.2f}<=b={b_val:.2f})")
+                        elif not is_block_green:
+                            failed_timeframes.append(f"WT{tm}(embedded:{block_color})")
                 
                 # Check if we have enough green timeframes
                 # STRICT MODE: Require ALL valid timeframes to be green (or at least min_green_timeframes, whichever is stricter)
@@ -297,8 +312,8 @@ class FractalResonanceFilter(BaseIndicatorFilter):
                 if green_count >= required_count:
                     all_green_bars.append(bar_idx)
                     logger.debug(
-                        f"✅ FractalResonanceFilter: PASS - Symbol has {green_count}/{valid_timeframes_count} green timeframes "
-                        f"at bar {bar_idx} (required: {required_count} = ALL valid TFs must be green)"
+                        f"✅ FractalResonanceFilter: PASS - Symbol has ALL 16 rows green ({green_count}/{valid_timeframes_count} timeframes) "
+                        f"at bar {bar_idx} (color rows green AND block rows NOT white/embedded)"
                     )
                 else:
                     # Only log first few failures to avoid spam, but make them visible
@@ -432,7 +447,7 @@ class FractalResonanceFilter(BaseIndicatorFilter):
         except Exception:
             pass
 
-        logger.info(f"🔵 FractalResonanceFilter: Starting filter on {total_symbols} symbols (STRICT MODE: ALL valid timeframes must be green, min: {self.min_green_timeframes})")
+        logger.info(f"🔵 FractalResonanceFilter: Starting filter on {total_symbols} symbols (STRICT MODE: ALL 16 rows must be green - color rows AND block rows not white/embedded, min TFs: {self.min_green_timeframes})")
 
         for symbol, ohlcv_data in ohlcv_bundle.items():
             if not ohlcv_data:
