@@ -210,6 +210,19 @@ class FractalResonanceFilter(BaseIndicatorFilter):
                 f"block_colors keys: {list(block_colors_dict.keys())}, "
                 f"data length: {len(ohlcv_data)}"
             )
+            
+            # Warn if block_colors is missing (critical for 16-row check)
+            if not block_colors_dict:
+                logger.warning(
+                    f"⚠️ FractalResonanceFilter: block_colors_dict is EMPTY for {symbol}! "
+                    f"Cannot check block rows. Symbol will FAIL."
+                )
+                failed_count += 1
+                continue  # Skip this symbol - cannot verify all 16 rows
+            elif symbol == "QXO":
+                logger.warning(
+                    f"🔍 QXO: block_colors_dict has {len(block_colors_dict)} timeframes: {list(block_colors_dict.keys())}"
+                )
             if wt_a_dict:
                 sample_tm = list(wt_a_dict.keys())[0]
                 logger.debug(
@@ -269,8 +282,18 @@ class FractalResonanceFilter(BaseIndicatorFilter):
                     # 1. Color row must be green (wtA > wtB)
                     # 2. Block row must NOT be white (not embedded)
                     is_color_green = a_val > b_val
-                    block_color = block_colors_list[bar_idx] if bar_idx < len(block_colors_list) else None
-                    is_block_green = block_color not in [None, "#ffffff", "#FFFFFF"]
+                    
+                    # Get block color - handle missing data
+                    if bar_idx >= len(block_colors_list):
+                        # Block colors missing - treat as not green to be safe
+                        block_color = None
+                        is_block_green = False
+                        if symbol == "QXO":
+                            logger.warning(f"🔍 QXO Debug - TF{tm} at bar {bar_idx}: block_colors_list too short (len={len(block_colors_list)}, need bar_idx={bar_idx})")
+                    else:
+                        block_color = block_colors_list[bar_idx]
+                        # Block is green if it's NOT white (white = embedded)
+                        is_block_green = block_color not in [None, "#ffffff", "#FFFFFF", "white"]
                     
                     if is_color_green and is_block_green:
                         green_count += 1
@@ -279,6 +302,14 @@ class FractalResonanceFilter(BaseIndicatorFilter):
                             failed_timeframes.append(f"WT{tm}(a={a_val:.2f}<=b={b_val:.2f})")
                         elif not is_block_green:
                             failed_timeframes.append(f"WT{tm}(embedded:{block_color})")
+                        
+                        # Debug logging for specific symbols
+                        if symbol == "QXO":
+                            logger.warning(
+                                f"🔍 QXO Debug - TF{tm} at bar {bar_idx}: "
+                                f"color_green={is_color_green} (a={a_val:.2f}, b={b_val:.2f}), "
+                                f"block_green={is_block_green} (block_color={block_color})"
+                            )
                 
                 # Check if we have enough green timeframes
                 # STRICT MODE: Require ALL valid timeframes to be green (or at least min_green_timeframes, whichever is stricter)
@@ -311,10 +342,15 @@ class FractalResonanceFilter(BaseIndicatorFilter):
                 
                 if green_count >= required_count:
                     all_green_bars.append(bar_idx)
-                    logger.debug(
+                    log_msg = (
                         f"✅ FractalResonanceFilter: PASS - Symbol has ALL 16 rows green ({green_count}/{valid_timeframes_count} timeframes) "
                         f"at bar {bar_idx} (color rows green AND block rows NOT white/embedded)"
                     )
+                    if symbol == "QXO":
+                        logger.warning(f"🔍 QXO: {log_msg}")
+                        logger.warning(f"🔍 QXO: Failed timeframes: {failed_timeframes}")
+                    else:
+                        logger.debug(log_msg)
                 else:
                     # Only log first few failures to avoid spam, but make them visible
                     if len(all_green_bars) == 0:  # Only log if this is the first check and it failed
