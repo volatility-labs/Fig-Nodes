@@ -6,6 +6,7 @@ Requires ALL timeframe lines (1x, 2x, 4x, 8x, 16x, 32x, 64x, 128x) to be green
 at the same vertical position (same bar index) to pass the filter.
 """
 
+import json
 import logging
 from typing import Any
 
@@ -363,6 +364,7 @@ class FractalResonanceFilter(BaseIndicatorFilter):
             max_green_count = 0
             valid_timeframes_at_last_bar = 0
             failed_timeframes_at_last_bar = []
+            timeframe_details_at_last_bar = []  # Store detailed info for each timeframe
             if check_indices:
                 last_idx = check_indices[-1]
                 green_count = 0
@@ -394,6 +396,17 @@ class FractalResonanceFilter(BaseIndicatorFilter):
                                 # Block is green if it's NOT white (white = embedded)
                                 is_block_green = block_color not in [None, "#ffffff", "#FFFFFF", "white"]
                             
+                            # Store detailed info for debugging
+                            timeframe_details_at_last_bar.append({
+                                "timeframe": tm,
+                                "a_val": a_val,
+                                "b_val": b_val,
+                                "is_color_green": is_color_green,
+                                "block_color": block_color,
+                                "is_block_green": is_block_green,
+                                "is_both_green": is_color_green and is_block_green,
+                            })
+                            
                             if is_color_green and is_block_green:
                                 green_count += 1
                             else:
@@ -405,6 +418,9 @@ class FractalResonanceFilter(BaseIndicatorFilter):
                 max_green_count = green_count
                 valid_timeframes_at_last_bar = valid_count
             
+            # Store timeframe details as JSON string for debugging (QXO/MRNA)
+            timeframe_details_json = json.dumps(timeframe_details_at_last_bar, default=str)
+            
             result_dict = {
                 "has_all_green_signal": 1.0 if has_signal else 0.0,
                 "total_all_green_bars": float(len(all_green_bars)),
@@ -415,6 +431,7 @@ class FractalResonanceFilter(BaseIndicatorFilter):
                 "valid_timeframes_at_last_bar": float(valid_timeframes_at_last_bar),
                 "min_required_green": float(self.min_green_timeframes),
                 "failed_timeframes_at_last_bar": ",".join(failed_timeframes_at_last_bar[:10]),  # Limit to first 10
+                "timeframe_details_at_last_bar": timeframe_details_json,  # JSON string for debugging
             }
             
             required_at_last_bar = max(self.min_green_timeframes, valid_timeframes_at_last_bar) if valid_timeframes_at_last_bar > 0 else self.min_green_timeframes
@@ -589,10 +606,39 @@ class FractalResonanceFilter(BaseIndicatorFilter):
                         log_msg = (
                             f"🔍 QXO: has_signal={result_dict.get('has_all_green_signal', 0.0)}, "
                             f"total_green_bars={result_dict.get('total_all_green_bars', 0.0)}, "
-                            f"max_green={result_dict.get('max_green_count_at_last_bar', 0.0)}/{result_dict.get('min_required_green', 8.0)}"
+                            f"max_green={result_dict.get('max_green_count_at_last_bar', 0.0)}/{result_dict.get('valid_timeframes_at_last_bar', 0.0)} "
+                            f"(required: ALL {result_dict.get('valid_timeframes_at_last_bar', 0.0)} must be green)"
                         )
                         logger.warning(log_msg)
                         print(log_msg)  # Print as fallback
+                        
+                        # Detailed timeframe breakdown for QXO
+                        timeframe_details_json = result_dict.get('timeframe_details_at_last_bar', '[]')
+                        try:
+                            timeframe_details = json.loads(timeframe_details_json) if timeframe_details_json else []
+                            logger.warning("🔍 QXO: Detailed timeframe breakdown at last bar:")
+                            print("🔍 QXO: Detailed timeframe breakdown at last bar:")
+                            for tf_detail in timeframe_details:
+                                tf = tf_detail.get('timeframe', '?')
+                                a_val = tf_detail.get('a_val', 0)
+                                b_val = tf_detail.get('b_val', 0)
+                                color_green = tf_detail.get('is_color_green', False)
+                                block_color = tf_detail.get('block_color', 'N/A')
+                                block_green = tf_detail.get('is_block_green', False)
+                                both_green = tf_detail.get('is_both_green', False)
+                                
+                                status_icon = "✅" if both_green else "❌"
+                                color_status = "GREEN" if color_green else f"RED (a={a_val:.2f} <= b={b_val:.2f})"
+                                block_status = f"GREEN ({block_color})" if block_green else f"WHITE/EMBEDDED ({block_color})"
+                                
+                                detail_msg = (
+                                    f"  {status_icon} WT{tf}: Color={color_status}, Block={block_status}"
+                                )
+                                logger.warning(detail_msg)
+                                print(detail_msg)
+                        except Exception as e:
+                            logger.warning(f"🔍 QXO: Could not parse timeframe details: {e}")
+                            print(f"🔍 QXO: Could not parse timeframe details: {e}")
                 
                 # Debug logging for MRNA
                 if is_mrna:
