@@ -473,26 +473,35 @@ class FractalResonanceFilter(BaseIndicatorFilter):
 
         logger.info(f"🔵 FractalResonanceFilter: Starting filter on {total_symbols} symbols (STRICT MODE: ALL 16 rows must be green - color rows AND block rows not white/embedded, min TFs: {self.min_green_timeframes})")
         
-        # Check if QXO is in the bundle
-        if "QXO" in ohlcv_bundle:
+        # Check if QXO is in the bundle (keys are AssetSymbol objects, not strings)
+        qxo_symbol = None
+        for sym in ohlcv_bundle.keys():
+            if str(sym).upper() == "QXO" or (hasattr(sym, 'ticker') and sym.ticker.upper() == "QXO"):
+                qxo_symbol = sym
+                break
+        
+        if qxo_symbol:
             qxo_status = "found"
-            logger.warning(f"🔍 QXO: Found in input bundle! Data length: {len(ohlcv_bundle['QXO']) if ohlcv_bundle['QXO'] else 0}")
-            print(f"🔍 QXO: Found in input bundle! Data length: {len(ohlcv_bundle['QXO']) if ohlcv_bundle['QXO'] else 0}")
+            logger.warning(f"🔍 QXO: Found in input bundle! Data length: {len(ohlcv_bundle[qxo_symbol]) if ohlcv_bundle[qxo_symbol] else 0}")
+            print(f"🔍 QXO: Found in input bundle! Data length: {len(ohlcv_bundle[qxo_symbol]) if ohlcv_bundle[qxo_symbol] else 0}")
         else:
             qxo_status = "not_found"
-            logger.warning(f"🔍 QXO: NOT FOUND in input bundle! Available symbols: {list(ohlcv_bundle.keys())[:10]}...")
+            sample_symbols = [str(sym) for sym in list(ohlcv_bundle.keys())[:10]]
+            logger.warning(f"🔍 QXO: NOT FOUND in input bundle! Available symbols: {sample_symbols}...")
             print(f"🔍 QXO: NOT FOUND in input bundle!")
 
         for symbol, ohlcv_data in ohlcv_bundle.items():
+            is_qxo = (qxo_symbol is not None and symbol == qxo_symbol) or (str(symbol).upper() == "QXO")
+            
             # QXO debug: Log when we start processing QXO
-            if symbol == "QXO":
+            if is_qxo:
                 logger.warning(f"🔍 QXO: Starting filter processing - data length: {len(ohlcv_data) if ohlcv_data else 0}")
                 print(f"🔍 QXO: Starting filter processing - data length: {len(ohlcv_data) if ohlcv_data else 0}")  # Print as fallback
             
             if not ohlcv_data:
                 processed_symbols += 1
                 failed_count += 1
-                if symbol == "QXO":
+                if is_qxo:
                     logger.warning(f"🔍 QXO: FAILED - No OHLCV data")
                 try:
                     progress = (processed_symbols / max(1, total_symbols)) * 100.0
@@ -502,12 +511,12 @@ class FractalResonanceFilter(BaseIndicatorFilter):
                 continue
 
             try:
-                if symbol == "QXO":
+                if is_qxo:
                     logger.warning(f"🔍 QXO: Calling _calculate_indicator...")
                 indicator_result = self._calculate_indicator(ohlcv_data)
                 
                 # Debug logging for QXO
-                if symbol == "QXO":
+                if is_qxo:
                     logger.warning(f"🔍 QXO: IndicatorResult error: {indicator_result.error}")
                     print(f"🔍 QXO: IndicatorResult error: {indicator_result.error}")  # Print as fallback
                     if hasattr(indicator_result.values, "lines"):
@@ -523,20 +532,20 @@ class FractalResonanceFilter(BaseIndicatorFilter):
                 if self._should_pass_filter(indicator_result):
                     filtered_bundle[symbol] = ohlcv_data
                     passed_count += 1
-                    if symbol == "QXO":
+                    if is_qxo:
                         qxo_status = "passed"
                         logger.warning(f"🔍 QXO: PASSED the filter!")
                         print(f"🔍 QXO: PASSED the filter!")  # Print as fallback
                 else:
                     failed_count += 1
-                    if symbol == "QXO":
+                    if is_qxo:
                         qxo_status = "failed"
                         logger.warning(f"🔍 QXO: FAILED the filter")
                         print(f"🔍 QXO: FAILED the filter")  # Print as fallback
 
             except Exception as e:
                 logger.error(f"❌ FractalResonanceFilter: Failed to process {symbol}: {e}")
-                if symbol == "QXO":
+                if is_qxo:
                     qxo_status = "error"
                     logger.warning(f"🔍 QXO: ERROR during processing: {e}")
                     print(f"🔍 QXO: ERROR during processing: {e}")
