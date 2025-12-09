@@ -299,7 +299,7 @@ class FractalResonanceFilter(BaseIndicatorFilter):
                         green_count += 1
                     else:
                         if not is_color_green:
-                            failed_timeframes.append(f"WT{tm}(a={a_val:.2f}<=b={b_val:.2f})")
+                        failed_timeframes.append(f"WT{tm}(a={a_val:.2f}<=b={b_val:.2f})")
                         elif not is_block_green:
                             failed_timeframes.append(f"WT{tm}(embedded:{block_color})")
                 
@@ -463,6 +463,7 @@ class FractalResonanceFilter(BaseIndicatorFilter):
         processed_symbols = 0
         passed_count = 0
         failed_count = 0
+        qxo_status = None  # Track QXO's status: "passed", "failed", "not_found", or "error"
 
         # Initial progress signal
         try:
@@ -474,9 +475,13 @@ class FractalResonanceFilter(BaseIndicatorFilter):
         
         # Check if QXO is in the bundle
         if "QXO" in ohlcv_bundle:
+            qxo_status = "found"
             logger.warning(f"🔍 QXO: Found in input bundle! Data length: {len(ohlcv_bundle['QXO']) if ohlcv_bundle['QXO'] else 0}")
+            print(f"🔍 QXO: Found in input bundle! Data length: {len(ohlcv_bundle['QXO']) if ohlcv_bundle['QXO'] else 0}")
         else:
+            qxo_status = "not_found"
             logger.warning(f"🔍 QXO: NOT FOUND in input bundle! Available symbols: {list(ohlcv_bundle.keys())[:10]}...")
+            print(f"🔍 QXO: NOT FOUND in input bundle!")
 
         for symbol, ohlcv_data in ohlcv_bundle.items():
             # QXO debug: Log when we start processing QXO
@@ -519,16 +524,22 @@ class FractalResonanceFilter(BaseIndicatorFilter):
                     filtered_bundle[symbol] = ohlcv_data
                     passed_count += 1
                     if symbol == "QXO":
+                        qxo_status = "passed"
                         logger.warning(f"🔍 QXO: PASSED the filter!")
                         print(f"🔍 QXO: PASSED the filter!")  # Print as fallback
                 else:
                     failed_count += 1
                     if symbol == "QXO":
+                        qxo_status = "failed"
                         logger.warning(f"🔍 QXO: FAILED the filter")
                         print(f"🔍 QXO: FAILED the filter")  # Print as fallback
 
             except Exception as e:
                 logger.error(f"❌ FractalResonanceFilter: Failed to process {symbol}: {e}")
+                if symbol == "QXO":
+                    qxo_status = "error"
+                    logger.warning(f"🔍 QXO: ERROR during processing: {e}")
+                    print(f"🔍 QXO: ERROR during processing: {e}")
                 failed_count += 1
                 processed_symbols += 1
                 try:
@@ -550,6 +561,36 @@ class FractalResonanceFilter(BaseIndicatorFilter):
             f"🔵 FractalResonanceFilter: COMPLETE - {passed_count} passed, {failed_count} failed "
             f"(out of {total_symbols} total symbols, STRICT MODE: ALL valid timeframes must be green)"
         )
+        
+        # Prominent QXO status summary
+        if qxo_status == "passed":
+            logger.warning("=" * 80)
+            logger.warning("⚠️  QXO STATUS: PASSED THE FILTER (but may not have all 16 rows green!)")
+            logger.warning("=" * 80)
+            print("=" * 80)
+            print("⚠️  QXO STATUS: PASSED THE FILTER (but may not have all 16 rows green!)")
+            print("=" * 80)
+        elif qxo_status == "failed":
+            logger.warning("=" * 80)
+            logger.warning("✅ QXO STATUS: FAILED THE FILTER (correctly filtered out)")
+            logger.warning("=" * 80)
+            print("=" * 80)
+            print("✅ QXO STATUS: FAILED THE FILTER (correctly filtered out)")
+            print("=" * 80)
+        elif qxo_status == "not_found":
+            logger.warning("=" * 80)
+            logger.warning("❓ QXO STATUS: NOT FOUND IN INPUT BUNDLE")
+            logger.warning("=" * 80)
+            print("=" * 80)
+            print("❓ QXO STATUS: NOT FOUND IN INPUT BUNDLE")
+            print("=" * 80)
+        elif qxo_status == "error":
+            logger.warning("=" * 80)
+            logger.warning("❌ QXO STATUS: ERROR DURING PROCESSING")
+            logger.warning("=" * 80)
+            print("=" * 80)
+            print("❌ QXO STATUS: ERROR DURING PROCESSING")
+            print("=" * 80)
 
         return {
             "filtered_ohlcv_bundle": filtered_bundle,
