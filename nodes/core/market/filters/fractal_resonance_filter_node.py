@@ -362,6 +362,7 @@ class FractalResonanceFilter(BaseIndicatorFilter):
             # IMPORTANT: Must check BOTH color row (wtA > wtB) AND block row (not white) to match filter logic
             max_green_count = 0
             valid_timeframes_at_last_bar = 0
+            failed_timeframes_at_last_bar = []
             if check_indices:
                 last_idx = check_indices[-1]
                 green_count = 0
@@ -387,6 +388,7 @@ class FractalResonanceFilter(BaseIndicatorFilter):
                             # Get block color - handle missing data
                             if last_idx >= len(block_colors_list):
                                 is_block_green = False
+                                block_color = None
                             else:
                                 block_color = block_colors_list[last_idx]
                                 # Block is green if it's NOT white (white = embedded)
@@ -394,6 +396,12 @@ class FractalResonanceFilter(BaseIndicatorFilter):
                             
                             if is_color_green and is_block_green:
                                 green_count += 1
+                            else:
+                                # Track which timeframes failed and why
+                                if not is_color_green:
+                                    failed_timeframes_at_last_bar.append(f"WT{tm}(a={a_val:.2f}<=b={b_val:.2f})")
+                                elif not is_block_green:
+                                    failed_timeframes_at_last_bar.append(f"WT{tm}(embedded:{block_color})")
                 max_green_count = green_count
                 valid_timeframes_at_last_bar = valid_count
             
@@ -404,7 +412,9 @@ class FractalResonanceFilter(BaseIndicatorFilter):
                 "last_all_green_bar_timestamp": float(last_green_bar_timestamp),
                 "checked_bars": float(len(check_indices)),
                 "max_green_count_at_last_bar": float(max_green_count),
+                "valid_timeframes_at_last_bar": float(valid_timeframes_at_last_bar),
                 "min_required_green": float(self.min_green_timeframes),
+                "failed_timeframes_at_last_bar": ",".join(failed_timeframes_at_last_bar[:10]),  # Limit to first 10
             }
             
             required_at_last_bar = max(self.min_green_timeframes, valid_timeframes_at_last_bar) if valid_timeframes_at_last_bar > 0 else self.min_green_timeframes
@@ -485,6 +495,7 @@ class FractalResonanceFilter(BaseIndicatorFilter):
         passed_count = 0
         failed_count = 0
         qxo_status = None  # Track QXO's status: "passed", "failed", "not_found", or "error"
+        mrna_status = None  # Track MRNA's status: "passed", "failed", "not_found", or "error"
 
         # Initial progress signal
         try:
@@ -510,20 +521,49 @@ class FractalResonanceFilter(BaseIndicatorFilter):
             sample_symbols = [str(sym) for sym in list(ohlcv_bundle.keys())[:10]]
             logger.warning(f"🔍 QXO: NOT FOUND in input bundle! Available symbols: {sample_symbols}...")
             print(f"🔍 QXO: NOT FOUND in input bundle!")
+        
+        # Check if MRNA is in the bundle (keys are AssetSymbol objects, not strings)
+        mrna_symbol = None
+        for sym in ohlcv_bundle.keys():
+            if str(sym).upper() == "MRNA" or (hasattr(sym, 'ticker') and sym.ticker.upper() == "MRNA"):
+                mrna_symbol = sym
+                break
+        
+        if mrna_symbol:
+            mrna_status = "found"
+            logger.warning(f"🔍 MRNA: Found in input bundle! Data length: {len(ohlcv_bundle[mrna_symbol]) if ohlcv_bundle[mrna_symbol] else 0}")
+            print(f"🔍 MRNA: Found in input bundle! Data length: {len(ohlcv_bundle[mrna_symbol]) if ohlcv_bundle[mrna_symbol] else 0}")
+        else:
+            mrna_status = "not_found"
+            sample_symbols = [str(sym) for sym in list(ohlcv_bundle.keys())[:10]]
+            logger.warning(f"🔍 MRNA: NOT FOUND in input bundle! Available symbols: {sample_symbols}...")
+            print(f"🔍 MRNA: NOT FOUND in input bundle!")
 
         for symbol, ohlcv_data in ohlcv_bundle.items():
             is_qxo = (qxo_symbol is not None and symbol == qxo_symbol) or (str(symbol).upper() == "QXO")
+            is_mrna = (mrna_symbol is not None and symbol == mrna_symbol) or (str(symbol).upper() == "MRNA")
             
             # QXO debug: Log when we start processing QXO
             if is_qxo:
                 logger.warning(f"🔍 QXO: Starting filter processing - data length: {len(ohlcv_data) if ohlcv_data else 0}")
                 print(f"🔍 QXO: Starting filter processing - data length: {len(ohlcv_data) if ohlcv_data else 0}")  # Print as fallback
             
+            # MRNA debug: Log when we start processing MRNA
+            if is_mrna:
+                logger.warning(f"🔍 MRNA: Starting filter processing - data length: {len(ohlcv_data) if ohlcv_data else 0}")
+                print(f"🔍 MRNA: Starting filter processing - data length: {len(ohlcv_data) if ohlcv_data else 0}")  # Print as fallback
+            
             if not ohlcv_data:
                 processed_symbols += 1
                 failed_count += 1
                 if is_qxo:
+                    qxo_status = "failed"
                     logger.warning(f"🔍 QXO: FAILED - No OHLCV data")
+                    print(f"🔍 QXO: FAILED - No OHLCV data")
+                if is_mrna:
+                    mrna_status = "failed"
+                    logger.warning(f"🔍 MRNA: FAILED - No OHLCV data")
+                    print(f"🔍 MRNA: FAILED - No OHLCV data")
                 try:
                     progress = (processed_symbols / max(1, total_symbols)) * 100.0
                     self.report_progress(progress, f"{processed_symbols}/{total_symbols}")
@@ -534,6 +574,10 @@ class FractalResonanceFilter(BaseIndicatorFilter):
             try:
                 if is_qxo:
                     logger.warning(f"🔍 QXO: Calling _calculate_indicator...")
+                    print(f"🔍 QXO: Calling _calculate_indicator...")
+                if is_mrna:
+                    logger.warning(f"🔍 MRNA: Calling _calculate_indicator...")
+                    print(f"🔍 MRNA: Calling _calculate_indicator...")
                 indicator_result = self._calculate_indicator(ohlcv_data)
                 
                 # Debug logging for QXO
@@ -549,6 +593,23 @@ class FractalResonanceFilter(BaseIndicatorFilter):
                         )
                         logger.warning(log_msg)
                         print(log_msg)  # Print as fallback
+                
+                # Debug logging for MRNA
+                if is_mrna:
+                    logger.warning(f"🔍 MRNA: IndicatorResult error: {indicator_result.error}")
+                    print(f"🔍 MRNA: IndicatorResult error: {indicator_result.error}")  # Print as fallback
+                    if hasattr(indicator_result.values, "lines"):
+                        result_dict = indicator_result.values.lines
+                        failed_tfs = result_dict.get('failed_timeframes_at_last_bar', 'N/A')
+                        log_msg = (
+                            f"🔍 MRNA: has_signal={result_dict.get('has_all_green_signal', 0.0)}, "
+                            f"total_green_bars={result_dict.get('total_all_green_bars', 0.0)}, "
+                            f"max_green={result_dict.get('max_green_count_at_last_bar', 0.0)}/{result_dict.get('valid_timeframes_at_last_bar', 0.0)} "
+                            f"(required: ALL {result_dict.get('valid_timeframes_at_last_bar', 0.0)} must be green), "
+                            f"failed_timeframes: {failed_tfs}"
+                        )
+                        logger.warning(log_msg)
+                        print(log_msg)  # Print as fallback
 
                 if self._should_pass_filter(indicator_result):
                     filtered_bundle[symbol] = ohlcv_data
@@ -557,12 +618,20 @@ class FractalResonanceFilter(BaseIndicatorFilter):
                         qxo_status = "passed"
                         logger.warning(f"🔍 QXO: PASSED the filter!")
                         print(f"🔍 QXO: PASSED the filter!")  # Print as fallback
+                    if is_mrna:
+                        mrna_status = "passed"
+                        logger.warning(f"🔍 MRNA: PASSED the filter!")
+                        print(f"🔍 MRNA: PASSED the filter!")  # Print as fallback
                 else:
                     failed_count += 1
                     if is_qxo:
                         qxo_status = "failed"
                         logger.warning(f"🔍 QXO: FAILED the filter")
                         print(f"🔍 QXO: FAILED the filter")  # Print as fallback
+                    if is_mrna:
+                        mrna_status = "failed"
+                        logger.warning(f"🔍 MRNA: FAILED the filter")
+                        print(f"🔍 MRNA: FAILED the filter")  # Print as fallback
 
             except Exception as e:
                 logger.error(f"❌ FractalResonanceFilter: Failed to process {symbol}: {e}")
@@ -570,6 +639,10 @@ class FractalResonanceFilter(BaseIndicatorFilter):
                     qxo_status = "error"
                     logger.warning(f"🔍 QXO: ERROR during processing: {e}")
                     print(f"🔍 QXO: ERROR during processing: {e}")
+                if is_mrna:
+                    mrna_status = "error"
+                    logger.warning(f"🔍 MRNA: ERROR during processing: {e}")
+                    print(f"🔍 MRNA: ERROR during processing: {e}")
                 failed_count += 1
                 processed_symbols += 1
                 try:
@@ -620,6 +693,36 @@ class FractalResonanceFilter(BaseIndicatorFilter):
             logger.warning("=" * 80)
             print("=" * 80)
             print("❌ QXO STATUS: ERROR DURING PROCESSING")
+            print("=" * 80)
+        
+        # Prominent MRNA status summary
+        if mrna_status == "passed":
+            logger.warning("=" * 80)
+            logger.warning("✅ MRNA STATUS: PASSED THE FILTER")
+            logger.warning("=" * 80)
+            print("=" * 80)
+            print("✅ MRNA STATUS: PASSED THE FILTER")
+            print("=" * 80)
+        elif mrna_status == "failed":
+            logger.warning("=" * 80)
+            logger.warning("❌ MRNA STATUS: FAILED THE FILTER (investigate why - should have all 16 rows green)")
+            logger.warning("=" * 80)
+            print("=" * 80)
+            print("❌ MRNA STATUS: FAILED THE FILTER (investigate why - should have all 16 rows green)")
+            print("=" * 80)
+        elif mrna_status == "not_found":
+            logger.warning("=" * 80)
+            logger.warning("❓ MRNA STATUS: NOT FOUND IN INPUT BUNDLE")
+            logger.warning("=" * 80)
+            print("=" * 80)
+            print("❓ MRNA STATUS: NOT FOUND IN INPUT BUNDLE")
+            print("=" * 80)
+        elif mrna_status == "error":
+            logger.warning("=" * 80)
+            logger.warning("🔥 MRNA STATUS: ERROR DURING PROCESSING")
+            logger.warning("=" * 80)
+            print("=" * 80)
+            print("🔥 MRNA STATUS: ERROR DURING PROCESSING")
             print("=" * 80)
 
         return {
