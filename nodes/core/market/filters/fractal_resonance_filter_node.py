@@ -473,9 +473,15 @@ class FractalResonanceFilter(BaseIndicatorFilter):
         logger.info(f"🔵 FractalResonanceFilter: Starting filter on {total_symbols} symbols (STRICT MODE: ALL 16 rows must be green - color rows AND block rows not white/embedded, min TFs: {self.min_green_timeframes})")
 
         for symbol, ohlcv_data in ohlcv_bundle.items():
+            # QXO debug: Log when we start processing QXO
+            if symbol == "QXO":
+                logger.warning(f"🔍 QXO: Starting filter processing - data length: {len(ohlcv_data) if ohlcv_data else 0}")
+            
             if not ohlcv_data:
                 processed_symbols += 1
                 failed_count += 1
+                if symbol == "QXO":
+                    logger.warning(f"🔍 QXO: FAILED - No OHLCV data")
                 try:
                     progress = (processed_symbols / max(1, total_symbols)) * 100.0
                     self.report_progress(progress, f"{processed_symbols}/{total_symbols}")
@@ -484,6 +490,8 @@ class FractalResonanceFilter(BaseIndicatorFilter):
                 continue
 
             try:
+                if symbol == "QXO":
+                    logger.warning(f"🔍 QXO: Calling _calculate_indicator...")
                 indicator_result = self._calculate_indicator(ohlcv_data)
                 
                 # Debug logging for QXO
