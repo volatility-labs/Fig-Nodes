@@ -214,15 +214,17 @@ class FractalResonanceFilter(BaseIndicatorFilter):
             # Warn if block_colors is missing (critical for 16-row check)
             if not block_colors_dict:
                 logger.warning(
-                    f"⚠️ FractalResonanceFilter: block_colors_dict is EMPTY for {symbol}! "
+                    f"⚠️ FractalResonanceFilter: block_colors_dict is EMPTY! "
                     f"Cannot check block rows. Symbol will FAIL."
                 )
-                failed_count += 1
-                continue  # Skip this symbol - cannot verify all 16 rows
-            elif symbol == "QXO":
-                logger.warning(
-                    f"🔍 QXO: block_colors_dict has {len(block_colors_dict)} timeframes: {list(block_colors_dict.keys())}"
+                return IndicatorResult(
+                    indicator_type=IndicatorType.CUSTOM,
+                    timestamp=ohlcv_data[-1]["timestamp"] if ohlcv_data else 0,
+                    values=IndicatorValue(lines={}),
+                    params=self.params,
+                    error="block_colors_dict is empty - cannot verify all 16 rows",
                 )
+            # Debug logging for QXO (check in _should_pass_filter where symbol is available)
             if wt_a_dict:
                 sample_tm = list(wt_a_dict.keys())[0]
                 logger.debug(
@@ -288,8 +290,6 @@ class FractalResonanceFilter(BaseIndicatorFilter):
                         # Block colors missing - treat as not green to be safe
                         block_color = None
                         is_block_green = False
-                        if symbol == "QXO":
-                            logger.warning(f"🔍 QXO Debug - TF{tm} at bar {bar_idx}: block_colors_list too short (len={len(block_colors_list)}, need bar_idx={bar_idx})")
                     else:
                         block_color = block_colors_list[bar_idx]
                         # Block is green if it's NOT white (white = embedded)
@@ -302,14 +302,6 @@ class FractalResonanceFilter(BaseIndicatorFilter):
                             failed_timeframes.append(f"WT{tm}(a={a_val:.2f}<=b={b_val:.2f})")
                         elif not is_block_green:
                             failed_timeframes.append(f"WT{tm}(embedded:{block_color})")
-                        
-                        # Debug logging for specific symbols
-                        if symbol == "QXO":
-                            logger.warning(
-                                f"🔍 QXO Debug - TF{tm} at bar {bar_idx}: "
-                                f"color_green={is_color_green} (a={a_val:.2f}, b={b_val:.2f}), "
-                                f"block_green={is_block_green} (block_color={block_color})"
-                            )
                 
                 # Check if we have enough green timeframes
                 # STRICT MODE: Require ALL valid timeframes to be green (or at least min_green_timeframes, whichever is stricter)
@@ -342,15 +334,10 @@ class FractalResonanceFilter(BaseIndicatorFilter):
                 
                 if green_count >= required_count:
                     all_green_bars.append(bar_idx)
-                    log_msg = (
+                    logger.debug(
                         f"✅ FractalResonanceFilter: PASS - Symbol has ALL 16 rows green ({green_count}/{valid_timeframes_count} timeframes) "
                         f"at bar {bar_idx} (color rows green AND block rows NOT white/embedded)"
                     )
-                    if symbol == "QXO":
-                        logger.warning(f"🔍 QXO: {log_msg}")
-                        logger.warning(f"🔍 QXO: Failed timeframes: {failed_timeframes}")
-                    else:
-                        logger.debug(log_msg)
                 else:
                     # Only log first few failures to avoid spam, but make them visible
                     if len(all_green_bars) == 0:  # Only log if this is the first check and it failed
@@ -498,12 +485,27 @@ class FractalResonanceFilter(BaseIndicatorFilter):
 
             try:
                 indicator_result = self._calculate_indicator(ohlcv_data)
+                
+                # Debug logging for QXO
+                if symbol == "QXO":
+                    logger.warning(f"🔍 QXO: IndicatorResult error: {indicator_result.error}")
+                    if hasattr(indicator_result.values, "lines"):
+                        result_dict = indicator_result.values.lines
+                        logger.warning(
+                            f"🔍 QXO: has_signal={result_dict.get('has_all_green_signal', 0.0)}, "
+                            f"total_green_bars={result_dict.get('total_all_green_bars', 0.0)}, "
+                            f"max_green={result_dict.get('max_green_count_at_last_bar', 0.0)}/{result_dict.get('min_required_green', 8.0)}"
+                        )
 
                 if self._should_pass_filter(indicator_result):
                     filtered_bundle[symbol] = ohlcv_data
                     passed_count += 1
+                    if symbol == "QXO":
+                        logger.warning(f"🔍 QXO: PASSED the filter!")
                 else:
                     failed_count += 1
+                    if symbol == "QXO":
+                        logger.warning(f"🔍 QXO: FAILED the filter")
 
             except Exception as e:
                 logger.error(f"❌ FractalResonanceFilter: Failed to process {symbol}: {e}")
