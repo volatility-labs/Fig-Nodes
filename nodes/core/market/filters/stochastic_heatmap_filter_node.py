@@ -42,6 +42,7 @@ class StochasticHeatmapFilter(BaseIndicatorFilter):
         "filter_crossover": "fast_above_slow",  # Filter condition
         "check_last_bar_only": True,  # Check only last bar vs any bar in lookback
         "lookback_bars": 5,  # Number of bars to check if check_last_bar_only is False
+        "max_symbols": 500,  # Maximum number of symbols to pass through
     }
 
     params_meta = [
@@ -112,6 +113,15 @@ class StochasticHeatmapFilter(BaseIndicatorFilter):
             "step": 1,
             "description": "Number of bars to check if check_last_bar_only is False",
         },
+        {
+            "name": "max_symbols",
+            "type": "number",
+            "default": 500,
+            "min": 1,
+            "max": 500,
+            "step": 1,
+            "description": "Maximum number of symbols to pass through (stops filtering once limit is reached)",
+        },
     ]
 
     async def _execute_impl(
@@ -143,21 +153,35 @@ class StochasticHeatmapFilter(BaseIndicatorFilter):
         filter_crossover = str(self.params.get("filter_crossover", "fast_above_slow"))
         check_last_bar_only = bool(self.params.get("check_last_bar_only", True))
         lookback_bars = int(self.params.get("lookback_bars", 5))
+        max_symbols = int(self.params.get("max_symbols", 500))
 
         total_symbols = len(ohlcv_bundle)
         logger.info(
             f"🔵 StochasticHeatmapFilter: Starting filter on {total_symbols} symbols "
-            f"(condition: {filter_crossover}, check_last_bar: {check_last_bar_only})"
+            f"(condition: {filter_crossover}, check_last_bar: {check_last_bar_only}, max_symbols: {max_symbols})"
         )
 
         filtered_bundle: Dict[AssetSymbol, List[OHLCVBar]] = {}
         passed_count = 0
         failed_count = 0
+        processed_symbols = 0
+
+        # Initial progress signal
+        try:
+            self.report_progress(0.0, f"0/{total_symbols}")
+        except Exception:
+            pass
 
         for symbol, ohlcv_data in ohlcv_bundle.items():
             if not ohlcv_data or len(ohlcv_data) < 100:
                 logger.debug(f"⏭️  StochasticHeatmapFilter: Skipping {symbol} - insufficient data ({len(ohlcv_data)} bars)")
                 failed_count += 1
+                processed_symbols += 1
+                try:
+                    progress = (processed_symbols / max(1, total_symbols)) * 100.0
+                    self.report_progress(progress, f"{passed_count}/{total_symbols}")
+                except Exception:
+                    pass
                 continue
 
             try:
@@ -216,6 +240,14 @@ class StochasticHeatmapFilter(BaseIndicatorFilter):
                     filtered_bundle[symbol] = ohlcv_data
                     passed_count += 1
                     logger.debug(f"✅ StochasticHeatmapFilter: {symbol} passes ({filter_crossover})")
+                    
+                    # Stop if we've reached the maximum number of symbols
+                    if passed_count >= max_symbols:
+                        logger.info(
+                            f"🔵 StochasticHeatmapFilter: Reached max_symbols limit ({max_symbols}). "
+                            f"Stopping filter processing."
+                        )
+                        break
                 else:
                     failed_count += 1
                     logger.debug(f"⏭️  StochasticHeatmapFilter: {symbol} fails ({filter_crossover})")
@@ -223,12 +255,32 @@ class StochasticHeatmapFilter(BaseIndicatorFilter):
             except Exception as e:
                 logger.error(f"❌ StochasticHeatmapFilter: Error processing {symbol}: {e}", exc_info=True)
                 failed_count += 1
+                processed_symbols += 1
+                try:
+                    progress = (processed_symbols / max(1, total_symbols)) * 100.0
+                    self.report_progress(progress, f"{passed_count}/{total_symbols}")
+                except Exception:
+                    pass
                 continue
+
+            # Advance progress after successful processing
+            processed_symbols += 1
+            try:
+                progress = (processed_symbols / max(1, total_symbols)) * 100.0
+                self.report_progress(progress, f"{passed_count}/{total_symbols}")
+            except Exception:
+                pass
 
         logger.info(
             f"✅ StochasticHeatmapFilter: Completed. Passed: {passed_count}/{total_symbols}, "
             f"Failed: {failed_count}/{total_symbols}"
         )
+
+        # Final status update
+        try:
+            self.report_progress(100.0, f"{passed_count}/{total_symbols}")
+        except Exception:
+            pass
 
         return {"filtered_ohlcv_bundle": filtered_bundle}
 
