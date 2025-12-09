@@ -315,27 +315,31 @@ class FractalResonanceFilter(BaseIndicatorFilter):
                     continue
                 
                 # Require: ALL valid timeframes must be green
-                # STRICT: Require at least min_green_timeframes (8) valid timeframes, and ALL of them must be green
-                # This ensures symbols must have all 8 timeframes with valid data, and all 16 visual rows (8 color + 8 block) must be green
+                # For symbols with full data (8 timeframes), require all 8 to be green (all 16 visual rows)
+                # For symbols with partial data (6-7 timeframes), require ALL of them to be green
+                # This ensures we get the maximum possible green rows for each symbol
                 required_count = valid_timeframes_count  # Require ALL valid timeframes to be green
                 
-                # STRICT MODE: Require at least min_green_timeframes (8) valid timeframes
-                # If there are fewer valid timeframes, the symbol fails (insufficient data)
-                min_required_valid = self.min_green_timeframes  # Require at least 8 valid timeframes
+                # Minimum threshold: Require at least 6 valid timeframes to avoid false positives from limited data
+                # Many symbols don't have enough historical data for 64x/128x timeframes, so we allow 6-7 timeframes
+                # But we still require ALL of them to be green
+                min_required_valid = max(6, self.min_green_timeframes - 2)  # At least 6 valid timeframes (prefer 8)
                 
-                # Skip if we have too few valid timeframes (less than min_green_timeframes)
+                # Skip if we have too few valid timeframes (less than minimum threshold)
                 if valid_timeframes_count < min_required_valid:
                     if len(all_green_bars) == 0:
                         logger.debug(
                             f"❌ FractalResonanceFilter: FAIL - Only {valid_timeframes_count} valid timeframes "
-                            f"(need at least {min_required_valid} = {self.min_green_timeframes} valid timeframes for filter to apply)"
+                            f"(need at least {min_required_valid} valid timeframes, ideal: {self.min_green_timeframes})"
                         )
                     continue
                 
                 if green_count >= required_count:
                     all_green_bars.append(bar_idx)
+                    visual_rows = green_count * 2  # Each timeframe has 2 visual rows (color + block)
                     logger.debug(
-                        f"✅ FractalResonanceFilter: PASS - Symbol has ALL 16 rows green ({green_count}/{valid_timeframes_count} timeframes) "
+                        f"✅ FractalResonanceFilter: PASS - Symbol has ALL {visual_rows} visual rows green "
+                        f"({green_count}/{valid_timeframes_count} timeframes, {green_count*2} visual rows) "
                         f"at bar {bar_idx} (color rows green AND block rows NOT white/embedded)"
                     )
                 else:
