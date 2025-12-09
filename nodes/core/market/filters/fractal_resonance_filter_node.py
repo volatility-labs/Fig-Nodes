@@ -299,7 +299,7 @@ class FractalResonanceFilter(BaseIndicatorFilter):
                         green_count += 1
                     else:
                         if not is_color_green:
-                            failed_timeframes.append(f"WT{tm}(a={a_val:.2f}<=b={b_val:.2f})")
+                        failed_timeframes.append(f"WT{tm}(a={a_val:.2f}<=b={b_val:.2f})")
                         elif not is_block_green:
                             failed_timeframes.append(f"WT{tm}(embedded:{block_color})")
                 
