@@ -498,7 +498,7 @@ class FractalResonanceFilter(BaseIndicatorFilter):
                 failed_count += 1
                 try:
                     progress = (processed_symbols / max(1, total_symbols)) * 100.0
-                    self.report_progress(progress, f"{processed_symbols}/{total_symbols}")
+                    self.report_progress(progress, f"{passed_count}/{total_symbols}")
                 except Exception:
                     pass
                 continue
@@ -518,7 +518,7 @@ class FractalResonanceFilter(BaseIndicatorFilter):
                 processed_symbols += 1
                 try:
                     progress = (processed_symbols / max(1, total_symbols)) * 100.0
-                    self.report_progress(progress, f"{processed_symbols}/{total_symbols}")
+                    self.report_progress(progress, f"{passed_count}/{total_symbols}")
                 except Exception:
                     pass
                 continue
@@ -527,7 +527,7 @@ class FractalResonanceFilter(BaseIndicatorFilter):
             processed_symbols += 1
             try:
                 progress = (processed_symbols / max(1, total_symbols)) * 100.0
-                self.report_progress(progress, f"{processed_symbols}/{total_symbols}")
+                self.report_progress(progress, f"{passed_count}/{total_symbols}")
             except Exception:
                 pass
 
