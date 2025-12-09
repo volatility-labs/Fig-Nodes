@@ -315,20 +315,20 @@ class FractalResonanceFilter(BaseIndicatorFilter):
                     continue
                 
                 # Require: ALL valid timeframes must be green
-                # For symbols with full data (8 timeframes), this means all 8 must be green
-                # For symbols with partial data (e.g., 4 timeframes), all 4 must be green
+                # STRICT: Require at least min_green_timeframes (8) valid timeframes, and ALL of them must be green
+                # This ensures symbols must have all 8 timeframes with valid data, and all 16 visual rows (8 color + 8 block) must be green
                 required_count = valid_timeframes_count  # Require ALL valid timeframes to be green
                 
-                # Minimum threshold: require at least 3-4 valid timeframes (to avoid false positives from very limited data)
-                # But be flexible: if symbol has fewer than min_green_timeframes but at least 3-4, still allow it if all are green
-                min_required_valid = max(3, min(4, self.min_green_timeframes - 2))  # At least 3-4, but prefer min_green_timeframes
+                # STRICT MODE: Require at least min_green_timeframes (8) valid timeframes
+                # If there are fewer valid timeframes, the symbol fails (insufficient data)
+                min_required_valid = self.min_green_timeframes  # Require at least 8 valid timeframes
                 
-                # Skip if we have too few valid timeframes (less than minimum threshold)
+                # Skip if we have too few valid timeframes (less than min_green_timeframes)
                 if valid_timeframes_count < min_required_valid:
                     if len(all_green_bars) == 0:
                         logger.debug(
                             f"❌ FractalResonanceFilter: FAIL - Only {valid_timeframes_count} valid timeframes "
-                            f"(need at least {min_required_valid} for filter to apply, ideal: {self.min_green_timeframes})"
+                            f"(need at least {min_required_valid} = {self.min_green_timeframes} valid timeframes for filter to apply)"
                         )
                     continue
                 
@@ -355,6 +355,7 @@ class FractalResonanceFilter(BaseIndicatorFilter):
             )
             
             # Calculate max green count and valid timeframes for the last bar (for debugging)
+            # IMPORTANT: Must check BOTH color row (wtA > wtB) AND block row (not white) to match filter logic
             max_green_count = 0
             valid_timeframes_at_last_bar = 0
             if check_indices:
@@ -366,12 +367,28 @@ class FractalResonanceFilter(BaseIndicatorFilter):
                     tm_key = str(tm)
                     wt_a_list = wt_a_dict.get(tm_key, [])
                     wt_b_list = wt_b_dict.get(tm_key, [])
+                    block_colors_list = block_colors_dict.get(tm_key, [])
+                    
                     if last_idx < len(wt_a_list) and last_idx < len(wt_b_list):
                         a_val = wt_a_list[last_idx]
                         b_val = wt_b_list[last_idx]
                         if a_val is not None and b_val is not None:
                             valid_count += 1
-                            if a_val > b_val:
+                            
+                            # Check BOTH conditions (same as filter logic):
+                            # 1. Color row must be green (wtA > wtB)
+                            # 2. Block row must NOT be white (not embedded)
+                            is_color_green = a_val > b_val
+                            
+                            # Get block color - handle missing data
+                            if last_idx >= len(block_colors_list):
+                                is_block_green = False
+                            else:
+                                block_color = block_colors_list[last_idx]
+                                # Block is green if it's NOT white (white = embedded)
+                                is_block_green = block_color not in [None, "#ffffff", "#FFFFFF", "white"]
+                            
+                            if is_color_green and is_block_green:
                                 green_count += 1
                 max_green_count = green_count
                 valid_timeframes_at_last_bar = valid_count
