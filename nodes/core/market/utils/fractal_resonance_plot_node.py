@@ -665,7 +665,7 @@ class FractalResonancePlot(Base):
                 elif len(colors_tf) == full_length:
                     # Take the LAST display_length bars (most recent) to match display_closes
                     display_colors[tf] = colors_tf[-display_length:] if display_length <= len(colors_tf) else colors_tf
-                    else:
+                else:
                     # Already matches display length (or shorter) - take last N bars
                     display_colors[tf] = colors_tf[-display_length:] if display_length <= len(colors_tf) else colors_tf
                 
