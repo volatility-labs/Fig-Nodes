@@ -300,7 +300,7 @@ class FractalResonanceFilter(BaseIndicatorFilter):
                         green_count += 1
                     else:
                         if not is_color_green:
-                            failed_timeframes.append(f"WT{tm}(a={a_val:.2f}<=b={b_val:.2f})")
+                        failed_timeframes.append(f"WT{tm}(a={a_val:.2f}<=b={b_val:.2f})")
                         elif not is_block_green:
                             failed_timeframes.append(f"WT{tm}(embedded:{block_color})")
                 
@@ -317,23 +317,12 @@ class FractalResonanceFilter(BaseIndicatorFilter):
                 
                 # Require: ALL valid timeframes must be green
                 # For symbols with full data (8 timeframes), require all 8 to be green (all 16 visual rows)
-                # For symbols with partial data (6-7 timeframes), require ALL of them to be green
-                # This ensures we get the maximum possible green rows for each symbol
+                # For symbols with partial data (1-7 timeframes), require ALL of them to be green
+                # This ensures we get the maximum possible green rows for each symbol, regardless of data availability
                 required_count = valid_timeframes_count  # Require ALL valid timeframes to be green
                 
-                # Minimum threshold: Require at least 6 valid timeframes to avoid false positives from limited data
-                # Many symbols don't have enough historical data for 64x/128x timeframes, so we allow 6-7 timeframes
-                # But we still require ALL of them to be green
-                min_required_valid = max(6, self.min_green_timeframes - 2)  # At least 6 valid timeframes (prefer 8)
-                
-                # Skip if we have too few valid timeframes (less than minimum threshold)
-                if valid_timeframes_count < min_required_valid:
-                    if len(all_green_bars) == 0:
-                        logger.debug(
-                            f"❌ FractalResonanceFilter: FAIL - Only {valid_timeframes_count} valid timeframes "
-                            f"(need at least {min_required_valid} valid timeframes, ideal: {self.min_green_timeframes})"
-                        )
-                    continue
+                # No minimum threshold - if a symbol has limited data but ALL available timeframes are green, it passes
+                # Examples: 1/1 green, 2/2 green, 3/3 green, 4/4 green, ... up to 8/8 green
                 
                 if green_count >= required_count:
                     all_green_bars.append(bar_idx)
