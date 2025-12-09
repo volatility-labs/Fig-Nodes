@@ -745,14 +745,14 @@ class FractalResonancePlot(Base):
             # Encode figure to data URL with high resolution
             try:
                 dpi = int(self.params.get("dpi", 200))  # Reduced from 400 to decrease payload size
-                label = str(sym)  # Use symbol string directly, matching HurstPlot pattern
-                image_data = _encode_fig_to_data_url(fig, dpi=dpi)
-                images[label] = image_data
+            label = str(sym)  # Use symbol string directly, matching HurstPlot pattern
+            image_data = _encode_fig_to_data_url(fig, dpi=dpi)
+            images[label] = image_data
                 logger.debug(f"✅ FractalResonancePlot: Generated chart for {sym}, image size: {len(image_data)} chars, DPI: {dpi}, label: {label}")
-                
-                # Emit partial result so images show up incrementally
+            
+            # Emit partial result so images show up incrementally
                 try:
-                    self.emit_partial_result({"images": {label: image_data}})
+            self.emit_partial_result({"images": {label: image_data}})
                 except Exception as emit_err:
                     logger.error(f"⚠️ FractalResonancePlot: Failed to emit partial result for {sym}: {emit_err}")
                     # Continue anyway - we'll include it in final results
