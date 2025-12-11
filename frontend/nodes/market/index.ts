@@ -28,3 +28,4 @@ export { default as FractalsATRFilterNodeUI } from './FractalsATRFilterNodeUI';
 export { default as FractalDimensionAdaptiveFilterNodeUI } from './FractalDimensionAdaptiveFilterNodeUI';
 export { default as FractalResonanceFilterNodeUI } from './FractalResonanceFilterNodeUI';
 export { default as SymbolQuickPlotNodeUI } from './SymbolQuickPlotNodeUI';
+export { default as MultiIndicatorChartNodeUI } from './MultiIndicatorChartNodeUI';

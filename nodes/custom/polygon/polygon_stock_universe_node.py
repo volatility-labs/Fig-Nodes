@@ -126,7 +126,9 @@ class PolygonStockUniverse(Base):
         if filter_symbols:
             filter_ticker_strings = massive_build_snapshot_tickers(filter_symbols)
 
-        async with httpx.AsyncClient() as client:
+        # Add timeout configuration to prevent hanging requests
+        timeout = httpx.Timeout(30.0, connect=10.0)  # 30s total, 10s connect
+        async with httpx.AsyncClient(timeout=timeout) as client:
             if filter_ticker_strings:
                 filtered_ticker_set = await self._fetch_filtered_tickers_for_list(
                     client, api_key, market, exclude_etfs, filter_ticker_strings

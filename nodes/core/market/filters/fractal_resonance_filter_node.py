@@ -536,7 +536,78 @@ class FractalResonanceFilter(BaseIndicatorFilter):
             f"(out of {total_symbols} total symbols, STRICT MODE: ALL valid timeframes must be green)"
         )
 
-        return {
-            "filtered_ohlcv_bundle": filtered_bundle,
-        }
+        # Output indicator_data if enabled (for MultiIndicatorChart compatibility)
+        result = {"filtered_ohlcv_bundle": filtered_bundle}
+        output_indicator_data = self.params.get("output_indicator_data", self.default_params.get("output_indicator_data", True))
+        
+        if output_indicator_data:
+            # Build indicator_data output for symbols that passed
+            indicator_data_output: dict[str, Any] = {}
+            for symbol, ohlcv_data in filtered_bundle.items():
+                try:
+                    # Calculate indicator for this symbol
+                    indicator_result = self._calculate_indicator(ohlcv_data)
+                    
+                    # Also recalculate to get full FR data for visualization
+                    closes = [bar["close"] for bar in ohlcv_data]
+                    fr_result = calculate_fractal_resonance(
+                        closes=closes,
+                        n1=self.n1,
+                        n2=self.n2,
+                        crossover_sma_len=self.crossover_sma_len,
+                        ob_level=self.ob_level,
+                        ob_embed_level=self.ob_embed_level,
+                        ob_extreme_level=self.ob_extreme_level,
+                        cross_separation=self.cross_separation,
+                    )
+                    
+                    # Convert IndicatorResult to dict format
+                    try:
+                        indicator_dict = indicator_result.to_dict()
+                    except (AttributeError, TypeError):
+                        # Fallback: manually construct dict
+                        indicator_dict = {
+                            "indicator_type": str(indicator_result.indicator_type) if hasattr(indicator_result, 'indicator_type') else "fractal_resonance",
+                            "values": {},
+                            "timestamp": indicator_result.timestamp if hasattr(indicator_result, 'timestamp') else None,
+                            "params": indicator_result.params if hasattr(indicator_result, 'params') else {},
+                        }
+                        if hasattr(indicator_result, 'values'):
+                            values = indicator_result.values
+                            if hasattr(values, 'to_dict'):
+                                indicator_dict["values"] = values.to_dict()
+                            else:
+                                indicator_dict["values"] = {
+                                    "single": getattr(values, 'single', None),
+                                    "lines": getattr(values, 'lines', {}),
+                                    "series": getattr(values, 'series', []),
+                                }
+                    
+                    # Include full FR bar data for visualization
+                    indicator_dict["fr_bar_data"] = {
+                        "colors": fr_result.get("colors", {}),
+                        "block_colors": fr_result.get("block_colors", {}),
+                    }
+                    
+                    indicator_data_output[str(symbol)] = indicator_dict
+                except Exception as e:
+                    logger.debug(f"FractalResonanceFilter: Failed to build indicator_data for {symbol}: {e}")
+            
+            result["indicator_data"] = indicator_data_output
+        else:
+            result["indicator_data"] = {}
+        
+        import sys
+        print(f"\n{'='*60}", file=sys.stderr)
+        print(f"BaseIndicatorFilter (FractalResonanceFilter, node_id={self.id}) EXECUTING", file=sys.stderr)
+        print(f"{'='*60}", file=sys.stderr)
+        print(f"  output_indicator_data param: {output_indicator_data}", file=sys.stderr)
+        print(f"  filtered_bundle size: {len(filtered_bundle)}", file=sys.stderr)
+        print(f"  indicator_data_output size: {len(result.get('indicator_data', {}))}", file=sys.stderr)
+        if result.get("indicator_data"):
+            print(f"  ✓ Outputting indicator_data with {len(result['indicator_data'])} symbols", file=sys.stderr)
+        print(f"  Final result keys: {list(result.keys())}", file=sys.stderr)
+        print(f"{'='*60}\n", file=sys.stderr)
+        
+        return result
 

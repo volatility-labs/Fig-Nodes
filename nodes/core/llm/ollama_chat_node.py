@@ -5,6 +5,7 @@ import asyncio
 import random
 import httpx
 import sys
+import re
 from nodes.base.base_node import Base
 import subprocess as sp
 
@@ -78,6 +79,8 @@ class OllamaChat(Base):
         "tool_timeout_s": 10,
         "host": os.getenv("OLLAMA_HOST", "http://localhost:11434"),
         "selected_model": "",
+        # Trading analysis ranking
+        "ranking_mode": "bullish",  # bullish | bearish
     }
 
     # Update params_meta:
@@ -91,6 +94,7 @@ class OllamaChat(Base):
         {"name": "seed_mode", "type": "combo", "default": "fixed", "options": ["fixed", "random", "increment"]},
         {"name": "think", "type": "combo", "default": False, "options": [False, True]},
         {"name": "json_mode", "type": "combo", "default": False, "options": [False, True]},
+        {"name": "ranking_mode", "type": "combo", "default": "bullish", "options": ["bullish", "bearish"], "label": "Ranking Mode", "description": "For trading analysis: rank by bullish (most bullish first) or bearish (most bearish first)"},
  
     ]
 
@@ -235,22 +239,30 @@ class OllamaChat(Base):
             
             # If multiple images are present, always prepend a note about the number of images
             # to ensure all are processed and returned as an array
+            print(f"OllamaChatNode: Checking multi-image condition - image_count={image_count}, content_text_length={len(content_text) if content_text else 0}, content_text_bool={bool(content_text)}", file=sys.stderr)
             if image_count > 1 and content_text:
                 # Check if prompt already mentions the count explicitly
                 already_mentions_count = str(image_count) in content_text
+                print(f"OllamaChatNode: Condition met! already_mentions_count={already_mentions_count}", file=sys.stderr)
                 
                 # Always prepend the note when multiple images are present
                 # Make it more explicit and forceful to ensure all images are processed
                 if not already_mentions_count:
-                    image_note = f"""⚠️ CRITICAL INSTRUCTION: You are receiving {image_count} images total.
+                    image_numbers = ", ".join([f"Image {i+1}" for i in range(image_count)])
+                    object_placeholders = ", ".join([f"object{i+1}" for i in range(image_count)])
+                    json_example = ", ".join([f'{{"symbol": "...", ...}}' for _ in range(image_count)])
+                    
+                    image_note = f"""⚠️ CRITICAL INSTRUCTION: You are receiving {image_count} images total ({image_numbers}).
 
 YOU MUST:
-1. Process ALL {image_count} images (do not skip any)
-2. Return a JSON array with EXACTLY {image_count} objects
-3. Format: [{{"symbol": "...", ...}}, {{"symbol": "...", ...}}, ...] (exactly {image_count} objects)
-4. One object per image - analyze each image separately
+1. Process ALL {image_count} images in order ({image_numbers}) - do not skip any
+2. Analyze EACH image separately and create one JSON object per image
+3. Return a JSON array with EXACTLY {image_count} objects: [{object_placeholders}]
+4. Format: [{json_example}]
+5. The array MUST start with [ and end with ]
+6. Do NOT return a single object - you MUST return an array with {image_count} objects
 
-The response MUST be a JSON array starting with [ and ending with ], containing exactly {image_count} objects. Do not return a single object.
+CRITICAL: If you return only one object instead of an array with {image_count} objects, your response is INCORRECT.
 
 """
                     print(f"OllamaChatNode: Detected {image_count} images - prepended CRITICAL instruction to process all images and return JSON array", file=sys.stderr)
@@ -264,9 +276,96 @@ Format: [{{...}}, {{...}}, ...] with {image_count} objects total.
 """
                     print(f"OllamaChatNode: Detected {image_count} images (count already mentioned) - prepended REMINDER to return JSON array", file=sys.stderr)
                 
+                # Also modify the example in the prompt if it contains an array example
+                # Replace "[{...}, ...]" patterns with explicit count
+                # Look for array examples like "[{...}, ...]" (handles multi-line)
+                array_pattern = r'\[\s*\{[^}]*\}[,\s]*\.\.\.\s*\]'
+                if re.search(array_pattern, content_text, re.MULTILINE | re.DOTALL):
+                    # Replace the example to show exact count
+                    example_replacement = f"[{{...}}, {{...}}" + (", ..." if image_count > 2 else "") + f"]  # MUST contain exactly {image_count} objects"
+                    content_text = re.sub(array_pattern, example_replacement, content_text, count=1, flags=re.MULTILINE | re.DOTALL)
+                    print(f"OllamaChatNode: Modified array example in prompt to show {image_count} objects", file=sys.stderr)
+                
+                # Also look for multi-line array examples with newlines
+                multiline_array_pattern = r'\[\s*\n\s*\{[^}]*\}[,\s]*\n\s*\.\.\.\s*\n\s*\]'
+                if re.search(multiline_array_pattern, content_text, re.MULTILINE | re.DOTALL):
+                    # Create a multi-line example showing the exact count
+                    example_objects = ",\n  ".join(["{...}"] * min(image_count, 3))
+                    if image_count > 3:
+                        example_objects += f",\n  ...  # ({image_count} objects total)"
+                    example_replacement = f"[\n  {example_objects}\n]  # MUST contain exactly {image_count} objects"
+                    content_text = re.sub(multiline_array_pattern, example_replacement, content_text, count=1, flags=re.MULTILINE | re.DOTALL)
+                    print(f"OllamaChatNode: Modified multi-line array example in prompt to show {image_count} objects", file=sys.stderr)
+                
                 content_text = image_note + content_text
-                print(f"OllamaChatNode: Detected {image_count} images - prepended instruction to process all images and return JSON array", file=sys.stderr)
+                
+                # Also append a reminder at the end to reinforce the instruction
+                reminder_note = f"\n\n⚠️ FINAL REMINDER: You received {image_count} images ({', '.join([f'Image {i+1}' for i in range(image_count)])}). You MUST return a JSON array with EXACTLY {image_count} objects, one per image. The array must start with [ and end with ]. Do NOT return a single object - return [{', '.join([f'object{i+1}' for i in range(image_count)])}]."
+                content_text = content_text + reminder_note
+                
+                # Detect trading/momentum analysis prompts and add ranking/formatting instructions
+                is_trading_analysis = (
+                    "momentum trader" in content_text.lower() or
+                    "rainbow" in content_text.lower() or
+                    "rainbow_bias" in content_text.lower() or
+                    "bullish" in content_text.lower() or
+                    "bearish" in content_text.lower()
+                )
+                
+                if is_trading_analysis and image_count > 1:
+                    # Get ranking mode from params
+                    try:
+                        ranking_mode = str(self.params.get("ranking_mode", "bullish")).lower()
+                        print(f"OllamaChatNode: Retrieved ranking_mode from params: {ranking_mode}", file=sys.stderr)
+                    except Exception as e:
+                        print(f"OllamaChatNode: Error accessing ranking_mode from params: {e}, using default 'bullish'", file=sys.stderr)
+                        ranking_mode = "bullish"
+                    is_bullish_mode = ranking_mode == "bullish"
+                    rank_direction = "bullish" if is_bullish_mode else "bearish"
+                    rank_field = "bullish_rank" if is_bullish_mode else "bearish_rank"
+                    top_3_field = "top_3_bullish" if is_bullish_mode else "top_3_bearish"
+                    rank_description = "most bullish first, most bearish last" if is_bullish_mode else "most bearish first, most bullish last"
+                    
+                    ranking_instructions = f"""
 
+📊 OUTPUT FORMATTING REQUIREMENTS:
+
+After analyzing all {image_count} images, you MUST:
+
+1. RANK all symbols by {rank_direction}ness ({rank_description})
+2. Add a "{rank_field}" field to each object (1 = most {rank_direction}, {image_count} = least {rank_direction})
+3. Add a summary section at the END of your response with the top 3 most {rank_direction} symbols
+
+OUTPUT FORMAT:
+{{
+  "results": [
+    {{"symbol": "...", "rainbow_bias": "...", "{rank_field}": 1, ...}},
+    {{"symbol": "...", "rainbow_bias": "...", "{rank_field}": 2, ...}},
+    ...
+  ],
+  "{top_3_field}": [
+    {{"symbol": "...", "rainbow_bias": "...", "confidence": ..., "visual_thesis": "..."}},
+    {{"symbol": "...", "rainbow_bias": "...", "confidence": ..., "visual_thesis": "..."}},
+    {{"symbol": "...", "rainbow_bias": "...", "confidence": ..., "visual_thesis": "..."}}
+  ]
+}}
+
+RANKING LOGIC ({rank_direction.upper()} MODE):
+- {"Strongest bullish first" if is_bullish_mode else "Strongest bearish first"}
+- "strong bullish" > "mild bullish" > "neutral" > "mild bearish" > "strong bearish"
+- Within same bias level, rank by confidence ({"higher = more bullish" if is_bullish_mode else "higher = more bearish"})
+- Green colors (lime green, dark green, teal) = bullish
+- Red/brown colors (hot pink, deep red, brown) = bearish
+- White stripes reduce bullishness (caution signal)
+
+CRITICAL: Sort the results array by {rank_field} (1 to {image_count}) and include the {top_3_field} summary.
+"""
+                    content_text = content_text + ranking_instructions
+                    print(f"OllamaChatNode: Detected trading analysis prompt - added ranking and formatting instructions (mode: {rank_direction})", file=sys.stderr)
+                
+                print(f"OllamaChatNode: Final content length after prepending and appending: {len(content_text)} chars", file=sys.stderr)
+                print(f"OllamaChatNode: Content preview (first 500 chars): {content_text[:500]}", file=sys.stderr)
+            
             user_message: Dict[str, Any] = {
                 "role": "user",
                 "content": content_text
@@ -720,6 +819,17 @@ Format: [{{...}}, {{...}}, ...] with {image_count} objects total.
         prompt_text: Optional[str] = inputs.get("prompt")
         system_input: Optional[Any] = inputs.get("system")
         images: Optional[ConfigDict] = inputs.get("images")
+        
+        # Debug: Check what we received
+        print(f"OllamaChatNode: Input keys received: {list(inputs.keys())}", file=sys.stderr)
+        print(f"OllamaChatNode: images input type: {type(images)}, value: {images}", file=sys.stderr)
+        if images:
+            print(f"OllamaChatNode: images dict keys: {list(images.keys())[:5] if isinstance(images, dict) else 'not a dict'}", file=sys.stderr)
+            if isinstance(images, dict) and images:
+                sample_key = list(images.keys())[0]
+                sample_value = images[sample_key]
+                print(f"OllamaChatNode: Sample image value type: {type(sample_value)}, starts with data:image/: {str(sample_value)[:11] if isinstance(sample_value, str) else 'N/A'}", file=sys.stderr)
+        
         print(f"OllamaChatNode: Building messages - prompt_length={len(prompt_text) if prompt_text else 0}, has_images={bool(images)}, images_count={len(images) if images else 0}", file=sys.stderr)
         messages: List[Dict[str, Any]] = self._build_messages(raw_messages, prompt_text, system_input, images)
         tools: List[Dict[str, Any]] = self._collect_tools(inputs)
@@ -787,69 +897,148 @@ Format: [{{...}}, {{...}}, ...] with {image_count} objects total.
                 client = AsyncClient(host=host)
                 self._client = client
 
-                # Cooperative cancellation for non-streaming execute()
-                try:
-                    print(f"OllamaChatNode: Calling Ollama API with model={model}, messages_count={len(messages)}, format={fmt}, think={think}", file=sys.stderr)
-                    logger.debug(f"OllamaChatNode: Calling Ollama API with model={model}, messages_count={len(messages)}, format={fmt}, think={think}")
-                    chat_task = asyncio.create_task(client.chat(
-                        model=model,
-                        messages=messages,
-                        tools=None,
-                        stream=False,
-                        format=fmt,
-                        options=options,
-                        keep_alive=keep_alive,
-                        think=think,
-                    ))
-                    print(f"OllamaChatNode: API call task created, waiting for response...", file=sys.stderr)
-                    cancel_wait = asyncio.create_task(self._cancel_event.wait())
-                    done, pending = await asyncio.wait({chat_task, cancel_wait}, return_when=asyncio.FIRST_COMPLETED)
-                    if cancel_wait in done and chat_task not in done:
+                # Sequential processing for multiple images with JSON mode
+                # Some vision models struggle with processing multiple images at once
+                image_count = len(images) if images and isinstance(images, dict) else 0
+                if image_count > 1 and fmt == "json" and images:
+                    print(f"OllamaChatNode: Detected {image_count} images with JSON mode - using sequential processing for reliability", file=sys.stderr)
+                    results = []
+                    for i, (img_key, img_data) in enumerate(images.items()):
+                        print(f"OllamaChatNode: Processing image {i+1}/{image_count} ({img_key})", file=sys.stderr)
+                        single_image = {img_key: img_data}
+                        single_image_messages = self._build_messages(raw_messages, prompt_text, system_input, single_image)
                         try:
-                            chat_task.cancel()
-                        except Exception:
-                            pass
-                        try:
-                            await asyncio.wait({chat_task}, timeout=0.05)
-                        except Exception:
-                            pass
-                        try:
-                            await client.close()
-                        except Exception:
-                            pass
-                        try:
-                            self._unload_model_via_cli()
-                        except Exception:
-                            pass
-                        self._client = None
-                        raise asyncio.CancelledError()
-                    resp = await chat_task
-                    print(f"OllamaChatNode: Received response from Ollama, resp type: {type(resp)}, keys: {list(resp.keys()) if isinstance(resp, dict) else 'not a dict'}", file=sys.stderr)
-                    if hasattr(resp, '__dict__'):
-                        print(f"OllamaChatNode: Response attributes: {list(resp.__dict__.keys())}", file=sys.stderr)
-                        # Check done status and done_reason
-                        if hasattr(resp, 'done'):
-                            print(f"OllamaChatNode: Response done status: {resp.done}", file=sys.stderr)
-                        if hasattr(resp, 'done_reason'):
-                            print(f"OllamaChatNode: Response done_reason: {resp.done_reason}", file=sys.stderr)
-                    if hasattr(resp, 'message'):
-                        msg_obj = resp.message
-                        if hasattr(msg_obj, '__dict__'):
-                            print(f"OllamaChatNode: Message object attributes: {list(msg_obj.__dict__.keys())}", file=sys.stderr)
-                            if hasattr(msg_obj, 'content'):
-                                content_val = getattr(msg_obj, 'content', None)
-                                print(f"OllamaChatNode: Message content type: {type(content_val)}, length: {len(str(content_val)) if content_val else 0}, preview: {str(content_val)[:200] if content_val else 'None'}...", file=sys.stderr)
-                            if hasattr(msg_obj, 'thinking'):
-                                thinking_val = getattr(msg_obj, 'thinking', None)
-                                print(f"OllamaChatNode: Message thinking type: {type(thinking_val)}, length: {len(str(thinking_val)) if thinking_val else 0}, preview: {str(thinking_val)[:200] if thinking_val else 'None'}...", file=sys.stderr)
-                    logger.debug(f"OllamaChatNode: Received response from Ollama, resp keys: {list(resp.keys()) if isinstance(resp, dict) else 'not a dict'}")
-                except Exception as chat_err:
-                    import traceback
-                    print(f"OllamaChatNode: Chat API call failed: {type(chat_err).__name__}: {chat_err}", file=sys.stderr)
-                    print(f"OllamaChatNode: Traceback:\n{traceback.format_exc()}", file=sys.stderr)
-                    logger.error(f"OllamaChatNode: Chat API call failed: {type(chat_err).__name__}: {chat_err}")
-                    logger.error(f"OllamaChatNode: Traceback:\n{traceback.format_exc()}")
-                    raise
+                            single_resp = await client.chat(
+                                model=model,
+                                messages=single_image_messages,
+                                tools=None,
+                                stream=False,
+                                format=fmt,
+                                options=options,
+                                keep_alive=keep_alive,
+                                think=think,
+                            )
+                            if hasattr(single_resp, 'message'):
+                                single_message = single_resp.message
+                                single_content = getattr(single_message, 'content', '') if hasattr(single_message, 'content') else str(single_message)
+                            elif isinstance(single_resp, dict):
+                                single_message = single_resp.get('message', {})
+                                single_content = single_message.get('content', '') if isinstance(single_message, dict) else str(single_message)
+                            else:
+                                single_content = str(single_resp)
+                            
+                            # Parse JSON from single response
+                            try:
+                                import json
+                                parsed = json.loads(single_content) if isinstance(single_content, str) else single_content
+                                if isinstance(parsed, dict):
+                                    # Add symbol tracking: ensure image_key is set to the actual symbol from the image key
+                                    parsed["image_key"] = img_key
+                                    # If model didn't detect a symbol or detected a different one, add both
+                                    detected_symbol = parsed.get("symbol", "unknown")
+                                    if "symbol" not in parsed or detected_symbol != img_key:
+                                        parsed["detected_symbol"] = detected_symbol
+                                        parsed["symbol"] = img_key  # Use the actual symbol from image key
+                                        print(f"OllamaChatNode: Symbol correction - image_key={img_key}, detected_symbol={detected_symbol}, using image_key as symbol", file=sys.stderr)
+                                    results.append(parsed)
+                                elif isinstance(parsed, list) and parsed:
+                                    # If it's a list, add image_key to each item
+                                    for item in parsed:
+                                        if isinstance(item, dict):
+                                            item["image_key"] = img_key
+                                            detected_symbol = item.get("symbol", "unknown")
+                                            if "symbol" not in item or detected_symbol != img_key:
+                                                item["detected_symbol"] = detected_symbol
+                                                item["symbol"] = img_key
+                                                print(f"OllamaChatNode: Symbol correction in list - image_key={img_key}, detected_symbol={detected_symbol}, using image_key as symbol", file=sys.stderr)
+                                    results.extend(parsed)
+                                else:
+                                    # Wrap non-dict results with symbol tracking
+                                    results.append({"content": parsed, "image_key": img_key, "symbol": img_key})
+                            except json.JSONDecodeError:
+                                # If not JSON, wrap in dict with symbol tracking
+                                results.append({"content": single_content, "image_index": i, "image_key": img_key, "symbol": img_key})
+                        except Exception as img_err:
+                            print(f"OllamaChatNode: Error processing image {i+1} ({img_key}): {img_err}", file=sys.stderr)
+                            results.append({"error": f"Failed to process image {i+1}: {str(img_err)}", "image_index": i, "image_key": img_key, "symbol": img_key})
+                    
+                    # Create combined response
+                    combined_content = json.dumps(results) if results else "[]"
+                    resp = type('Response', (), {
+                        'message': type('Message', (), {
+                            'role': 'assistant',
+                            'content': combined_content,
+                            'thinking': None
+                        })(),
+                        'done': True,
+                        'done_reason': 'stop'
+                    })()
+                    print(f"OllamaChatNode: Sequential processing complete - combined {len(results)} results into array", file=sys.stderr)
+                else:
+                    # Original single API call for non-multi-image cases
+                    # Cooperative cancellation for non-streaming execute()
+                    try:
+                        print(f"OllamaChatNode: Calling Ollama API with model={model}, messages_count={len(messages)}, format={fmt}, think={think}", file=sys.stderr)
+                        logger.debug(f"OllamaChatNode: Calling Ollama API with model={model}, messages_count={len(messages)}, format={fmt}, think={think}")
+                        chat_task = asyncio.create_task(client.chat(
+                            model=model,
+                            messages=messages,
+                            tools=None,
+                            stream=False,
+                            format=fmt,
+                            options=options,
+                            keep_alive=keep_alive,
+                            think=think,
+                        ))
+                        print(f"OllamaChatNode: API call task created, waiting for response...", file=sys.stderr)
+                        cancel_wait = asyncio.create_task(self._cancel_event.wait())
+                        done, pending = await asyncio.wait({chat_task, cancel_wait}, return_when=asyncio.FIRST_COMPLETED)
+                        if cancel_wait in done and chat_task not in done:
+                            try:
+                                chat_task.cancel()
+                            except Exception:
+                                pass
+                            try:
+                                await asyncio.wait({chat_task}, timeout=0.05)
+                            except Exception:
+                                pass
+                            try:
+                                await client.close()
+                            except Exception:
+                                pass
+                            try:
+                                self._unload_model_via_cli()
+                            except Exception:
+                                pass
+                            self._client = None
+                            raise asyncio.CancelledError()
+                        resp = await chat_task
+                        print(f"OllamaChatNode: Received response from Ollama, resp type: {type(resp)}, keys: {list(resp.keys()) if isinstance(resp, dict) else 'not a dict'}", file=sys.stderr)
+                        if hasattr(resp, '__dict__'):
+                            print(f"OllamaChatNode: Response attributes: {list(resp.__dict__.keys())}", file=sys.stderr)
+                            # Check done status and done_reason
+                            if hasattr(resp, 'done'):
+                                print(f"OllamaChatNode: Response done status: {resp.done}", file=sys.stderr)
+                            if hasattr(resp, 'done_reason'):
+                                print(f"OllamaChatNode: Response done_reason: {resp.done_reason}", file=sys.stderr)
+                        if hasattr(resp, 'message'):
+                            msg_obj = resp.message
+                            if hasattr(msg_obj, '__dict__'):
+                                print(f"OllamaChatNode: Message object attributes: {list(msg_obj.__dict__.keys())}", file=sys.stderr)
+                                if hasattr(msg_obj, 'content'):
+                                    content_val = getattr(msg_obj, 'content', None)
+                                    print(f"OllamaChatNode: Message content type: {type(content_val)}, length: {len(str(content_val)) if content_val else 0}, preview: {str(content_val)[:200] if content_val else 'None'}...", file=sys.stderr)
+                                if hasattr(msg_obj, 'thinking'):
+                                    thinking_val = getattr(msg_obj, 'thinking', None)
+                                    print(f"OllamaChatNode: Message thinking type: {type(thinking_val)}, length: {len(str(thinking_val)) if thinking_val else 0}, preview: {str(thinking_val)[:200] if thinking_val else 'None'}...", file=sys.stderr)
+                        logger.debug(f"OllamaChatNode: Received response from Ollama, resp keys: {list(resp.keys()) if isinstance(resp, dict) else 'not a dict'}")
+                    except Exception as chat_err:
+                        import traceback
+                        print(f"OllamaChatNode: Chat API call failed: {type(chat_err).__name__}: {chat_err}", file=sys.stderr)
+                        print(f"OllamaChatNode: Traceback:\n{traceback.format_exc()}", file=sys.stderr)
+                        logger.error(f"OllamaChatNode: Chat API call failed: {type(chat_err).__name__}: {chat_err}")
+                        logger.error(f"OllamaChatNode: Traceback:\n{traceback.format_exc()}")
+                        raise
 
             if tools:
                 resp = tool_rounds_info.get("last_response") or {}
@@ -941,6 +1130,46 @@ Format: [{{...}}, {{...}}, ...] with {image_count} objects total.
             
             self._ensure_assistant_role_inplace(final_message)
             self._parse_content_if_json_mode(final_message, metrics)
+            
+            # Post-process trading analysis results: rank by bullishness and add summary
+            print(f"OllamaChatNode: About to call _post_process_trading_analysis - prompt_text={bool(prompt_text)}, images={bool(images)}", file=sys.stderr)
+            try:
+                self._post_process_trading_analysis(final_message, images, prompt_text)
+                print(f"OllamaChatNode: _post_process_trading_analysis completed successfully", file=sys.stderr)
+            except Exception as e:
+                import traceback
+                print(f"OllamaChatNode: Error in _post_process_trading_analysis: {type(e).__name__}: {str(e)}", file=sys.stderr)
+                print(f"OllamaChatNode: Traceback:\n{traceback.format_exc()}", file=sys.stderr)
+                # Don't fail the whole execution if post-processing fails
+                pass
+            
+            # Check if multiple images were sent but only a single object was returned
+            # Note: This check happens after post-processing, so content might be formatted as {"results": [...], "top_3_bullish": [...]}
+            if images and isinstance(images, dict):
+                image_count = len(images)
+                if image_count > 1:
+                    content = final_message.get("content")
+                    
+                    # Skip check if content is post-processed format (has "results" key) - post-processing already handled validation
+                    if isinstance(content, dict) and "results" in content:
+                        # Post-processed format - already validated by post-processing, skip this check
+                        pass
+                    elif isinstance(content, dict) and not isinstance(content, list):
+                        # Single object returned when array expected (not post-processed format)
+                        warning_msg = f"WARNING: {image_count} images were sent, but the model returned a single JSON object instead of an array with {image_count} objects. The model may not have processed all images."
+                        print(f"OllamaChatNode: {warning_msg}", file=sys.stderr)
+                        logger.warning(f"OllamaChatNode: {warning_msg}")
+                        metrics["array_warning"] = warning_msg
+                        # Wrap the single object in an array for consistency
+                        final_message["content"] = [content]
+                        print(f"OllamaChatNode: Wrapped single object in array for consistency", file=sys.stderr)
+                    elif isinstance(content, list):
+                        if len(content) != image_count:
+                            warning_msg = f"WARNING: {image_count} images were sent, but the model returned an array with {len(content)} objects instead of {image_count}."
+                            print(f"OllamaChatNode: {warning_msg}", file=sys.stderr)
+                            logger.warning(f"OllamaChatNode: {warning_msg}")
+                            metrics["array_warning"] = warning_msg
+            
             self._parse_tool_calls_from_message(final_message)
 
             self._update_metrics_from_source(metrics, resp)
@@ -968,10 +1197,142 @@ Format: [{{...}}, {{...}}, ...] with {image_count} objects total.
         except Exception as e:
             import traceback
             error_msg = f"{type(e).__name__}: {str(e)}"
+            print(f"OllamaChatNode: Execution failed - {error_msg}", file=sys.stderr)
+            print(f"OllamaChatNode: Full traceback:\n{traceback.format_exc()}", file=sys.stderr)
             logger.error(f"OllamaChatNode: Execution failed - {error_msg}")
             logger.error(f"OllamaChatNode: Full traceback:\n{traceback.format_exc()}")
             error_message = {"role": "assistant", "content": ""}
             return {"message": error_message, "metrics": {"error": error_msg}, "tool_history": [], "thinking_history": []}
+
+    def _post_process_trading_analysis(self, message: Dict[str, Any], images: Optional[ConfigDict], prompt_text: Optional[str]) -> None:
+        """Post-process trading analysis results: rank by bullishness or bearishness and add summary."""
+        print(f"OllamaChatNode: _post_process_trading_analysis called - prompt_text={bool(prompt_text)}, images={bool(images)}", file=sys.stderr)
+        # Check if this is a trading analysis prompt
+        is_trading_analysis = (
+            prompt_text and (
+                "momentum trader" in prompt_text.lower() or
+                "rainbow_bias" in prompt_text.lower() or
+                "bullish" in prompt_text.lower()
+            )
+        )
+        
+        print(f"OllamaChatNode: is_trading_analysis={is_trading_analysis}", file=sys.stderr)
+        if not is_trading_analysis:
+            print(f"OllamaChatNode: Not a trading analysis prompt, skipping post-processing", file=sys.stderr)
+            return
+        
+        # Get ranking mode from params
+        ranking_mode = str(self.params.get("ranking_mode", "bullish")).lower()
+        is_bullish_mode = ranking_mode == "bullish"
+        rank_direction = "bullish" if is_bullish_mode else "bearish"
+        rank_field = "bullish_rank" if is_bullish_mode else "bearish_rank"
+        top_3_field = "top_3_bullish" if is_bullish_mode else "top_3_bearish"
+        
+        content = message.get("content")
+        
+        # Try to parse if it's a string
+        if isinstance(content, str):
+            try:
+                content = json.loads(content)
+            except (json.JSONDecodeError, ValueError):
+                return
+        
+        if not isinstance(content, (list, dict)):
+            return
+        
+        # Extract results array
+        results = []
+        if isinstance(content, dict):
+            # Check if it already has a results field
+            if "results" in content:
+                results = content["results"]
+            elif top_3_field in content or "top_3_bullish" in content or "top_3_bearish" in content:
+                # Already formatted, skip
+                return
+            else:
+                # Assume the dict itself is a single result, or try to extract array
+                results = [content] if isinstance(content, dict) and "symbol" in content else []
+        elif isinstance(content, list):
+            results = content
+        
+        if not results or not isinstance(results, list):
+            return
+        
+        # Check if results have trading analysis fields
+        if not any(isinstance(r, dict) and "rainbow_bias" in r for r in results):
+            return
+        
+        print(f"OllamaChatNode: Post-processing {len(results)} trading analysis results - ranking by {rank_direction}ness", file=sys.stderr)
+        
+        # Define bias scoring (same for both modes, we'll invert for bearish)
+        bias_scores = {
+            "strong bullish": 5,
+            "mild bullish": 4,
+            "neutral": 3,
+            "mild bearish": 2,
+            "strong bearish": 1
+        }
+        
+        # Score and rank each result
+        scored_results = []
+        for i, result in enumerate(results):
+            if not isinstance(result, dict):
+                continue
+            
+            bias = str(result.get("rainbow_bias", "neutral")).lower()
+            confidence = result.get("confidence", 50)
+            white_stripe = result.get("white_stripe_warning", False)
+            
+            # Calculate base score
+            base_score = bias_scores.get(bias, 3)
+            # Adjust by confidence (higher confidence = higher score)
+            confidence_adjustment = (confidence - 50) / 100.0
+            # White stripes reduce bullishness (or increase bearishness)
+            stripe_penalty = -0.5 if white_stripe else 0
+            
+            score = base_score + confidence_adjustment + stripe_penalty
+            
+            # For bearish mode, invert the score (we want most bearish first)
+            if not is_bullish_mode:
+                score = 6 - score  # Invert: 5 becomes 1, 1 becomes 5
+            
+            scored_results.append({
+                "result": result,
+                "score": score,
+                "index": i
+            })
+        
+        # Sort by score (highest first for bullish, highest first for bearish after inversion)
+        scored_results.sort(key=lambda x: x["score"], reverse=True)
+        
+        # Add rank field to each result
+        for rank, scored in enumerate(scored_results, start=1):
+            scored["result"][rank_field] = rank
+        
+        # Extract top 3
+        top_3 = []
+        for scored in scored_results[:3]:
+            result = scored["result"]
+            top_3.append({
+                "symbol": result.get("symbol", "unknown"),
+                "rainbow_bias": result.get("rainbow_bias", "neutral"),
+                "confidence": result.get("confidence", 50),
+                "visual_thesis": result.get("visual_thesis", ""),
+                rank_field: result.get(rank_field, 999)
+            })
+        
+        # Reconstruct results array in ranked order
+        ranked_results = [scored["result"] for scored in scored_results]
+        
+        # Format output with summary
+        formatted_output = {
+            "results": ranked_results,
+            top_3_field: top_3,
+            "total_analyzed": len(ranked_results)
+        }
+        
+        message["content"] = formatted_output
+        print(f"OllamaChatNode: Post-processing complete - ranked {len(ranked_results)} results by {rank_direction}ness, top 3: {[r.get('symbol') for r in top_3]}", file=sys.stderr)
 
     def _parse_content_if_json_mode(self, message: Dict[str, Any], metrics: Dict[str, Any]) -> None:
         if bool(self.params.get("json_mode", False)):

@@ -282,5 +282,77 @@ class StochasticHeatmapFilter(BaseIndicatorFilter):
         except Exception:
             pass
 
-        return {"filtered_ohlcv_bundle": filtered_bundle}
+        # Output indicator_data if enabled (for MultiIndicatorChart compatibility)
+        result: Dict[str, Any] = {"filtered_ohlcv_bundle": filtered_bundle}
+        output_indicator_data = self.params.get("output_indicator_data", self.default_params.get("output_indicator_data", True))
+        
+        if output_indicator_data:
+            # Build indicator_data output for symbols that passed
+            indicator_data_output: Dict[str, Any] = {}
+            for symbol, ohlcv_data in filtered_bundle.items():
+                try:
+                    # Calculate indicator for this symbol
+                    closes = [bar["close"] for bar in ohlcv_data]
+                    highs = [bar["high"] for bar in ohlcv_data]
+                    lows = [bar["low"] for bar in ohlcv_data]
+                    
+                    shm_result = calculate_stochastic_heatmap(
+                        closes=closes,
+                        highs=highs,
+                        lows=lows,
+                        ma_type=ma_type,
+                        increment=increment,
+                        smooth_fast=smooth_fast,
+                        smooth_slow=smooth_slow,
+                        plot_number=plot_number,
+                        waves=waves,
+                    )
+                    
+                    # Convert to IndicatorResult-like format with full heatmap data
+                    indicator_dict: Dict[str, Any] = {
+                        "indicator_type": "stochastic_heatmap",
+                        "values": {
+                            "lines": {
+                                "fast_line": shm_result["fast_line"],
+                                "slow_line": shm_result["slow_line"],
+                            },
+                            "series": [],
+                        },
+                        # Include full heatmap data for visualization
+                        "heatmap_data": {
+                            "stochastics": {str(k): v for k, v in shm_result["stochastics"].items()},
+                            "colors": {str(k): v for k, v in shm_result["colors"].items()},
+                            "plot_number": plot_number,
+                        },
+                        "timestamp": None,
+                        "params": {
+                            "ma_type": ma_type,
+                            "increment": increment,
+                            "smooth_fast": smooth_fast,
+                            "smooth_slow": smooth_slow,
+                            "plot_number": plot_number,
+                            "waves": waves,
+                        },
+                    }
+                    indicator_data_output[str(symbol)] = indicator_dict
+                except Exception as e:
+                    logger.debug(f"StochasticHeatmapFilter: Failed to build indicator_data for {symbol}: {e}")
+            
+            result["indicator_data"] = indicator_data_output
+        else:
+            result["indicator_data"] = {}
+        
+        import sys
+        print(f"\n{'='*60}", file=sys.stderr)
+        print(f"BaseIndicatorFilter (StochasticHeatmapFilter, node_id={self.id}) EXECUTING", file=sys.stderr)
+        print(f"{'='*60}", file=sys.stderr)
+        print(f"  output_indicator_data param: {output_indicator_data}", file=sys.stderr)
+        print(f"  filtered_bundle size: {len(filtered_bundle)}", file=sys.stderr)
+        print(f"  indicator_data_output size: {len(result.get('indicator_data', {}))}", file=sys.stderr)
+        if result.get("indicator_data"):
+            print(f"  ✓ Outputting indicator_data with {len(result['indicator_data'])} symbols", file=sys.stderr)
+        print(f"  Final result keys: {list(result.keys())}", file=sys.stderr)
+        print(f"{'='*60}\n", file=sys.stderr)
+        
+        return result
 
