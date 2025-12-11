@@ -4,10 +4,11 @@ import json
 import asyncio
 import random
 import httpx
+import sys
 from nodes.base.base_node import Base
 import subprocess as sp
 
-from core.types_registry import LLMToolSpec, LLMToolSpecList, NodeCategory, get_type
+from core.types_registry import LLMToolSpec, LLMToolSpecList, NodeCategory, ConfigDict, get_type
 from services.tools.registry import get_tool_handler, get_all_credential_providers
 import logging
 
@@ -28,6 +29,7 @@ class OllamaChat(Base):
     - messages: List[Dict[str, Any]] (chat history with role, content, etc.)
     - prompt: str
     - system: str
+    - images: ConfigDict (optional dict of label to base64 data URL for images to attach to the user prompt)
     - tools: Dict[str, Any] (optional tool schema, supports multi-input and list inputs)
 
     Outputs:
@@ -37,10 +39,11 @@ class OllamaChat(Base):
     """
 
     inputs = {
-        "messages": get_type("LLMChatMessageList"),
-        "prompt": str,
-        "system": Any,
-        "tools": get_type("LLMToolSpecList"),  
+        "messages": get_type("LLMChatMessageList") | None,
+        "prompt": str | None,
+        "system": Any | None,
+        "images": ConfigDict | None,
+        "tools": get_type("LLMToolSpecList") | None,  
     }
 
     outputs = {
@@ -96,7 +99,7 @@ class OllamaChat(Base):
         super().__init__(id, params or {}, graph_context)
         self._cancel_event = asyncio.Event()
         # Mark optional inputs at runtime for validation layer
-        self.optional_inputs = ["tools", "tool", "messages", "prompt", "system"]
+        self.optional_inputs = ["tools", "tool", "messages", "prompt", "system", "images"]
         # Maintain seed state when using increment mode across runs
         self._seed_state: Optional[int] = None
         # Track client to allow explicit close on stop
@@ -190,12 +193,15 @@ class OllamaChat(Base):
         return options
 
     @staticmethod
-    def _build_messages(existing_messages: Optional[List[Dict[str, Any]]], prompt: Optional[str], system_input: Optional[Any]) -> List[Dict[str, Any]]:
+    def _build_messages(existing_messages: Optional[List[Dict[str, Any]]], prompt: Optional[str], system_input: Optional[Any], images: Optional[ConfigDict] = None) -> List[Dict[str, Any]]:
         """
         Construct a messages array compliant with Ollama chat API from either:
         - existing structured messages
         - a plain-text prompt (as a user role message)
         - both (prompt appended to existing)
+        - images (as base64 data URLs) attached to the user message
+        
+        Ollama expects images as a list of base64 strings (without the data:image/... prefix).
         """
         result = list(existing_messages or [])
         if system_input and not any(m.get("role") == "system" for m in result):
@@ -203,8 +209,96 @@ class OllamaChat(Base):
                 result.insert(0, {"role": "system", "content": system_input})
             elif isinstance(system_input, dict):
                 result.insert(0, system_input)
-        if prompt:
+        
+        # Build user message with prompt and/or images
+        if prompt or images:
+            # Ensure at least a default prompt when images are present but no usable prompt provided
+            # Trim the prompt so strings with only whitespace also trigger the default.
+            content_text = (prompt or "")
+            if isinstance(content_text, str):
+                content_text = content_text.strip()
+
+            # Normalize images input: accept dict (preferred) or list/tuple of base64/data URLs
+            normalized_images: Dict[str, Any] = {}
+            if isinstance(images, dict):
+                normalized_images = images
+            elif isinstance(images, (list, tuple)):
+                normalized_images = {f"img_{i}": v for i, v in enumerate(images)}
+
+            # Count valid images
+            image_count = len(normalized_images) if normalized_images else 0
+
+            if normalized_images and not content_text:
+                # Provide a default prompt for vision models when none is given
+                content_text = "What do you see in these images? Please describe them in detail."
+                print(f"OllamaChatNode: No prompt provided with images, using default prompt", file=sys.stderr)
+            
+            # If multiple images are present, always prepend a note about the number of images
+            # to ensure all are processed and returned as an array
+            if image_count > 1 and content_text:
+                # Check if prompt already mentions the count explicitly
+                already_mentions_count = str(image_count) in content_text
+                
+                # Always prepend the note when multiple images are present
+                # Make it more explicit and forceful to ensure all images are processed
+                if not already_mentions_count:
+                    image_note = f"""⚠️ CRITICAL INSTRUCTION: You are receiving {image_count} images total.
+
+YOU MUST:
+1. Process ALL {image_count} images (do not skip any)
+2. Return a JSON array with EXACTLY {image_count} objects
+3. Format: [{{"symbol": "...", ...}}, {{"symbol": "...", ...}}, ...] (exactly {image_count} objects)
+4. One object per image - analyze each image separately
+
+The response MUST be a JSON array starting with [ and ending with ], containing exactly {image_count} objects. Do not return a single object.
+
+"""
+                    print(f"OllamaChatNode: Detected {image_count} images - prepended CRITICAL instruction to process all images and return JSON array", file=sys.stderr)
+                else:
+                    # Even if count is mentioned, add a reminder to ensure array format
+                    image_note = f"""⚠️ REMINDER: You are receiving {image_count} images. 
+
+Return a JSON array with EXACTLY {image_count} objects (one per image).
+Format: [{{...}}, {{...}}, ...] with {image_count} objects total.
+
+"""
+                    print(f"OllamaChatNode: Detected {image_count} images (count already mentioned) - prepended REMINDER to return JSON array", file=sys.stderr)
+                
+                content_text = image_note + content_text
+                print(f"OllamaChatNode: Detected {image_count} images - prepended instruction to process all images and return JSON array", file=sys.stderr)
+
+            user_message: Dict[str, Any] = {
+                "role": "user",
+                "content": content_text
+            }
+            print(f"OllamaChatNode: Built user message - content_length={len(content_text)}, content_preview='{content_text[:100]}...', has_images={bool(images)}", file=sys.stderr)
+            
+            # Extract base64 data from data URLs for Ollama
+            if normalized_images:
+                image_list: List[str] = []
+                for data_url in normalized_images.values():
+                    if isinstance(data_url, str):
+                        if data_url.startswith("data:image/"):
+                            # Extract base64 part (everything after the comma)
+                            if "," in data_url:
+                                _, base64_part = data_url.split(",", 1)
+                                image_list.append(base64_part)
+                            else:
+                                # If no comma, assume it's already base64
+                                image_list.append(data_url)
+                        else:
+                            # Already a raw base64 string
+                            image_list.append(data_url)
+                
+                if image_list:
+                    user_message["images"] = image_list
+                    print(f"OllamaChatNode: Added {len(image_list)} images to user message, final content_length={len(user_message.get('content', ''))}", file=sys.stderr)
+            
+            result.append(user_message)
+        elif prompt:
+            # Fallback: if only prompt without images
             result.append({"role": "user", "content": prompt})
+        
         return result
 
     def _collect_tools(self, inputs: Dict[str, Any]) -> List[LLMToolSpec]:
@@ -275,7 +369,6 @@ class OllamaChat(Base):
             pass
 
         # Force kill the Ollama server process on Mac or Linux after a short delay
-        import sys
         from urllib.parse import urlparse
         if sys.platform in ('darwin', 'linux'):
             port = '11434'
@@ -370,9 +463,22 @@ class OllamaChat(Base):
             if k in source:
                 metrics[k] = source[k]
 
-    async def _get_model(self, host: str, model_from_input: Optional[str]) -> str:
+    def _is_vision_capable_model(self, model: str) -> bool:
+        """Check if a model name suggests it supports vision capabilities."""
+        if not model:
+            return False
+        model_lower = model.lower()
+        vision_indicators = [
+            "vl", "vision", "multimodal", "qwen3-vl", "qwen2.5vl", 
+            "llava", "bakllava", "moondream", "minicpm-v"
+        ]
+        return any(indicator in model_lower for indicator in vision_indicators)
+
+    async def _get_model(self, host: str, model_from_input: Optional[str], has_images: bool = False) -> str:
         if model_from_input:
-            return model_from_input
+            selected = model_from_input
+        else:
+            selected = self.params.get("selected_model") or ""
 
         print(f"OllamaChatNode: Querying models from {host}/api/tags")
         models_list: List[str] = []
@@ -406,11 +512,36 @@ class OllamaChat(Base):
                 p["options"] = models_list
                 break
 
-        selected = self.params.get("selected_model") or ""
+        # Auto-select vision model if images are provided and current model doesn't support vision
+        if has_images and selected:
+            if not self._is_vision_capable_model(selected):
+                # Try to find a vision-capable model in the available models
+                vision_models = [m for m in models_list if self._is_vision_capable_model(m)]
+                if vision_models:
+                    # Prefer qwen3-vl models, then others
+                    qwen3vl = [m for m in vision_models if "qwen3-vl" in m.lower() or "qwen3vl" in m.lower()]
+                    if qwen3vl:
+                        selected = qwen3vl[0]
+                    else:
+                        selected = vision_models[0]
+                    print(f"OllamaChatNode: Auto-selected vision-capable model '{selected}' (images detected)")
+                else:
+                    print(f"OllamaChatNode: WARNING - Images provided but no vision-capable models found. Using '{selected}' (may fail)")
 
         if (not selected or selected not in models_list) and models_list:
-            selected = models_list[0]
-            print(f"OllamaChatNode: Auto-selected first model: {selected}")
+            # If no selection and images provided, prefer vision models
+            if has_images:
+                vision_models = [m for m in models_list if self._is_vision_capable_model(m)]
+                if vision_models:
+                    qwen3vl = [m for m in vision_models if "qwen3-vl" in m.lower() or "qwen3vl" in m.lower()]
+                    selected = qwen3vl[0] if qwen3vl else vision_models[0]
+                    print(f"OllamaChatNode: Auto-selected vision-capable model '{selected}' (images detected, no model selected)")
+                else:
+                    selected = models_list[0]
+                    print(f"OllamaChatNode: Auto-selected first model '{selected}' (no vision models available)")
+            else:
+                selected = models_list[0]
+                print(f"OllamaChatNode: Auto-selected first model: {selected}")
 
         if not selected and not models_list:
             error_msg = "No local Ollama models found. Pull one via 'ollama pull <model>'"
@@ -578,13 +709,19 @@ class OllamaChat(Base):
         # Prefer host/model from inputs when provided
         host = self._get_effective_host(inputs)
         input_model = (inputs.get("model") if isinstance(inputs, dict) else None)
-        model: str = await self._get_model(host, input_model)
+        images: Optional[ConfigDict] = inputs.get("images")
+        has_images = bool(images and isinstance(images, dict) and any(
+            isinstance(v, str) and v.startswith("data:image/") for v in images.values()
+        ))
+        model: str = await self._get_model(host, input_model, has_images=has_images)
         self._last_host = host
         self._last_model = model
         raw_messages: Optional[List[Dict[str, Any]]] = inputs.get("messages")
         prompt_text: Optional[str] = inputs.get("prompt")
         system_input: Optional[Any] = inputs.get("system")
-        messages: List[Dict[str, Any]] = self._build_messages(raw_messages, prompt_text, system_input)
+        images: Optional[ConfigDict] = inputs.get("images")
+        print(f"OllamaChatNode: Building messages - prompt_length={len(prompt_text) if prompt_text else 0}, has_images={bool(images)}, images_count={len(images) if images else 0}", file=sys.stderr)
+        messages: List[Dict[str, Any]] = self._build_messages(raw_messages, prompt_text, system_input, images)
         tools: List[Dict[str, Any]] = self._collect_tools(inputs)
 
         print(f"OllamaChatNode: Execute - model='{model}', host='{host}', prompt='{prompt_text}', messages_count={len(raw_messages) if raw_messages else 0}")
@@ -595,6 +732,10 @@ class OllamaChat(Base):
         self._last_host = host
         # Force non-streaming for execute()
         fmt: Optional[str] = self._get_format_value()
+        # Note: JSON format is now allowed even with images (user-controlled via json_mode toggle)
+        # Some vision models may not support JSON format, but we let the user decide
+        if fmt == "json" and images:
+            print(f"OllamaChatNode: JSON format enabled with images (format={fmt}). Some vision models may not support JSON format.", file=sys.stderr)
         keep_alive = self._get_keep_alive_value()
         think = bool(self.params.get("think", False))
         options, effective_seed = self._prepare_generation_options()
@@ -615,8 +756,26 @@ class OllamaChat(Base):
             try:
                 if isinstance(inputs, dict) and inputs.get("messages"):
                     options = await self._apply_context_window(host, model, options)
-            except Exception:
-                pass
+            except Exception as ctx_err:
+                logger.warning(f"OllamaChatNode: Warning - context window detection failed: {ctx_err}")
+
+            # Debug: Log message structure before sending
+            print(f"OllamaChatNode: Sending {len(messages)} message(s) to Ollama", file=sys.stderr)
+            logger.debug(f"OllamaChatNode: Sending {len(messages)} message(s) to Ollama")
+            for i, msg in enumerate(messages):
+                msg_type = type(msg.get("content", "")).__name__
+                has_images = "images" in msg and msg["images"]
+                img_count = len(msg.get("images", [])) if has_images else 0
+                content_preview = str(msg.get("content", ""))[:100] if msg.get("content") else ""
+                print(f"  Message {i}: role={msg.get('role')}, content_type={msg_type}, content_length={len(str(msg.get('content', '')))}, content_preview='{content_preview}...', has_images={has_images}, image_count={img_count}", file=sys.stderr)
+                if has_images:
+                    total_img_size = 0
+                    for j, img_data in enumerate(msg.get("images", [])):
+                        img_size = len(img_data) if isinstance(img_data, str) else 0
+                        total_img_size += img_size
+                        print(f"    Image {j}: base64_length={img_size}, preview={img_data[:50] if isinstance(img_data, str) else 'N/A'}...", file=sys.stderr)
+                    print(f"  Total image data size: {total_img_size/1024:.1f}KB ({total_img_size/1024/1024:.2f}MB)", file=sys.stderr)
+                logger.debug(f"  Message {i}: role={msg.get('role')}, content_type={msg_type}, has_images={has_images}, image_count={img_count}")
 
             # Tool orchestration if needed
             tool_rounds_info = {"messages": messages, "last_response": None, "metrics": {}, "tool_history": [], "thinking_history": []}
@@ -629,38 +788,68 @@ class OllamaChat(Base):
                 self._client = client
 
                 # Cooperative cancellation for non-streaming execute()
-                chat_task = asyncio.create_task(client.chat(
-                    model=model,
-                    messages=messages,
-                    tools=None,
-                    stream=False,
-                    format=fmt,
-                    options=options,
-                    keep_alive=keep_alive,
-                    think=think,
-                ))
-                cancel_wait = asyncio.create_task(self._cancel_event.wait())
-                done, pending = await asyncio.wait({chat_task, cancel_wait}, return_when=asyncio.FIRST_COMPLETED)
-                if cancel_wait in done and chat_task not in done:
-                    try:
-                        chat_task.cancel()
-                    except Exception:
-                        pass
-                    try:
-                        await asyncio.wait({chat_task}, timeout=0.05)
-                    except Exception:
-                        pass
-                    try:
-                        await client.close()
-                    except Exception:
-                        pass
-                    try:
-                        self._unload_model_via_cli()
-                    except Exception:
-                        pass
-                    self._client = None
-                    raise asyncio.CancelledError()
-                resp = await chat_task
+                try:
+                    print(f"OllamaChatNode: Calling Ollama API with model={model}, messages_count={len(messages)}, format={fmt}, think={think}", file=sys.stderr)
+                    logger.debug(f"OllamaChatNode: Calling Ollama API with model={model}, messages_count={len(messages)}, format={fmt}, think={think}")
+                    chat_task = asyncio.create_task(client.chat(
+                        model=model,
+                        messages=messages,
+                        tools=None,
+                        stream=False,
+                        format=fmt,
+                        options=options,
+                        keep_alive=keep_alive,
+                        think=think,
+                    ))
+                    print(f"OllamaChatNode: API call task created, waiting for response...", file=sys.stderr)
+                    cancel_wait = asyncio.create_task(self._cancel_event.wait())
+                    done, pending = await asyncio.wait({chat_task, cancel_wait}, return_when=asyncio.FIRST_COMPLETED)
+                    if cancel_wait in done and chat_task not in done:
+                        try:
+                            chat_task.cancel()
+                        except Exception:
+                            pass
+                        try:
+                            await asyncio.wait({chat_task}, timeout=0.05)
+                        except Exception:
+                            pass
+                        try:
+                            await client.close()
+                        except Exception:
+                            pass
+                        try:
+                            self._unload_model_via_cli()
+                        except Exception:
+                            pass
+                        self._client = None
+                        raise asyncio.CancelledError()
+                    resp = await chat_task
+                    print(f"OllamaChatNode: Received response from Ollama, resp type: {type(resp)}, keys: {list(resp.keys()) if isinstance(resp, dict) else 'not a dict'}", file=sys.stderr)
+                    if hasattr(resp, '__dict__'):
+                        print(f"OllamaChatNode: Response attributes: {list(resp.__dict__.keys())}", file=sys.stderr)
+                        # Check done status and done_reason
+                        if hasattr(resp, 'done'):
+                            print(f"OllamaChatNode: Response done status: {resp.done}", file=sys.stderr)
+                        if hasattr(resp, 'done_reason'):
+                            print(f"OllamaChatNode: Response done_reason: {resp.done_reason}", file=sys.stderr)
+                    if hasattr(resp, 'message'):
+                        msg_obj = resp.message
+                        if hasattr(msg_obj, '__dict__'):
+                            print(f"OllamaChatNode: Message object attributes: {list(msg_obj.__dict__.keys())}", file=sys.stderr)
+                            if hasattr(msg_obj, 'content'):
+                                content_val = getattr(msg_obj, 'content', None)
+                                print(f"OllamaChatNode: Message content type: {type(content_val)}, length: {len(str(content_val)) if content_val else 0}, preview: {str(content_val)[:200] if content_val else 'None'}...", file=sys.stderr)
+                            if hasattr(msg_obj, 'thinking'):
+                                thinking_val = getattr(msg_obj, 'thinking', None)
+                                print(f"OllamaChatNode: Message thinking type: {type(thinking_val)}, length: {len(str(thinking_val)) if thinking_val else 0}, preview: {str(thinking_val)[:200] if thinking_val else 'None'}...", file=sys.stderr)
+                    logger.debug(f"OllamaChatNode: Received response from Ollama, resp keys: {list(resp.keys()) if isinstance(resp, dict) else 'not a dict'}")
+                except Exception as chat_err:
+                    import traceback
+                    print(f"OllamaChatNode: Chat API call failed: {type(chat_err).__name__}: {chat_err}", file=sys.stderr)
+                    print(f"OllamaChatNode: Traceback:\n{traceback.format_exc()}", file=sys.stderr)
+                    logger.error(f"OllamaChatNode: Chat API call failed: {type(chat_err).__name__}: {chat_err}")
+                    logger.error(f"OllamaChatNode: Traceback:\n{traceback.format_exc()}")
+                    raise
 
             if tools:
                 resp = tool_rounds_info.get("last_response") or {}
@@ -672,7 +861,84 @@ class OllamaChat(Base):
                 tool_history = []
                 thinking_history = []
 
-            final_message = (resp or {}).get("message") or {"role": "assistant", "content": ""}
+            # Handle response - Ollama returns a ChatResponse object with a .message attribute
+            # The ChatResponse object has attributes: message, done, model, created_at, etc.
+            if resp is None:
+                logger.warning("OllamaChatNode: Warning - No response received, using empty message")
+                final_message = {"role": "assistant", "content": ""}
+            elif hasattr(resp, 'message'):
+                # It's a ChatResponse object from Ollama client
+                resp_message = resp.message
+                if resp_message is None:
+                    logger.warning("OllamaChatNode: Warning - No message in ChatResponse, using empty message")
+                    final_message = {"role": "assistant", "content": ""}
+                elif hasattr(resp_message, 'role'):
+                    # It's a Message object, convert to dict
+                    final_message = self._message_to_dict(resp_message)
+                    # Handle thinking field: append to content instead of replacing it
+                    # This allows debugging while preserving both fields
+                    thinking_val = final_message.get('thinking')
+                    thinking_len = len(str(thinking_val)) if thinking_val else 0
+                    content_val = final_message.get('content', '')
+                    content_len = len(str(content_val)) if content_val else 0
+                    
+                    if thinking_val:
+                        print(f"OllamaChatNode: Thinking field has content (length={thinking_len}), preview: {str(thinking_val)[:200]}...", file=sys.stderr)
+                    
+                    # Append thinking to content for better visibility and debugging
+                    if thinking_val:
+                        thinking_str = str(thinking_val)
+                        if not content_val:
+                            # If content is empty, use thinking as content
+                            print(f"OllamaChatNode: Content is empty, using thinking field as content", file=sys.stderr)
+                            final_message['content'] = thinking_str
+                        else:
+                            # If both exist, append thinking to content with a separator
+                            print(f"OllamaChatNode: Both content and thinking present, appending thinking to content for visibility", file=sys.stderr)
+                            final_message['content'] = f"{content_val}\n\n--- Thinking ---\n{thinking_str}"
+                    
+                    print(f"OllamaChatNode: Extracted message from ChatResponse: role={final_message.get('role')}, content_length={len(str(final_message.get('content', '')))}, thinking_length={thinking_len}", file=sys.stderr)
+                    logger.debug(f"OllamaChatNode: Converted Message object to dict: role={final_message.get('role')}, content_length={len(str(final_message.get('content', '')))}, thinking_length={thinking_len}")
+                    # Warn if content is still empty after extraction
+                    if not final_message.get('content') and not thinking_val:
+                        error_msg = "Both content and thinking are empty! The model returned an empty response."
+                        if fmt == "json" and images:
+                            error_msg += " This may indicate that qwen3-vl:8b does not support JSON format with vision inputs. Try disabling JSON mode."
+                        print(f"OllamaChatNode: WARNING - {error_msg}", file=sys.stderr)
+                        logger.warning(f"OllamaChatNode: WARNING - {error_msg}")
+                        # Check if we can get more info from the response
+                        if hasattr(resp, 'done_reason'):
+                            print(f"OllamaChatNode: Response done_reason: {resp.done_reason}", file=sys.stderr)
+                        if hasattr(resp, 'done'):
+                            print(f"OllamaChatNode: Response done: {resp.done}", file=sys.stderr)
+                        # Add error to metrics for visibility
+                        if not isinstance(metrics, dict):
+                            metrics = {}
+                        metrics["error"] = error_msg
+                        # Set a helpful error message in content
+                        final_message['content'] = f"ERROR: {error_msg}"
+                elif isinstance(resp_message, dict):
+                    final_message = resp_message
+                    print(f"OllamaChatNode: Extracted dict message from ChatResponse: role={final_message.get('role')}, content_length={len(str(final_message.get('content', '')))}", file=sys.stderr)
+                    logger.debug(f"OllamaChatNode: Using dict response: role={final_message.get('role')}, content_length={len(str(final_message.get('content', '')))}")
+                else:
+                    logger.warning(f"OllamaChatNode: Warning - Unexpected message type in ChatResponse: {type(resp_message)}, using empty message")
+                    final_message = {"role": "assistant", "content": ""}
+            elif isinstance(resp, dict):
+                # Fallback: treat as dict (shouldn't happen with Ollama client, but handle it)
+                resp_message = resp.get("message")
+                if resp_message is None:
+                    logger.warning("OllamaChatNode: Warning - No message in dict response, using empty message")
+                    final_message = {"role": "assistant", "content": ""}
+                elif isinstance(resp_message, dict):
+                    final_message = resp_message
+                    print(f"OllamaChatNode: Using dict response: role={final_message.get('role')}, content_length={len(str(final_message.get('content', '')))}", file=sys.stderr)
+                else:
+                    final_message = {"role": "assistant", "content": ""}
+            else:
+                logger.warning(f"OllamaChatNode: Warning - Unexpected response type: {type(resp)}, using empty message")
+                final_message = {"role": "assistant", "content": ""}
+            
             self._ensure_assistant_role_inplace(final_message)
             self._parse_content_if_json_mode(final_message, metrics)
             self._parse_tool_calls_from_message(final_message)
@@ -688,6 +954,11 @@ class OllamaChat(Base):
                 thinking = final_message.get("thinking")
                 if thinking and isinstance(thinking, str):
                     thinking_history.append({"thinking": thinking, "iteration": 0})
+            
+            content_preview = str(final_message.get("content", ""))[:200] if final_message.get("content") else ""
+            print(f"OllamaChatNode: Successfully received response from Ollama. Content length: {len(str(final_message.get('content', '')))}, preview: {content_preview}...", file=sys.stderr)
+            logger.info(f"OllamaChatNode: Successfully received response from Ollama. Content preview: {content_preview}...")
+            
             return {
                 "message": final_message,
                 "metrics": metrics,
@@ -695,8 +966,12 @@ class OllamaChat(Base):
                 "thinking_history": thinking_history
             }
         except Exception as e:
+            import traceback
+            error_msg = f"{type(e).__name__}: {str(e)}"
+            logger.error(f"OllamaChatNode: Execution failed - {error_msg}")
+            logger.error(f"OllamaChatNode: Full traceback:\n{traceback.format_exc()}")
             error_message = {"role": "assistant", "content": ""}
-            return {"message": error_message, "metrics": {"error": str(e)}, "tool_history": [], "thinking_history": []}
+            return {"message": error_message, "metrics": {"error": error_msg}, "tool_history": [], "thinking_history": []}
 
     def _parse_content_if_json_mode(self, message: Dict[str, Any], metrics: Dict[str, Any]) -> None:
         if bool(self.params.get("json_mode", False)):
