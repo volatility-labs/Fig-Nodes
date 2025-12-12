@@ -423,11 +423,17 @@ def _plot_stochastic_heatmap(
     ax.set_xlim(0, len(x_indices) - 1)
     ax.set_ylim(-0.5, plot_number - 0.5)
     # Set label - ensure it's visible (white text on dark background)
-    ax.set_ylabel("Stochastic Heatmap", fontsize=10, fontweight='bold', color='white')
+    # Use labelpad to ensure label isn't clipped
+    ax.set_ylabel("Stochastic Heatmap", fontsize=10, fontweight='bold', color='white', labelpad=5)
     ax.tick_params(colors='white', labelsize=8)
     ax.grid(True, alpha=0.2, color='white')
     # Ensure background is dark for visibility
     ax.set_facecolor('#000000')
+    # Explicitly set ylabel properties to ensure visibility
+    ax.yaxis.label.set_color('white')
+    ax.yaxis.label.set_fontsize(10)
+    ax.yaxis.label.set_fontweight('bold')
+    ax.yaxis.label.set_visible(True)
 
 
 def _plot_fractal_resonance_bars(
@@ -1142,8 +1148,13 @@ class MultiIndicatorChart(Base):
                 
                 try:
                     _plot_stochastic_heatmap(ax_heatmap, stochastics, colors, plot_number, x_indices)
-                    # Ensure label is set correctly (plot function sets it, but ensure it's visible)
-                    ax_heatmap.set_ylabel("Stochastic Heatmap", fontsize=9, color='white')
+                    # Ensure label is set correctly and visible (set after plotting, before tight_layout)
+                    ax_heatmap.set_ylabel("Stochastic Heatmap", fontsize=10, fontweight='bold', color='white', labelpad=5)
+                    # Ensure ylabel is visible by setting it explicitly
+                    ax_heatmap.yaxis.label.set_color('white')
+                    ax_heatmap.yaxis.label.set_fontsize(10)
+                    ax_heatmap.yaxis.label.set_fontweight('bold')
+                    ax_heatmap.yaxis.label.set_visible(True)
                 except Exception as e:
                     print(f"  Failed to plot stochastic heatmap: {e}", file=sys.stderr)
             

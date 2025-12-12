@@ -1136,6 +1136,14 @@ CRITICAL: Sort the results array by {rank_field} (1 to {image_count}) and includ
             try:
                 self._post_process_trading_analysis(final_message, images, prompt_text)
                 print(f"OllamaChatNode: _post_process_trading_analysis completed successfully", file=sys.stderr)
+                
+                # If JSON mode is enabled and content is a dict, serialize it back to JSON string for consistency
+                if bool(self.params.get("json_mode", False)) and isinstance(final_message.get("content"), dict):
+                    try:
+                        final_message["content"] = json.dumps(final_message["content"], indent=2)
+                        print(f"OllamaChatNode: Serialized post-processed content to JSON string for JSON mode", file=sys.stderr)
+                    except Exception as json_err:
+                        print(f"OllamaChatNode: Warning - Failed to serialize content to JSON: {json_err}", file=sys.stderr)
             except Exception as e:
                 import traceback
                 print(f"OllamaChatNode: Error in _post_process_trading_analysis: {type(e).__name__}: {str(e)}", file=sys.stderr)
@@ -1332,7 +1340,15 @@ CRITICAL: Sort the results array by {rank_field} (1 to {image_count}) and includ
         }
         
         message["content"] = formatted_output
-        print(f"OllamaChatNode: Post-processing complete - ranked {len(ranked_results)} results by {rank_direction}ness, top 3: {[r.get('symbol') for r in top_3]}", file=sys.stderr)
+        
+        # Log top 3 summary prominently
+        top_3_summary = "\n".join([
+            f"  {i+1}. {r.get('symbol')} - {r.get('rainbow_bias')} (confidence: {r.get('confidence')}%)"
+            for i, r in enumerate(top_3)
+        ])
+        print(f"OllamaChatNode: Post-processing complete - ranked {len(ranked_results)} results by {rank_direction}ness", file=sys.stderr)
+        print(f"OllamaChatNode: TOP 3 {rank_direction.upper()} SUMMARY:\n{top_3_summary}", file=sys.stderr)
+        print(f"OllamaChatNode: Full output structure: {{'results': [...], '{top_3_field}': [...], 'total_analyzed': {len(ranked_results)}}}", file=sys.stderr)
 
     def _parse_content_if_json_mode(self, message: Dict[str, Any], metrics: Dict[str, Any]) -> None:
         if bool(self.params.get("json_mode", False)):
