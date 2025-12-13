@@ -21,6 +21,7 @@ from .thma_calculator import (
     calculate_thma,
     calculate_thma_with_volatility,
 )
+from .hull_range_filter_calculator import calculate_hull_range_filter
 from .utils import (
     calculate_rolling_mean,
     calculate_rolling_std_dev,
@@ -58,6 +59,7 @@ __all__ = [
     "calculate_thma",
     "calculate_hma",
     "calculate_thma_with_volatility",
+    "calculate_hull_range_filter",
     "calculate_vbp",
     "calculate_wilder_ma",
     "calculate_wma",

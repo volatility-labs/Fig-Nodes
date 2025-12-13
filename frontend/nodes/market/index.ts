@@ -18,6 +18,7 @@ export { default as THMAFilterNodeUI } from './THMAFilterNodeUI';
 export { default as VBPLevelFilterNodeUI } from './VBPLevelFilterNodeUI';
 export { default as WildersADXFilterNodeUI } from './WildersADXFilterNodeUI';
 export { default as EVWMAFilterNodeUI } from './EVWMAFilterNodeUI';
+export { default as HullRangeFilterNodeUI } from './HullRangeFilterNodeUI';
 export { default as HurstPlotNodeUI } from './HurstPlotNodeUI';
 export { default as FractalResonancePlotNodeUI } from './FractalResonancePlotNodeUI';
 export { default as StochasticHeatmapPlotNodeUI } from './StochasticHeatmapPlotNodeUI';
