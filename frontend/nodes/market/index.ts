@@ -14,6 +14,7 @@ export { default as ATRIndicatorNodeUI } from './ATRIndicatorNodeUI';
 export { default as ATRFilterNodeUI } from './ATRFilterNodeUI';
 export { default as EmaRangeFilterNodeUI } from './EmaRangeFilterNodeUI';
 export { default as OrbFilterNodeUI } from './OrbFilterNodeUI';
+export { default as THMAFilterNodeUI } from './THMAFilterNodeUI';
 export { default as VBPLevelFilterNodeUI } from './VBPLevelFilterNodeUI';
 export { default as WildersADXFilterNodeUI } from './WildersADXFilterNodeUI';
 export { default as EVWMAFilterNodeUI } from './EVWMAFilterNodeUI';

@@ -12,6 +12,53 @@ Creates professional charts with:
 Optimized for vision-language models like Qwen3-VL that need clean, aligned
 chart images with exact indicator values.
 
+STANDARD INDICATOR DATA FORMAT:
+--------------------------------
+All indicator nodes should output data in one of these formats for full compatibility:
+
+1. **Standard IndicatorResult Format** (Recommended):
+   {
+       "indicator_type": "rsi" | "thma" | "custom" | etc.,  # String identifier
+       "values": {
+           "lines": {  # For line indicators (most common)
+               "line_name_1": [float | None, ...],  # Series of values
+               "line_name_2": [float | None, ...],
+           },
+           "series": [...],  # Optional: time-series format
+           "single": float,  # Optional: single value
+       },
+       "timestamp": int | None,  # Optional timestamp
+       "params": {...},  # Optional: indicator parameters
+       "metadata": {  # Optional: visualization hints
+           "visualization_type": "line" | "heatmap" | "fractal_resonance" | "custom",
+           "panel_mode": "overlay" | "separate" | "dedicated",
+           "requires_special_panel": bool,
+       }
+   }
+
+2. **Per-Symbol Dictionary Format**:
+   {
+       "SYMBOL1": {  # Standard IndicatorResult format per symbol
+           "indicator_type": "...",
+           "values": {...},
+           ...
+       },
+       "SYMBOL2": {...},
+   }
+
+3. **Special Visualization Formats** (for advanced indicators):
+   - Heatmap: Include "heatmap_data" key in indicator_data
+   - Fractal Resonance: Include "fr_bar_data" key in indicator_data
+
+VISUALIZATION CLASSIFICATION:
+------------------------------
+The node automatically classifies indicators based on:
+1. Explicit metadata (highest priority)
+2. Data structure (heatmap_data, fr_bar_data, etc.)
+3. Indicator type name patterns (fallback)
+
+Indicators can specify visualization needs via metadata to override defaults.
+
 Inputs:
 - ohlcv_bundle: OHLCVBundle - Price/volume data
 - indicator_data: Any (optional) - Primary indicator data
@@ -46,7 +93,19 @@ from nodes.base.base_node import Base
 from services.time_utils import convert_timestamps_to_datetimes
 
 logger = logging.getLogger(__name__)
-logger.disabled = True  # Silence logger output to avoid UI noise
+logger.disabled = False  # Enable logger temporarily for debugging
+
+def _debug_print(msg: str, force: bool = False):
+    """Debug print helper that ensures output is visible"""
+    try:
+        print(msg, file=sys.stderr, flush=True)
+        print(msg, file=sys.stdout, flush=True)  # Always print to both
+        logger.error(msg)  # Also use logger.error which goes to stderr
+    except Exception as e:
+        try:
+            print(f"DEBUG PRINT ERROR: {e}", file=sys.stderr, flush=True)
+        except:
+            pass
 
 # Configure matplotlib for high-quality rendering
 plt.rcParams.update({
@@ -113,9 +172,76 @@ def _normalize_bars(bars: list[OHLCVBar]) -> tuple[list[tuple[int, float, float,
     return ohlc_data, volume_data
 
 
-def _extract_indicator_series(indicator_data: Any, symbol: AssetSymbol) -> dict[str, list[float]]:
+def _classify_indicator(indicator_name: str, indicator_data: dict[str, Any] | None = None) -> dict[str, Any]:
+    """
+    Generic indicator classification based on data structure and metadata.
+    
+    Returns a dict with classification info:
+    - visualization_type: "line" | "heatmap" | "fractal_resonance" | "stochastic_panel" | "custom"
+    - panel_mode: "overlay" | "separate" | "dedicated"
+    - requires_special_panel: bool
+    
+    This allows any indicator to specify its visualization needs via metadata,
+    falling back to intelligent defaults based on data structure.
+    """
+    classification = {
+        "visualization_type": "line",
+        "panel_mode": "overlay",
+        "requires_special_panel": False,
+    }
+    
+    if indicator_data is None:
+        indicator_data = {}
+    
+    # Check for explicit metadata first (highest priority)
+    metadata = indicator_data.get("metadata", {})
+    if isinstance(metadata, dict):
+        viz_type = metadata.get("visualization_type")
+        panel_mode = metadata.get("panel_mode")
+        if viz_type:
+            classification["visualization_type"] = viz_type
+        if panel_mode:
+            classification["panel_mode"] = panel_mode
+        if metadata.get("requires_special_panel"):
+            classification["requires_special_panel"] = True
+    
+    # Check indicator_data structure for special visualization data
+    if "heatmap_data" in indicator_data or "heatmap" in indicator_data:
+        classification["visualization_type"] = "heatmap"
+        classification["requires_special_panel"] = True
+        classification["panel_mode"] = "dedicated"
+    elif "fr_bar_data" in indicator_data or "fractal_resonance" in indicator_data:
+        classification["visualization_type"] = "fractal_resonance"
+        classification["requires_special_panel"] = True
+        classification["panel_mode"] = "dedicated"
+    
+    # Check indicator_type for hints
+    indicator_type = indicator_data.get("indicator_type", "")
+    if isinstance(indicator_type, str):
+        indicator_type_lower = indicator_type.lower()
+        # Generic pattern matching (not hardcoded to specific indicators)
+        if "heatmap" in indicator_type_lower:
+            classification["visualization_type"] = "heatmap"
+            classification["requires_special_panel"] = True
+        elif "fractal" in indicator_type_lower or "resonance" in indicator_type_lower:
+            classification["visualization_type"] = "fractal_resonance"
+            classification["requires_special_panel"] = True
+        elif "stochastic" in indicator_type_lower:
+            # Stochastic indicators often benefit from dedicated panel when fast+slow together
+            classification["panel_mode"] = "dedicated"
+    
+    # Check indicator name patterns (fallback, but prefer metadata)
+    name_lower = indicator_name.lower()
+    if "stochastic" in name_lower and ("fast" in name_lower or "slow" in name_lower):
+        # Only use dedicated panel if we detect both fast and slow (handled elsewhere)
+        classification["panel_mode"] = "dedicated"
+    
+    return classification
+
+
+def _extract_indicator_series(indicator_data: Any, symbol: AssetSymbol) -> dict[str, list[float | None]]:
     """Extract indicator series values from various data formats."""
-    indicator_series: dict[str, list[float]] = {}
+    indicator_series: dict[str, list[float | None]] = {}
 
     if indicator_data is None:
         return indicator_series
@@ -182,10 +308,14 @@ def _extract_indicator_series(indicator_data: Any, symbol: AssetSymbol) -> dict[
                     indicator_name = f"{indicator_type}_{key}" if indicator_type else key
                     if isinstance(val, list) and len(val) > 1:
                         try:
-                            indicator_series[indicator_name] = [
-                                float(v) if v is not None else 0.0 for v in val
+                            # Preserve None values instead of converting to 0.0
+                            # This allows the plotting function to properly filter them out
+                            converted_values = [
+                                float(v) if v is not None else None for v in val
                             ]
-                        except Exception:
+                            indicator_series[indicator_name] = converted_values
+                        except Exception as e:
+                            print(f"      Error extracting line '{indicator_name}': {e}", file=sys.stderr)
                             pass
                     elif isinstance(val, (int, float)):
                         # Convert single numeric line to flat series; length will be trimmed later
@@ -310,7 +440,7 @@ def _plot_volume(ax: "Axes", volumes: list[float]) -> None:
     ax.set_ylim(0, max(volumes) * 1.1 if volumes else 1)
 
 
-def _plot_indicator_line(ax: "Axes", values: list[float], label: str, color: str, align_offset: int = 0) -> None:
+def _plot_indicator_line(ax: "Axes", values: list[float | None], label: str, color: str, align_offset: int = 0) -> None:
     """Plot indicator as a line, handling alignment offset."""
     if not values:
         return
@@ -331,10 +461,14 @@ def _plot_indicator_line(ax: "Axes", values: list[float], label: str, color: str
             valid_values.append(v)
     
     if valid_indices and valid_values:
-        ax.plot(valid_indices, valid_values, color=color, linewidth=1.5, label=label, alpha=0.8)
+        try:
+            ax.plot(valid_indices, valid_values, color=color, linewidth=1.5, label=label, alpha=0.8)
+        except Exception as e:
+            _debug_print(f"      _plot_indicator_line ERROR plotting '{label}': {e}", force=True)
+            raise
 
 
-def _align_to_length(values: list[float], target_len: int) -> list[float | None]:
+def _align_to_length(values: list[float | None], target_len: int) -> list[float | None]:
     """Right-align a series to the target length, padding with None on the left."""
     if not values or target_len <= 0:
         return []
@@ -694,11 +828,29 @@ class MultiIndicatorChart(Base):
         
         This solves the filter pipeline problem where each filter stage reduces the symbol set.
         """
+        # CRITICAL DEBUG - Print immediately, before anything else
+        try:
+            import sys
+            sys.stderr.write("\n" + "="*80 + "\n")
+            sys.stderr.write("MultiIndicatorChart._execute_impl START\n")
+            sys.stderr.write(f"Node ID: {getattr(self, 'id', 'UNKNOWN')}\n")
+            sys.stderr.write(f"Input keys: {list(inputs.keys()) if inputs else 'NO INPUTS'}\n")
+            sys.stderr.write("="*80 + "\n")
+            sys.stderr.flush()
+            sys.stdout.write("\n" + "="*80 + "\n")
+            sys.stdout.write("MultiIndicatorChart._execute_impl START\n")
+            sys.stdout.write(f"Node ID: {getattr(self, 'id', 'UNKNOWN')}\n")
+            sys.stdout.write(f"Input keys: {list(inputs.keys()) if inputs else 'NO INPUTS'}\n")
+            sys.stdout.write("="*80 + "\n")
+            sys.stdout.flush()
+        except Exception as e:
+            pass  # Don't fail if debug fails
+        
         # Debug FIRST - before any early returns, so we can see what's happening
-        print(f"\n{'='*60}", file=sys.stderr)
-        print(f"MultiIndicatorChart._execute_impl START (node_id={self.id})", file=sys.stderr)
-        print(f"{'='*60}", file=sys.stderr)
-        print(f"ALL input keys received: {list(inputs.keys())}", file=sys.stderr)
+        _debug_print(f"\n{'='*60}", force=True)
+        _debug_print(f"MultiIndicatorChart._execute_impl START (node_id={self.id})", force=True)
+        _debug_print(f"{'='*60}", force=True)
+        _debug_print(f"ALL input keys received: {list(inputs.keys())}", force=True)
         
         # Check graph context to see what links exist
         incoming_links_info = []
@@ -706,7 +858,7 @@ class MultiIndicatorChart(Base):
             links = self.graph_context.get("links", []) if hasattr(self, 'graph_context') else []
             current_node_id = self.graph_context.get("current_node_id", self.id) if hasattr(self, 'graph_context') else self.id
             incoming_links = [l for l in links if l.get("target_id") == current_node_id]
-            print(f"Incoming links to this node: {len(incoming_links)}", file=sys.stderr)
+            _debug_print(f"Incoming links to this node: {len(incoming_links)}", force=True)
             
             # Try to determine output slot names from node definitions
             node_definitions = {}
@@ -739,10 +891,10 @@ class MultiIndicatorChart(Base):
                     output_slot_name = f"slot_{origin_slot}"
                 
                 link_info = f"  Link: node {origin_id} ({origin_type}) output slot {origin_slot} ({output_slot_name}) -> {target_key} (input slot {target_slot})"
-                print(link_info, file=sys.stderr)
+                _debug_print(link_info, force=True)
                 incoming_links_info.append((origin_id, origin_slot, target_key, origin_type))
         except Exception as e:
-            print(f"  Error checking graph context: {e}", file=sys.stderr)
+            _debug_print(f"  Error checking graph context: {e}", force=True)
         
         ohlcv_bundle = inputs.get("ohlcv_bundle") or {}
         max_bars = int(self.params.get("max_bars", 200))
@@ -751,13 +903,14 @@ class MultiIndicatorChart(Base):
         panel_mode = str(self.params.get("indicator_panel_mode", "overlay"))
         max_indicators = int(self.params.get("max_indicators", 8))
         dpi = int(self.params.get("dpi", 200))
+        _debug_print(f"  Panel mode: {panel_mode}, max_indicators: {max_indicators}", force=True)
         
         # Collect all indicator data FIRST - check even if OHLCV bundle is empty
         indicator_data_list: list[Any] = []
         
         # Check ALL possible indicator input keys, even if None or empty
         all_indicator_keys = ["indicator_data"] + [f"indicator_data_{i}" for i in range(1, 6)]
-        print(f"\nChecking indicator inputs:", file=sys.stderr)
+        _debug_print(f"\nChecking indicator inputs:", force=True)
         # Don't print full inputs dict as it might be huge - just show what we're looking for
         for key in all_indicator_keys:
             if key in inputs:
@@ -767,28 +920,42 @@ class MultiIndicatorChart(Base):
                     if value:
                         sample_keys = list(value.keys())[:3]
                         dict_info += f" (sample keys: {sample_keys})"
-                    print(f"  ✓ {key}: present, type={type(value).__name__}, {dict_info}", file=sys.stderr)
+                    _debug_print(f"  ✓ {key}: present, type={type(value).__name__}, {dict_info}", force=True)
                 else:
-                    print(f"  ✓ {key}: present, type={type(value).__name__}, value={value}", file=sys.stderr)
+                    _debug_print(f"  ✓ {key}: present, type={type(value).__name__}, value={value}", force=True)
                 # Include even empty dicts - they might be valid but empty
                 if value is not None:
                     indicator_data_list.append(value)
             else:
-                print(f"  ✗ {key}: NOT IN INPUTS DICT (key missing entirely)", file=sys.stderr)
+                _debug_print(f"  ✗ {key}: NOT IN INPUTS DICT (key missing entirely)", force=True)
         
-        print(f"\nTotal indicator inputs collected: {len(indicator_data_list)}", file=sys.stderr)
+        _debug_print(f"\nTotal indicator inputs collected: {len(indicator_data_list)}", force=True)
         if ohlcv_bundle:
             symbols_preview = list(ohlcv_bundle.keys())[:5]
-            print(f"OHLCV bundle: {len(ohlcv_bundle)} symbols (first 5: {symbols_preview})", file=sys.stderr)
+            _debug_print(f"OHLCV bundle: {len(ohlcv_bundle)} symbols (first 5: {symbols_preview})", force=True)
         else:
-            print(f"OHLCV bundle: EMPTY - no symbols to chart", file=sys.stderr)
+            _debug_print(f"OHLCV bundle: EMPTY - no symbols to chart", force=True)
         
         # Early return if no OHLCV bundle (upstream nodes likely failed)
         if not ohlcv_bundle:
-            print(f"\n⚠️  EARLY RETURN: No OHLCV bundle - cannot generate charts", file=sys.stderr)
-            print(f"   Indicator inputs found: {len(indicator_data_list)}", file=sys.stderr)
+            _debug_print(f"\n⚠️  EARLY RETURN: No OHLCV bundle - cannot generate charts", force=True)
+            _debug_print(f"   Indicator inputs found: {len(indicator_data_list)}", force=True)
+            
+            # Try to extract symbols from indicator data to provide helpful error message
+            indicator_symbols = set()
+            for ind_data in indicator_data_list:
+                if isinstance(ind_data, dict):
+                    # Indicator data is typically keyed by symbol string
+                    for key in ind_data.keys():
+                        if isinstance(key, str):
+                            indicator_symbols.add(key)
+            
+            if indicator_symbols:
+                _debug_print(f"   Symbols found in indicator data: {len(indicator_symbols)} (sample: {list(indicator_symbols)[:5]})", force=True)
+            
             if incoming_links_info:
                 print(f"\n   Expected inputs from links:", file=sys.stderr)
+                ohlcv_link_found = False
                 for link_info in incoming_links_info:
                     if len(link_info) == 4:
                         origin_id, origin_slot, target_key, origin_type = link_info
@@ -796,15 +963,21 @@ class MultiIndicatorChart(Base):
                         origin_id, origin_slot, target_key = link_info[:3]
                         origin_type = "unknown"
                     if target_key == "ohlcv_bundle":
-                        print(f"     ✗ {target_key} from node {origin_id} ({origin_type}) slot {origin_slot} - MISSING (upstream node likely failed or didn't execute)", file=sys.stderr)
-                    elif target_key.startswith("indicator_data"):
+                        ohlcv_link_found = True
                         print(f"     ✗ {target_key} from node {origin_id} ({origin_type}) slot {origin_slot} - MISSING", file=sys.stderr)
-                        print(f"        → Check terminal for debug output from node {origin_id} to see if it executed and output indicator_data", file=sys.stderr)
-            print(f"\n   DIAGNOSIS: Upstream nodes either failed, didn't execute, or didn't output indicator_data.", file=sys.stderr)
-            print(f"   Check terminal for debug output from nodes: {[link_info[0] for link_info in incoming_links_info]}", file=sys.stderr)
-            print(f"   Look for lines starting with 'BaseIndicatorFilter' or the node type name.", file=sys.stderr)
+                        print(f"        → Connect the 'filtered_ohlcv_bundle' output from a filter node to this input!", file=sys.stderr)
+                    elif target_key.startswith("indicator_data"):
+                        print(f"     ✓ {target_key} from node {origin_id} ({origin_type}) slot {origin_slot} - CONNECTED", file=sys.stderr)
+                
+                if not ohlcv_link_found:
+                    print(f"\n   ❌ NO CONNECTION FOUND for 'ohlcv_bundle' input!", file=sys.stderr)
+                    print(f"   → ACTION REQUIRED: Connect 'filtered_ohlcv_bundle' output from THMAFilter (node 107) or FractalResonanceFilter (node 85)", file=sys.stderr)
+                    print(f"      to the 'ohlcv_bundle' input of MultiIndicatorChart (node {self.id})", file=sys.stderr)
+            
+            print(f"\n   DIAGNOSIS: The chart node needs OHLCV price data to generate charts.", file=sys.stderr)
+            print(f"   Without 'ohlcv_bundle', no charts can be created even if indicators are connected.", file=sys.stderr)
             print(f"{'='*60}\n", file=sys.stderr)
-            return {"images": {}, "debug_info": {"error": "No OHLCV bundle received - upstream nodes failed"}}
+            return {"images": {}, "debug_info": {"error": "No OHLCV bundle received - connect filtered_ohlcv_bundle output from a filter node to ohlcv_bundle input"}}
         
         images: dict[str, str] = {}
         debug_info: dict[str, Any] = {}
@@ -837,7 +1010,7 @@ class MultiIndicatorChart(Base):
             # Extract all indicator series for this symbol
             # Note: Indicator data may contain more symbols than ohlcv_bundle (from filter stages)
             # We only extract indicators for symbols that exist in the OHLCV bundle
-            all_indicators: dict[str, list[float]] = {}
+            all_indicators: dict[str, list[float | None]] = {}
             symbol_debug: dict[str, Any] = {
                 "indicator_inputs": len(indicator_data_list),
                 "indicators_found": [],
@@ -855,11 +1028,11 @@ class MultiIndicatorChart(Base):
                     continue
                 
                 # Debug: Print what we're trying to extract
-                print(f"\n  Processing indicator input {idx} for symbol {symbol_str}", file=sys.stderr)
+                _debug_print(f"\n  Processing indicator input {idx} for symbol {symbol_str}")
                 if isinstance(indicator_data, dict):
-                    print(f"    Dict keys: {list(indicator_data.keys())[:10]}", file=sys.stderr)
+                    _debug_print(f"    Dict keys: {list(indicator_data.keys())[:10]}")
                     if symbol_str in indicator_data:
-                        print(f"    Found symbol key '{symbol_str}' in dict", file=sys.stderr)
+                        _debug_print(f"    Found symbol key '{symbol_str}' in dict")
                 
                 # First, try to extract directly
                 symbol_indicators = _extract_indicator_series(indicator_data, symbol)
@@ -873,23 +1046,28 @@ class MultiIndicatorChart(Base):
                     if symbol_str in indicator_data:
                         # Found symbol as string key - extract from that value
                         symbol_indicator_data = indicator_data[symbol_str]
-                        print(f"    Extracting from symbol key, data type: {type(symbol_indicator_data)}", file=sys.stderr)
+                        _debug_print(f"    Extracting from symbol key, data type: {type(symbol_indicator_data)}")
                         symbol_indicators = _extract_indicator_series(symbol_indicator_data, symbol)
                     elif symbol_ticker and symbol_ticker in indicator_data:
                         # Try ticker as key
                         symbol_indicator_data = indicator_data[symbol_ticker]
-                        print(f"    Extracting from ticker key '{symbol_ticker}'", file=sys.stderr)
+                        _debug_print(f"    Extracting from ticker key '{symbol_ticker}'")
                         symbol_indicators = _extract_indicator_series(symbol_indicator_data, symbol)
                     elif symbol in indicator_data:
                         # Try AssetSymbol object as key
                         symbol_indicator_data = indicator_data[symbol]
-                        print(f"    Extracting from AssetSymbol key", file=sys.stderr)
+                        _debug_print(f"    Extracting from AssetSymbol key")
                         symbol_indicators = _extract_indicator_series(symbol_indicator_data, symbol)
                 
                 if symbol_indicators:
-                    print(f"    Extracted {len(symbol_indicators)} indicators: {list(symbol_indicators.keys())}", file=sys.stderr)
+                    _debug_print(f"    Extracted {len(symbol_indicators)} indicators: {list(symbol_indicators.keys())}")
+                    # Debug THMA indicators specifically
+                    for key, vals in symbol_indicators.items():
+                        if "thma" in key.lower():
+                            valid_count = len([v for v in vals if v is not None])
+                            _debug_print(f"      THMA indicator '{key}': total={len(vals)}, valid={valid_count}, sample={vals[-5:] if len(vals) >= 5 else vals}", force=True)
                 else:
-                    print(f"    No indicators extracted", file=sys.stderr)
+                    _debug_print(f"    No indicators extracted")
                 
                 # Check for special visualization data (heatmap, FR bars)
                 # Use symbol_indicator_data if we already extracted it, otherwise fetch it
@@ -931,8 +1109,8 @@ class MultiIndicatorChart(Base):
             
             # Separate fast/slow stochastic lines from regular indicators
             # These will get their own dedicated panel above the heatmap
-            stochastic_fast_slow: dict[str, list[float]] = {}
-            plottable_indicators: dict[str, list[float]] = {}
+            stochastic_fast_slow: dict[str, list[float | None]] = {}
+            plottable_indicators: dict[str, list[float | None]] = {}
             filtered_out: list[str] = []
             metadata_keywords = [
                 "has_", "total_", "last_", "checked_", "max_", "valid_", "min_required",
@@ -962,17 +1140,26 @@ class MultiIndicatorChart(Base):
                     filtered_out.append(f"{ind_name} (no variation)")
                     continue
                 
-                # Separate fast/slow stochastic lines for dedicated panel
-                # Generic detection by name pattern (not hardcoded)
-                if "stochastic" in ind_name.lower() and ("fast" in ind_name.lower() or "slow" in ind_name.lower()):
-                    stochastic_fast_slow[ind_name] = ind_values
+                # Classify indicator to determine panel placement
+                # Try to get indicator data for classification (may not always be available)
+                indicator_classification = _classify_indicator(ind_name, None)
+                
+                # Separate indicators that need dedicated panels (e.g., stochastic fast/slow pairs)
+                # This is detected generically via classification, not hardcoded names
+                if indicator_classification["panel_mode"] == "dedicated":
+                    # Check if this is a stochastic fast/slow pair (common pattern)
+                    if "stochastic" in ind_name.lower() and ("fast" in ind_name.lower() or "slow" in ind_name.lower()):
+                        stochastic_fast_slow[ind_name] = ind_values
+                    else:
+                        # Other indicators requiring dedicated panels go to regular plottable
+                        plottable_indicators[ind_name] = ind_values
                 else:
                     plottable_indicators[ind_name] = ind_values
             
             if filtered_out:
-                print(f"  Filtered out {len(filtered_out)} non-plottable indicators: {filtered_out[:5]}", file=sys.stderr)
+                _debug_print(f"  Filtered out {len(filtered_out)} non-plottable indicators: {filtered_out[:10]}", force=True)
             if plottable_indicators:
-                print(f"  ✓ {len(plottable_indicators)} plottable indicators: {list(plottable_indicators.keys())}", file=sys.stderr)
+                _debug_print(f"  ✓ {len(plottable_indicators)} plottable indicators: {list(plottable_indicators.keys())}", force=True)
             
             # Limit indicators
             indicator_items = list(plottable_indicators.items())[:max_indicators]
@@ -1053,23 +1240,33 @@ class MultiIndicatorChart(Base):
             # Overlay indicators on price panel (exclude fast/slow stochastic lines - they get their own panel)
             if panel_mode == "overlay" and indicator_items:
                 plotted_count = 0
+                _debug_print(f"  Attempting to plot {len(indicator_items)} indicators in overlay mode for {symbol_str}", force=True)
                 for i, (ind_name, ind_values) in enumerate(indicator_items):
                     # Skip fast/slow stochastic lines - they get their own dedicated panel
                     if "stochastic" in ind_name.lower() and ("fast" in ind_name.lower() or "slow" in ind_name.lower()):
+                        _debug_print(f"    Skipping {ind_name} (stochastic - gets own panel)", force=True)
                         continue
                     if ind_values and len(ind_values) > 0:
                         try:
                             # Calculate alignment offset
                             offset = len(ohlc_data) - len(ind_values)
                             color = indicator_colors[i % len(indicator_colors)]
+                            valid_count = len([v for v in ind_values if v is not None])
+                            _debug_print(f"    Plotting {ind_name}: total={len(ind_values)}, valid={valid_count}, offset={offset}, color={color}", force=True)
                             _plot_indicator_line(ax_price, ind_values, ind_name, color, offset)
                             plotted_count += 1
                         except Exception as e:
-                            logger.debug(f"MultiIndicatorChart: Failed to plot indicator {ind_name} for {symbol}: {e}")
+                            error_msg = f"MultiIndicatorChart: Failed to plot indicator {ind_name} for {symbol_str}: {e}"
+                            _debug_print(f"    ✗ ERROR plotting {ind_name}: {e}", force=True)
+                            logger.debug(error_msg)
+                            import traceback
+                            _debug_print(f"      Traceback: {traceback.format_exc()}", force=True)
                 
+                _debug_print(f"  Plotted {plotted_count} indicators on price panel for {symbol_str}", force=True)
                 if plotted_count > 0:
                     ax_price.legend(loc="upper left", fontsize=7, framealpha=0.7)
-                # No logging if none plotted
+                else:
+                    _debug_print(f"    ⚠️  No indicators plotted for {symbol_str}!", force=True)
             
             panel_idx += 1
             
@@ -1083,6 +1280,7 @@ class MultiIndicatorChart(Base):
             
             # Additional panels: Separate indicator panels (if separate mode)
             if panel_mode == "separate" and indicator_items:
+                _debug_print(f"  Attempting to plot {len(indicator_items)} indicators in separate panels for {symbol_str}", force=True)
                 for i, (ind_name, ind_values) in enumerate(indicator_items):
                     ax_ind = fig.add_subplot(gs[panel_idx], sharex=ax_price)
                     panel_idx += 1
@@ -1091,9 +1289,15 @@ class MultiIndicatorChart(Base):
                         try:
                             offset = len(ohlc_data) - len(ind_values)
                             color = indicator_colors[i % len(indicator_colors)]
+                            valid_count = len([v for v in ind_values if v is not None])
+                            _debug_print(f"    Plotting {ind_name} in separate panel: total={len(ind_values)}, valid={valid_count}, offset={offset}, color={color}", force=True)
                             _plot_indicator_line(ax_ind, ind_values, ind_name, color, offset)
                         except Exception as e:
-                            logger.debug(f"MultiIndicatorChart: Failed to plot indicator {ind_name} for {symbol}: {e}")
+                            error_msg = f"MultiIndicatorChart: Failed to plot indicator {ind_name} for {symbol_str}: {e}"
+                            _debug_print(f"    ✗ ERROR plotting {ind_name} in separate panel: {e}", force=True)
+                            logger.debug(error_msg)
+                            import traceback
+                            _debug_print(f"      Traceback: {traceback.format_exc()}", force=True)
                     
                     ax_ind.set_ylabel(ind_name, fontsize=9)
                     ax_ind.grid(True, alpha=0.3)

@@ -16,6 +16,11 @@ from .rma_calculator import calculate_rma
 from .rsi_calculator import calculate_rsi
 from .sma_calculator import calculate_sma
 from .stochastic_heatmap_calculator import calculate_stochastic_heatmap
+from .thma_calculator import (
+    calculate_hma,
+    calculate_thma,
+    calculate_thma_with_volatility,
+)
 from .utils import (
     calculate_rolling_mean,
     calculate_rolling_std_dev,
@@ -50,6 +55,9 @@ __all__ = [
     "calculate_rolling_sum_strict",
     "calculate_sma",
     "calculate_stochastic_heatmap",
+    "calculate_thma",
+    "calculate_hma",
+    "calculate_thma_with_volatility",
     "calculate_vbp",
     "calculate_wilder_ma",
     "calculate_wma",

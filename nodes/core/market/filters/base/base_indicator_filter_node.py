@@ -106,8 +106,6 @@ class BaseIndicatorFilter(BaseFilter):
             result = {"filtered_ohlcv_bundle": {}}
             # ALWAYS output indicator_data (even if empty) so connections are visible
             result["indicator_data"] = {}
-            import sys
-            print(f"\nBaseIndicatorFilter ({type(self).__name__}, node_id={self.id}): Empty OHLCV bundle, returning empty indicator_data", file=sys.stderr)
             return result
 
         filtered_bundle = {}
@@ -196,28 +194,9 @@ class BaseIndicatorFilter(BaseFilter):
         
         # ALWAYS output indicator_data (even if empty) so MultiIndicatorChart can detect the connection
         # This ensures the graph executor will pass it even if empty
-        import sys
-        print(f"\n{'='*60}", file=sys.stderr)
-        print(f"BaseIndicatorFilter ({type(self).__name__}, node_id={self.id}) EXECUTING", file=sys.stderr)
-        print(f"{'='*60}", file=sys.stderr)
-        print(f"  output_indicator_data param: {output_indicator_data}", file=sys.stderr)
-        print(f"  filtered_bundle size: {len(filtered_bundle)}", file=sys.stderr)
-        print(f"  indicator_data_output size: {len(indicator_data_output)}", file=sys.stderr)
         
         # ALWAYS include indicator_data in output, even if empty
         # This ensures the graph executor will pass it to downstream nodes
         result["indicator_data"] = indicator_data_output if output_indicator_data else {}
         
-        if output_indicator_data and indicator_data_output:
-            print(f"  ✓ Outputting indicator_data with {len(indicator_data_output)} symbols", file=sys.stderr)
-            sample_symbols = list(indicator_data_output.keys())[:3]
-            print(f"  Sample indicator_data keys: {sample_symbols}", file=sys.stderr)
-        elif output_indicator_data:
-            print(f"  ⚠ Outputting EMPTY indicator_data dict (no symbols passed filter)", file=sys.stderr)
-        else:
-            print(f"  ⚠ output_indicator_data=False, but still outputting empty dict for connection visibility", file=sys.stderr)
-        
-        print(f"  Final result keys: {list(result.keys())}", file=sys.stderr)
-        print(f"  Result['indicator_data'] type: {type(result['indicator_data'])}, size: {len(result['indicator_data']) if isinstance(result['indicator_data'], dict) else 'N/A'}", file=sys.stderr)
-        print(f"{'='*60}\n", file=sys.stderr)
         return result
