@@ -57,15 +57,26 @@ def _check_hull_range_condition(
     filter_condition: str,
     check_last_bar_only: bool,
     lookback_bars: int,
+    require_signal_within_bars: bool = False,
+    signal_lookback_bars: int = 10,
+    required_signal_type: str = "any",
 ) -> bool:
     """
     Check if Hull Range Filter condition passes.
+    
+    Args:
+        require_signal_within_bars: If True, also require a signal within signal_lookback_bars
+        signal_lookback_bars: Number of bars to look back for signals
+        required_signal_type: Type of signal required: "buy", "sell", or "any"
     
     Returns:
         True if condition passes, False otherwise
     """
     if not long_condition:
         return False
+    
+    # Check main condition first
+    main_condition_passes = False
     
     if check_last_bar_only:
         # Check only the last bar
@@ -77,19 +88,19 @@ def _check_hull_range_condition(
         last_downward = downward[-1] if len(downward) > 0 else 0
 
         if filter_condition == "bullish" or filter_condition == "long":
-            return last_long or last_upward > 0
+            main_condition_passes = last_long or last_upward > 0
         elif filter_condition == "bearish" or filter_condition == "short":
-            return last_short or last_downward > 0
+            main_condition_passes = last_short or last_downward > 0
         elif filter_condition == "buy_signal":
-            return last_buy
+            main_condition_passes = last_buy
         elif filter_condition == "sell_signal":
-            return last_sell
+            main_condition_passes = last_sell
         elif filter_condition == "any_signal":
-            return last_buy or last_sell
+            main_condition_passes = last_buy or last_sell
         elif filter_condition == "upward":
-            return last_upward > 0
+            main_condition_passes = last_upward > 0
         elif filter_condition == "downward":
-            return last_downward > 0
+            main_condition_passes = last_downward > 0
     else:
         # Check if condition is true for any bar in lookback range
         lookback = min(lookback_bars, len(long_condition))
@@ -105,22 +116,53 @@ def _check_hull_range_condition(
 
             if filter_condition == "bullish" or filter_condition == "long":
                 if current_long or current_upward > 0:
-                    return True
+                    main_condition_passes = True
+                    break
             elif filter_condition == "bearish" or filter_condition == "short":
                 if current_short or current_downward > 0:
-                    return True
+                    main_condition_passes = True
+                    break
             elif filter_condition == "buy_signal" and current_buy:
-                return True
+                main_condition_passes = True
+                break
             elif filter_condition == "sell_signal" and current_sell:
-                return True
+                main_condition_passes = True
+                break
             elif filter_condition == "any_signal" and (current_buy or current_sell):
-                return True
+                main_condition_passes = True
+                break
             elif filter_condition == "upward" and current_upward > 0:
-                return True
+                main_condition_passes = True
+                break
             elif filter_condition == "downward" and current_downward > 0:
-                return True
+                main_condition_passes = True
+                break
     
-    return False
+    # If main condition doesn't pass, return False
+    if not main_condition_passes:
+        return False
+    
+    # If signal requirement is enabled, check for signals within lookback period
+    if require_signal_within_bars:
+        signal_lookback = min(signal_lookback_bars, len(signal_buy))
+        signal_start_idx = max(0, len(signal_buy) - signal_lookback)
+        
+        signal_found = False
+        for i in range(signal_start_idx, len(signal_buy)):
+            if required_signal_type == "buy" and signal_buy[i]:
+                signal_found = True
+                break
+            elif required_signal_type == "sell" and signal_sell[i]:
+                signal_found = True
+                break
+            elif required_signal_type == "any" and (signal_buy[i] or signal_sell[i]):
+                signal_found = True
+                break
+        
+        if not signal_found:
+            return False
+    
+    return True
 
 
 class HullRangeFilter(BaseIndicatorFilter):
@@ -154,6 +196,9 @@ class HullRangeFilter(BaseIndicatorFilter):
         "filter_condition": "bullish",  # Filter condition
         "check_last_bar_only": True,  # Check only last bar vs any bar in lookback
         "lookback_bars": 5,  # Number of bars to check if check_last_bar_only is False
+        "require_signal_within_bars": False,  # Require signal within N bars
+        "signal_lookback_bars": 10,  # Number of bars to look back for signals
+        "required_signal_type": "any",  # Type of signal required: buy, sell, or any
         "max_symbols": 500,  # Maximum number of symbols to pass through
         "enable_multi_timeframe": False,  # Enable multi-timeframe filtering
         "timeframe_multiplier_1": 1,  # First timeframe multiplier
@@ -250,7 +295,28 @@ class HullRangeFilter(BaseIndicatorFilter):
             "default": 5,
             "min": 1,
             "step": 1,
-            "description": "Number of bars to check if check_last_bar_only is False",
+            "description": "Number of bars to check if check_last_bar_only is False (for trend/bullish/bearish conditions)",
+        },
+        {
+            "name": "require_signal_within_bars",
+            "type": "boolean",
+            "default": False,
+            "description": "Require a buy/sell signal to have occurred within the last N bars (in addition to main filter condition)",
+        },
+        {
+            "name": "signal_lookback_bars",
+            "type": "number",
+            "default": 10,
+            "min": 1,
+            "step": 1,
+            "description": "Number of bars to look back for a signal when require_signal_within_bars is True",
+        },
+        {
+            "name": "required_signal_type",
+            "type": "combo",
+            "options": ["buy", "sell", "any"],
+            "default": "any",
+            "description": "Type of signal required when require_signal_within_bars is True: buy, sell, or any",
         },
         {
             "name": "max_symbols",
@@ -345,6 +411,9 @@ class HullRangeFilter(BaseIndicatorFilter):
         filter_condition = str(self.params.get("filter_condition", "bullish"))
         check_last_bar_only = bool(self.params.get("check_last_bar_only", True))
         lookback_bars = int(self.params.get("lookback_bars", 5))
+        require_signal_within_bars = bool(self.params.get("require_signal_within_bars", False))
+        signal_lookback_bars = int(self.params.get("signal_lookback_bars", 10))
+        required_signal_type = str(self.params.get("required_signal_type", "any"))
         max_symbols = int(self.params.get("max_symbols", 500))
         
         # Multi-timeframe parameters
@@ -430,6 +499,9 @@ class HullRangeFilter(BaseIndicatorFilter):
                             filter_condition=filter_condition,
                             check_last_bar_only=check_last_bar_only,
                             lookback_bars=lookback_bars,
+                            require_signal_within_bars=require_signal_within_bars,
+                            signal_lookback_bars=signal_lookback_bars,
+                            required_signal_type=required_signal_type,
                         )
                         timeframe_results.append(timeframe_passes)
                     
@@ -473,6 +545,9 @@ class HullRangeFilter(BaseIndicatorFilter):
                         filter_condition=filter_condition,
                         check_last_bar_only=check_last_bar_only,
                         lookback_bars=lookback_bars,
+                        require_signal_within_bars=require_signal_within_bars,
+                        signal_lookback_bars=signal_lookback_bars,
+                        required_signal_type=required_signal_type,
                     )
 
                 if passes_filter:
