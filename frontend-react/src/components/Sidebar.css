@@ -1,0 +1,192 @@
+.sidebar {
+  width: var(--sidebar-width, 280px);
+  height: 100%;
+  background: var(--theme-bg-secondary);
+  border-right: 1px solid var(--theme-border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  /* Ensure sidebar scroll events don't interfere with canvas */
+  position: relative;
+  z-index: 10;
+  /* Prevent pointer events from passing through to canvas */
+  pointer-events: auto;
+}
+
+.sidebar-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--theme-border);
+  background: var(--theme-bg-tertiary);
+}
+
+.tab {
+  flex: 1;
+  padding: 12px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--theme-text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.tab:hover {
+  color: var(--theme-text);
+  background: var(--theme-bg-hover);
+}
+
+.tab.active {
+  color: var(--theme-accent);
+  border-bottom-color: var(--theme-accent);
+}
+
+.sidebar-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0; /* Important for flex children to allow scrolling */
+}
+
+.search-container {
+  padding: 12px;
+  border-bottom: 1px solid var(--theme-border);
+}
+
+.search-input {
+  width: 100%;
+}
+
+.node-list {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 8px;
+  /* Instant scrolling for snappier feel (different from canvas smooth scrolling) */
+  scroll-behavior: auto;
+  /* Custom scrollbar styling */
+  scrollbar-width: thin;
+  scrollbar-color: var(--theme-border) transparent;
+  /* Ensure node list can receive scroll events */
+  position: relative;
+  /* Prevent scroll chaining to parent - important for trackpad */
+  overscroll-behavior: contain;
+  /* Better trackpad scrolling performance */
+  will-change: scroll-position;
+  /* Ensure element can receive pointer events */
+  pointer-events: auto;
+  /* Make sure element is focusable for better event handling */
+  tabindex: -1;
+}
+
+.node-list::-webkit-scrollbar {
+  width: 8px;
+}
+
+.node-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.node-list::-webkit-scrollbar-thumb {
+  background: var(--theme-border);
+  border-radius: 4px;
+}
+
+.node-list::-webkit-scrollbar-thumb:hover {
+  background: var(--theme-text-secondary);
+}
+
+.node-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: 1px solid transparent;
+}
+
+.node-item:hover {
+  background: var(--theme-bg-hover);
+  border-color: var(--theme-border);
+}
+
+.node-item:active {
+  transform: scale(0.98);
+}
+
+.node-icon {
+  font-size: 24px;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--theme-bg-tertiary);
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+
+.node-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.node-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--theme-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.node-category {
+  font-size: 11px;
+  color: var(--theme-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 16px;
+  text-align: center;
+  color: var(--theme-text-secondary);
+}
+
+.empty-state p {
+  font-size: 14px;
+  margin-bottom: 4px;
+}
+
+.empty-state small {
+  font-size: 12px;
+  color: var(--theme-text-muted);
+}
+
+.node-list-footer {
+  padding: 12px 8px 8px;
+  text-align: center;
+  color: var(--theme-text-secondary);
+  font-size: 11px;
+  border-top: 1px solid var(--theme-border);
+  margin-top: 8px;
+}
+
+.sidebar-footer {
+  padding: 12px;
+  border-top: 1px solid var(--theme-border);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex-shrink: 0;
+}
+

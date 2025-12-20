@@ -126,12 +126,16 @@ export class DialogManager {
             } else {
                 callback(input.value);
             }
-            document.body.removeChild(overlay);
+            if (overlay.parentNode) {
+                overlay.parentNode.removeChild(overlay);
+            }
         };
         
         const cancel = () => {
             callback(null);
-            if (overlay.parentNode) document.body.removeChild(overlay);
+            if (overlay.parentNode) {
+                overlay.parentNode.removeChild(overlay);
+            }
         };
 
         okButton.addEventListener('click', submit);
@@ -148,7 +152,14 @@ export class DialogManager {
         dialog.appendChild(input);
         dialog.appendChild(okButton);
         overlay.appendChild(dialog);
-        document.body.appendChild(overlay);
+        
+        // Append to expanded container if in fullscreen mode, otherwise to body
+        const expandedContainer = document.querySelector('.litegraph-container.expanded, .app-container.expanded');
+        if (expandedContainer) {
+            expandedContainer.appendChild(overlay);
+        } else {
+            document.body.appendChild(overlay);
+        }
 
         // Position dialog near widget/cursor when possible
         const applyAbsolutePosition = (x: number, y: number) => {
@@ -181,7 +192,7 @@ export class DialogManager {
 
         const removeOverlay = () => {
             if (overlay.parentNode) {
-                document.body.removeChild(overlay);
+                overlay.parentNode.removeChild(overlay);
             }
         };
 
@@ -289,7 +300,14 @@ export class DialogManager {
 
         overlay.appendChild(menu);
         overlay.tabIndex = -1;
-        document.body.appendChild(overlay);
+        
+        // Append to expanded container if in fullscreen mode, otherwise to body
+        const expandedContainer = document.querySelector('.litegraph-container.expanded, .app-container.expanded');
+        if (expandedContainer) {
+            expandedContainer.appendChild(overlay);
+        } else {
+            document.body.appendChild(overlay);
+        }
 
         overlay.addEventListener('click', (e) => {
             if (e.target === overlay) {

@@ -23,7 +23,7 @@
   padding: 0;
   box-shadow: 0 0 10px black !important;
   background-color: #2e2e2e !important;
-  z-index: 10;
+  z-index: 10001; /* Higher than expanded container (10000) */
   max-height: -webkit-fill-available;
   overflow-y: auto;
 }

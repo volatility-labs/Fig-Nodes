@@ -1,0 +1,468 @@
+.litegraph-container {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  /* No transition on position/size to prevent black rectangle when exiting fullscreen */
+  transition: background-color 0.3s ease;
+}
+
+.litegraph-container.expanded {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 10000;
+  background: var(--theme-bg, #0d1117);
+  width: 100vw;
+  height: 100vh;
+}
+
+/* Ensure proper reset when not expanded - no transitions to prevent artifacts */
+.litegraph-container:not(.expanded) {
+  position: relative !important;
+  width: 100% !important;
+  height: 100% !important;
+  z-index: auto !important;
+  background: transparent !important;
+  top: auto !important;
+  left: auto !important;
+  right: auto !important;
+  bottom: auto !important;
+}
+
+/* Loading overlay */
+.loading-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--theme-bg, #0d1117);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+.loading-spinner {
+  width: 48px;
+  height: 48px;
+  border: 4px solid var(--theme-border, #30363d);
+  border-top-color: var(--theme-accent, #539bf5);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.loading-text {
+  margin-top: 16px;
+  color: var(--theme-text-secondary, #768390);
+  font-size: 14px;
+}
+
+/* Error overlay */
+.error-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--theme-bg, #0d1117);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+.error-content {
+  background: var(--theme-bg-secondary, #161b22);
+  border: 1px solid var(--theme-error, #e5534b);
+  border-radius: 8px;
+  padding: 24px;
+  max-width: 500px;
+  text-align: center;
+}
+
+.error-content h3 {
+  color: var(--theme-error, #e5534b);
+  margin: 0 0 12px 0;
+}
+
+.error-content p {
+  color: var(--theme-text, #adbac7);
+  font-size: 14px;
+  margin: 0 0 16px 0;
+}
+
+.error-content button {
+  padding: 8px 16px;
+  background: var(--theme-accent, #539bf5);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.error-content button:hover {
+  background: var(--theme-accent-hover, #6cb6ff);
+}
+
+/* Reload button */
+.reload-button {
+  padding: 8px 16px;
+  background: var(--theme-accent, #539bf5);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+
+.reload-button:hover {
+  background: var(--theme-accent-hover, #6cb6ff);
+  transform: translateY(-1px);
+}
+
+.reload-button:active {
+  transform: translateY(0);
+}
+
+#main-content {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  min-height: 0; /* Prevent flex overflow issues */
+  background: transparent; /* Ensure no dark background */
+  /* No transition on height/flex to prevent black rectangle when exiting fullscreen */
+  transition: opacity 0.3s ease;
+}
+
+/* Ensure progress text is positioned relative to main-content */
+#main-content #top-progress-text {
+  position: absolute;
+  bottom: 60px;
+  left: 10px;
+}
+
+.litegraph-container.expanded #main-content {
+  height: calc(100% - 48px); /* Subtract footer height (48px) to keep footer visible */
+  flex: none;
+  min-height: calc(100% - 48px);
+}
+
+/* Ensure proper reset when not expanded - explicit reset */
+.litegraph-container:not(.expanded) #main-content {
+  height: auto;
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+}
+
+#litegraph-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  outline: none;
+}
+
+/* Top progress bar */
+#top-progress {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: var(--theme-bg-secondary);
+  z-index: 1000;
+}
+
+#top-progress-bar {
+  height: 100%;
+  background: var(--theme-accent);
+  transition: width 0.3s ease;
+  width: 0%;
+}
+
+/* Ensure progress text doesn't create dark rectangle when hidden */
+#top-progress-text[style*="display: none"] {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  background: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+#top-progress-text {
+  position: absolute;
+  bottom: 60px; /* Position above footer (footer is 48px + some margin) */
+  left: 10px; /* Bottom-left corner, matching performance overlay position */
+  transform: none; /* Remove centering transform */
+  font-size: 11px;
+  color: var(--theme-text-secondary);
+  background: var(--theme-bg-secondary);
+  padding: 4px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--theme-border);
+  white-space: nowrap;
+  z-index: 1001; /* Ensure it's above progress bar */
+  max-width: 200px; /* Limit width to prevent overlap */
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Hide progress text when empty or when showing default "Executing..." */
+#top-progress-text:empty,
+#top-progress-text[style*="display: none"] {
+  display: none !important;
+  background: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+}
+
+/* Footer */
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 48px;
+  padding: 0 16px;
+  background: var(--theme-bg-secondary) !important;
+  border-top: 1px solid var(--theme-border);
+  gap: 16px;
+  position: relative;
+  z-index: 10;
+  overflow: hidden; /* Prevent text overflow */
+  isolation: isolate; /* Create new stacking context */
+}
+
+/* Prevent any background text from showing through */
+.footer * {
+  position: relative;
+  z-index: inherit;
+}
+
+.footer-left * {
+  background: transparent !important;
+  text-shadow: none !important;
+  -webkit-text-stroke: none !important;
+}
+
+.litegraph-container.expanded .footer {
+  display: flex; /* Keep footer visible in fullscreen */
+}
+
+.footer-left,
+.footer-center,
+.footer-right {
+  display: flex;
+  align-items: center;
+  gap: 8px; /* Reduced gap to prevent overlap, individual elements have margins */
+}
+
+.footer-left {
+  flex: 1;
+  position: relative;
+  z-index: 2;
+  background: transparent !important;
+  isolation: isolate; /* Create new stacking context */
+  padding-left: 100px; /* Leave space for polygon-status (absolutely positioned) and performance overlay */
+  min-width: 0; /* Allow flex shrinking */
+}
+
+/* Ensure footer-left doesn't create a dark background */
+.footer-left::before,
+.footer-left::after {
+  display: none !important;
+  content: none !important;
+}
+
+/* Hide status indicator when empty/idle */
+.status-indicator:empty,
+.status-indicator[style*="display: none"] {
+  display: none !important;
+}
+
+.footer-center {
+  flex: 0 0 auto;
+  position: relative;
+  z-index: 2;
+}
+
+.footer-right {
+  flex: 1;
+  justify-content: flex-end;
+  position: relative;
+  z-index: 2;
+}
+
+.status-indicator {
+  font-size: 11px;
+  color: var(--theme-text-secondary);
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: var(--theme-bg-tertiary);
+  border: 1px solid var(--theme-border);
+  white-space: nowrap;
+  position: relative;
+  z-index: 3;
+  display: inline-block;
+  isolation: isolate;
+  margin-right: 8px; /* Add spacing to prevent overlap */
+}
+
+.status-indicator.connected {
+  color: var(--theme-success);
+  border-color: var(--theme-success);
+}
+
+.status-indicator.disconnected {
+  color: var(--theme-error);
+  border-color: var(--theme-error);
+}
+
+.graph-name {
+  font-size: 12px;
+  color: var(--theme-text) !important;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+  position: relative;
+  z-index: 3;
+  display: inline-block;
+  isolation: isolate;
+  background: transparent !important;
+  text-shadow: none !important;
+  -webkit-text-stroke: none !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  margin-right: 8px; /* Add spacing to prevent overlap */
+}
+
+/* Hide any duplicate graph-name elements that might exist */
+.footer-left > #graph-name:not(:first-of-type),
+.footer-left > .graph-name:not(:first-of-type) {
+  display: none !important;
+}
+
+/* Ensure only one connection-status is visible */
+.footer-left > #connection-status:not(:first-of-type),
+.footer-left > .status-indicator:not(:first-of-type) {
+  display: none !important;
+}
+
+/* Polygon Status Indicator - Real-Time/Delayed Data Status */
+.polygon-status {
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  position: absolute;
+  left: 10px; /* Position at left edge, near performance overlay */
+  top: 50%;
+  transform: translateY(-50%); /* Center vertically in footer */
+  z-index: 11; /* Above footer background */
+  display: inline-block;
+  isolation: isolate;
+  white-space: nowrap;
+  margin: 0 !important; /* Remove all margins */
+}
+
+.polygon-status.na,
+.polygon-status.polygon-status-na {
+  background: rgba(158, 158, 158, 0.2);
+  color: #9e9e9e;
+  border: 1px solid rgba(158, 158, 158, 0.3);
+}
+
+.polygon-status.real-time {
+  background: rgba(76, 175, 80, 0.2);
+  color: #4caf50;
+  border: 1px solid rgba(76, 175, 80, 0.3);
+}
+
+.polygon-status.delayed {
+  background: rgba(255, 152, 0, 0.2);
+  color: #ff9800;
+  border: 1px solid rgba(255, 152, 0, 0.3);
+}
+
+.polygon-status.market-closed {
+  background: rgba(158, 158, 158, 0.2);
+  color: #9e9e9e;
+  border: 1px solid rgba(158, 158, 158, 0.3);
+}
+
+.polygon-status.unknown {
+  background: rgba(158, 158, 158, 0.2);
+  color: #9e9e9e;
+  border: 1px solid rgba(158, 158, 158, 0.3);
+}
+
+/* Execution status integration - show scanning/running status */
+.polygon-status.scanning,
+.polygon-status.running {
+  background: rgba(33, 150, 243, 0.2);
+  color: #2196f3;
+  border: 1px solid rgba(33, 150, 243, 0.3);
+  animation: pulse 1.5s infinite;
+}
+
+.polygon-status.executing {
+  background: rgba(255, 152, 0, 0.2);
+  color: #ff9800;
+  border: 1px solid rgba(255, 152, 0, 0.3);
+  animation: pulse 1.5s infinite;
+}
+
+.file-controls {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.footer-divider {
+  width: 1px;
+  height: 24px;
+  background: var(--theme-border);
+  margin: 0 8px;
+}
+
+.btn-secondary {
+  padding: 6px 12px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+/* Make Save and Save As buttons the same width */
+#save,
+#save-as {
+  width: 70px;
+  text-align: center;
+}
+
+.btn-primary {
+  padding: 8px 24px;
+  font-size: 13px;
+  font-weight: 600;
+}
+

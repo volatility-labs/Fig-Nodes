@@ -17,12 +17,46 @@ body {
     flex-direction: column;
     height: 100vh;
     width: 100vw;
+    /* No transition on position/size to prevent black rectangle when exiting fullscreen */
+    transition: background-color 0.3s ease;
+}
+
+.app-container.expanded {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 10000;
+    background: #0d1117;
+}
+
+.app-container:not(.expanded) {
+    position: relative !important;
+    top: auto !important;
+    left: auto !important;
+    right: auto !important;
+    bottom: auto !important;
+    z-index: auto !important;
+    background: transparent !important;
 }
 
 #main-content {
     flex: 1;
     position: relative;
     overflow: hidden;
+    /* No transition on height/flex to prevent black rectangle when exiting fullscreen */
+    transition: opacity 0.3s ease;
+}
+
+.app-container.expanded #main-content {
+    height: 100%;
+    flex: none;
+}
+
+.app-container:not(.expanded) #main-content {
+    height: auto !important;
+    flex: 1 !important;
 }
 
 #litegraph-canvas {
@@ -46,7 +80,12 @@ body {
     box-shadow: 0 -1px 3px rgba(0, 0, 0, 0.2);
     position: relative;
     z-index: 1001;
+    transition: all 0.3s ease;
     /* Ensure footer stays above textareas */
+}
+
+.app-container.expanded #footer {
+    display: none;
 }
 
 .footer-section {
@@ -189,6 +228,14 @@ body {
     transition: all 0.15s ease;
     background: #1c2128;
     letter-spacing: 0.3px;
+    text-transform: uppercase;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+}
+
+#expand-toggle {
+    font-size: 11px;
+    padding: 4px 10px;
+    min-width: auto;
     text-transform: uppercase;
     font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
 }
@@ -479,7 +526,7 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
-    z-index: 3000;
+    z-index: 10001; /* Higher than expanded container (10000) */
 }
 
 .quick-input-dialog {
@@ -567,7 +614,7 @@ body {
     left: 0;
     width: 100%;
     height: 100%;
-    z-index: 3000;
+    z-index: 10001; /* Higher than expanded container (10000) */
     background: transparent;
 }
 
@@ -577,7 +624,7 @@ body {
     border: 1px solid #555;
     border-radius: 8px;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
-    z-index: 3001;
+    z-index: 10002; /* Higher than overlay */
     width: 280px;
     max-height: 300px;
     display: flex;
