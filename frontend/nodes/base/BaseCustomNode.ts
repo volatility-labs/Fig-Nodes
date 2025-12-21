@@ -168,7 +168,58 @@ export default class BaseCustomNode extends LGraphNode {
         if (this.displayResults) {
             const outputs = Object.values(result as Record<string, unknown>);
             const primaryOutput = outputs.length === 1 ? outputs[0] : result;
-            this.displayText = typeof primaryOutput === 'string' ? primaryOutput : JSON.stringify(primaryOutput, null, 2);
+            
+            if (typeof primaryOutput === 'string') {
+                // Truncate long strings to prevent UI freeze
+                this.displayText = primaryOutput.length > 1000 
+                    ? primaryOutput.substring(0, 1000) + '... (truncated, connect to LoggingNode for full output)'
+                    : primaryOutput;
+            } else {
+                // Smart truncation for different result types
+                try {
+                    // Check if it's a message object (from LLM nodes)
+                    const resultObj = primaryOutput as any;
+                    if (resultObj && typeof resultObj === 'object' && 'content' in resultObj) {
+                        // LLM message - show summary
+                        const content = resultObj.content || '';
+                        const role = resultObj.role || 'assistant';
+                        const hasToolCalls = resultObj.tool_calls && resultObj.tool_calls.length > 0;
+                        
+                        let summary = `[${role}]\n${content}`;
+                        
+                        if (hasToolCalls) {
+                            summary += `\n\n🔧 Tool calls: ${resultObj.tool_calls.length}`;
+                        }
+                        
+                        // Truncate if still too long
+                        this.displayText = summary.length > 1500
+                            ? summary.substring(0, 1500) + '\n... (truncated, connect to LoggingNode for full output)'
+                            : summary;
+                    } else if (Array.isArray(resultObj)) {
+                        // Array of results (e.g., trading analysis)
+                        const itemCount = resultObj.length;
+                        if (itemCount <= 3) {
+                            // Small arrays - show all
+                            const jsonStr = JSON.stringify(resultObj, null, 2);
+                            this.displayText = jsonStr.length > 2000
+                                ? jsonStr.substring(0, 2000) + '\n... (truncated, connect to LoggingNode for full output)'
+                                : jsonStr;
+                        } else {
+                            // Large arrays - show summary
+                            this.displayText = `[Array with ${itemCount} items]\n${JSON.stringify(resultObj.slice(0, 2), null, 2)}\n... and ${itemCount - 2} more\n(Connect to LoggingNode for full output)`;
+                        }
+                    } else {
+                        // Generic object - truncate JSON
+                        const jsonStr = JSON.stringify(primaryOutput, null, 2);
+                        this.displayText = jsonStr.length > 1500
+                            ? jsonStr.substring(0, 1500) + '\n... (truncated, connect to LoggingNode for full output)'
+                            : jsonStr;
+                    }
+                } catch (e) {
+                    // Handle circular references or other stringify errors
+                    this.displayText = '[Result too large to display - connect to LoggingNode]';
+                }
+            }
             } else {
                 // Skip expensive JSON.stringify when displayResults is false
                 this.displayText = '';

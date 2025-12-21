@@ -18,6 +18,37 @@ from services.indicator_calculators.fractal_resonance_calculator import calculat
 logger = logging.getLogger(__name__)
 
 
+def _aggregate_bars(bars: list[OHLCVBar], group_size: int) -> list[OHLCVBar]:
+    """
+    Aggregate consecutive bars into larger bars of size `group_size`.
+    Example: aggregate 1h bars into 4h bars when group_size=4.
+    """
+    if group_size <= 1 or len(bars) <= 1:
+        return bars
+
+    aggregated: list[OHLCVBar] = []
+    for i in range(0, len(bars), group_size):
+        chunk = bars[i : i + group_size]
+        if not chunk:
+            continue
+        open_price = chunk[0]["open"]
+        close_price = chunk[-1]["close"]
+        high_price = max(b["high"] for b in chunk)
+        low_price = min(b["low"] for b in chunk)
+        volume_sum = sum(b.get("volume", 0.0) or 0.0 for b in chunk)
+        timestamp = chunk[-1]["timestamp"]
+        agg_bar: OHLCVBar = {
+            "timestamp": timestamp,
+            "open": open_price,
+            "high": high_price,
+            "low": low_price,
+            "close": close_price,
+            "volume": volume_sum,
+        }
+        aggregated.append(agg_bar)
+    return aggregated
+
+
 class FractalResonanceFilter(BaseIndicatorFilter):
     """
     Filters assets based on Fractal Resonance indicator signals.
@@ -37,6 +68,14 @@ class FractalResonanceFilter(BaseIndicatorFilter):
         "check_last_bar_only": True,  # If True, only check the last bar; if False, check last N bars
         "lookback_bars": 5,  # Number of bars to check if check_last_bar_only is False
         "min_green_timeframes": 8,  # Minimum number of timeframes that must be green (1-8). 8 = all must be green
+        "output_indicator_data": True,  # Output indicator data for MultiIndicatorChart
+        "enable_multi_timeframe": False,  # Enable multi-timeframe filtering
+        "timeframe_multiplier_1": 1,  # First timeframe multiplier
+        "timeframe_multiplier_2": 4,  # Second timeframe multiplier
+        "timeframe_multiplier_3": 16,  # Third timeframe multiplier
+        "timeframe_multiplier_4": 64,  # Fourth timeframe multiplier
+        "timeframe_multiplier_5": 256,  # Fifth timeframe multiplier
+        "multi_timeframe_mode": "all",  # "all", "any", "majority"
     }
 
     params_meta = [
@@ -119,6 +158,59 @@ class FractalResonanceFilter(BaseIndicatorFilter):
             "step": 1,
             "description": "Ideal number of timeframes to check (8 = all timeframes). Filter will accept symbols with 3-4+ timeframes if all are green. For daily data: 3 months = 4 TFs, 2 years = 6 TFs, 7+ years = 8 TFs",
         },
+        {
+            "name": "enable_multi_timeframe",
+            "type": "boolean",
+            "default": False,
+            "description": "Enable multi-timeframe filtering. When enabled, filter will check multiple aggregated timeframes and combine results.",
+        },
+        {
+            "name": "timeframe_multiplier_1",
+            "type": "number",
+            "default": 1,
+            "min": 0,
+            "step": 1,
+            "description": "First timeframe multiplier (1 = base timeframe, 0 = disabled)",
+        },
+        {
+            "name": "timeframe_multiplier_2",
+            "type": "number",
+            "default": 4,
+            "min": 0,
+            "step": 1,
+            "description": "Second timeframe multiplier (0 = disabled)",
+        },
+        {
+            "name": "timeframe_multiplier_3",
+            "type": "number",
+            "default": 16,
+            "min": 0,
+            "step": 1,
+            "description": "Third timeframe multiplier (0 = disabled)",
+        },
+        {
+            "name": "timeframe_multiplier_4",
+            "type": "number",
+            "default": 64,
+            "min": 0,
+            "step": 1,
+            "description": "Fourth timeframe multiplier (0 = disabled)",
+        },
+        {
+            "name": "timeframe_multiplier_5",
+            "type": "number",
+            "default": 256,
+            "min": 0,
+            "step": 1,
+            "description": "Fifth timeframe multiplier (0 = disabled)",
+        },
+        {
+            "name": "multi_timeframe_mode",
+            "type": "combo",
+            "default": "all",
+            "options": ["all", "any", "majority"],
+            "description": "Multi-timeframe combination mode: 'all' (all timeframes must pass), 'any' (any timeframe must pass), 'majority' (majority must pass)",
+        },
     ]
 
     def _validate_indicator_params(self):
@@ -137,6 +229,14 @@ class FractalResonanceFilter(BaseIndicatorFilter):
             self.min_green_timeframes = 1
         elif self.min_green_timeframes > 8:
             self.min_green_timeframes = 8
+        # Multi-timeframe parameters
+        self.enable_multi_timeframe = bool(self.params.get("enable_multi_timeframe", False))
+        self.timeframe_multiplier_1 = int(self.params.get("timeframe_multiplier_1", 1))
+        self.timeframe_multiplier_2 = int(self.params.get("timeframe_multiplier_2", 4))
+        self.timeframe_multiplier_3 = int(self.params.get("timeframe_multiplier_3", 16))
+        self.timeframe_multiplier_4 = int(self.params.get("timeframe_multiplier_4", 64))
+        self.timeframe_multiplier_5 = int(self.params.get("timeframe_multiplier_5", 256))
+        self.multi_timeframe_mode = str(self.params.get("multi_timeframe_mode", "all"))
 
     def _calculate_indicator(self, ohlcv_data: list[OHLCVBar]) -> IndicatorResult:
         """Calculate Fractal Resonance and return as IndicatorResult."""
@@ -267,6 +367,13 @@ class FractalResonanceFilter(BaseIndicatorFilter):
                     
                     if bar_idx >= len(wt_a_list) or bar_idx >= len(wt_b_list):
                         failed_timeframes.append(f"WT{tm}(missing)")
+                        # Debug logging for BCH and SUPER
+                        if hasattr(self, '_current_symbol'):
+                            symbol_str = str(self._current_symbol).upper()
+                            if "BCH" in symbol_str:
+                                print(f"FRACTAL_RESONANCE: BCH WT{tm} - Missing data (bar_idx={bar_idx}, wt_a_len={len(wt_a_list)}, wt_b_len={len(wt_b_list)})", flush=True)
+                            elif "SUPER" in symbol_str:
+                                print(f"FRACTAL_RESONANCE: SUPER WT{tm} - Missing data (bar_idx={bar_idx}, wt_a_len={len(wt_a_list)}, wt_b_len={len(wt_b_list)})", flush=True)
                         continue
                     
                     a_val = wt_a_list[bar_idx]
@@ -275,6 +382,13 @@ class FractalResonanceFilter(BaseIndicatorFilter):
                     # Green means bullish: wtA > wtB (and both must be valid)
                     if a_val is None or b_val is None:
                         failed_timeframes.append(f"WT{tm}(None)")
+                        # Debug logging for BCH and SUPER
+                        if hasattr(self, '_current_symbol'):
+                            symbol_str = str(self._current_symbol).upper()
+                            if "BCH" in symbol_str:
+                                print(f"FRACTAL_RESONANCE: BCH WT{tm} - Invalid values (a_val={a_val}, b_val={b_val})", flush=True)
+                            elif "SUPER" in symbol_str:
+                                print(f"FRACTAL_RESONANCE: SUPER WT{tm} - Invalid values (a_val={a_val}, b_val={b_val})", flush=True)
                         continue
                     
                     # This timeframe has valid data
@@ -294,6 +408,32 @@ class FractalResonanceFilter(BaseIndicatorFilter):
                         block_color = block_colors_list[bar_idx]
                         # Block is green if it's NOT white (white = embedded)
                         is_block_green = block_color not in [None, "#ffffff", "#FFFFFF", "white"]
+                    
+                    # Debug logging for BCH and SUPER - check symbol from instance variable
+                    is_debug_symbol = False
+                    symbol_name = ""
+                    try:
+                        if hasattr(self, '_current_symbol'):
+                            symbol_str = str(self._current_symbol).upper()
+                            # Check for BCH or SUPER in various formats
+                            if "BCH" in symbol_str:
+                                is_debug_symbol = True
+                                symbol_name = "BCH"
+                            elif "SUPER" in symbol_str:
+                                is_debug_symbol = True
+                                symbol_name = "SUPER"
+                    except:
+                        pass
+                    
+                    if is_debug_symbol and bar_idx == check_indices[-1]:  # Only log for last bar to avoid spam
+                        print(
+                            f"FRACTAL_RESONANCE: {symbol_name} WT{tm} at bar {bar_idx} - "
+                            f"wtA={a_val:.4f}, wtB={b_val:.4f}, "
+                            f"color_green={is_color_green}, "
+                            f"block_color={block_color}, block_green={is_block_green}, "
+                            f"passes={is_color_green and is_block_green}",
+                            flush=True
+                        )
                     
                     if is_color_green and is_block_green:
                         green_count += 1
@@ -339,9 +479,49 @@ class FractalResonanceFilter(BaseIndicatorFilter):
                             f"at bar {bar_idx} (required: {required_count} = ALL valid TFs). "
                             f"Failed: {', '.join(failed_timeframes[:5])}"
                         )
+                        # Debug logging for BCH and SUPER
+                        if hasattr(self, '_current_symbol'):
+                            symbol_str = str(self._current_symbol).upper()
+                            if "BCH" in symbol_str:
+                                print(
+                                    f"FRACTAL_RESONANCE: BCH FAILED at bar {bar_idx} - "
+                                    f"green_count={green_count}/{valid_timeframes_count}, "
+                                    f"required={required_count}, "
+                                    f"failed_timeframes={failed_timeframes}",
+                                    flush=True
+                                )
+                            elif "SUPER" in symbol_str:
+                                print(
+                                    f"FRACTAL_RESONANCE: SUPER FAILED at bar {bar_idx} - "
+                                    f"green_count={green_count}/{valid_timeframes_count}, "
+                                    f"required={required_count}, "
+                                    f"failed_timeframes={failed_timeframes}",
+                                    flush=True
+                                )
             
             # Store results in IndicatorResult
             has_signal = len(all_green_bars) > 0
+            
+            # Debug logging for BCH and SUPER
+            if hasattr(self, '_current_symbol'):
+                symbol_str = str(self._current_symbol).upper()
+                if "BCH" in symbol_str:
+                    print(
+                        f"FRACTAL_RESONANCE: BCH final result - "
+                        f"has_signal={has_signal}, "
+                        f"all_green_bars={len(all_green_bars)}, "
+                        f"checked_bars={len(check_indices)}",
+                        flush=True
+                    )
+                elif "SUPER" in symbol_str:
+                    print(
+                        f"FRACTAL_RESONANCE: SUPER final result - "
+                        f"has_signal={has_signal}, "
+                        f"all_green_bars={len(all_green_bars)}, "
+                        f"checked_bars={len(check_indices)}",
+                        flush=True
+                    )
+            
             last_green_bar_idx = all_green_bars[-1] if all_green_bars else -1
             last_green_bar_timestamp = (
                 ohlcv_data[last_green_bar_idx]["timestamp"] if last_green_bar_idx >= 0 else -1.0
@@ -493,6 +673,9 @@ class FractalResonanceFilter(BaseIndicatorFilter):
         logger.info(f"🔵 FractalResonanceFilter: Starting filter on {total_symbols} symbols (STRICT MODE: ALL 16 rows must be green - color rows AND block rows not white/embedded, min TFs: {self.min_green_timeframes})")
 
         for symbol, ohlcv_data in ohlcv_bundle.items():
+            # Store current symbol for debug logging
+            self._current_symbol = symbol
+            
             if not ohlcv_data:
                 processed_symbols += 1
                 failed_count += 1
@@ -504,9 +687,118 @@ class FractalResonanceFilter(BaseIndicatorFilter):
                 continue
 
             try:
-                indicator_result = self._calculate_indicator(ohlcv_data)
+                enable_multi_timeframe = self.enable_multi_timeframe
+                timeframe_multiplier_1 = self.timeframe_multiplier_1
+                timeframe_multiplier_2 = self.timeframe_multiplier_2
+                timeframe_multiplier_3 = self.timeframe_multiplier_3
+                timeframe_multiplier_4 = self.timeframe_multiplier_4
+                timeframe_multiplier_5 = self.timeframe_multiplier_5
+                multi_timeframe_mode = self.multi_timeframe_mode
+                
+                # Debug logging for BCH and SUPER
+                symbol_str = str(symbol)
+                symbol_upper = symbol_str.upper()
+                if "BCH" in symbol_upper:
+                    print(f"FRACTAL_RESONANCE: Processing BCH ({symbol_str}) - {len(ohlcv_data)} bars, min_green_timeframes={self.min_green_timeframes}, enable_multi_timeframe={enable_multi_timeframe}, multi_timeframe_mode={multi_timeframe_mode}", flush=True)
+                elif "SUPER" in symbol_upper:
+                    print(f"FRACTAL_RESONANCE: Processing SUPER ({symbol_str}) - {len(ohlcv_data)} bars, min_green_timeframes={self.min_green_timeframes}, enable_multi_timeframe={enable_multi_timeframe}, multi_timeframe_mode={multi_timeframe_mode}", flush=True)
+                
+                # Minimum required bars for calculation (need enough data for indicator)
+                min_required = max(100, self.n1 + self.n2 + self.crossover_sma_len)
+                
+                if enable_multi_timeframe:
+                    # Multi-timeframe filtering
+                    timeframe_results = []  # List of (multiplier, passes) tuples
+                    multipliers = [
+                        timeframe_multiplier_1,
+                        timeframe_multiplier_2,
+                        timeframe_multiplier_3,
+                        timeframe_multiplier_4,
+                        timeframe_multiplier_5,
+                    ]
+                    
+                    # Filter out disabled timeframes (0 or None) - allows using fewer than 5 timeframes
+                    active_multipliers = [m for m in multipliers if m is not None and m > 0]
+                    
+                    if not active_multipliers:
+                        # No active timeframes configured - skip multi-timeframe filtering
+                        passes_filter = False
+                        passing_timeframes = []
+                        failing_timeframes = []
+                    else:
+                        for multiplier in active_multipliers:
+                            if multiplier <= 1:
+                                aggregated_data = ohlcv_data
+                            else:
+                                aggregated_data = _aggregate_bars(ohlcv_data, multiplier)
+                            
+                            if len(aggregated_data) < min_required:
+                                continue
+                            
+                            indicator_result = self._calculate_indicator(aggregated_data)
+                            timeframe_passes = self._should_pass_filter(indicator_result)
+                            timeframe_results.append((multiplier, timeframe_passes))
+                            
+                            # Debug logging for BCH and SUPER multi-timeframe
+                            if hasattr(self, '_current_symbol'):
+                                symbol_str = str(self._current_symbol).upper()
+                                has_signal_val = indicator_result.values.lines.get('has_all_green_signal', False) if indicator_result.values.lines else False
+                                if "BCH" in symbol_str:
+                                    print(
+                                        f"FRACTAL_RESONANCE: BCH TF{multiplier}x - "
+                                        f"passes={timeframe_passes}, "
+                                        f"has_signal={has_signal_val}",
+                                        flush=True
+                                    )
+                                elif "SUPER" in symbol_str:
+                                    print(
+                                        f"FRACTAL_RESONANCE: SUPER TF{multiplier}x - "
+                                        f"passes={timeframe_passes}, "
+                                        f"has_signal={has_signal_val}",
+                                        flush=True
+                                    )
+                        
+                        if not timeframe_results:
+                            passes_filter = False
+                            passing_timeframes = []
+                            failing_timeframes = []
+                        else:
+                            passing_timeframes = [mult for mult, passes in timeframe_results if passes]
+                            failing_timeframes = [mult for mult, passes in timeframe_results if not passes]
+                            
+                            if multi_timeframe_mode == "all":
+                                passes_filter = all(passes for _, passes in timeframe_results)
+                            elif multi_timeframe_mode == "any":
+                                passes_filter = any(passes for _, passes in timeframe_results)
+                            elif multi_timeframe_mode == "majority":
+                                required_passes = (len(timeframe_results) + 1) // 2
+                                passes_filter = sum(passes for _, passes in timeframe_results) >= required_passes
+                            else:
+                                passes_filter = all(passes for _, passes in timeframe_results)
+                    
+                    # Log which timeframes signaled for this symbol
+                    symbol_name = symbol.ticker if hasattr(symbol, 'ticker') else str(symbol)
+                    if passes_filter:
+                        if passing_timeframes:
+                            print(f"FractalResonanceFilter: {symbol_name} PASSED - timeframe(s) that passed: {passing_timeframes}", flush=True)
+                            if failing_timeframes:
+                                print(f"FractalResonanceFilter: {symbol_name} - timeframe(s) that failed: {failing_timeframes}", flush=True)
+                        else:
+                            print(f"FractalResonanceFilter: {symbol_name} PASSED (no timeframe results)", flush=True)
+                    else:
+                        # Debug: log why it failed
+                        if passing_timeframes or failing_timeframes:
+                            print(f"FractalResonanceFilter: {symbol_name} FAILED - timeframe(s) that passed: {passing_timeframes}, failed: {failing_timeframes}, mode: {multi_timeframe_mode}", flush=True)
+                else:
+                    # Single timeframe filtering
+                    passing_timeframes = []
+                    if len(ohlcv_data) < min_required:
+                        passes_filter = False
+                    else:
+                        indicator_result = self._calculate_indicator(ohlcv_data)
+                        passes_filter = self._should_pass_filter(indicator_result)
 
-                if self._should_pass_filter(indicator_result):
+                if passes_filter:
                     filtered_bundle[symbol] = ohlcv_data
                     passed_count += 1
                 else:
@@ -545,7 +837,7 @@ class FractalResonanceFilter(BaseIndicatorFilter):
             indicator_data_output: dict[str, Any] = {}
             for symbol, ohlcv_data in filtered_bundle.items():
                 try:
-                    # Calculate indicator for this symbol
+                    # Calculate indicator for this symbol (always use original data for visualization)
                     indicator_result = self._calculate_indicator(ohlcv_data)
                     
                     # Also recalculate to get full FR data for visualization
@@ -589,13 +881,20 @@ class FractalResonanceFilter(BaseIndicatorFilter):
                         "block_colors": fr_result.get("block_colors", {}),
                     }
                     
+                    # Ensure indicator_type is set correctly
+                    if "indicator_type" not in indicator_dict or not indicator_dict["indicator_type"]:
+                        indicator_dict["indicator_type"] = "fractal_resonance"
+                    
                     indicator_data_output[str(symbol)] = indicator_dict
+                    logger.debug(f"FractalResonanceFilter: Built indicator_data for {symbol.ticker} (multi-timeframe={self.enable_multi_timeframe})")
                 except Exception as e:
-                    logger.debug(f"FractalResonanceFilter: Failed to build indicator_data for {symbol}: {e}")
+                    logger.error(f"FractalResonanceFilter: Failed to build indicator_data for {symbol}: {e}", exc_info=True)
             
             result["indicator_data"] = indicator_data_output
+            logger.info(f"FractalResonanceFilter: Outputting indicator_data for {len(indicator_data_output)} symbols")
         else:
             result["indicator_data"] = {}
+            logger.info("FractalResonanceFilter: output_indicator_data is False, not outputting indicator data")
         
         import sys
         print(f"\n{'='*60}", file=sys.stderr)

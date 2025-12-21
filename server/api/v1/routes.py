@@ -18,7 +18,13 @@ from ..schemas import (
     SetAPIKeyResponse,
 )
 
+# Import scan routes
+from . import scans
+
 router = APIRouter()
+
+# Include scan routes
+router.include_router(scans.router)
 
 
 @router.get("/nodes", response_model=NodesResponse, summary="List Node Metadata")

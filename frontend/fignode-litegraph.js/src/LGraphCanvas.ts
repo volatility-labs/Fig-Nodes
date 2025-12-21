@@ -4594,7 +4594,8 @@ export class LGraphCanvas implements CustomEventDispatcher<LGraphCanvasEventMap>
    */
   renderInfo(ctx: CanvasRenderingContext2D, x: number, y: number): void {
     x = x || 10
-    y = y || this.canvas.offsetHeight - 80
+    // Always position at bottom-left (80px from bottom), ignoring passed y value
+    y = this.canvas.offsetHeight - 80
 
     ctx.save()
     ctx.translate(x, y)

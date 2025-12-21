@@ -454,7 +454,7 @@ class HullRangeFilter(BaseIndicatorFilter):
             try:
                 if enable_multi_timeframe:
                     # Multi-timeframe filtering
-                    timeframe_results = []
+                    timeframe_results = []  # List of (multiplier, passes) tuples
                     multipliers = [
                         timeframe_multiplier_1,
                         timeframe_multiplier_2,
@@ -503,21 +503,37 @@ class HullRangeFilter(BaseIndicatorFilter):
                             signal_lookback_bars=signal_lookback_bars,
                             required_signal_type=required_signal_type,
                         )
-                        timeframe_results.append(timeframe_passes)
+                        timeframe_results.append((multiplier, timeframe_passes))
                     
                     if not timeframe_results:
                         passes_filter = False
-                    elif multi_timeframe_mode == "all":
-                        passes_filter = all(timeframe_results)
-                    elif multi_timeframe_mode == "any":
-                        passes_filter = any(timeframe_results)
-                    elif multi_timeframe_mode == "majority":
-                        required_passes = (len(timeframe_results) + 1) // 2
-                        passes_filter = sum(timeframe_results) >= required_passes
+                        passing_timeframes = []
+                        failing_timeframes = []
                     else:
-                        passes_filter = all(timeframe_results)
+                        passing_timeframes = [mult for mult, passes in timeframe_results if passes]
+                        failing_timeframes = [mult for mult, passes in timeframe_results if not passes]
+                        
+                        if multi_timeframe_mode == "all":
+                            passes_filter = all(passes for _, passes in timeframe_results)
+                        elif multi_timeframe_mode == "any":
+                            passes_filter = any(passes for _, passes in timeframe_results)
+                        elif multi_timeframe_mode == "majority":
+                            required_passes = (len(timeframe_results) + 1) // 2
+                            passes_filter = sum(passes for _, passes in timeframe_results) >= required_passes
+                        else:
+                            passes_filter = all(passes for _, passes in timeframe_results)
+                    
+                    # Log which timeframes signaled for this symbol (only for symbols that pass)
+                    if passes_filter:
+                        if passing_timeframes:
+                            print(f"HullRangeFilter: {symbol.ticker} PASSED - timeframe(s) that passed: {passing_timeframes}", flush=True)
+                            if failing_timeframes:
+                                print(f"HullRangeFilter: {symbol.ticker} - timeframe(s) that failed: {failing_timeframes}", flush=True)
+                        else:
+                            print(f"HullRangeFilter: {symbol.ticker} PASSED (no timeframe results)", flush=True)
                 else:
                     # Single timeframe filtering
+                    passing_timeframes = []
                     closes = [bar["close"] for bar in ohlcv_data]
                     highs = [bar["high"] for bar in ohlcv_data]
                     lows = [bar["low"] for bar in ohlcv_data]

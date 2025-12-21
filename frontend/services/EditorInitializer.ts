@@ -553,29 +553,51 @@ export class EditorInitializer {
         // Add Link Mode toggle and API Keys button to footer center
         const footerCenter = document.querySelector('.footer-center .file-controls');
         if (footerCenter) {
-            const linkModeBtn = document.createElement('button');
+            // Check if buttons already exist (e.g., from React component) before creating
+            let linkModeBtn = document.getElementById('link-mode-btn') as HTMLButtonElement;
+            if (!linkModeBtn) {
+                linkModeBtn = document.createElement('button');
             linkModeBtn.id = 'link-mode-btn';
             linkModeBtn.className = 'btn-secondary';
-            linkModeBtn.addEventListener('click', () => {
-                try { this.linkModeManager?.cycleLinkMode(); } catch { /* ignore */ }
-            });
+                linkModeBtn.innerHTML = '🔗';
+                linkModeBtn.title = 'Link mode';
             footerCenter.appendChild(linkModeBtn);
+            }
+            // Attach event listener (clone to remove old listeners first)
+            const linkModeHandler = () => {
+                try { this.linkModeManager?.cycleLinkMode(); } catch { /* ignore */ }
+            };
+            const newLinkModeBtn = linkModeBtn.cloneNode(true) as HTMLButtonElement;
+            linkModeBtn.parentNode?.replaceChild(newLinkModeBtn, linkModeBtn);
+            newLinkModeBtn.addEventListener('click', linkModeHandler);
 
-            const apiKeysBtn = document.createElement('button');
+            let apiKeysBtn = document.getElementById('api-keys-btn') as HTMLButtonElement;
+            if (!apiKeysBtn) {
+                apiKeysBtn = document.createElement('button');
             apiKeysBtn.id = 'api-keys-btn';
-            apiKeysBtn.innerHTML = '🔐';
             apiKeysBtn.className = 'btn-secondary';
+                apiKeysBtn.innerHTML = '🔐';
             apiKeysBtn.title = 'Manage API keys for external services';
-            apiKeysBtn.addEventListener('click', () => this.apiKeyManager.openSettings());
             footerCenter.appendChild(apiKeysBtn);
+            }
+            // Attach event listener (clone to remove old listeners first)
+            const apiKeysHandler = () => this.apiKeyManager.openSettings();
+            const newApiKeysBtn = apiKeysBtn.cloneNode(true) as HTMLButtonElement;
+            apiKeysBtn.parentNode?.replaceChild(newApiKeysBtn, apiKeysBtn);
+            newApiKeysBtn.addEventListener('click', apiKeysHandler);
 
             // Add Auto-Align button (cycles between Align and Compact)
-            const autoAlignBtn = document.createElement('button');
+            let autoAlignBtn = document.getElementById('auto-align-btn') as HTMLButtonElement;
+            if (!autoAlignBtn) {
+                autoAlignBtn = document.createElement('button');
             autoAlignBtn.id = 'auto-align-btn';
             autoAlignBtn.className = 'btn-secondary';
             autoAlignBtn.textContent = 'Align';
             autoAlignBtn.title = 'Layout mode: Align (click to cycle)';
-            autoAlignBtn.addEventListener('click', () => {
+                footerCenter.appendChild(autoAlignBtn);
+            }
+            // Attach event listener (clone to remove old listeners first)
+            const autoAlignHandler = () => {
                 try {
                     if (this.alignModeManager) {
                         this.alignModeManager.cycleAlignMode();
@@ -583,8 +605,11 @@ export class EditorInitializer {
                 } catch (error) {
                     console.error('Failed to cycle align mode:', error);
                 }
-            });
-            footerCenter.appendChild(autoAlignBtn);
+            };
+            const newAutoAlignBtn = autoAlignBtn.cloneNode(true) as HTMLButtonElement;
+            autoAlignBtn.parentNode?.replaceChild(newAutoAlignBtn, autoAlignBtn);
+            newAutoAlignBtn.addEventListener('click', autoAlignHandler);
+            autoAlignBtn = newAutoAlignBtn; // Update reference for later use
             
             // Update button label from saved preference
             if (this.alignModeManager) {
@@ -596,13 +621,18 @@ export class EditorInitializer {
                 }, 0);
             }
 
-            // Add Reset Charts button
-            const resetChartsBtn = document.createElement('button');
+            // Add Reset Charts button - check if it already exists
+            let resetChartsBtn = document.getElementById('reset-charts-btn') as HTMLButtonElement;
+            if (!resetChartsBtn) {
+                resetChartsBtn = document.createElement('button');
             resetChartsBtn.id = 'reset-charts-btn';
             resetChartsBtn.className = 'btn-secondary';
             resetChartsBtn.textContent = 'Reset';
             resetChartsBtn.title = 'Reset all chart views and fit all nodes to view';
-            resetChartsBtn.addEventListener('click', (e) => {
+                footerCenter.appendChild(resetChartsBtn);
+            }
+            // Attach event listener (clone to remove old listeners first)
+            const resetChartsHandler = (e: Event) => {
                 e.preventDefault();
                 e.stopPropagation();
                 
@@ -681,8 +711,10 @@ export class EditorInitializer {
                 } catch (error) {
                     console.error('Failed to reset chart views and fit to view:', error);
                 }
-            });
-            footerCenter.appendChild(resetChartsBtn);
+            };
+            const newResetChartsBtn = resetChartsBtn.cloneNode(true) as HTMLButtonElement;
+            resetChartsBtn.parentNode?.replaceChild(newResetChartsBtn, resetChartsBtn);
+            newResetChartsBtn.addEventListener('click', resetChartsHandler);
         }
     }
 

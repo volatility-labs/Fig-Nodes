@@ -1,0 +1,853 @@
+{
+  "id": "00000000-0000-0000-0000-000000000000",
+  "revision": 0,
+  "version": 1,
+  "config": {},
+  "state": {
+    "lastGroupId": 0,
+    "lastNodeId": 114,
+    "lastLinkId": 217,
+    "lastRerouteId": 0
+  },
+  "groups": [],
+  "nodes": [
+    {
+      "id": 37,
+      "type": "SymbolQuickPlot",
+      "pos": [
+        100,
+        1446.21826171875
+      ],
+      "size": [
+        400,
+        626
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "images",
+          "type": "dict<str, 0>",
+          "links": [
+            82
+          ]
+        }
+      ],
+      "title": "SymbolQuickPlot",
+      "properties": {
+        "symbols": "MRNA",
+        "asset_class": "stocks",
+        "interval": "day",
+        "multiplier": 1,
+        "timespan": "day",
+        "lookback_period": "3 months",
+        "adjusted": true,
+        "sort": "asc",
+        "limit": 5000,
+        "max_symbols": 10,
+        "overlay1_type": "EMA",
+        "overlay1_period": 10,
+        "overlay2_type": "EMA",
+        "overlay2_period": 100,
+        "show_vbp_levels": true,
+        "vbp_bins": 100,
+        "vbp_num_levels": 5,
+        "vbp_lookback_years": 2,
+        "vbp_lookback_years_2": 1,
+        "vbp_use_dollar_weighted": true,
+        "vbp_use_close_only": true,
+        "vbp_style": "dashed",
+        "dpi": 150,
+        "lookback_bars": 100
+      }
+    },
+    {
+      "id": 49,
+      "type": "ImageDisplay",
+      "pos": [
+        612,
+        1446.21826171875
+      ],
+      "size": [
+        524,
+        455.6585388183594
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "dict<str, 0>",
+          "link": 82
+        }
+      ],
+      "outputs": [
+        {
+          "name": "images",
+          "type": "dict<str, 0>",
+          "links": null
+        }
+      ],
+      "title": "ImageDisplay",
+      "properties": {}
+    },
+    {
+      "id": 50,
+      "type": "PolygonBatchCustomBars",
+      "pos": [
+        271.49334716796875,
+        49.315711975097656
+      ],
+      "size": [
+        200,
+        194
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "symbols",
+          "type": "list<AssetSymbol>",
+          "link": 189
+        }
+      ],
+      "outputs": [
+        {
+          "name": "ohlcv_bundle",
+          "type": "dict<AssetSymbol, list<OHLCVBar>>",
+          "links": [
+            214
+          ]
+        }
+      ],
+      "title": "PolygonBatchCustomBars",
+      "properties": {
+        "interval": "day",
+        "multiplier": 1,
+        "timespan": "day",
+        "lookback_period": "10 years",
+        "adjusted": true,
+        "sort": "asc",
+        "limit": 50000
+      }
+    },
+    {
+      "id": 65,
+      "type": "Logging",
+      "pos": [
+        551.5559692382812,
+        351.267578125
+      ],
+      "size": [
+        585.2622680664062,
+        197.279541015625
+      ],
+      "flags": {},
+      "order": 13,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "input",
+          "type": 0,
+          "link": 170
+        }
+      ],
+      "outputs": [
+        {
+          "name": "output",
+          "type": "str",
+          "links": null
+        }
+      ],
+      "title": "Logging",
+      "properties": {
+        "format": "auto"
+      }
+    },
+    {
+      "id": 77,
+      "type": "ImageDisplay",
+      "pos": [
+        1661.2857666015625,
+        424
+      ],
+      "size": [
+        800,
+        1152.7728271484375
+      ],
+      "flags": {},
+      "order": 14,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "dict<str, 0>",
+          "link": 154
+        }
+      ],
+      "outputs": [
+        {
+          "name": "images",
+          "type": "dict<str, 0>",
+          "links": []
+        }
+      ],
+      "title": "ImageDisplay",
+      "properties": {}
+    },
+    {
+      "id": 81,
+      "type": "MultiIndicatorChart",
+      "pos": [
+        278.7101135253906,
+        288.9462890625
+      ],
+      "size": [
+        210,
+        386
+      ],
+      "flags": {},
+      "order": 12,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "ohlcv_bundle",
+          "type": "dict<AssetSymbol, list<OHLCVBar>>",
+          "link": 165
+        },
+        {
+          "name": "indicator_data",
+          "type": 0,
+          "link": 166
+        },
+        {
+          "name": "indicator_data_1",
+          "type": 0,
+          "link": 167
+        },
+        {
+          "name": "indicator_data_2",
+          "type": 0,
+          "link": 210
+        },
+        {
+          "name": "indicator_data_3",
+          "type": 0,
+          "link": 217
+        },
+        {
+          "name": "indicator_data_4",
+          "type": 0,
+          "link": null
+        },
+        {
+          "name": "indicator_data_5",
+          "type": 0,
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "images",
+          "type": "dict<str, 0>",
+          "links": [
+            154
+          ]
+        },
+        {
+          "name": "debug_info",
+          "type": "dict<str, 0>",
+          "links": []
+        }
+      ],
+      "title": "MultiIndicatorChart",
+      "properties": {
+        "max_bars": 200,
+        "max_symbols": 50,
+        "show_volume": true,
+        "indicator_panel_mode": "overlay",
+        "max_indicators": 8,
+        "dpi": 200,
+        "price_panel_height": 2.5,
+        "volume_panel_height": 1,
+        "indicator_panel_height": 1.5,
+        "special_visualization_height": 4
+      }
+    },
+    {
+      "id": 82,
+      "type": "Logging",
+      "pos": [
+        100,
+        2152.21826171875
+      ],
+      "size": [
+        400,
+        300
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "input",
+          "type": 0,
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "output",
+          "type": "str",
+          "links": null
+        }
+      ],
+      "title": "Logging",
+      "properties": {
+        "format": "auto"
+      }
+    },
+    {
+      "id": 84,
+      "type": "StochasticHeatmapFilter",
+      "pos": [
+        1709.3255615234375,
+        64.07645416259766
+      ],
+      "size": [
+        229.13671875,
+        294
+      ],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "ohlcv_bundle",
+          "type": "dict<AssetSymbol, list<OHLCVBar>>",
+          "link": 216
+        }
+      ],
+      "outputs": [
+        {
+          "name": "filtered_ohlcv_bundle",
+          "type": "dict<AssetSymbol, list<OHLCVBar>>",
+          "links": [
+            208
+          ]
+        },
+        {
+          "name": "indicator_data",
+          "type": "dict<str, 0>",
+          "links": [
+            166
+          ]
+        }
+      ],
+      "title": "StochasticHeatmapFilter",
+      "properties": {
+        "ma_type": "EMA",
+        "increment": 10,
+        "smooth_fast": 2,
+        "smooth_slow": 21,
+        "plot_number": 28,
+        "waves": true,
+        "filter_crossover": "fast_above_slow",
+        "check_last_bar_only": true,
+        "lookback_bars": 5,
+        "max_symbols": 500
+      }
+    },
+    {
+      "id": 85,
+      "type": "FractalResonanceFilter",
+      "pos": [
+        1270.9642333984375,
+        320
+      ],
+      "size": [
+        229.13671875,
+        454
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "ohlcv_bundle",
+          "type": "dict<AssetSymbol, list<OHLCVBar>>",
+          "link": 209
+        }
+      ],
+      "outputs": [
+        {
+          "name": "filtered_ohlcv_bundle",
+          "type": "dict<AssetSymbol, list<OHLCVBar>>",
+          "links": [
+            165,
+            169
+          ]
+        },
+        {
+          "name": "indicator_data",
+          "type": "dict<str, 0>",
+          "links": [
+            167
+          ]
+        }
+      ],
+      "title": "FractalResonanceFilter",
+      "properties": {
+        "n1": 10,
+        "n2": 21,
+        "crossover_sma_len": 3,
+        "ob_level": 75,
+        "ob_embed_level": 88,
+        "ob_extreme_level": 100,
+        "cross_separation": 3,
+        "check_last_bar_only": true,
+        "lookback_bars": 5,
+        "min_green_timeframes": 8,
+        "enable_multi_timeframe": false,
+        "timeframe_multiplier_1": 1,
+        "timeframe_multiplier_2": 4,
+        "timeframe_multiplier_3": 16,
+        "timeframe_multiplier_4": 64,
+        "timeframe_multiplier_5": 256,
+        "multi_timeframe_mode": "all"
+      }
+    },
+    {
+      "id": 87,
+      "type": "ExtractSymbols",
+      "pos": [
+        28.3544921875,
+        381.6103515625
+      ],
+      "size": [
+        200,
+        108
+      ],
+      "flags": {},
+      "order": 11,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "ohlcv_bundle",
+          "type": "dict<AssetSymbol, list<OHLCVBar>>",
+          "link": 169
+        }
+      ],
+      "outputs": [
+        {
+          "name": "symbols",
+          "type": "list<AssetSymbol>",
+          "links": [
+            170
+          ]
+        }
+      ],
+      "title": "ExtractSymbols",
+      "properties": {}
+    },
+    {
+      "id": 100,
+      "type": "PolygonStockUniverse",
+      "pos": [
+        44.873046875,
+        77.8955078125
+      ],
+      "size": [
+        210,
+        226
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "filter_symbols",
+          "type": "list<AssetSymbol>",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "symbols",
+          "type": "list<AssetSymbol>",
+          "links": [
+            189
+          ]
+        }
+      ],
+      "title": "PolygonStockUniverse",
+      "properties": {
+        "min_change_perc": -50,
+        "max_change_perc": 50,
+        "min_volume": 1000000,
+        "min_price": 1,
+        "max_price": 100000,
+        "market_filter": "all",
+        "asset_type_filter": "all",
+        "data_day": "auto",
+        "include_otc": true,
+        "exclude_etfs": true
+      }
+    },
+    {
+      "id": 110,
+      "type": "FractalsATRFilter",
+      "pos": [
+        504.4271240234375,
+        32.87528610229492
+      ],
+      "size": [
+        360,
+        262
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "ohlcv_bundle",
+          "type": "dict<AssetSymbol, list<OHLCVBar>>",
+          "link": 214
+        }
+      ],
+      "outputs": [
+        {
+          "name": "filtered_ohlcv_bundle",
+          "type": "dict<AssetSymbol, list<OHLCVBar>>",
+          "links": [
+            211
+          ]
+        },
+        {
+          "name": "signal_metadata",
+          "type": "dict<str, 0>",
+          "links": null
+        }
+      ],
+      "title": "FractalsATRFilter",
+      "properties": {
+        "filter_type": "bullish",
+        "atr_period": 325,
+        "fractals_periods": 1,
+        "roc_break_level": 2,
+        "atr_break_level": 1.5,
+        "require_fractals": false,
+        "require_atr_breaks": false,
+        "require_roc": false,
+        "check_last_bar_only": true
+      }
+    },
+    {
+      "id": 111,
+      "type": "HullRangeFilter",
+      "pos": [
+        2051.607177734375,
+        100
+      ],
+      "size": [
+        360,
+        550
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "ohlcv_bundle",
+          "type": "dict<AssetSymbol, list<OHLCVBar>>",
+          "link": 208
+        }
+      ],
+      "outputs": [
+        {
+          "name": "filtered_ohlcv_bundle",
+          "type": "dict<AssetSymbol, list<OHLCVBar>>",
+          "links": [
+            209
+          ]
+        },
+        {
+          "name": "indicator_data",
+          "type": "dict<str, 0>",
+          "links": [
+            210
+          ]
+        }
+      ],
+      "title": "HullRangeFilter",
+      "properties": {
+        "sampling_period": 14,
+        "range_multiplier": 5,
+        "hull_period": 16,
+        "fib_atr_length": 20,
+        "fib_ratio1": 1.618,
+        "fib_ratio2": 2.618,
+        "fib_ratio3": 4.236,
+        "filter_condition": "bullish",
+        "check_last_bar_only": true,
+        "lookback_bars": 5,
+        "require_signal_within_bars": false,
+        "signal_lookback_bars": 10,
+        "required_signal_type": "any",
+        "max_symbols": 500,
+        "enable_multi_timeframe": false,
+        "timeframe_multiplier_1": 1,
+        "timeframe_multiplier_2": 4,
+        "timeframe_multiplier_3": 16,
+        "timeframe_multiplier_4": 64,
+        "timeframe_multiplier_5": 256,
+        "multi_timeframe_mode": "all"
+      }
+    },
+    {
+      "id": 112,
+      "type": "OrbFilter",
+      "pos": [
+        887.8056030273438,
+        35.64453125
+      ],
+      "size": [
+        360,
+        190
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "ohlcv_bundle",
+          "type": "dict<AssetSymbol, list<OHLCVBar>>",
+          "link": 211
+        }
+      ],
+      "outputs": [
+        {
+          "name": "filtered_ohlcv_bundle",
+          "type": "dict<AssetSymbol, list<OHLCVBar>>",
+          "links": [
+            215
+          ]
+        },
+        {
+          "name": "indicator_data",
+          "type": "dict<str, 0>",
+          "links": null
+        }
+      ],
+      "title": "OrbFilter",
+      "properties": {
+        "or_minutes": 5,
+        "rel_vol_threshold": 100,
+        "direction": "both",
+        "avg_period": 14,
+        "filter_above_orh": "true",
+        "filter_below_orl": "false"
+      }
+    },
+    {
+      "id": 114,
+      "type": "DeviationMagnetFilter",
+      "pos": [
+        1317.018310546875,
+        76.2882308959961
+      ],
+      "size": [
+        360,
+        430
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "ohlcv_bundle",
+          "type": "dict<AssetSymbol, list<OHLCVBar>>",
+          "link": 215
+        }
+      ],
+      "outputs": [
+        {
+          "name": "filtered_ohlcv_bundle",
+          "type": "dict<AssetSymbol, list<OHLCVBar>>",
+          "links": [
+            216
+          ]
+        },
+        {
+          "name": "indicator_data",
+          "type": "dict<str, 0>",
+          "links": [
+            217
+          ]
+        }
+      ],
+      "title": "DeviationMagnetFilter",
+      "properties": {
+        "anchor": 1,
+        "bblength": 50,
+        "mult": 2,
+        "timeframe_multiplier": 1,
+        "coloring_sensitivity": 2,
+        "filter_condition": "expansion_bullish_rising_green_only",
+        "check_last_bar_only": true,
+        "lookback_bars": 5,
+        "max_symbols": 500,
+        "enable_multi_timeframe": false,
+        "timeframe_multiplier_1": 1,
+        "timeframe_multiplier_2": 4,
+        "timeframe_multiplier_3": 16,
+        "timeframe_multiplier_4": 64,
+        "timeframe_multiplier_5": 256,
+        "multi_timeframe_mode": "all"
+      }
+    }
+  ],
+  "links": [
+    {
+      "id": 82,
+      "origin_id": 37,
+      "origin_slot": 0,
+      "target_id": 49,
+      "target_slot": 0,
+      "type": "dict<str, 0>"
+    },
+    {
+      "id": 154,
+      "origin_id": 81,
+      "origin_slot": 0,
+      "target_id": 77,
+      "target_slot": 0,
+      "type": "dict<str, 0>"
+    },
+    {
+      "id": 165,
+      "origin_id": 85,
+      "origin_slot": 0,
+      "target_id": 81,
+      "target_slot": 0,
+      "type": "dict<AssetSymbol, list<OHLCVBar>>"
+    },
+    {
+      "id": 166,
+      "origin_id": 84,
+      "origin_slot": 1,
+      "target_id": 81,
+      "target_slot": 1,
+      "type": "dict<str, 0>"
+    },
+    {
+      "id": 167,
+      "origin_id": 85,
+      "origin_slot": 1,
+      "target_id": 81,
+      "target_slot": 2,
+      "type": "dict<str, 0>"
+    },
+    {
+      "id": 169,
+      "origin_id": 85,
+      "origin_slot": 0,
+      "target_id": 87,
+      "target_slot": 0,
+      "type": "dict<AssetSymbol, list<OHLCVBar>>"
+    },
+    {
+      "id": 170,
+      "origin_id": 87,
+      "origin_slot": 0,
+      "target_id": 65,
+      "target_slot": 0,
+      "type": "list<AssetSymbol>"
+    },
+    {
+      "id": 189,
+      "origin_id": 100,
+      "origin_slot": 0,
+      "target_id": 50,
+      "target_slot": 0,
+      "type": "list<AssetSymbol>"
+    },
+    {
+      "id": 208,
+      "origin_id": 84,
+      "origin_slot": 0,
+      "target_id": 111,
+      "target_slot": 0,
+      "type": "dict<AssetSymbol, list<OHLCVBar>>"
+    },
+    {
+      "id": 209,
+      "origin_id": 111,
+      "origin_slot": 0,
+      "target_id": 85,
+      "target_slot": 0,
+      "type": "dict<AssetSymbol, list<OHLCVBar>>"
+    },
+    {
+      "id": 210,
+      "origin_id": 111,
+      "origin_slot": 1,
+      "target_id": 81,
+      "target_slot": 3,
+      "type": "dict<str, 0>"
+    },
+    {
+      "id": 211,
+      "origin_id": 110,
+      "origin_slot": 0,
+      "target_id": 112,
+      "target_slot": 0,
+      "type": "dict<AssetSymbol, list<OHLCVBar>>"
+    },
+    {
+      "id": 214,
+      "origin_id": 50,
+      "origin_slot": 0,
+      "target_id": 110,
+      "target_slot": 0,
+      "type": "dict<AssetSymbol, list<OHLCVBar>>"
+    },
+    {
+      "id": 215,
+      "origin_id": 112,
+      "origin_slot": 0,
+      "target_id": 114,
+      "target_slot": 0,
+      "type": "dict<AssetSymbol, list<OHLCVBar>>"
+    },
+    {
+      "id": 216,
+      "origin_id": 114,
+      "origin_slot": 0,
+      "target_id": 84,
+      "target_slot": 0,
+      "type": "dict<AssetSymbol, list<OHLCVBar>>"
+    },
+    {
+      "id": 217,
+      "origin_id": 114,
+      "origin_slot": 1,
+      "target_id": 81,
+      "target_slot": 4,
+      "type": "dict<str, 0>"
+    }
+  ],
+  "extra": {
+    "ds": {
+      "scale": 1,
+      "offset": [
+        -4.3505859375,
+        -18.1201171875
+      ]
+    }
+  }
+}

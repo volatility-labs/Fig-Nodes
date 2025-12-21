@@ -1,0 +1,170 @@
+/* Import your existing Litegraph CSS - Fixed paths */
+@import '../../frontend/fignode-litegraph.js/dist/css/litegraph.css';
+@import '../../frontend/style.css';
+
+/* CSS Variables - Bloomberg Terminal Theme */
+:root {
+  /* Background colors */
+  --theme-bg: #0d1117;
+  --theme-bg-secondary: #161b22;
+  --theme-bg-tertiary: #1c2128;
+  --theme-bg-hover: #21262d;
+  
+  /* Border colors */
+  --theme-border: #30363d;
+  --theme-border-secondary: #373e47;
+  
+  /* Text colors */
+  --theme-text: #adbac7;
+  --theme-text-secondary: #768390;
+  --theme-text-muted: #545d68;
+  
+  /* Accent colors */
+  --theme-accent: #539bf5;
+  --theme-accent-hover: #6cb6ff;
+  --theme-success: #57ab5a;
+  --theme-warning: #c69026;
+  --theme-error: #e5534b;
+  
+  /* Panel sizes */
+  --sidebar-width: 280px;
+  --properties-width: 320px;
+  --topnav-height: 48px;
+}
+
+/* Reset */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background: var(--theme-bg);
+  color: var(--theme-text);
+  overflow: hidden;
+}
+
+#root {
+  width: 100vw;
+  height: 100vh;
+}
+
+/* Scrollbars */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--theme-bg-secondary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--theme-border-secondary);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--theme-text-muted);
+}
+
+/* Button styles */
+button {
+  font-family: inherit;
+  font-size: 13px;
+  padding: 8px 16px;
+  border-radius: 6px;
+  border: 1px solid var(--theme-border);
+  background: var(--theme-bg-secondary);
+  color: var(--theme-text);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+button:hover {
+  background: var(--theme-bg-hover);
+  border-color: var(--theme-border-secondary);
+}
+
+button:active {
+  transform: scale(0.98);
+}
+
+button.primary {
+  background: var(--theme-accent);
+  border-color: var(--theme-accent);
+  color: white;
+}
+
+button.primary:hover {
+  background: var(--theme-accent-hover);
+  border-color: var(--theme-accent-hover);
+}
+
+/* Input styles */
+input[type="text"],
+input[type="search"],
+input[type="email"],
+input[type="password"],
+textarea {
+  font-family: inherit;
+  font-size: 13px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--theme-border);
+  background: var(--theme-bg-tertiary);
+  color: var(--theme-text);
+  transition: all 0.2s ease;
+}
+
+input:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--theme-accent);
+  background: var(--theme-bg);
+}
+
+/* Panel styles */
+.panel {
+  background: var(--theme-bg-secondary);
+  border: 1px solid var(--theme-border);
+  border-radius: 6px;
+  padding: 16px;
+}
+
+.panel-title {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 12px;
+  color: var(--theme-text);
+}
+
+/* Utility classes */
+.flex {
+  display: flex;
+}
+
+.flex-col {
+  flex-direction: column;
+}
+
+.items-center {
+  align-items: center;
+}
+
+.justify-between {
+  justify-content: space-between;
+}
+
+.gap-2 {
+  gap: 8px;
+}
+
+.gap-4 {
+  gap: 16px;
+}
+

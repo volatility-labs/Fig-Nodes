@@ -222,8 +222,9 @@ def calculate_hull_range_filter(
                 downward.append(downward[i - 1] if i > 0 else 0)
     
     # Calculate Hull Moving Average
-    half_period = max(1, int(hull_period / 2))
-    sqrt_period = max(1, int(sqrt(hull_period)))
+    # Pine Script uses round(), so we use round() to match exactly
+    half_period = max(1, round(hull_period / 2))
+    sqrt_period = max(1, round(sqrt(hull_period)))
     
     wma_half_result = calculate_wma(closes, half_period)
     wma_half = wma_half_result.get("wma", [])
@@ -310,7 +311,9 @@ def calculate_hull_range_filter(
         hull_curr = hull_ma[i] if i < len(hull_ma) else None
         hull_prev = hull_ma_prev[i] if i < len(hull_ma_prev) else None
         fib_bott2_curr = fib_bott2[i] if i < len(fib_bott2) else None
+        fib_bott2_prev = fib_bott2[i - 1] if i > 0 and i - 1 < len(fib_bott2) else None
         fib_top2_curr = fib_top2[i] if i < len(fib_top2) else None
+        fib_top2_prev = fib_top2[i - 1] if i > 0 and i - 1 < len(fib_top2) else None
         
         if (
             close_curr is None
@@ -320,7 +323,9 @@ def calculate_hull_range_filter(
             or hull_curr is None
             or hull_prev is None
             or fib_bott2_curr is None
+            or fib_bott2_prev is None
             or fib_top2_curr is None
+            or fib_top2_prev is None
         ):
             signal_buy.append(False)
             signal_sell.append(False)
@@ -361,8 +366,10 @@ def calculate_hull_range_filter(
         sell_signal = short_cond and (cond_ini[i - 1] if i > 0 else 0) == 1
         
         # Additional buy/sell from Hull MA crossover with Fibonacci bands
-        hull_buy = hull_curr > hull_prev and hull_curr > fib_bott2_curr and hull_prev <= fib_bott2_curr
-        hull_sell = hull_curr < hull_prev and hull_curr < fib_top2_curr and hull_prev >= fib_top2_curr
+        # Pine Script: buy = crossover(n1, bott2) means n1[1] <= bott2[1] and n1 > bott2
+        # Pine Script: sell = crossunder(n1, top2) means n1[1] >= top2[1] and n1 < top2
+        hull_buy = hull_prev <= fib_bott2_prev and hull_curr > fib_bott2_curr
+        hull_sell = hull_prev >= fib_top2_prev and hull_curr < fib_top2_curr
         
         signal_buy.append(buy_signal or hull_buy)
         signal_sell.append(sell_signal or hull_sell)

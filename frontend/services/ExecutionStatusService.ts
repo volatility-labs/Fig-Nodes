@@ -38,10 +38,12 @@ export class ExecutionStatusService {
         this.currentState = status;
         // When connected, show idle state with hidden progress bar
         const isIdle = status === 'connected';
+        // Don't show "Initializing..." or "Connected" messages - keep status indicator empty when idle
+        const displayMessage = (isIdle || status === 'loading') ? '' : (message ?? this.labelFor(status));
         this.applyToDOM({
             jobId: this.currentJobId,
             status,
-            message: message ?? this.labelFor(status),
+            message: displayMessage,
             progress: isIdle ? 0 : null,
             determinate: isIdle,
             queuePosition: null,
@@ -235,12 +237,51 @@ export class ExecutionStatusService {
         const indicator = document.getElementById('status-indicator');
         if (indicator) {
             indicator.className = `status-indicator ${st.status}`;
-            const label = st.message || this.labelFor(st.status);
-            indicator.setAttribute('title', label);
-            indicator.setAttribute('aria-label', label);
-            if (indicator.firstChild) {
+            // Hide status indicator when idle or when message is empty
+            const label = st.message || (st.status === 'connected' ? '' : this.labelFor(st.status));
+            if (label) {
+                indicator.textContent = label;
+                indicator.style.display = 'inline-block';
+            } else {
                 indicator.textContent = '';
+                indicator.style.display = 'none'; // Hide when no message
             }
+            indicator.setAttribute('title', label || '');
+            indicator.setAttribute('aria-label', label || '');
+        }
+
+        // Update polygon-status to show execution/scanning status
+        // Note: Real-time/delayed data status takes priority and will override this
+        const polygonStatus = document.getElementById('polygon-status');
+        if (polygonStatus) {
+            // Check if polygon-status is currently showing data status (real-time/delayed/etc)
+            // Data status takes priority - don't override it with execution status
+            const currentClass = polygonStatus.className;
+            const isShowingDataStatus = currentClass.includes('real-time') || 
+                                       currentClass.includes('delayed') || 
+                                       currentClass.includes('market-closed') ||
+                                       currentClass.includes('unknown');
+            
+            // Only show execution status if NOT showing data status
+            if (!isShowingDataStatus) {
+                if (st.status === 'executing' || st.status === 'loading') {
+                    const statusClass = st.status === 'executing' ? 'executing' : 'scanning';
+                    polygonStatus.className = `polygon-status ${statusClass}`;
+                    const statusText = st.message || (st.status === 'executing' ? 'Running' : 'Scanning');
+                    polygonStatus.textContent = statusText.toUpperCase();
+                    polygonStatus.setAttribute('title', `Execution Status: ${statusText}`);
+                } else if (st.status === 'stopping') {
+                    polygonStatus.className = 'polygon-status delayed';
+                    polygonStatus.textContent = 'Stopping';
+                    polygonStatus.setAttribute('title', 'Execution Status: Stopping');
+                } else {
+                    // Reset to N/A when idle
+                    polygonStatus.className = 'polygon-status polygon-status-na';
+                    polygonStatus.textContent = 'N/A';
+                    polygonStatus.setAttribute('title', 'Data Status: N/A');
+                }
+            }
+            // If showing data status, keep it - don't override
         }
 
         const progressRoot = document.getElementById('top-progress');
@@ -257,7 +298,15 @@ export class ExecutionStatusService {
         }
 
         if (progressText) {
+            // Show execution status message (e.g., "Executing batch...")
+            // Hide when idle or when message is generic "Executing..."
+            if (st.message && st.message !== 'Executing...' && st.status !== 'connected') {
             progressText.textContent = st.message;
+                progressText.style.display = 'block';
+            } else {
+                progressText.textContent = '';
+                progressText.style.display = 'none';
+            }
         }
 
         if (progressBar) {

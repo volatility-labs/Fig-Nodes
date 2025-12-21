@@ -76,20 +76,20 @@ class PolygonStockUniverse(Base):
             "description": "Maximum closing price in USD",
         },
         {
-            "name": "include_otc",
+            "name": "market_filter",
             "type": "combo",
-            "default": False,
-            "options": [True, False],
-            "label": "Include OTC",
-            "description": "Include over-the-counter symbols",
+            "default": "stocks_only",
+            "options": ["stocks_only", "include_otc", "otc_only", "all"],
+            "label": "Market Filter",
+            "description": "stocks_only: Regular exchange stocks only | include_otc: Regular + OTC | otc_only: Only OTC stocks | all: Everything",
         },
         {
-            "name": "exclude_etfs",
+            "name": "asset_type_filter",
             "type": "combo",
-            "default": True,
-            "options": [True, False],
-            "label": "Exclude ETFs",
-            "description": "If true, filters out ETFs (keeps only stocks). If false, keeps only ETFs.",
+            "default": "stocks_no_etf",
+            "options": ["stocks_no_etf", "etf_only", "all"],
+            "label": "Asset Type",
+            "description": "stocks_no_etf: Regular stocks (no ETFs) | etf_only: Only ETFs | all: Stocks + ETFs",
         },
         {
             "name": "data_day",
@@ -120,7 +120,13 @@ class PolygonStockUniverse(Base):
 
         market = "stocks"
         locale, markets = "us", "stocks"
-        exclude_etfs = self._get_bool_param("exclude_etfs", True)
+        
+        # Get new filtering parameters
+        market_filter = self.params.get("market_filter", "stocks_only")
+        asset_type_filter = self.params.get("asset_type_filter", "stocks_no_etf")
+        
+        # Determine if we should fetch OTC data from snapshot API
+        include_otc_in_snapshot = market_filter in ["include_otc", "otc_only", "all"]
 
         filter_ticker_strings: list[str] | None = None
         if filter_symbols:
@@ -131,11 +137,11 @@ class PolygonStockUniverse(Base):
         async with httpx.AsyncClient(timeout=timeout) as client:
             if filter_ticker_strings:
                 filtered_ticker_set = await self._fetch_filtered_tickers_for_list(
-                    client, api_key, market, exclude_etfs, filter_ticker_strings
+                    client, api_key, market, market_filter, asset_type_filter, filter_ticker_strings
                 )
             else:
                 filtered_ticker_set = await self._fetch_filtered_tickers(
-                    client, api_key, market, exclude_etfs
+                    client, api_key, market, market_filter, asset_type_filter
                 )
 
             tickers_data = await massive_fetch_snapshot(
@@ -145,14 +151,14 @@ class PolygonStockUniverse(Base):
                 markets,
                 market,
                 filter_ticker_strings,
-                bool(self.params.get("include_otc", False)),
+                include_otc_in_snapshot,  # Use new parameter
             )
 
             filter_params = self._extract_filter_params()
             self._validate_filter_params(filter_params)
 
             symbols = self._process_tickers(
-                tickers_data, market, filtered_ticker_set, filter_params
+                tickers_data, market, filtered_ticker_set, filter_params, market_filter, asset_type_filter
             )
 
         return symbols
@@ -191,6 +197,8 @@ class PolygonStockUniverse(Base):
         market: str,
         filtered_ticker_set: set[str] | None,
         filter_params: dict[str, float | None],
+        market_filter: str,
+        asset_type_filter: str,
     ) -> list[AssetSymbol]:
         """Process ticker data and apply filters to produce AssetSymbol list."""
         symbols: list[AssetSymbol] = []
@@ -203,6 +211,11 @@ class PolygonStockUniverse(Base):
 
             if filtered_ticker_set is not None and ticker not in filtered_ticker_set:
                 continue
+
+            # Apply market filter (OTC vs regular exchange)
+            # Note: snapshot API doesn't include market field, so we can't filter OTC here
+            # The filtering happens in _fetch_filtered_tickers during reference API call
+            # For now, we rely on the filtered_ticker_set to handle OTC filtering
 
             ticker_data = self._extract_ticker_data(ticker_item, market)
             if not ticker_data:
@@ -371,10 +384,11 @@ class PolygonStockUniverse(Base):
         client: httpx.AsyncClient,
         api_key: str,
         market: str,
-        exclude_etfs: bool,
+        market_filter: str,
+        asset_type_filter: str,
         tickers: list[str],
     ) -> set[str]:
-        """Fetch ETF classification for a limited list of tickers and filter accordingly."""
+        """Fetch ticker classification and filter by market and asset type."""
         etf_types: set[str] = set()
         etf_types = await massive_fetch_ticker_types(client, api_key)
 
@@ -415,6 +429,7 @@ class PolygonStockUniverse(Base):
             type_str = type_val if isinstance(type_val, str) else ""
             market_str = market_val if isinstance(market_val, str) else ""
 
+            # Check if it's an ETF
             is_etf = (
                 (type_str in etf_types)
                 or ("etf" in type_str.lower())
@@ -422,11 +437,24 @@ class PolygonStockUniverse(Base):
                 or ("etp" in type_str.lower())
                 or (market_str == "etp")
             )
+            
+            # Check if it's OTC
+            is_otc = market_str.lower() == "otc"
 
-            if exclude_etfs and is_etf:
-                # Exclude ETFs: skip if it's an ETF
-                continue
-            # When exclude_etfs=False, include both ETFs and equities (no filtering)
+            # Apply asset type filter (ETF vs stocks)
+            if asset_type_filter == "stocks_no_etf" and is_etf:
+                continue  # Exclude ETFs
+            elif asset_type_filter == "etf_only" and not is_etf:
+                continue  # Only ETFs
+            # "all" includes everything
+
+            # Apply market filter (OTC vs regular exchange)
+            if market_filter == "stocks_only" and is_otc:
+                continue  # Exclude OTC
+            elif market_filter == "otc_only" and not is_otc:
+                continue  # Only OTC
+            # "include_otc" and "all" include everything
+
             allowed.add(ticker)
 
         return allowed
@@ -436,31 +464,38 @@ class PolygonStockUniverse(Base):
         client: httpx.AsyncClient,
         api_key: str,
         market: str,
-        exclude_etfs: bool,
+        market_filter: str,
+        asset_type_filter: str,
     ) -> set[str]:
         """
-        Fetch filtered ticker list from Massive.com API (formerly Polygon.io) with server-side ETF filtering.
+        Fetch filtered ticker list from Massive.com API (formerly Polygon.io) with market and asset type filtering.
 
         Args:
             client: httpx AsyncClient instance
             api_key: Massive.com API key (POLYGON_API_KEY)
             market: Market type (stocks)
-            exclude_etfs: Whether to exclude ETFs
+            market_filter: Market filter mode (stocks_only, include_otc, otc_only, all)
+            asset_type_filter: Asset type filter (stocks_no_etf, etf_only, all)
 
         Returns:
             Set of ticker symbols that pass the filters
         """
         ref_market = market
 
-        # Build query parameters
+        # Build query parameters - query specific market if needed
         ref_params: dict[str, Any] = {
             "active": True,
             "limit": 1000,
             "apiKey": api_key,
-            "market": ref_market,
         }
+        
+        # If only OTC, query the OTC market directly
+        if market_filter == "otc_only":
+            ref_params["market"] = "otc"
+        else:
+            ref_params["market"] = ref_market
 
-        # Fetch ETF type codes if we need ETF filtering (either exclude or include only)
+        # Fetch ETF type codes for asset type filtering
         etf_types: set[str] = set()
         etf_types = await massive_fetch_ticker_types(client, api_key)
 
@@ -509,25 +544,31 @@ class PolygonStockUniverse(Base):
                 ticker_market_raw: Any = item["market"] if "market" in item else None
                 ticker_market: str = ticker_market_raw if isinstance(ticker_market_raw, str) else ""
 
-                # Apply ETF filtering if needed
-                if etf_types:
-                    is_etf = (
-                        ticker_type in etf_types
-                        or "etf" in ticker_type.lower()
-                        or "etn" in ticker_type.lower()
-                        or "etp" in ticker_type.lower()
-                        or ticker_market == "etp"
-                    )
-                    if exclude_etfs and is_etf:
-                        # Exclude ETFs: skip if it's an ETF
-                        continue
-                    # When exclude_etfs=False, include both ETFs and equities (no filtering)
+                # Check if it's an ETF
+                is_etf = (
+                    ticker_type in etf_types
+                    or "etf" in ticker_type.lower()
+                    or "etn" in ticker_type.lower()
+                    or "etp" in ticker_type.lower()
+                    or ticker_market == "etp"
+                )
+                
+                # Check if it's OTC
+                is_otc = ticker_market.lower() == "otc"
 
-                # Apply OTC filtering for stocks market
-                include_otc = self.params.get("include_otc", False)
-                if not include_otc:
-                    if ticker_market == "otc" or ticker_market == "OTC":
-                        continue
+                # Apply asset type filter (ETF vs stocks)
+                if asset_type_filter == "stocks_no_etf" and is_etf:
+                    continue  # Exclude ETFs
+                elif asset_type_filter == "etf_only" and not is_etf:
+                    continue  # Only ETFs
+                # "all" includes everything
+
+                # Apply market filter (OTC vs regular exchange)
+                if market_filter == "stocks_only" and is_otc:
+                    continue  # Exclude OTC
+                elif market_filter == "otc_only" and not is_otc:
+                    continue  # Only OTC
+                # "include_otc" and "all" include everything
 
                 ticker_set.add(ticker)
 

@@ -35,7 +35,37 @@ class PolygonCryptoUniverse(Base):
     inputs = {"filter_symbols": get_type("AssetSymbolList") | None}
     outputs = {"symbols": get_type("AssetSymbolList")}
     required_keys = ["POLYGON_API_KEY"]
+    # Common stablecoin tickers to filter out
+    STABLECOIN_TICKERS = {
+        "USDT",  # Tether
+        "USDC",  # USD Coin
+        "DAI",   # Dai
+        "BUSD",  # Binance USD
+        "TUSD",  # TrueUSD
+        "USDP",  # Pax Dollar
+        "USDD",  # USDD
+        "GUSD",  # Gemini Dollar
+        "HUSD",  # HUSD
+        "USDX",  # USDX
+        "FRAX",  # Frax
+        "LUSD",  # Liquity USD
+        "SUSD",  # sUSD
+        "USDS",  # USDS
+        "USN",   # USN
+        "USDK",  # USDK
+        "EURS",  # STASIS EURS
+        "EURT",  # Tether EUR
+        "GBPT",  # Tether GBP
+    }
+
     params_meta = [
+        {
+            "name": "exclude_stablecoins",
+            "type": "boolean",
+            "default": True,
+            "label": "Exclude Stablecoins",
+            "description": "Exclude stablecoins (USDT, USDC, DAI, etc.) from results",
+        },
         {
             "name": "min_change_perc",
             "type": "number",
@@ -87,7 +117,9 @@ class PolygonCryptoUniverse(Base):
             "options": ["None (no filter)", "5min", "15min", "120min"],
         },
     ]
-    default_params = {}
+    default_params = {
+        "exclude_stablecoins": True,  # Default to excluding stablecoins
+    }
 
     async def _execute_impl(self, inputs: dict[str, Any]) -> dict[str, Any]:
         try:
@@ -195,8 +227,17 @@ class PolygonCryptoUniverse(Base):
             if not self._is_usd_quoted(ticker, market):
                 continue
 
+            # Filter: Exclude stablecoins if enabled
+            if self._should_exclude_stablecoin(ticker):
+                continue
+
             ticker_data = self._extract_ticker_data(ticker_item, market)
             if not ticker_data:
+                continue
+
+            # Additional stablecoin filter: exclude if price is very close to $1.00
+            # (catches stablecoins not in our list)
+            if self._should_exclude_stablecoin_by_price(ticker_data):
                 continue
 
             # New: Check snapshot update delay if filter enabled
@@ -252,6 +293,35 @@ class PolygonCryptoUniverse(Base):
         _, quote_currency = massive_parse_ticker_for_market(ticker, market)
         # Only include USD-quoted pairs; None means parsing failed, exclude for safety
         return quote_currency == "USD"
+
+    def _should_exclude_stablecoin(self, ticker: str) -> bool:
+        """Check if ticker should be excluded as a stablecoin."""
+        exclude_stablecoins = self.params.get("exclude_stablecoins", True)
+        if not exclude_stablecoins:
+            return False
+
+        # Parse ticker to get base symbol
+        base_ticker, _ = massive_parse_ticker_for_market(ticker, "crypto")
+        if not base_ticker:
+            return False
+
+        # Check if base ticker is in stablecoin list (case-insensitive)
+        return base_ticker.upper() in self.STABLECOIN_TICKERS
+
+    def _should_exclude_stablecoin_by_price(self, ticker_data: dict[str, Any]) -> bool:
+        """Check if ticker should be excluded based on price being very close to $1.00 (stablecoin indicator)."""
+        exclude_stablecoins = self.params.get("exclude_stablecoins", True)
+        if not exclude_stablecoins:
+            return False
+
+        price_raw = ticker_data.get("price")
+        if not isinstance(price_raw, (int, float)):
+            return False
+
+        price = float(price_raw)
+        # Exclude if price is between $0.99 and $1.01 (typical stablecoin range)
+        # This catches stablecoins not in our explicit list
+        return 0.99 <= price <= 1.01
 
     def _extract_ticker_data(
         self, ticker_item: dict[str, Any], market: str

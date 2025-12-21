@@ -1,0 +1,538 @@
+{
+  "id": "00000000-0000-0000-0000-000000000000",
+  "revision": 0,
+  "version": 1,
+  "config": {},
+  "state": {
+    "lastGroupId": 0,
+    "lastNodeId": 9,
+    "lastLinkId": 12,
+    "lastRerouteId": 0
+  },
+  "groups": [],
+  "nodes": [
+    {
+      "id": 1,
+      "type": "PolygonCryptoUniverse",
+      "pos": [
+        -126.6708984375,
+        369.28125
+      ],
+      "size": [
+        210,
+        202
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "filter_symbols",
+          "type": "list<AssetSymbol>",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "symbols",
+          "type": "list<AssetSymbol>",
+          "links": [
+            1
+          ]
+        }
+      ],
+      "title": "PolygonCryptoUniverse",
+      "properties": {
+        "exclude_stablecoins": true,
+        "min_change_perc": -50,
+        "max_change_perc": 50,
+        "min_volume": 100000,
+        "min_price": 0.01,
+        "max_price": 1000000,
+        "max_snapshot_delay_minutes": "5min"
+      }
+    },
+    {
+      "id": 2,
+      "type": "PolygonBatchCustomBars",
+      "pos": [
+        115.3056640625,
+        377.0107421875
+      ],
+      "size": [
+        200,
+        194
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "symbols",
+          "type": "list<AssetSymbol>",
+          "link": 1
+        }
+      ],
+      "outputs": [
+        {
+          "name": "ohlcv_bundle",
+          "type": "dict<AssetSymbol, list<OHLCVBar>>",
+          "links": [
+            2
+          ]
+        }
+      ],
+      "title": "PolygonBatchCustomBars",
+      "properties": {
+        "interval": "5min",
+        "multiplier": 1,
+        "timespan": "day",
+        "lookback_period": "2 weeks",
+        "adjusted": true,
+        "sort": "asc",
+        "limit": 50000
+      }
+    },
+    {
+      "id": 3,
+      "type": "GreenExpansionRisingFilter",
+      "pos": [
+        -136.6728515625,
+        623.111328125
+      ],
+      "size": [
+        360,
+        406
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "ohlcv_bundle",
+          "type": "dict<AssetSymbol, list<OHLCVBar>>",
+          "link": 2
+        }
+      ],
+      "outputs": [
+        {
+          "name": "filtered_ohlcv_bundle",
+          "type": "dict<AssetSymbol, list<OHLCVBar>>",
+          "links": [
+            3
+          ]
+        },
+        {
+          "name": "indicator_data",
+          "type": "dict<str, 0>",
+          "links": [
+            11
+          ]
+        }
+      ],
+      "title": "GreenExpansionRisingFilter",
+      "properties": {
+        "anchor": 1,
+        "bblength": 50,
+        "mult": 2,
+        "timeframe_multiplier": 1,
+        "filter_mode": "green_expansion_rising_strong_only",
+        "check_last_bar_only": true,
+        "lookback_bars": 5,
+        "max_symbols": 500,
+        "enable_multi_timeframe": true,
+        "timeframe_multiplier_1": 1,
+        "timeframe_multiplier_2": 3,
+        "timeframe_multiplier_3": 6,
+        "timeframe_multiplier_4": 12,
+        "timeframe_multiplier_5": 48,
+        "multi_timeframe_mode": "any"
+      }
+    },
+    {
+      "id": 4,
+      "type": "FractalResonanceFilter",
+      "pos": [
+        327.900390625,
+        348.22265625
+      ],
+      "size": [
+        229.13671875,
+        462
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "ohlcv_bundle",
+          "type": "dict<AssetSymbol, list<OHLCVBar>>",
+          "link": 3
+        }
+      ],
+      "outputs": [
+        {
+          "name": "filtered_ohlcv_bundle",
+          "type": "dict<AssetSymbol, list<OHLCVBar>>",
+          "links": [
+            6
+          ]
+        },
+        {
+          "name": "indicator_data",
+          "type": "dict<str, 0>",
+          "links": [
+            9
+          ]
+        }
+      ],
+      "title": "FractalResonanceFilter",
+      "properties": {
+        "n1": 10,
+        "n2": 21,
+        "crossover_sma_len": 3,
+        "ob_level": 75,
+        "ob_embed_level": 88,
+        "ob_extreme_level": 100,
+        "cross_separation": 3,
+        "check_last_bar_only": true,
+        "lookback_bars": 5,
+        "min_green_timeframes": 8,
+        "enable_multi_timeframe": true,
+        "timeframe_multiplier_1": 1,
+        "timeframe_multiplier_2": 3,
+        "timeframe_multiplier_3": 6,
+        "timeframe_multiplier_4": 12,
+        "timeframe_multiplier_5": 48,
+        "multi_timeframe_mode": "any"
+      }
+    },
+    {
+      "id": 5,
+      "type": "ExtractSymbols",
+      "pos": [
+        818.640625,
+        354.3154296875
+      ],
+      "size": [
+        200,
+        123
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "ohlcv_bundle",
+          "type": "dict<AssetSymbol, list<OHLCVBar>>",
+          "link": 7
+        }
+      ],
+      "outputs": [
+        {
+          "name": "symbols",
+          "type": "list<AssetSymbol>",
+          "links": [
+            5
+          ]
+        }
+      ],
+      "title": "ExtractSymbols",
+      "properties": {}
+    },
+    {
+      "id": 6,
+      "type": "Logging",
+      "pos": [
+        272.52734375,
+        853.1044921875
+      ],
+      "size": [
+        400,
+        300
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "input",
+          "type": 0,
+          "link": 5
+        }
+      ],
+      "outputs": [
+        {
+          "name": "output",
+          "type": "str",
+          "links": null
+        }
+      ],
+      "title": "Logging",
+      "properties": {
+        "format": "auto"
+      }
+    },
+    {
+      "id": 7,
+      "type": "StochasticHeatmapFilter",
+      "pos": [
+        583.0341796875,
+        337.7353515625
+      ],
+      "size": [
+        229.13671875,
+        294
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "ohlcv_bundle",
+          "type": "dict<AssetSymbol, list<OHLCVBar>>",
+          "link": 6
+        }
+      ],
+      "outputs": [
+        {
+          "name": "filtered_ohlcv_bundle",
+          "type": "dict<AssetSymbol, list<OHLCVBar>>",
+          "links": [
+            7,
+            8
+          ]
+        },
+        {
+          "name": "indicator_data",
+          "type": "dict<str, 0>",
+          "links": [
+            10
+          ]
+        }
+      ],
+      "title": "StochasticHeatmapFilter",
+      "properties": {
+        "ma_type": "EMA",
+        "increment": 10,
+        "smooth_fast": 2,
+        "smooth_slow": 21,
+        "plot_number": 28,
+        "waves": true,
+        "filter_crossover": "fast_above_slow",
+        "check_last_bar_only": true,
+        "lookback_bars": 5,
+        "max_symbols": 500
+      }
+    },
+    {
+      "id": 8,
+      "type": "MultiIndicatorChart",
+      "pos": [
+        644.4912109375,
+        692.154296875
+      ],
+      "size": [
+        210,
+        394
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "ohlcv_bundle",
+          "type": "dict<AssetSymbol, list<OHLCVBar>>",
+          "link": 8
+        },
+        {
+          "name": "indicator_data",
+          "type": 0,
+          "link": 9
+        },
+        {
+          "name": "indicator_data_1",
+          "type": 0,
+          "link": 10
+        },
+        {
+          "name": "indicator_data_2",
+          "type": 0,
+          "link": 11
+        },
+        {
+          "name": "indicator_data_3",
+          "type": 0,
+          "link": null
+        },
+        {
+          "name": "indicator_data_4",
+          "type": 0,
+          "link": null
+        },
+        {
+          "name": "indicator_data_5",
+          "type": 0,
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "images",
+          "type": "dict<str, 0>",
+          "links": [
+            12
+          ]
+        },
+        {
+          "name": "debug_info",
+          "type": "dict<str, 0>",
+          "links": null
+        }
+      ],
+      "title": "MultiIndicatorChart",
+      "properties": {
+        "max_bars": 200,
+        "max_symbols": 50,
+        "show_volume": true,
+        "indicator_panel_mode": "overlay",
+        "max_indicators": 8,
+        "dpi": 200,
+        "price_panel_height": 2.5,
+        "volume_panel_height": 1,
+        "indicator_panel_height": 1.5,
+        "special_visualization_height": 4
+      }
+    },
+    {
+      "id": 9,
+      "type": "ImageDisplay",
+      "pos": [
+        902.0654296875,
+        637.3232421875
+      ],
+      "size": [
+        500,
+        360
+      ],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "dict<str, 0>",
+          "link": 12
+        }
+      ],
+      "outputs": [
+        {
+          "name": "images",
+          "type": "dict<str, 0>",
+          "links": null
+        }
+      ],
+      "title": "ImageDisplay",
+      "properties": {}
+    }
+  ],
+  "links": [
+    {
+      "id": 1,
+      "origin_id": 1,
+      "origin_slot": 0,
+      "target_id": 2,
+      "target_slot": 0,
+      "type": "list<AssetSymbol>"
+    },
+    {
+      "id": 2,
+      "origin_id": 2,
+      "origin_slot": 0,
+      "target_id": 3,
+      "target_slot": 0,
+      "type": "dict<AssetSymbol, list<OHLCVBar>>"
+    },
+    {
+      "id": 3,
+      "origin_id": 3,
+      "origin_slot": 0,
+      "target_id": 4,
+      "target_slot": 0,
+      "type": "dict<AssetSymbol, list<OHLCVBar>>"
+    },
+    {
+      "id": 5,
+      "origin_id": 5,
+      "origin_slot": 0,
+      "target_id": 6,
+      "target_slot": 0,
+      "type": "list<AssetSymbol>"
+    },
+    {
+      "id": 6,
+      "origin_id": 4,
+      "origin_slot": 0,
+      "target_id": 7,
+      "target_slot": 0,
+      "type": "dict<AssetSymbol, list<OHLCVBar>>"
+    },
+    {
+      "id": 7,
+      "origin_id": 7,
+      "origin_slot": 0,
+      "target_id": 5,
+      "target_slot": 0,
+      "type": "dict<AssetSymbol, list<OHLCVBar>>"
+    },
+    {
+      "id": 8,
+      "origin_id": 7,
+      "origin_slot": 0,
+      "target_id": 8,
+      "target_slot": 0,
+      "type": "dict<AssetSymbol, list<OHLCVBar>>"
+    },
+    {
+      "id": 9,
+      "origin_id": 4,
+      "origin_slot": 1,
+      "target_id": 8,
+      "target_slot": 1,
+      "type": "dict<str, 0>"
+    },
+    {
+      "id": 10,
+      "origin_id": 7,
+      "origin_slot": 1,
+      "target_id": 8,
+      "target_slot": 2,
+      "type": "dict<str, 0>"
+    },
+    {
+      "id": 11,
+      "origin_id": 3,
+      "origin_slot": 1,
+      "target_id": 8,
+      "target_slot": 3,
+      "type": "dict<str, 0>"
+    },
+    {
+      "id": 12,
+      "origin_id": 8,
+      "origin_slot": 0,
+      "target_id": 9,
+      "target_slot": 0,
+      "type": "dict<str, 0>"
+    }
+  ],
+  "extra": {
+    "ds": {
+      "scale": 1,
+      "offset": [
+        0,
+        0
+      ]
+    }
+  }
+}

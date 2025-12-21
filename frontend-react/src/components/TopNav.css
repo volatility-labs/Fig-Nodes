@@ -1,0 +1,117 @@
+.top-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: var(--topnav-height, 48px);
+  padding: 0 16px;
+  background: var(--theme-bg-secondary);
+  border-bottom: 1px solid var(--theme-border);
+  gap: 16px;
+}
+
+.nav-left,
+.nav-center,
+.nav-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.nav-left {
+  flex: 1;
+}
+
+.nav-center {
+  flex: 0 0 auto;
+}
+
+.nav-right {
+  flex: 1;
+  justify-content: flex-end;
+}
+
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 16px;
+  color: var(--theme-text);
+}
+
+.logo-icon {
+  font-size: 20px;
+}
+
+.nav-divider {
+  width: 1px;
+  height: 24px;
+  background: var(--theme-border);
+  margin: 0 8px;
+}
+
+.nav-button {
+  padding: 6px 12px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--theme-text);
+  cursor: pointer;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.nav-button:hover:not(:disabled) {
+  background: var(--theme-bg-hover);
+  border-color: var(--theme-border);
+}
+
+.nav-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.nav-button .icon {
+  font-size: 16px;
+}
+
+.nav-button-primary {
+  padding: 6px 16px;
+  background: var(--theme-accent);
+  border: 1px solid var(--theme-accent);
+  color: white;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.nav-button-primary:hover {
+  background: var(--theme-accent-hover);
+  border-color: var(--theme-accent-hover);
+}
+
+.workspace-selector {
+  font-family: inherit;
+  font-size: 13px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--theme-border);
+  background: var(--theme-bg-tertiary);
+  color: var(--theme-text);
+  cursor: pointer;
+  min-width: 200px;
+}
+
+.workspace-selector:hover {
+  border-color: var(--theme-border-secondary);
+}
+
+.workspace-selector:focus {
+  outline: none;
+  border-color: var(--theme-accent);
+}
+

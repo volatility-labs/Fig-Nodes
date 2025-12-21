@@ -3,8 +3,8 @@ import BaseCustomNode from '../base/BaseCustomNode';
 export default class OllamaChatNodeUI extends BaseCustomNode {
     constructor(title: string, data: any, serviceRegistry: any) {
         super(title, data, serviceRegistry);
-        this.size = [320, 300];  // Extra space for host and model selector
-        this.displayResults = true; // Display chat responses (also uses onStreamUpdate for streaming)
+        this.size = [320, 300];  // Room for response preview
+        this.displayResults = true; // Show results (with smart truncation in BaseCustomNode)
 
         // Model refresh before convenience buttons
         this.addWidget('button', 'Refresh Models', '', async () => {

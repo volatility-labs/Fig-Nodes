@@ -1,0 +1,453 @@
+{
+  "id": "00000000-0000-0000-0000-000000000000",
+  "revision": 0,
+  "version": 1,
+  "config": {},
+  "state": {
+    "lastGroupId": 0,
+    "lastNodeId": 14,
+    "lastLinkId": 27,
+    "lastRerouteId": 0
+  },
+  "groups": [],
+  "nodes": [
+    {
+      "id": 1,
+      "type": "PolygonCryptoUniverse",
+      "pos": [
+        -84.1025390625,
+        -172.681640625
+      ],
+      "size": [
+        210,
+        194
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "filter_symbols",
+          "type": "list<AssetSymbol>",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "symbols",
+          "type": "list<AssetSymbol>",
+          "links": [
+            1
+          ]
+        }
+      ],
+      "title": "PolygonCryptoUniverse",
+      "properties": {
+        "exclude_stablecoins": true,
+        "min_change_perc": -50,
+        "max_change_perc": 50,
+        "min_volume": 100,
+        "min_price": 0.01,
+        "max_price": 1000000,
+        "max_snapshot_delay_minutes": "None (no filter)"
+      }
+    },
+    {
+      "id": 2,
+      "type": "PolygonBatchCustomBars",
+      "pos": [
+        103.5498046875,
+        53.5234375
+      ],
+      "size": [
+        200,
+        194
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "symbols",
+          "type": "list<AssetSymbol>",
+          "link": 1
+        }
+      ],
+      "outputs": [
+        {
+          "name": "ohlcv_bundle",
+          "type": "dict<AssetSymbol, list<OHLCVBar>>",
+          "links": [
+            27
+          ]
+        }
+      ],
+      "title": "PolygonBatchCustomBars",
+      "properties": {
+        "interval": "5min",
+        "multiplier": 1,
+        "timespan": "day",
+        "lookback_period": "2 weeks",
+        "adjusted": true,
+        "sort": "asc",
+        "limit": 50000
+      }
+    },
+    {
+      "id": 5,
+      "type": "MultiIndicatorChart",
+      "pos": [
+        1267.2406005859375,
+        -134.65638732910156
+      ],
+      "size": [
+        210,
+        394
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "ohlcv_bundle",
+          "type": "dict<AssetSymbol, list<OHLCVBar>>",
+          "link": 16
+        },
+        {
+          "name": "indicator_data",
+          "type": 0,
+          "link": 17
+        },
+        {
+          "name": "indicator_data_1",
+          "type": 0,
+          "link": null
+        },
+        {
+          "name": "indicator_data_2",
+          "type": 0,
+          "link": null
+        },
+        {
+          "name": "indicator_data_3",
+          "type": 0,
+          "link": null
+        },
+        {
+          "name": "indicator_data_4",
+          "type": 0,
+          "link": null
+        },
+        {
+          "name": "indicator_data_5",
+          "type": 0,
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "images",
+          "type": "dict<str, 0>",
+          "links": [
+            10
+          ]
+        },
+        {
+          "name": "debug_info",
+          "type": "dict<str, 0>",
+          "links": null
+        }
+      ],
+      "title": "MultiIndicatorChart",
+      "properties": {
+        "max_bars": 10,
+        "max_symbols": 50,
+        "show_volume": true,
+        "indicator_panel_mode": "overlay",
+        "max_indicators": 8,
+        "dpi": 200,
+        "price_panel_height": 2.5,
+        "volume_panel_height": 1,
+        "indicator_panel_height": 1.5,
+        "special_visualization_height": 4
+      }
+    },
+    {
+      "id": 6,
+      "type": "ExtractSymbols",
+      "pos": [
+        1179.716796875,
+        530.0146484375
+      ],
+      "size": [
+        200,
+        93
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "ohlcv_bundle",
+          "type": "dict<AssetSymbol, list<OHLCVBar>>",
+          "link": 19
+        }
+      ],
+      "outputs": [
+        {
+          "name": "symbols",
+          "type": "list<AssetSymbol>",
+          "links": [
+            8
+          ]
+        }
+      ],
+      "title": "ExtractSymbols",
+      "properties": {}
+    },
+    {
+      "id": 7,
+      "type": "Logging",
+      "pos": [
+        658.8974609375,
+        455.8486328125
+      ],
+      "size": [
+        400,
+        300
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "input",
+          "type": 0,
+          "link": 8
+        }
+      ],
+      "outputs": [
+        {
+          "name": "output",
+          "type": "str",
+          "links": null
+        }
+      ],
+      "title": "Logging",
+      "properties": {
+        "format": "auto"
+      }
+    },
+    {
+      "id": 8,
+      "type": "OHLCVPlotEnhanced",
+      "pos": [
+        1388.19140625,
+        54.62109375
+      ],
+      "size": [
+        426,
+        604.9454345703125
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "ohlcv_bundle",
+          "type": "dict<AssetSymbol, list<OHLCVBar>>",
+          "link": 18
+        }
+      ],
+      "outputs": [
+        {
+          "name": "images",
+          "type": "dict<str, 0>",
+          "links": null
+        }
+      ],
+      "title": "OHLCVPlotEnhanced",
+      "properties": {
+        "max_symbols": 24,
+        "lookback_bars": 60,
+        "overlay1_type": "SMA",
+        "overlay1_period": 20,
+        "overlay2_type": "SMA",
+        "overlay2_period": 50,
+        "show_vbp_levels": true,
+        "vbp_bins": 100,
+        "vbp_num_levels": 5,
+        "vbp_lookback_years": 2,
+        "vbp_lookback_years_2": 1,
+        "vbp_use_dollar_weighted": true,
+        "vbp_use_close_only": true,
+        "vbp_style": "dashed"
+      }
+    },
+    {
+      "id": 9,
+      "type": "ImageDisplay",
+      "pos": [
+        107.0703125,
+        350.29296875
+      ],
+      "size": [
+        426,
+        396.1705322265625
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "dict<str, 0>",
+          "link": 10
+        }
+      ],
+      "outputs": [
+        {
+          "name": "images",
+          "type": "dict<str, 0>",
+          "links": null
+        }
+      ],
+      "title": "ImageDisplay",
+      "properties": {}
+    },
+    {
+      "id": 12,
+      "type": "DeviationMagnetFilter",
+      "pos": [
+        616.8994140625,
+        52.5166015625
+      ],
+      "size": [
+        229.13671875,
+        438
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "ohlcv_bundle",
+          "type": "dict<AssetSymbol, list<OHLCVBar>>",
+          "link": 27
+        }
+      ],
+      "outputs": [
+        {
+          "name": "filtered_ohlcv_bundle",
+          "type": "dict<AssetSymbol, list<OHLCVBar>>",
+          "links": [
+            16,
+            18,
+            19
+          ]
+        },
+        {
+          "name": "indicator_data",
+          "type": "dict<str, 0>",
+          "links": [
+            17
+          ]
+        }
+      ],
+      "title": "DeviationMagnetFilter",
+      "properties": {
+        "anchor": 1,
+        "bblength": 50,
+        "mult": 2,
+        "timeframe_multiplier": 1,
+        "coloring_sensitivity": 2,
+        "filter_condition": "expansion_bullish_rising_any",
+        "check_last_bar_only": true,
+        "lookback_bars": 5,
+        "max_symbols": 500,
+        "enable_multi_timeframe": false,
+        "timeframe_multiplier_1": 1,
+        "timeframe_multiplier_2": 4,
+        "timeframe_multiplier_3": 16,
+        "timeframe_multiplier_4": 64,
+        "timeframe_multiplier_5": 256,
+        "multi_timeframe_mode": "all"
+      }
+    }
+  ],
+  "links": [
+    {
+      "id": 1,
+      "origin_id": 1,
+      "origin_slot": 0,
+      "target_id": 2,
+      "target_slot": 0,
+      "type": "list<AssetSymbol>"
+    },
+    {
+      "id": 8,
+      "origin_id": 6,
+      "origin_slot": 0,
+      "target_id": 7,
+      "target_slot": 0,
+      "type": "list<AssetSymbol>"
+    },
+    {
+      "id": 10,
+      "origin_id": 5,
+      "origin_slot": 0,
+      "target_id": 9,
+      "target_slot": 0,
+      "type": "dict<str, 0>"
+    },
+    {
+      "id": 16,
+      "origin_id": 12,
+      "origin_slot": 0,
+      "target_id": 5,
+      "target_slot": 0,
+      "type": "dict<AssetSymbol, list<OHLCVBar>>"
+    },
+    {
+      "id": 17,
+      "origin_id": 12,
+      "origin_slot": 1,
+      "target_id": 5,
+      "target_slot": 1,
+      "type": "dict<str, 0>"
+    },
+    {
+      "id": 18,
+      "origin_id": 12,
+      "origin_slot": 0,
+      "target_id": 8,
+      "target_slot": 0,
+      "type": "dict<AssetSymbol, list<OHLCVBar>>"
+    },
+    {
+      "id": 19,
+      "origin_id": 12,
+      "origin_slot": 0,
+      "target_id": 6,
+      "target_slot": 0,
+      "type": "dict<AssetSymbol, list<OHLCVBar>>"
+    },
+    {
+      "id": 27,
+      "origin_id": 2,
+      "origin_slot": 0,
+      "target_id": 12,
+      "target_slot": 0,
+      "type": "dict<AssetSymbol, list<OHLCVBar>>"
+    }
+  ],
+  "extra": {
+    "ds": {
+      "scale": 1,
+      "offset": [
+        0,
+        0
+      ]
+    }
+  }
+}

@@ -22,6 +22,7 @@ from .thma_calculator import (
     calculate_thma_with_volatility,
 )
 from .hull_range_filter_calculator import calculate_hull_range_filter
+from .deviation_magnet_calculator import calculate_deviation_magnet
 from .utils import (
     calculate_rolling_mean,
     calculate_rolling_std_dev,
@@ -60,6 +61,7 @@ __all__ = [
     "calculate_hma",
     "calculate_thma_with_volatility",
     "calculate_hull_range_filter",
+    "calculate_deviation_magnet",
     "calculate_vbp",
     "calculate_wilder_ma",
     "calculate_wma",
