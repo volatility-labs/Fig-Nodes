@@ -7,9 +7,10 @@
 
 body {
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    background: #0d1117;
-    color: #c9d1d9;
+    background: var(--theme-bg, #0d1117);
+    color: var(--theme-text, #c9d1d9);
     overflow: hidden;
+    transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 .app-container {
@@ -68,12 +69,13 @@ body {
 
 /* Footer Controls - Bloomberg Terminal Style */
 #footer {
-    background: #0d1117;
+    background: var(--theme-bg, #0d1117);
+    color: var(--theme-text, #adbac7);
     padding: 0 16px;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    border-top: 1px solid #30363d;
+    border-top: 1px solid var(--theme-border, #30363d);
     height: 36px;
     font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
     font-size: 11px;
@@ -160,7 +162,7 @@ body {
 }
 
 .graph-name {
-    color: #768390;
+    color: var(--theme-text-secondary, #768390);
     font-size: 11px;
     font-weight: 500;
     letter-spacing: 0.2px;
@@ -209,24 +211,24 @@ body {
 
 .file-controls {
     padding-left: 8px;
-    border-left: 1px solid #30363d;
+    border-left: 1px solid var(--theme-border, #30363d);
 }
 
 .execution-controls {
     padding-left: 8px;
-    border-left: 1px solid #30363d;
+    border-left: 1px solid var(--theme-border, #30363d);
 }
 
 #footer button {
-    color: #adbac7;
-    border: 1px solid #373e47;
+    color: var(--theme-text, #adbac7);
+    border: 1px solid var(--theme-border-secondary, #373e47);
     padding: 4px 10px;
     border-radius: 2px;
     cursor: pointer;
     font-size: 11px;
     font-weight: 500;
     transition: all 0.15s ease;
-    background: #1c2128;
+    background: var(--theme-bg-tertiary, #1c2128);
     letter-spacing: 0.3px;
     text-transform: uppercase;
     font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
@@ -241,30 +243,32 @@ body {
 }
 
 #footer button:hover {
-    background: #22272e;
-    border-color: #545d68;
-    color: #cdd9e5;
+    background: var(--theme-bg-hover, #22272e);
+    border-color: var(--theme-text-muted, #545d68);
+    color: var(--theme-text, #cdd9e5);
 }
 
 .btn-primary {
-    background: #1f6feb;
-    border-color: #316dca;
+    background: var(--theme-accent, #1f6feb);
+    border-color: var(--theme-accent, #316dca);
     color: #fff;
 }
 
 .btn-primary:hover {
-    background: #388bfd;
-    border-color: #4493f8;
+    background: var(--theme-accent-hover, #388bfd);
+    border-color: var(--theme-accent-hover, #4493f8);
 }
 
 .btn-secondary {
-    background: #1c2128;
-    border-color: #373e47;
+    background: var(--theme-bg-tertiary, #1c2128);
+    border-color: var(--theme-border-secondary, #373e47);
+    color: var(--theme-text, #adbac7);
 }
 
 .btn-secondary:hover {
-    background: #22272e;
-    border-color: #545d68;
+    background: var(--theme-bg-hover, #22272e);
+    border-color: var(--theme-text-muted, #545d68);
+    color: var(--theme-text, #cdd9e5);
 }
 
 .btn-stop {
@@ -279,11 +283,11 @@ body {
 }
 
 #footer button:disabled {
-    background: #1a1a1a;
-    border-color: #222;
+    background: var(--theme-bg-secondary, #1a1a1a);
+    border-color: var(--theme-border, #222);
     cursor: not-allowed;
     opacity: 0.4;
-    color: #555;
+    color: var(--theme-text-muted, #555);
 }
 
 /* Link Mode and API Keys button styling */
@@ -336,8 +340,16 @@ body {
     z-index: 1000;
 }
 
-/* Node Palette Styles */
-.node-palette-overlay {
+/* Hide LiteGraph's native searchbox since we use our own palette */
+.litegraph.litesearchbox {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+}
+
+/* Node Palette Styles - use ID selectors to match HTML */
+#node-palette-overlay {
     position: fixed;
     top: 0;
     left: 0;
@@ -347,10 +359,10 @@ body {
     display: flex;
     justify-content: center;
     align-items: center;
-    z-index: 2000;
+    z-index: 20000; /* Higher than expanded container (10000) to ensure it appears in fullscreen */
 }
 
-.node-palette {
+#node-palette {
     background: #2a2a2a;
     border: 1px solid #555;
     border-radius: 8px;
@@ -361,7 +373,7 @@ body {
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
 }
 
-.node-palette-search {
+#node-palette-search {
     background: #333;
     border: 1px solid #555;
     border-radius: 4px;
@@ -372,12 +384,12 @@ body {
     outline: none;
 }
 
-.node-palette-search:focus {
+#node-palette-search:focus {
     border-color: #2196f3;
     box-shadow: 0 0 5px rgba(33, 150, 243, 0.3);
 }
 
-.node-palette-list {
+#node-palette-list {
     flex: 1;
     overflow-y: auto;
     padding: 0 16px 16px;
@@ -398,6 +410,43 @@ body {
 
 .node-palette-item.selected {
     border-left: 3px solid #2196f3;
+}
+
+/* Theme Selector Styling */
+.theme-selector {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.theme-selector span {
+    color: var(--theme-text-secondary, #768390);
+    font-size: 11px;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+}
+
+.theme-select {
+    background: var(--theme-bg-tertiary, #1c2128) !important;
+    border: 1px solid var(--theme-border-secondary, #373e47) !important;
+    color: var(--theme-text, #adbac7) !important;
+    padding: 4px 8px;
+    border-radius: 2px;
+    font-size: 11px;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    cursor: pointer;
+    outline: none;
+    min-width: 140px;
+    transition: all 0.2s ease;
+}
+
+.theme-select:hover {
+    border-color: var(--theme-accent, #539bf5) !important;
+    background: var(--theme-bg-hover, #22272e) !important;
+}
+
+.theme-select:focus {
+    border-color: var(--theme-accent, #539bf5) !important;
+    box-shadow: 0 0 0 2px rgba(83, 155, 245, 0.2);
 }
 
 .node-palette-title {

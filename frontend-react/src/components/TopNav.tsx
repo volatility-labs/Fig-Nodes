@@ -1,5 +1,4 @@
 import type { EditorInstance } from '@legacy/services/EditorInitializer';
-import { useLitegraphCanvas } from '@hooks/useLitegraphCanvas';
 import './TopNav.css';
 
 interface TopNavProps {
@@ -12,7 +11,6 @@ interface TopNavProps {
  * Top navigation bar - React component for app-level navigation
  */
 export function TopNav({ editor, onToggleSidebar, onToggleProperties }: TopNavProps) {
-  const { fitToView } = useLitegraphCanvas(editor);
 
   return (
     <nav className="top-nav">
@@ -32,17 +30,6 @@ export function TopNav({ editor, onToggleSidebar, onToggleProperties }: TopNavPr
           <span className="icon">⚙️</span>
         </button>
 
-        <div className="nav-divider" />
-
-        <button 
-          onClick={fitToView} 
-          className="nav-button" 
-          title="Fit all nodes to view"
-          disabled={!editor}
-        >
-          <span className="icon">🔍</span>
-          <span>Fit View</span>
-        </button>
       </div>
 
       <div className="nav-center">

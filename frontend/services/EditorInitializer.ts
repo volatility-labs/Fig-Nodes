@@ -55,15 +55,27 @@ export class EditorInitializer {
             const statusService = registerExecutionStatusService(this.serviceRegistry);
             statusService.setConnection('loading', 'Initializing...');
 
+            // Set navigation mode to "standard" for proper scroll behavior:
+            // - Regular scroll = PAN
+            // - Shift + scroll = ZOOM
+            LiteGraph.canvasNavigationMode = "standard";
+            
             const graph = new LGraph();
             const canvasElement = container.querySelector('#litegraph-canvas') as HTMLCanvasElement;
             const canvas = new LGraphCanvas(canvasElement, graph);
+            // Disable LiteGraph's native searchbox to allow our custom palette to work
+            canvas.allow_searchbox = false;
             // Suppress native search UI with correctly typed no-op
             canvas.showSearchBox = function (event: MouseEvent, _searchOptions?: unknown): HTMLDivElement {
                 event?.preventDefault?.();
+                event?.stopPropagation?.();
                 const el = document.createElement('div');
                 el.style.display = 'none';
+                el.style.visibility = 'hidden';
+                el.style.opacity = '0';
+                el.style.pointerEvents = 'none';
                 el.setAttribute('aria-hidden', 'true');
+                el.className = 'litegraph litesearchbox'; // Add class so CSS can hide it
                 return el;
             };
 
@@ -366,27 +378,31 @@ export class EditorInitializer {
             return null;
         };
 
-        canvasElement.addEventListener('dblclick', (e: MouseEvent) => {
-            e.preventDefault();
-            e.stopPropagation();
-            const node = findNodeUnderEvent(e);
-            if (node) {
-                if (typeof node.onDblClick === 'function') {
-                    try {
-                        const canvasPos = canvas.convertEventToCanvasOffset(e) as number[];
-                        if (!canvasPos || !Array.isArray(canvasPos) || canvasPos.length < 2) return;
-                        const localPos: [number, number] = [canvasPos[0]! - (node.pos?.[0] ?? 0), canvasPos[1]! - (node.pos?.[1] ?? 0)];
-                        // Adjust event to CanvasPointerEvent to satisfy native signature
-                        const evt = e as unknown as MouseEvent & { isAdjusted?: boolean };
-                        canvas.adjustMouseEvent(evt as unknown as any);
-                        // Native onDblClick returns void; do not test truthiness
-                        node.onDblClick(evt as unknown as any, localPos, canvas);
-                        return;
-                    } catch { }
-                }
-                return;
+        // Listen to LiteGraph's empty-double-click event on the DOM canvas element
+        // LiteGraph dispatches custom events on the canvas DOM element (canvas.canvas)
+        canvasElement.addEventListener('litegraph:canvas', ((e: CustomEvent) => {
+            const detail = e.detail as { subType?: string; originalEvent?: MouseEvent };
+            if (detail?.subType !== 'empty-double-click') return;
+            
+            const originalEvent = detail.originalEvent as MouseEvent | undefined;
+            if (!originalEvent) return;
+            
+            // Open palette if clicking on empty space (no node under cursor)
+            const node = findNodeUnderEvent(originalEvent);
+            if (!node) {
+                palette.openPalette(originalEvent);
             }
-            palette.openPalette(e);
+        }) as EventListener);
+        
+        // Also keep native dblclick as fallback for cases where LiteGraph's event doesn't fire
+        canvasElement.addEventListener('dblclick', (e: MouseEvent) => {
+            // Only handle if no node is under the event (empty space)
+            const node = findNodeUnderEvent(e);
+            if (!node) {
+                e.preventDefault();
+                e.stopPropagation();
+                palette.openPalette(e);
+            }
         });
 
         canvasElement.addEventListener('click', (e: MouseEvent) => {
@@ -621,100 +637,12 @@ export class EditorInitializer {
                 }, 0);
             }
 
-            // Add Reset Charts button - check if it already exists
-            let resetChartsBtn = document.getElementById('reset-charts-btn') as HTMLButtonElement;
-            if (!resetChartsBtn) {
-                resetChartsBtn = document.createElement('button');
-            resetChartsBtn.id = 'reset-charts-btn';
-            resetChartsBtn.className = 'btn-secondary';
-            resetChartsBtn.textContent = 'Reset';
-            resetChartsBtn.title = 'Reset all chart views and fit all nodes to view';
-                footerCenter.appendChild(resetChartsBtn);
+            // Reset button removed - Fit View button handles this functionality
+            // Remove any existing reset button if present
+            const existingResetBtn = document.getElementById('reset-charts-btn');
+            if (existingResetBtn) {
+                existingResetBtn.remove();
             }
-            // Attach event listener (clone to remove old listeners first)
-            const resetChartsHandler = (e: Event) => {
-                e.preventDefault();
-                e.stopPropagation();
-                
-                try {
-                    const graph = this.serviceRegistry.get('graph') as LGraph;
-                    const canvas = this.serviceRegistry.get('canvas') as LGraphCanvas;
-                    
-                    console.log('Reset Charts clicked - graph:', graph, 'canvas:', canvas);
-                    
-                    if (!graph) {
-                        console.warn('Graph not available');
-                        return;
-                    }
-                    
-                    if (!canvas) {
-                        console.warn('Canvas not available');
-                        return;
-                    }
-
-                    // Reset chart views within nodes
-                    if (graph._nodes && graph._nodes.length > 0) {
-                        const chartNodes = graph._nodes.filter((node: any) => 
-                            typeof node.resetChartView === 'function'
-                        );
-                        console.log(`Found ${chartNodes.length} chart nodes to reset`);
-                        chartNodes.forEach((node: any) => {
-                            try {
-                                node.resetChartView();
-                            } catch (err) {
-                                console.warn('Error resetting chart view for node:', err);
-                            }
-                        });
-                    }
-
-                    // Fit all nodes to view
-                    // Clear selection first to fit all nodes
-                    if (canvas.selectedItems) {
-                        canvas.selectedItems.clear();
-                    }
-                    if (canvas.selected_nodes) {
-                        canvas.selected_nodes = {};
-                    }
-                    if (canvas.onSelectionChange) {
-                        canvas.onSelectionChange(canvas.selected_nodes || {});
-                    }
-                    
-                    // Use fitViewToSelectionAnimated which fits all nodes when nothing is selected
-                    if (typeof canvas.fitViewToSelectionAnimated === 'function') {
-                        console.log('Using fitViewToSelectionAnimated');
-                        try {
-                            canvas.fitViewToSelectionAnimated({
-                                duration: 300,
-                                zoom: 0.95, // Less aggressive zoom - closer to 1.0 for better view
-                                easing: 'easeInOutQuad'
-                            });
-                            
-                            // Ensure minimum zoom after animation to keep text visible
-                            // low_quality threshold is 0.6, so we enforce 0.7 minimum
-                            setTimeout(() => {
-                                const ds = (canvas as any).ds;
-                                if (ds && ds.scale < 0.7) {
-                                    ds.scale = 0.7;
-                                    canvas.setDirty(true, true);
-                                }
-                            }, 350); // Wait for animation to complete (300ms + buffer)
-                        } catch (err) {
-                            console.warn('fitViewToSelectionAnimated failed, trying fallback:', err);
-                            // Fallback to manual calculation
-                            this.fitAllNodesToView(graph, canvas);
-                        }
-                    } else {
-                        console.log('fitViewToSelectionAnimated not available, using fallback');
-                        // Fallback: manually calculate bounds and fit
-                        this.fitAllNodesToView(graph, canvas);
-                    }
-                } catch (error) {
-                    console.error('Failed to reset chart views and fit to view:', error);
-                }
-            };
-            const newResetChartsBtn = resetChartsBtn.cloneNode(true) as HTMLButtonElement;
-            resetChartsBtn.parentNode?.replaceChild(newResetChartsBtn, resetChartsBtn);
-            newResetChartsBtn.addEventListener('click', resetChartsHandler);
         }
     }
 
@@ -809,8 +737,8 @@ export class EditorInitializer {
         const themeSelect = document.createElement('select');
         themeSelect.id = 'theme-selector';
         themeSelect.className = 'theme-select';
-        themeSelect.style.background = 'var(--theme-bg, #1c2128)';
-        themeSelect.style.border = '1px solid var(--theme-border, #373e47)';
+        themeSelect.style.background = 'var(--theme-bg-tertiary, #1c2128)';
+        themeSelect.style.border = '1px solid var(--theme-border-secondary, #373e47)';
         themeSelect.style.color = 'var(--theme-text, #adbac7)';
         themeSelect.style.padding = '4px 8px';
         themeSelect.style.borderRadius = '2px';
@@ -818,6 +746,7 @@ export class EditorInitializer {
         themeSelect.style.fontFamily = "'Consolas', 'Monaco', 'Courier New', monospace";
         themeSelect.style.cursor = 'pointer';
         themeSelect.style.outline = 'none';
+        themeSelect.style.minWidth = '140px';
 
         // Add theme options
         const themes = this.themeManager.getAvailableThemes();
@@ -839,13 +768,31 @@ export class EditorInitializer {
 
         // Add hover styles via JavaScript (since CSS variables are dynamic)
         themeSelect.addEventListener('mouseenter', () => {
-            themeSelect.style.borderColor = 'var(--theme-text-secondary, #545d68)';
-            themeSelect.style.background = 'var(--theme-bg, #22272e)';
+            themeSelect.style.borderColor = 'var(--theme-accent, #545d68)';
+            themeSelect.style.background = 'var(--theme-bg-hover, #22272e)';
         });
         themeSelect.addEventListener('mouseleave', () => {
-            themeSelect.style.borderColor = 'var(--theme-border, #373e47)';
-            themeSelect.style.background = 'var(--theme-bg, #1c2128)';
+            themeSelect.style.borderColor = 'var(--theme-border-secondary, #373e47)';
+            themeSelect.style.background = 'var(--theme-bg-tertiary, #1c2128)';
         });
+        
+        // Update theme selector colors when theme changes
+        const updateThemeSelectorColors = () => {
+            themeSelect.style.background = 'var(--theme-bg-tertiary, #1c2128)';
+            themeSelect.style.borderColor = 'var(--theme-border-secondary, #373e47)';
+            themeSelect.style.color = 'var(--theme-text, #adbac7)';
+            themeLabel.style.color = 'var(--theme-text-secondary, #768390)';
+            themeContainer.style.borderLeftColor = 'var(--theme-border, #30363d)';
+        };
+        
+        // Listen for theme changes and update selector styling
+        const themeManager = this.themeManager;
+        const originalSetTheme = themeManager.setTheme.bind(themeManager);
+        themeManager.setTheme = (themeName: string) => {
+            originalSetTheme(themeName);
+            // Small delay to ensure CSS variables are updated
+            setTimeout(updateThemeSelectorColors, 50);
+        };
 
         themeContainer.appendChild(themeLabel);
         themeContainer.appendChild(themeSelect);

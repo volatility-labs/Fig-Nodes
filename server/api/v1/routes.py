@@ -20,11 +20,15 @@ from ..schemas import (
 
 # Import scan routes
 from . import scans
+# Import watchlist routes
+from . import watchlist
 
 router = APIRouter()
 
 # Include scan routes
 router.include_router(scans.router)
+# Include watchlist routes
+router.include_router(watchlist.router)
 
 
 @router.get("/nodes", response_model=NodesResponse, summary="List Node Metadata")

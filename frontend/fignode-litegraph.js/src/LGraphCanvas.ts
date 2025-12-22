@@ -3227,44 +3227,25 @@ export class LGraphCanvas implements CustomEventDispatcher<LGraphCanvasEventMap>
    * Called when a mouse wheel event has to be processed
    */
   processMouseWheel(e: WheelEvent): void {
-    // Debug: Log immediately at function entry
-    console.log('🔵 processMouseWheel ENTERED:', { 
-      hasGraph: !!this.graph, 
-      allow_dragcanvas: this.allow_dragcanvas,
-      viewport: this.viewport,
-      clientX: e.clientX,
-      clientY: e.clientY,
-      deltaX: e.deltaX,
-      deltaY: e.deltaY
-    })
-    
     if (!this.graph || !this.allow_dragcanvas) {
-      console.log('❌ processMouseWheel EARLY RETURN: no graph or drag disabled')
       return
     }
 
     // Check if mouse is over canvas viewport (for document-level listener)
     const pos: Point = [e.clientX, e.clientY]
     if (this.viewport && !isPointInRect(pos, this.viewport)) {
-      // Mouse is outside canvas viewport - ignore
-      console.log('❌ processMouseWheel EARLY RETURN: outside viewport', { viewport: this.viewport, pos })
       return
     }
     
     // Also check if event target is within our canvas (for document-level listener)
     const target = e.target as HTMLElement
     if (target && this.canvas && !this.canvas.contains(target) && target !== this.canvas) {
-      // Check if mouse is actually over canvas area (might be document-level event)
       const canvasRect = this.canvas.getBoundingClientRect()
       if (pos[0] < canvasRect.left || pos[0] > canvasRect.right || 
           pos[1] < canvasRect.top || pos[1] > canvasRect.bottom) {
-        // Mouse is outside canvas bounds - ignore
-        console.log('❌ processMouseWheel EARLY RETURN: outside canvas bounds', { canvasRect, pos })
         return
       }
     }
-    
-    console.log('✅ processMouseWheel PASSED all checks, proceeding to pan logic')
 
     // TODO: Mouse wheel zoom rewrite
     // Use deltaY directly (modern browsers) or fallback to wheelDeltaY/detail
@@ -3272,17 +3253,6 @@ export class LGraphCanvas implements CustomEventDispatcher<LGraphCanvasEventMap>
     const delta = e.deltaY !== undefined ? e.deltaY : (e.wheelDeltaY ?? e.detail * -60)
 
     this.adjustMouseEvent(e)
-
-    // Debug: Log wheel event to verify it's being received (enable temporarily for debugging)
-    console.log('Canvas Wheel event:', { 
-      deltaX: e.deltaX, 
-      deltaY: e.deltaY, 
-      delta, 
-      ctrlKey: e.ctrlKey, 
-      shiftKey: e.shiftKey,
-      hasSelectedNodes: Object.keys(this.selected_nodes || {}).length,
-      allow_dragcanvas: this.allow_dragcanvas
-    })
 
     // Check if any nodes are selected
     const selectedNodes = this.selected_nodes || {}
@@ -3343,19 +3313,9 @@ export class LGraphCanvas implements CustomEventDispatcher<LGraphCanvasEventMap>
       const deltaX = e.deltaX || 0
       const deltaY = e.deltaY || 0
       
-      console.log('🎯 PANNING CANVAS:', { 
-        deltaX, 
-        deltaY, 
-        panSpeed, 
-        scale,
-        oldOffset: [this.ds.offset[0], this.ds.offset[1]]
-      })
-      
-      // Always pan (even with small deltas) to ensure trackpad scrolling works smoothly
-      this.ds.offset[0] -= deltaX * panSpeed
-      this.ds.offset[1] -= deltaY * panSpeed
-      
-      console.log('✅ NEW OFFSET:', [this.ds.offset[0], this.ds.offset[1]])
+      // Pan the canvas: scrolling right shows content to the right, scrolling down shows content below
+      this.ds.offset[0] += deltaX * panSpeed
+      this.ds.offset[1] += deltaY * panSpeed
       
       // Force immediate redraw
       this.#dirty()
@@ -4601,7 +4561,8 @@ export class LGraphCanvas implements CustomEventDispatcher<LGraphCanvasEventMap>
     ctx.translate(x, y)
 
     ctx.font = `10px ${LiteGraph.DEFAULT_FONT}`
-    ctx.fillStyle = "#888"
+    // Use theme-aware color if available, fallback to default
+    ctx.fillStyle = (this as any).info_text_color || "#888"
     ctx.textAlign = "left"
     if (this.graph) {
       ctx.fillText(`T: ${this.graph.globaltime.toFixed(2)}s`, 5, 13 * 1)

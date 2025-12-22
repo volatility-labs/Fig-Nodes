@@ -40,6 +40,14 @@ function setupExpandToggle() {
         // Trigger canvas resize if needed
         const canvas = document.getElementById('litegraph-canvas') as HTMLCanvasElement;
         if (canvas) {
+            // Ensure canvas is focusable and receives focus in fullscreen mode
+            if (isExpanded) {
+                canvas.setAttribute('tabindex', '0');
+                // Focus the canvas after a short delay to ensure DOM is updated
+                setTimeout(() => {
+                    canvas.focus();
+                }, 50);
+            }
             // Force canvas to recalculate size
             setTimeout(() => {
                 const event = new Event('resize');

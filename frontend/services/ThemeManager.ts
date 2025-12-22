@@ -53,35 +53,35 @@ export const THEMES: Record<string, Theme> = {
         name: 'dark',
         displayName: 'Dark',
         colors: {
-            canvasBackground: '#2a2a2a',
-            nodeDefaultColor: '#333',
-            nodeDefaultBgColor: '#353535',
-            nodeTitleColor: '#999',
+            canvasBackground: '#0a0a0a',
+            nodeDefaultColor: '#1a1a1a',
+            nodeDefaultBgColor: '#1f1f1f',
+            nodeTitleColor: '#888',
             nodeSelectedTitleColor: '#FFF',
-            nodeTextColor: '#AAA',
-            nodeTextHighlightColor: '#EEE',
-            nodeBoxOutlineColor: '#FFF',
-            nodeDefaultBoxColor: '#666',
+            nodeTextColor: '#999',
+            nodeTextHighlightColor: '#DDD',
+            nodeBoxOutlineColor: '#444',
+            nodeDefaultBoxColor: '#333',
             linkColor: '#9A9',
             eventLinkColor: '#A86',
             connectingLinkColor: '#AFA',
-            linkTypeNumber: '#AAA',
+            linkTypeNumber: '#999',
             linkTypeNode: '#DCA',
-            inputOff: '#778',
+            inputOff: '#555',
             inputOn: '#7F7',
-            outputOff: '#778',
+            outputOff: '#555',
             outputOn: '#7F7',
-            widgetBgColor: '#222',
-            widgetOutlineColor: '#666',
+            widgetBgColor: '#151515',
+            widgetOutlineColor: '#444',
             widgetAdvancedOutlineColor: 'rgba(56, 139, 253, 0.8)',
-            widgetTextColor: '#DDD',
-            widgetSecondaryTextColor: '#999',
-            widgetDisabledTextColor: '#666',
-            uiBackground: '#1a1a1a',
-            uiBorder: '#2a2a2a',
-            uiText: '#ffffff',
-            uiTextSecondary: '#aaa',
-            canvasGridColor: '#333'
+            widgetTextColor: '#CCC',
+            widgetSecondaryTextColor: '#888',
+            widgetDisabledTextColor: '#555',
+            uiBackground: '#0a0a0a',
+            uiBorder: '#1a1a1a',
+            uiText: '#e0e0e0',
+            uiTextSecondary: '#999',
+            canvasGridColor: '#1a1a1a'
         }
     },
     bloomberg: {
@@ -256,6 +256,9 @@ export class ThemeManager {
             output_on: colors.outputOn,
         };
         
+        // Store info text color for performance metrics (used by renderInfo)
+        (this.canvas as any).info_text_color = colors.uiTextSecondary || colors.nodeTextColor;
+        
         // 3. Update link type colors (basic types)
         // Initialize link_type_colors if it doesn't exist (e.g., in test environments)
         if (!LGraphCanvas.link_type_colors) {
@@ -273,10 +276,57 @@ export class ThemeManager {
         }
         
         // 5. Update CSS variables for UI elements
+        // Base colors
         document.documentElement.style.setProperty('--theme-bg', colors.uiBackground);
         document.documentElement.style.setProperty('--theme-border', colors.uiBorder);
         document.documentElement.style.setProperty('--theme-text', colors.uiText);
         document.documentElement.style.setProperty('--theme-text-secondary', colors.uiTextSecondary);
+        
+        // Calculate additional colors based on theme
+        const isLight = this.currentTheme.name === 'light';
+        
+        if (isLight) {
+            // Light mode colors
+            document.documentElement.style.setProperty('--theme-bg-secondary', '#f5f5f5');
+            document.documentElement.style.setProperty('--theme-bg-tertiary', '#ffffff');
+            document.documentElement.style.setProperty('--theme-bg-hover', '#e8e8e8');
+            document.documentElement.style.setProperty('--theme-border-secondary', '#d0d0d0');
+            document.documentElement.style.setProperty('--theme-text-muted', '#888888');
+            document.documentElement.style.setProperty('--theme-accent', '#0066cc');
+            document.documentElement.style.setProperty('--theme-accent-hover', '#0052a3');
+            document.documentElement.style.setProperty('--theme-success', '#28a745');
+            document.documentElement.style.setProperty('--theme-warning', '#ffc107');
+            document.documentElement.style.setProperty('--theme-error', '#dc3545');
+        } else {
+            // Check if it's Bloomberg Terminal or Dark theme
+            const isBloomberg = this.currentTheme.name === 'bloomberg';
+            
+            if (isBloomberg) {
+                // Bloomberg Terminal colors (slightly lighter dark blue-gray)
+                document.documentElement.style.setProperty('--theme-bg-secondary', '#161b22');
+                document.documentElement.style.setProperty('--theme-bg-tertiary', '#1c2128');
+                document.documentElement.style.setProperty('--theme-bg-hover', '#21262d');
+                document.documentElement.style.setProperty('--theme-border-secondary', '#373e47');
+                document.documentElement.style.setProperty('--theme-text-muted', '#545d68');
+                document.documentElement.style.setProperty('--theme-accent', '#539bf5');
+                document.documentElement.style.setProperty('--theme-accent-hover', '#6cb6ff');
+                document.documentElement.style.setProperty('--theme-success', '#57ab5a');
+                document.documentElement.style.setProperty('--theme-warning', '#c69026');
+                document.documentElement.style.setProperty('--theme-error', '#e5534b');
+            } else {
+                // Dark theme colors (darker than Bloomberg)
+                document.documentElement.style.setProperty('--theme-bg-secondary', '#0f0f0f');
+                document.documentElement.style.setProperty('--theme-bg-tertiary', '#151515');
+                document.documentElement.style.setProperty('--theme-bg-hover', '#1a1a1a');
+                document.documentElement.style.setProperty('--theme-border-secondary', '#2a2a2a');
+                document.documentElement.style.setProperty('--theme-text-muted', '#666666');
+                document.documentElement.style.setProperty('--theme-accent', '#539bf5');
+                document.documentElement.style.setProperty('--theme-accent-hover', '#6cb6ff');
+                document.documentElement.style.setProperty('--theme-success', '#57ab5a');
+                document.documentElement.style.setProperty('--theme-warning', '#c69026');
+                document.documentElement.style.setProperty('--theme-error', '#e5534b');
+            }
+        }
         
         // 6. Update canvas element background
         const canvasEl = document.getElementById('litegraph-canvas');
@@ -288,11 +338,31 @@ export class ThemeManager {
         document.body.style.background = colors.uiBackground;
         document.body.style.color = colors.uiText;
         
-        // 8. Update footer background
+        // 8. Update footer background and text colors
         const footer = document.getElementById('footer');
         if (footer) {
             footer.style.background = colors.uiBackground;
             footer.style.borderTopColor = colors.uiBorder;
+            footer.style.color = colors.uiText;
+        }
+        
+        // Update footer text elements
+        const graphName = document.getElementById('graph-name');
+        if (graphName) {
+            graphName.style.color = colors.uiTextSecondary;
+        }
+        
+        // Update all footer buttons to use theme colors
+        const footerButtons = footer?.querySelectorAll('button');
+        if (footerButtons) {
+            footerButtons.forEach(btn => {
+                // Don't override btn-primary (Execute button) - it has its own styling
+                if (!btn.classList.contains('btn-primary') && !btn.classList.contains('btn-stop')) {
+                    btn.style.color = colors.uiText;
+                    btn.style.borderColor = isLight ? '#d0d0d0' : '#373e47';
+                    btn.style.background = isLight ? '#f5f5f5' : '#1c2128';
+                }
+            });
         }
 
         // Disable image-based grid and enable procedural grid

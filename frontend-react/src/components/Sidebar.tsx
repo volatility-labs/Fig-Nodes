@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import type { EditorInstance } from '@legacy/services/EditorInitializer';
 import { useLitegraphCanvas } from '@hooks/useLitegraphCanvas';
 import { ScansPanel } from './ScansPanel';
@@ -15,6 +16,27 @@ interface NodeMetadata {
   icon?: string;
 }
 
+// Get icon for node based on name and category
+function getNodeIcon(name: string, category?: string): string {
+  // Category-based icons
+  if (category === 'MARKET') return '📈';
+  if (category === 'INDICATORS') return '📊';
+  if (category === 'LLM') return '🤖';
+  if (category === 'IO') return '📝';
+  if (category === 'FLOW') return '🔄';
+  if (category === 'CORE') return '⚙️';
+  
+  // Name-based icons for specific nodes
+  if (name.includes('Filter')) return '🔍';
+  if (name.includes('Chart') || name.includes('Plot')) return '📉';
+  if (name.includes('Universe') || name.includes('Stock')) return '📈';
+  if (name.includes('Save') || name.includes('Output')) return '💾';
+  if (name.includes('Input') || name.includes('Text')) return '📝';
+  if (name.includes('Chat') || name.includes('LLM')) return '🤖';
+  
+  return '📦'; // Default icon
+}
+
 /**
  * Left sidebar - Node palette, assets, etc.
  * Fetches all available nodes from the backend API and displays them in a scrollable list
@@ -22,20 +44,16 @@ interface NodeMetadata {
 export function Sidebar({ editor }: SidebarProps) {
   const [activeTab, setActiveTab] = useState<'nodes' | 'scans'>('nodes');
   const [searchQuery, setSearchQuery] = useState('');
-  const [nodes, setNodes] = useState<NodeMetadata[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [isMouseOverSidebar, setIsMouseOverSidebar] = useState(false);
   const nodeListRef = useRef<HTMLDivElement>(null);
   
   // Use canvas utilities hook for better UX
   const { addNodeAtViewportCenter } = useLitegraphCanvas(editor);
 
-  // Fetch all nodes from the backend API
-  useEffect(() => {
-    async function fetchNodes() {
-      try {
-        setLoading(true);
+  // Use React Query to fetch nodes with proper caching to prevent duplicate requests
+  const { data: nodes = [], isLoading: loading, error } = useQuery<NodeMetadata[]>({
+    queryKey: ['sidebar-nodes'],
+    queryFn: async () => {
         const response = await fetch('/api/v1/nodes');
         if (!response.ok) {
           throw new Error(`Failed to fetch nodes: ${response.statusText}`);
@@ -60,18 +78,13 @@ export function Sidebar({ editor }: SidebarProps) {
           return a.name.localeCompare(b.name);
         });
         
-        setNodes(nodesList);
-        setError(null);
-      } catch (err) {
-        console.error('Error fetching nodes:', err);
-        setError(err instanceof Error ? err.message : 'Failed to load nodes');
-      } finally {
-        setLoading(false);
-      }
-    }
-    
-    fetchNodes();
-  }, []);
+      return nodesList;
+    },
+    staleTime: 1000 * 60 * 60, // Cache for 1 hour - nodes don't change during session
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  });
 
   // Prevent scroll events from reaching Litegraph canvas when mouse is over sidebar
   useEffect(() => {
@@ -128,27 +141,6 @@ export function Sidebar({ editor }: SidebarProps) {
       window.removeEventListener('wheel', handleWheelCapture, { capture: true });
     };
   }, []);
-
-  // Get icon for node based on name and category
-  function getNodeIcon(name: string, category?: string): string {
-    // Category-based icons
-    if (category === 'MARKET') return '📈';
-    if (category === 'INDICATORS') return '📊';
-    if (category === 'LLM') return '🤖';
-    if (category === 'IO') return '📝';
-    if (category === 'FLOW') return '🔄';
-    if (category === 'CORE') return '⚙️';
-    
-    // Name-based icons for specific nodes
-    if (name.includes('Filter')) return '🔍';
-    if (name.includes('Chart') || name.includes('Plot')) return '📉';
-    if (name.includes('Universe') || name.includes('Stock')) return '📈';
-    if (name.includes('Save') || name.includes('Output')) return '💾';
-    if (name.includes('Input') || name.includes('Text')) return '📝';
-    if (name.includes('Chat') || name.includes('LLM')) return '🤖';
-    
-    return '📦'; // Default icon
-  }
 
   const filteredNodes = nodes.filter(node =>
     node.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -244,7 +236,7 @@ export function Sidebar({ editor }: SidebarProps) {
             ) : error ? (
               <div className="empty-state">
                 <p>Error loading nodes</p>
-                <small>{error}</small>
+                <small>{error instanceof Error ? error.message : 'Unknown error'}</small>
               </div>
             ) : filteredNodes.length === 0 ? (
               <div className="empty-state">

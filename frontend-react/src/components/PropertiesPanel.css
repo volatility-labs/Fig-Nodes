@@ -1,8 +1,7 @@
 .properties-panel {
-  width: var(--properties-width, 320px);
+  width: 100%;
   height: 100%;
   background: var(--theme-bg-secondary);
-  border-left: 1px solid var(--theme-border);
   display: flex;
   flex-direction: column;
   overflow: hidden;

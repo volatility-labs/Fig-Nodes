@@ -161,7 +161,9 @@ export function LitegraphEditor({ onEditorReady }: LitegraphEditorProps) {
         }
       }
     };
-  }, [onEditorReady, isLoading]);
+  // Note: We intentionally only depend on onEditorReady to avoid re-running on isLoading changes
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onEditorReady]);
 
   // Handle ESC key to exit expanded mode
   useEffect(() => {
@@ -275,8 +277,8 @@ export function LitegraphEditor({ onEditorReady }: LitegraphEditorProps) {
             <button id="auto-align-btn" className="btn-secondary" title="Layout mode: Align">
               Align
             </button>
-            <button id="reset-charts-btn" className="btn-secondary" title="Reset view & fit all nodes">
-              Reset
+            <button id="fit-view-btn" className="btn-secondary" title="Fit all nodes to view">
+              Fit View
             </button>
           </div>
         </div>
@@ -297,6 +299,14 @@ export function LitegraphEditor({ onEditorReady }: LitegraphEditorProps) {
                     const canvasInstance = (canvas as any).lgc;
                     if (canvasInstance) {
                       canvasInstance.resize();
+                    }
+                    // Ensure canvas is focusable and receives focus in fullscreen mode
+                    if (isExpanded) {
+                      canvas.setAttribute('tabindex', '0');
+                      // Focus the canvas after a short delay to ensure DOM is updated
+                      setTimeout(() => {
+                        canvas.focus();
+                      }, 50);
                     }
                   }
                 });

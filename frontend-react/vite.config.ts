@@ -27,12 +27,13 @@ export default defineConfig({
       '@services': path.resolve(__dirname, './src/services'),
       '@stores': path.resolve(__dirname, './src/stores'),
       '@legacy': path.resolve(__dirname, '../frontend'),
-      '@fig-node/litegraph': path.resolve(__dirname, '../frontend/fignode-litegraph.js'),
+      '@fig-node/litegraph': path.resolve(__dirname, '../frontend/fignode-litegraph.js/dist/litegraph.es.js'),
     },
+    conditions: ['import', 'module', 'browser', 'default'],
   },
   optimizeDeps: {
     include: ['react', 'react-dom', '@tanstack/react-query'],
-    exclude: ['@fig-node/litegraph'],
+    // Don't exclude @fig-node/litegraph - let Vite process it
   },
 });
 

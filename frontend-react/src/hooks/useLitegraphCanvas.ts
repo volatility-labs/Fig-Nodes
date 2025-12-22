@@ -98,7 +98,12 @@ export function useLitegraphCanvas(editor: EditorInstance | null) {
     }
 
     try {
-      const { LiteGraph } = await import('@fig-node/litegraph');
+      // Use LiteGraph from global scope (available after editor initialization)
+      const LiteGraph = (window as any).LiteGraph;
+      if (!LiteGraph) {
+        console.error('LiteGraph not available in global scope');
+        return null;
+      }
       
       const node = LiteGraph.createNode(nodeType);
       if (!node) {
