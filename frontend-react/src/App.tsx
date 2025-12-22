@@ -15,7 +15,7 @@ function App() {
   const [rightPanelTab, setRightPanelTab] = useState<'watchlist' | 'properties'>('watchlist');
   const [rightPanelWidth, setRightPanelWidth] = useState(() => {
     const saved = localStorage.getItem('right-panel-width');
-    return saved ? parseInt(saved, 10) : 500; // Default width for watchlist
+    return saved ? parseInt(saved, 10) : 450; // Default narrower width for watchlist
   });
   const [isResizing, setIsResizing] = useState(false);
   
@@ -49,7 +49,7 @@ function App() {
 
     const handleMouseMove = (e: MouseEvent) => {
       const newWidth = window.innerWidth - e.clientX;
-      const minWidth = 450; // Ensure Volume and Actions are always visible
+      const minWidth = 420; // Ensure Volume and Actions are always visible
       const maxWidth = window.innerWidth * 0.7;
       const clampedWidth = Math.max(minWidth, Math.min(maxWidth, newWidth));
       setRightPanelWidth(clampedWidth);

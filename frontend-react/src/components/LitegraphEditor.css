@@ -453,9 +453,8 @@
   white-space: nowrap;
 }
 
-/* Make Save and Save As buttons the same width */
-#save,
-#save-as {
+/* Make Save button consistent width */
+#save {
   width: 70px;
   text-align: center;
 }

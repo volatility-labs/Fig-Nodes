@@ -95,7 +95,7 @@ export function LitegraphEditor({ onEditorReady }: LitegraphEditorProps) {
         if (!mounted || !containerRef.current) return;
 
         // Verify critical DOM elements exist before initializing
-        const requiredElements = ['new', 'load', 'save', 'save-as', 'execute', 'graph-file', 'litegraph-canvas'];
+        const requiredElements = ['new', 'load', 'save', 'execute', 'graph-file', 'litegraph-canvas'];
         const missingElements = requiredElements.filter(id => !document.getElementById(id));
         
         if (missingElements.length > 0) {
@@ -262,7 +262,6 @@ export function LitegraphEditor({ onEditorReady }: LitegraphEditorProps) {
               style={{ display: 'none' }} 
             />
             <button id="save" className="btn-secondary">Save</button>
-            <button id="save-as" className="btn-secondary">Save As</button>
             
             {/* Divider */}
             <div className="footer-divider" />

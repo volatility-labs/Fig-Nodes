@@ -489,24 +489,24 @@ export function WatchlistPanel({ editor }: WatchlistPanelProps) {
       if (!panel) return;
       
       const width = panel.clientWidth;
-      // Calculate gap: scales from 2px at 450px to 40px at 1000px+
-      // Wider panels get more spacing between columns
-      const minGap = 2;
-      const maxGap = 40;
-      const minWidth = 450;
+      // Calculate gap: scales from 0px at 420px to 12px at 1000px+
+      // Very tight spacing to maximize middle canvas space
+      const minGap = 0;
+      const maxGap = 12;
+      const minWidth = 420;
       const maxWidth = 1000;
       const gap = width <= minWidth 
         ? minGap 
         : minGap + Math.min(maxGap - minGap, ((width - minWidth) / (maxWidth - minWidth)) * (maxGap - minGap));
       
       // Calculate padding: smaller panel = smaller padding
-      const minPadding = 8;
-      const maxPadding = 24;
+      const minPadding = 4;
+      const maxPadding = 12;
       const padding = Math.max(minPadding, Math.min(maxPadding, minPadding + ((width - minWidth) / (maxWidth - minWidth)) * (maxPadding - minPadding)));
       
       // Calculate right padding separately - keep it minimal to bring Volume closer to edge
-      const minPaddingRight = 4;
-      const maxPaddingRight = 12;
+      const minPaddingRight = 2;
+      const maxPaddingRight = 6;
       const paddingRight = Math.max(minPaddingRight, Math.min(maxPaddingRight, minPaddingRight + ((width - minWidth) / (maxWidth - minWidth)) * (maxPaddingRight - minPaddingRight)));
       
       document.documentElement.style.setProperty('--watchlist-column-gap', `${gap}px`);
