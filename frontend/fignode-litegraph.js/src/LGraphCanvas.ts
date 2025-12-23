@@ -3287,11 +3287,26 @@ export class LGraphCanvas implements CustomEventDispatcher<LGraphCanvasEventMap>
     // This ensures consistent behavior: regular scroll always pans, Shift+scroll zooms
     
     if (shiftPressed) {
-      // Shift + scroll: ZOOM (like image nodes)
-      if (delta > 0) {
-        scale *= this.zoom_speed
-      } else if (delta < 0) {
-        scale *= 1 / (this.zoom_speed)
+      // Shift + scroll: ZOOM
+      // Check localStorage for zoom direction setting
+      const zoomDirection = typeof localStorage !== 'undefined' ? (localStorage.getItem('zoom-direction') || 'reversed') : 'reversed';
+      const zoomSpeedSetting = typeof localStorage !== 'undefined' ? localStorage.getItem('zoom-speed') : null;
+      const zoomSpeed = zoomSpeedSetting ? parseFloat(zoomSpeedSetting) : this.zoom_speed;
+      
+      if (zoomDirection === 'reversed') {
+        // Reversed: scroll up = zoom in, scroll down = zoom out
+        if (delta > 0) {
+          scale *= 1 / zoomSpeed // Zoom out (scroll down)
+        } else if (delta < 0) {
+          scale *= zoomSpeed // Zoom in (scroll up)
+        }
+      } else {
+        // Natural: scroll up = zoom out, scroll down = zoom in
+        if (delta > 0) {
+          scale *= zoomSpeed // Zoom in (scroll down)
+        } else if (delta < 0) {
+          scale *= 1 / zoomSpeed // Zoom out (scroll up)
+        }
       }
       this.ds.changeScale(scale, [e.clientX, e.clientY])
     } else if (LiteGraph.canvasNavigationMode === "legacy") {

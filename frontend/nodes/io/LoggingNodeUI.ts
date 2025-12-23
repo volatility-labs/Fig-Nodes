@@ -37,6 +37,11 @@ export default class LoggingNodeUI extends BaseCustomNode {
         this.copyButton = this.addWidget('button', '📋 Copy Log', '', () => {
             this.copyLogToClipboard();
         }, {});
+
+        // Add button to add symbols to watchlist
+        this.addWidget('button', '➕ Add to Watchlist', '', () => {
+            this.addSymbolsToWatchlist();
+        }, {});
     }
 
     // Override onMouseDown to ensure node can be selected properly
@@ -410,11 +415,111 @@ export default class LoggingNodeUI extends BaseCustomNode {
         this.setDirtyCanvas(true, true);
     }
 
+    /**
+     * Manually add symbols to watchlist by extracting them from current display text.
+     * Called when user clicks the "Add to Watchlist" button.
+     */
+    private addSymbolsToWatchlist(): void {
+        if (!this.displayText || typeof this.displayText !== 'string') {
+            this.showWatchlistFeedback('No content to extract symbols from', false);
+            return;
+        }
+
+        const symbols = this.extractSymbols(this.displayText);
+        
+        if (symbols.length === 0) {
+            this.showWatchlistFeedback('No symbols found in output', false);
+            return;
+        }
+
+        // Dispatch custom event for watchlist panel to listen to
+        window.dispatchEvent(new CustomEvent('loggingNodeSymbols', {
+            detail: {
+                symbols: symbols,
+                nodeId: this.id,
+            }
+        }));
+
+        this.showWatchlistFeedback(`Added ${symbols.length} symbol(s) to watchlist`, true);
+    }
+
+    /**
+     * Extract symbols from text.
+     * Looks for comma-separated symbol lists (e.g., "GRSLF, DNRSF, WDOFF, ...")
+     */
+    private extractSymbols(text: string): string[] {
+        if (!text || typeof text !== 'string') return;
+        
+        // Pattern to match comma-separated stock symbols (typically 1-5 uppercase letters)
+        // Also handles patterns like "Extracted 20 symbol(s): GRSLF, DNRSF, ..."
+        const symbolPattern = /\b([A-Z]{1,5})\b/g;
+        const symbols = new Set<string>();
+        
+        // Common words to filter out (to avoid false positives)
+        const commonWords = new Set(['THE', 'AND', 'FOR', 'ARE', 'BUT', 'NOT', 'YOU', 'ALL', 'CAN', 'HER', 'WAS', 'ONE', 'OUR', 'OUT', 'DAY', 'GET', 'HAS', 'HIM', 'HIS', 'HOW', 'MAN', 'NEW', 'NOW', 'OLD', 'SEE', 'TWO', 'WAY', 'WHO', 'BOY', 'DID', 'ITS', 'LET', 'PUT', 'SAY', 'SHE', 'TOO', 'USE', 'AUTO']);
+        
+        // Try to find comma-separated lists first (most common case)
+        // Pattern matches: "Extracted N symbol(s): SYM1, SYM2, ..." or just "SYM1, SYM2"
+        // Changed {2,} to + to allow 2+ symbols (at least 1 comma)
+        const commaSeparatedMatch = text.match(/(?:Extracted\s+\d+\s+symbol\(s\):\s*)?([A-Z]{1,5}(?:\s*,\s*[A-Z]{1,5})+)/i);
+        if (commaSeparatedMatch) {
+            const symbolList = commaSeparatedMatch[1];
+            const extracted = symbolList.split(',').map(s => s.trim().toUpperCase()).filter(s => {
+                const upper = s.toUpperCase();
+                return s.length > 0 && s.length <= 5 && !commonWords.has(upper);
+            });
+            extracted.forEach(s => symbols.add(s));
+        } else {
+            // Fallback: extract all potential symbols from the text
+            // But only if we see multiple symbols (to avoid false positives)
+            const matches = Array.from(text.matchAll(symbolPattern));
+            if (matches.length >= 2) { // Changed from 3 to 2 to handle pairs like "SVRSF, NWBO"
+                matches.forEach(match => {
+                    const symbol = match[1].toUpperCase();
+                    // Filter out common words that might match the pattern
+                    if (!commonWords.has(symbol) && symbol.length >= 1 && symbol.length <= 5) {
+                        symbols.add(symbol);
+                    }
+                });
+            }
+        }
+        
+        return Array.from(symbols);
+    }
+
+    private watchlistButton: any = null;
+    private watchlistFeedbackTimeout: number | null = null;
+
+    private showWatchlistFeedback(message: string, success: boolean) {
+        // Find the watchlist button widget
+        const watchlistButton = this.widgets?.find((w: any) => w.name && w.name.includes('Watchlist'));
+        if (!watchlistButton) return;
+
+        const originalText = watchlistButton.name;
+        watchlistButton.name = success ? '✅ ' + message : '❌ ' + message;
+
+        if (this.watchlistFeedbackTimeout) {
+            clearTimeout(this.watchlistFeedbackTimeout);
+        }
+
+        this.watchlistFeedbackTimeout = window.setTimeout(() => {
+            watchlistButton.name = originalText;
+            this.watchlistFeedbackTimeout = null;
+            this.setDirtyCanvas(true, true);
+        }, 3000);
+
+        this.setDirtyCanvas(true, true);
+    }
+
     // Clean up timeouts when node is destroyed
     onRemoved() {
         if (this.copyFeedbackTimeout) {
             clearTimeout(this.copyFeedbackTimeout);
             this.copyFeedbackTimeout = null;
+        }
+        if (this.watchlistFeedbackTimeout) {
+            clearTimeout(this.watchlistFeedbackTimeout);
+            this.watchlistFeedbackTimeout = null;
         }
         super.onRemoved?.();
     }

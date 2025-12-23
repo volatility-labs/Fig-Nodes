@@ -30,10 +30,19 @@ export default defineConfig({
       '@fig-node/litegraph': path.resolve(__dirname, '../frontend/fignode-litegraph.js/dist/litegraph.es.js'),
     },
     conditions: ['import', 'module', 'browser', 'default'],
+    // Ensure proper extension resolution
+    extensions: ['.mjs', '.js', '.mts', '.ts', '.jsx', '.tsx', '.json'],
   },
   optimizeDeps: {
     include: ['react', 'react-dom', '@tanstack/react-query'],
     // Don't exclude @fig-node/litegraph - let Vite process it
+    exclude: [],
+  },
+  // Ensure proper handling of the litegraph module
+  build: {
+    commonjsOptions: {
+      include: [/fignode-litegraph\.js/],
+    },
   },
 });
 

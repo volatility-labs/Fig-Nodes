@@ -9,7 +9,7 @@ from pydantic import BaseModel, ValidationError
 
 from core.api_key_vault import APIKeyVault
 from core.types_registry import AssetClass, AssetSymbol
-from services.polygon_service import fetch_current_snapshot, massive_fetch_snapshot
+from services.polygon_service import fetch_current_snapshot, fetch_ticker_details, massive_fetch_snapshot
 
 logger = logging.getLogger(__name__)
 
@@ -53,10 +53,11 @@ async def fetch_symbol_snapshot(symbol: str, asset_class: str, api_key: str) -> 
         else:
             asset_symbol = AssetSymbol(ticker=symbol, asset_class=asset_class_enum)
 
-        # Fetch snapshot
+        # Fetch snapshot (with bars fallback for OTC)
         price, metadata = await fetch_current_snapshot(asset_symbol, api_key)
         
         if price is None:
+            logger.warning(f"Watchlist: No price found for {symbol} (asset_class={asset_class})")
             return {
                 "symbol": symbol,
                 "assetClass": asset_class,
@@ -65,6 +66,11 @@ async def fetch_symbol_snapshot(symbol: str, asset_class: str, api_key: str) -> 
                 "changePercent": None,
                 "volume": None,
             }
+        
+        logger.info(f"Watchlist: Found price {price} for {symbol} (source={metadata.get('source', 'unknown')})")
+        
+        # If price came from bars fallback, we have volume in metadata
+        fallback_volume = metadata.get("volume") if metadata.get("source") == "bars_fallback" else None
 
         # For change calculation, we need previous day close
         # Use massive_fetch_snapshot to get full snapshot data
@@ -80,18 +86,22 @@ async def fetch_symbol_snapshot(symbol: str, asset_class: str, api_key: str) -> 
 
         import httpx
         async with httpx.AsyncClient(timeout=httpx.Timeout(5.0)) as client:
+            # Include OTC stocks for watchlist (many symbols are OTC)
+            include_otc = asset_class == "stocks"
+            logger.info(f"Watchlist: Fetching snapshot for {symbol} (asset_class={asset_class}, include_otc={include_otc})")
             snapshots = await massive_fetch_snapshot(
-                client, api_key, locale, markets, asset_class, [ticker], False
+                client, api_key, locale, markets, asset_class, [ticker], include_otc
             )
+            logger.debug(f"Watchlist: Got {len(snapshots) if snapshots else 0} snapshots for {symbol}")
 
         change = None
         change_percent = None
-        volume = None
+        volume = fallback_volume  # Use fallback volume if from bars endpoint
 
         if snapshots:
             snapshot = snapshots[0]
             
-            # Get volume
+            # Get volume from snapshot (overrides fallback)
             day_data = snapshot.get("day", {})
             if isinstance(day_data, dict):
                 volume_val = day_data.get("v")
@@ -186,6 +196,25 @@ async def watchlist_stream_worker(websocket: WebSocket, symbols: list[dict[str, 
             "type": "error",
             "message": str(e)
         })
+
+
+@router.get("/watchlist/ticker/{ticker}")
+async def get_ticker_details(ticker: str):
+    """Get detailed information about a ticker symbol."""
+    api_key = APIKeyVault().get("POLYGON_API_KEY")
+    if not api_key:
+        return {
+            "error": "POLYGON_API_KEY is required but not set in vault"
+        }
+    
+    details = await fetch_ticker_details(ticker, api_key)
+    
+    if details is None:
+        return {
+            "error": f"No details found for ticker {ticker}"
+        }
+    
+    return details
 
 
 @router.websocket("/watchlist/stream")

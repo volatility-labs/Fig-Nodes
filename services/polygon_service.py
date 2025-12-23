@@ -778,11 +778,80 @@ async def massive_fetch_snapshot(
     return ticker_dicts
 
 
+async def fetch_latest_price_from_bars(
+    symbol: AssetSymbol, api_key: str
+) -> tuple[float | None, dict[str, Any]]:
+    """
+    Fetches the latest price using the aggregates/bars endpoint.
+    This works for OTC stocks where the snapshot endpoint returns no data.
+    
+    Args:
+        symbol: AssetSymbol to fetch price for
+        api_key: API key for Massive.com
+        
+    Returns:
+        Tuple of (latest close price or None, metadata dict)
+    """
+    ticker = str(symbol)
+    if symbol.asset_class == AssetClass.CRYPTO:
+        ticker = f"X:{ticker}"
+    else:
+        ticker = ticker.upper()
+    
+    # Fetch just the last 5 days of daily bars to get the most recent price
+    now = datetime.now()
+    from_date = now - timedelta(days=7)  # 7 days to ensure we get at least 1 trading day
+    
+    to_ms = int(now.timestamp() * 1000)
+    from_ms = int(from_date.timestamp() * 1000)
+    
+    url = f"https://api.massive.com/v2/aggs/ticker/{ticker}/range/1/day/{from_ms}/{to_ms}"
+    query_params = {
+        "adjusted": "true",
+        "sort": "desc",  # Get newest first
+        "limit": 5,
+        "apiKey": api_key,
+    }
+    
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(10.0)) as client:
+            response = await client.get(url, params=query_params)
+            
+            if response.status_code != 200:
+                logger.warning(f"POLYGON_SERVICE: Bars fallback HTTP {response.status_code} for {symbol.ticker}")
+                return None, {"data_status": "error", "source": "bars_fallback"}
+            
+            data = response.json()
+            results = data.get("results", [])
+            
+            if results and len(results) > 0:
+                # Get the most recent bar (first since sorted desc)
+                latest_bar = results[0]
+                close_price = latest_bar.get("c")  # Close price
+                
+                if close_price and close_price > 0:
+                    logger.info(f"POLYGON_SERVICE: Found price {close_price} for {symbol.ticker} via bars fallback")
+                    return float(close_price), {
+                        "data_status": "delayed",
+                        "source": "bars_fallback",
+                        "bar_timestamp": latest_bar.get("t"),
+                        "volume": latest_bar.get("v"),
+                    }
+            
+            logger.warning(f"POLYGON_SERVICE: No bars data returned for {symbol.ticker}")
+            return None, {"data_status": "error", "source": "bars_fallback"}
+            
+    except Exception as e:
+        logger.error(f"POLYGON_SERVICE: Error in bars fallback for {symbol.ticker}: {e}")
+        return None, {"data_status": "error", "source": "bars_fallback"}
+
+
 async def fetch_current_snapshot(
     symbol: AssetSymbol, api_key: str
 ) -> tuple[float | None, dict[str, Any]]:
     """
     Fetches the current price for a symbol using the Massive.com snapshot API.
+    Falls back to the aggregates/bars endpoint for OTC stocks if snapshot returns no data.
 
     Args:
         symbol: AssetSymbol to fetch snapshot for
@@ -804,24 +873,39 @@ async def fetch_current_snapshot(
     client = httpx.AsyncClient(timeout=httpx.Timeout(5.0))
     try:
         logger.debug(f"POLYGON_SERVICE: Calling massive_fetch_snapshot for ticker={ticker}, locale={locale}, markets={markets}")
+        # Include OTC stocks (needed for watchlist and many stock symbols)
+        include_otc = symbol.asset_class == AssetClass.STOCKS
         snapshots = await massive_fetch_snapshot(
-            client, api_key, locale, markets, str(symbol.asset_class).lower(), [ticker], False
+            client, api_key, locale, markets, str(symbol.asset_class).lower(), [ticker], include_otc
         )
         logger.debug(f"POLYGON_SERVICE: massive_fetch_snapshot returned {len(snapshots) if snapshots else 0} snapshots")
         if snapshots:
+            snapshot_data = snapshots[0]
+            logger.debug(f"POLYGON_SERVICE: Snapshot data for {symbol.ticker}: {json.dumps(snapshot_data, default=str)[:500]}")
+            
             # Try lastTrade first, fallback to day's open/high/low/close
-            last_trade = snapshots[0].get("lastTrade", {})
+            last_trade = snapshot_data.get("lastTrade", {})
             price = massive_get_numeric_from_dict(last_trade, "p", 0.0)
             if price <= 0:
                 # Fallback to prevDay or current day values
-                prev_day = snapshots[0].get("prevDay", {})
+                prev_day = snapshot_data.get("prevDay", {})
                 price = massive_get_numeric_from_dict(prev_day, "c", 0.0)
                 if price <= 0:
-                    day = snapshots[0].get("day", {})
+                    day = snapshot_data.get("day", {})
                     price = massive_get_numeric_from_dict(day, "c", 0.0)
 
             if price > 0:
+                logger.info(f"POLYGON_SERVICE: Found price {price} for {symbol.ticker}")
                 return price, {"data_status": "real-time", "source": "snapshot"}
+            else:
+                logger.warning(f"POLYGON_SERVICE: Snapshot exists for {symbol.ticker} but no valid price found. lastTrade={last_trade}, prevDay={prev_day}, day={snapshot_data.get('day', {})}")
+        else:
+            logger.debug(f"POLYGON_SERVICE: No snapshot data for {symbol.ticker}, trying bars fallback...")
+
+        # Fallback to aggregates/bars endpoint for OTC stocks
+        if symbol.asset_class == AssetClass.STOCKS:
+            logger.info(f"POLYGON_SERVICE: Trying bars fallback for {symbol.ticker} (OTC or thinly traded)")
+            return await fetch_latest_price_from_bars(symbol, api_key)
 
         logger.warning(f"POLYGON_SERVICE: No valid price found in snapshot for {symbol.ticker}")
         return None, {"data_status": "error", "source": "snapshot"}
@@ -831,6 +915,85 @@ async def fetch_current_snapshot(
 
     finally:
         await client.aclose()
+
+
+async def fetch_ticker_details(
+    ticker: str, api_key: str
+) -> dict[str, Any] | None:
+    """
+    Fetches detailed company/ticker information from Massive.com API.
+    Handles both stocks and crypto tickers (with or without "X:" prefix).
+    
+    Args:
+        ticker: The ticker symbol (e.g., "AAPL", "GRSLF", "X:BTCUSD", "BTCUSD")
+        api_key: API key for Massive.com
+        
+    Returns:
+        Dictionary with ticker details or None if not found
+    """
+    # Try the ticker as-is first
+    tickers_to_try = [ticker.upper()]
+    
+    # For crypto, try both with and without "X:" prefix
+    # Polygon ticker details endpoint typically expects crypto WITHOUT "X:" prefix
+    if ticker.startswith("X:"):
+        # Remove X: prefix and try that first for crypto
+        base_ticker = ticker.upper().replace("X:", "")
+        tickers_to_try = [base_ticker, ticker.upper()]
+    elif len(ticker) >= 3 and ticker[-3:].isalpha() and ticker[-3:].isupper():
+        # Looks like crypto (ends with USD, etc.) - try without X: prefix first
+        tickers_to_try = [ticker.upper(), f"X:{ticker.upper()}"]
+    
+    for ticker_to_try in tickers_to_try:
+        url = f"https://api.massive.com/v3/reference/tickers/{ticker_to_try}"
+        params = {"apiKey": api_key}
+        
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(10.0)) as client:
+                response = await client.get(url, params=params)
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    results = data.get("results")
+                    
+                    if results:
+                        # Extract relevant fields
+                        details = {
+                            "ticker": results.get("ticker"),
+                            "name": results.get("name"),
+                            "description": results.get("description"),
+                            "homepage_url": results.get("homepage_url"),
+                            "logo_url": results.get("branding", {}).get("logo_url") if results.get("branding") else None,
+                            "icon_url": results.get("branding", {}).get("icon_url") if results.get("branding") else None,
+                            "market_cap": results.get("market_cap"),
+                            "total_employees": results.get("total_employees"),
+                            "phone_number": results.get("phone_number"),
+                            "address": results.get("address", {}),
+                            "sic_description": results.get("sic_description"),
+                            "list_date": results.get("list_date"),
+                            "locale": results.get("locale"),
+                            "market": results.get("market"),
+                            "primary_exchange": results.get("primary_exchange"),
+                            "type": results.get("type"),
+                            "currency_name": results.get("currency_name"),
+                            "active": results.get("active"),
+                        }
+                        
+                        logger.info(f"POLYGON_SERVICE: Retrieved ticker details for {ticker} (tried {ticker_to_try})")
+                        logger.debug(f"POLYGON_SERVICE: Ticker details data: {json.dumps(details, default=str)[:500]}")
+                        return details
+                elif response.status_code == 404:
+                    # Try next format
+                    continue
+                else:
+                    logger.warning(f"POLYGON_SERVICE: Ticker details HTTP {response.status_code} for {ticker_to_try}")
+                
+        except Exception as e:
+            logger.debug(f"POLYGON_SERVICE: Failed to fetch ticker details for {ticker_to_try}: {e}")
+            continue
+    
+    logger.warning(f"POLYGON_SERVICE: No ticker details found for {ticker} (tried: {tickers_to_try})")
+    return None
 
 
 async def create_current_bar_from_snapshot(

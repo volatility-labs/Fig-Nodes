@@ -200,15 +200,16 @@ def calculate_orb(
                 logger.warning(f"ORB CALCULATOR: Last bar time: {day_bars_sorted[-1]['timestamp']}")
             continue
 
-        # Pick the earliest bar in the opening range for volume and direction
+        # Aggregate volumes across all opening range bars (handles or_minutes > 5)
+        # Use earliest bar for open/close to determine direction
         or_bar = or_candidates[0]
 
         print(
-            f"ORB CALCULATOR: Found {len(or_candidates)} opening range bars for {date_key}, using: {or_bar['timestamp']}"
+            f"ORB CALCULATOR: Found {len(or_candidates)} opening range bars for {date_key}, using earliest: {or_bar['timestamp']}"
         )
 
-        # Calculate opening range metrics from earliest bar
-        or_volume = or_bar["volume"]
+        # Aggregate volume across all opening range bars
+        or_volume = sum(bar["volume"] for bar in or_candidates)
         or_open = or_bar["open"]
         or_close = or_bar["close"]
 
@@ -225,10 +226,10 @@ def calculate_orb(
             direction = "doji"
 
         print(
-            f"ORB CALCULATOR: {date_key} - OR bar: time={or_bar['timestamp']}, volume={or_volume}, direction={direction}, open={or_open}, close={or_close}, high={or_high}, low={or_low}"
+            f"ORB CALCULATOR: {date_key} - OR aggregated from {len(or_candidates)} bars: time={or_bar['timestamp']}, volume={or_volume} (sum), direction={direction}, open={or_open}, close={or_close}, high={or_high}, low={or_low}"
         )
         logger.info(
-            f"ORB Calculator: {date_key} - OR bar: time={or_bar['timestamp']}, volume={or_volume}, direction={direction}, open={or_open}, close={or_close}, high={or_high}, low={or_low}"
+            f"ORB Calculator: {date_key} - OR aggregated from {len(or_candidates)} bars: time={or_bar['timestamp']}, volume={or_volume} (sum), direction={direction}, open={or_open}, close={or_close}, high={or_high}, low={or_low}"
         )
 
         or_volumes[date_key] = or_volume

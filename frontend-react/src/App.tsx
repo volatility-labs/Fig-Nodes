@@ -4,6 +4,7 @@ import { TopNav } from '@components/TopNav';
 import { Sidebar } from '@components/Sidebar';
 import { PropertiesPanel } from '@components/PropertiesPanel';
 import { WatchlistPanel } from '@components/WatchlistPanel';
+import { SettingsPanel } from '@components/SettingsPanel';
 import { useLitegraphCanvas } from '@hooks/useLitegraphCanvas';
 import type { EditorInstance } from '@legacy/services/EditorInitializer';
 import './App.css';
@@ -18,6 +19,7 @@ function App() {
     return saved ? parseInt(saved, 10) : 450; // Default narrower width for watchlist
   });
   const [isResizing, setIsResizing] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   
   // Get canvas utilities
   const { fitToView } = useLitegraphCanvas(editor);
@@ -75,13 +77,41 @@ function App() {
     document.documentElement.style.setProperty('--properties-width', `${rightPanelWidth}px`);
   }, []);
 
+  // Trigger canvas resize when sidebar visibility changes
+  useEffect(() => {
+    if (!editor) return;
+    
+    // Use requestAnimationFrame to ensure DOM has updated
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        // Trigger window resize event for LiteGraph to detect
+        window.dispatchEvent(new Event('resize'));
+        
+        // Also directly call resize on canvas if available
+        const canvas = document.getElementById('litegraph-canvas') as HTMLCanvasElement;
+        if (canvas && (window as any).LiteGraph) {
+          const canvasInstance = (canvas as any).lgc;
+          if (canvasInstance && typeof canvasInstance.resize === 'function') {
+            canvasInstance.resize();
+          }
+        }
+      });
+    });
+  }, [sidebarOpen, editor]);
+
   return (
     <div className="app-container">
       {/* Top Navigation Bar - React Component */}
       <TopNav 
         editor={editor}
         onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
-        onToggleProperties={() => setRightPanelOpen(!rightPanelOpen)}
+        onOpenSettings={() => setSettingsOpen(true)}
+      />
+
+      {/* Settings Panel */}
+      <SettingsPanel 
+        isOpen={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
       />
 
       <div className="main-layout">

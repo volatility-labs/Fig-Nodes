@@ -61,14 +61,28 @@ export function applyLiteGraphPatch() {
             
             if (shiftPressed) {
                 // SHIFT + SCROLL = ZOOM
-                const zoomSpeed = (this as any).zoom_speed || 1.1;
+                // Check localStorage for zoom direction setting
+                const zoomDirection = localStorage.getItem('zoom-direction') || 'reversed';
+                const zoomSpeedSetting = localStorage.getItem('zoom-speed');
+                const zoomSpeed = zoomSpeedSetting ? parseFloat(zoomSpeedSetting) : ((this as any).zoom_speed || 1.1);
+                
                 let newScale = scale;
                 const delta = event.deltaY || 0;
                 
-                if (delta > 0) {
-                    newScale *= 1 / zoomSpeed; // Zoom out
-                } else if (delta < 0) {
-                    newScale *= zoomSpeed; // Zoom in
+                if (zoomDirection === 'reversed') {
+                    // Reversed: scroll up = zoom in, scroll down = zoom out
+                    if (delta > 0) {
+                        newScale *= 1 / zoomSpeed; // Zoom out (scroll down)
+                    } else if (delta < 0) {
+                        newScale *= zoomSpeed; // Zoom in (scroll up)
+                    }
+                } else {
+                    // Natural: scroll up = zoom out, scroll down = zoom in
+                    if (delta > 0) {
+                        newScale *= zoomSpeed; // Zoom in (scroll down)
+                    } else if (delta < 0) {
+                        newScale *= 1 / zoomSpeed; // Zoom out (scroll up)
+                    }
                 }
                 
                 // Clamp scale
@@ -85,7 +99,9 @@ export function applyLiteGraphPatch() {
                 }
             } else {
                 // REGULAR SCROLL = PAN
-                const panSpeed = 1.0 / scale;
+                const panSpeedSetting = localStorage.getItem('pan-speed');
+                const panSpeedMultiplier = panSpeedSetting ? parseFloat(panSpeedSetting) : 1.0;
+                const panSpeed = (1.0 / scale) * panSpeedMultiplier;
                 const deltaX = event.deltaX || 0;
                 const deltaY = event.deltaY || 0;
                 

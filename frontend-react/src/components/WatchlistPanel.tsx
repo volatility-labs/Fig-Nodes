@@ -1,6 +1,91 @@
 import { useState, useEffect, useRef } from 'react';
 import './WatchlistPanel.css';
 
+// TickerLogo component - handles stocks and crypto separately
+function TickerLogo({ tickerDetails }: { tickerDetails: TickerDetails }) {
+  const [showPlaceholder, setShowPlaceholder] = useState(false);
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    setShowPlaceholder(false);
+    setLogoUrl(null);
+    
+    const isCrypto = tickerDetails.assetClass === 'crypto';
+    
+    if (isCrypto) {
+      // For crypto: Use Google favicon from known crypto websites
+      const cryptoWebsiteMap: Record<string, string> = {
+        'BTC': 'bitcoin.org',
+        'ETH': 'ethereum.org',
+        'SOL': 'solana.com',
+        'ADA': 'cardano.org',
+        'DOT': 'polkadot.network',
+        'LTC': 'litecoin.org',
+        'MATIC': 'polygon.technology',
+        'AVAX': 'avax.network',
+        'XRP': 'ripple.com',
+        'DOGE': 'dogecoin.com',
+        'BNB': 'binance.com',
+      };
+      
+      // Extract base symbol (e.g., "X:BTCUSD" or "BTCUSD" -> "BTC")
+      const baseSymbol = tickerDetails.ticker.replace('USD', '').replace('X:', '').toUpperCase();
+      const cryptoDomain = cryptoWebsiteMap[baseSymbol];
+      
+      if (cryptoDomain) {
+        setLogoUrl(`https://www.google.com/s2/favicons?domain=${cryptoDomain}&sz=128`);
+        return;
+      }
+      
+      // Fallback: try homepage_url if available
+      if (tickerDetails.homepage_url) {
+        try {
+          const domain = new URL(tickerDetails.homepage_url).hostname;
+          setLogoUrl(`https://www.google.com/s2/favicons?domain=${domain}&sz=128`);
+          return;
+        } catch (e) {
+          // Invalid URL
+        }
+      }
+    } else {
+      // For stocks: Use Google favicon from homepage_url (Polygon logos don't work reliably)
+      if (tickerDetails.homepage_url) {
+        try {
+          const domain = new URL(tickerDetails.homepage_url).hostname;
+          setLogoUrl(`https://www.google.com/s2/favicons?domain=${domain}&sz=128`);
+          return;
+        } catch (e) {
+          // Invalid URL
+        }
+      }
+    }
+    
+    // No logo found - show placeholder
+    setShowPlaceholder(true);
+  }, [tickerDetails.ticker, tickerDetails.homepage_url, tickerDetails.logo_url, tickerDetails.assetClass]);
+
+  if (showPlaceholder || !logoUrl) {
+    return (
+      <div className="ticker-logo-container">
+        <div className="ticker-logo-placeholder">
+          {tickerDetails.ticker?.charAt(0) || '?'}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="ticker-logo-container">
+      <img 
+        src={logoUrl}
+        alt={tickerDetails.name || tickerDetails.ticker || 'Logo'}
+        className="ticker-logo"
+        onError={() => setShowPlaceholder(true)}
+      />
+    </div>
+  );
+}
+
 interface WatchlistItem {
   symbol: string;
   price: number | null;
@@ -9,6 +94,33 @@ interface WatchlistItem {
   volume: number | null;
   assetClass: 'stocks' | 'crypto';
   lastUpdate: number;
+}
+
+interface TickerDetails {
+  ticker: string;
+  name: string;
+  description?: string;
+  homepage_url?: string;
+  logo_url?: string;
+  icon_url?: string;
+  market_cap?: number;
+  total_employees?: number;
+  phone_number?: string;
+  address?: {
+    address1?: string;
+    city?: string;
+    state?: string;
+    postal_code?: string;
+  };
+  sic_description?: string;
+  list_date?: string;
+  locale?: string;
+  market?: string;
+  primary_exchange?: string;
+  type?: string;
+  currency_name?: string;
+  active?: boolean;
+  assetClass?: 'stocks' | 'crypto'; // Added for UI logic
 }
 
 interface WatchlistPanelProps {
@@ -27,6 +139,9 @@ export function WatchlistPanel({ editor }: WatchlistPanelProps) {
   const [newSymbol, setNewSymbol] = useState('');
   const [sortColumn, setSortColumn] = useState<SortColumn>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
+  const [selectedTicker, setSelectedTicker] = useState<string | null>(null);
+  const [tickerDetails, setTickerDetails] = useState<TickerDetails | null>(null);
+  const [loadingDetails, setLoadingDetails] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<number | null>(null);
   const stocksRef = useRef<WatchlistItem[]>([]);
@@ -167,6 +282,10 @@ export function WatchlistPanel({ editor }: WatchlistPanelProps) {
           setIsConnected(true);
           setError(null);
           console.log('Watchlist WebSocket connected');
+          console.log('WatchlistPanel: Current symbols in refs:', {
+            stocks: stocksRef.current.map(s => s.symbol),
+            crypto: cryptoRef.current.map(s => s.symbol)
+          });
           
           // Send subscription with current symbols from refs
           subscribeToSymbols.current(ws, stocksRef.current, cryptoRef.current);
@@ -175,6 +294,7 @@ export function WatchlistPanel({ editor }: WatchlistPanelProps) {
         ws.onmessage = (event) => {
           try {
             const data = JSON.parse(event.data);
+            console.log('WatchlistPanel: Received WebSocket message:', data);
             
             if (data.type === 'update') {
               // Batch updates to reduce re-renders and prevent flickering
@@ -199,10 +319,11 @@ export function WatchlistPanel({ editor }: WatchlistPanelProps) {
                 applyBatchedUpdates();
               }, 50);
             } else if (data.type === 'error') {
+              console.error('WatchlistPanel: WebSocket error:', data.message);
               setError(data.message || 'Unknown error');
             }
           } catch (err) {
-            console.error('Error parsing watchlist message:', err);
+            console.error('Error parsing watchlist message:', err, event.data);
           }
         };
 
@@ -311,6 +432,7 @@ export function WatchlistPanel({ editor }: WatchlistPanelProps) {
       ...stocksList.map(s => ({ symbol: s.symbol, assetClass: 'stocks' })),
       ...cryptoList.map(s => ({ symbol: s.symbol, assetClass: 'crypto' })),
     ];
+    console.log('WatchlistPanel: Subscribing to symbols:', allSymbols);
     ws.send(JSON.stringify({ type: 'subscribe', symbols: allSymbols }));
   });
 
@@ -320,6 +442,73 @@ export function WatchlistPanel({ editor }: WatchlistPanelProps) {
       subscribeToSymbols.current(wsRef.current, stocksRef.current, cryptoRef.current);
     }
   }, [stocks, crypto]);
+
+  // Listen for Logging node symbols to auto-add to watchlist
+  useEffect(() => {
+    const handleLoggingNodeSymbols = (event: CustomEvent<{ symbols: string[]; nodeId: number }>) => {
+      const { symbols } = event.detail;
+      if (!symbols || symbols.length === 0) return;
+
+      console.log('WatchlistPanel: Received symbols from Logging node:', symbols);
+
+      // Add symbols to stocks watchlist (assuming they're stock symbols)
+      // Users can manually move them to crypto if needed
+      const newSymbols: WatchlistItem[] = [];
+      const existingSymbols = new Set(stocks.map(s => s.symbol));
+
+      symbols.forEach(symbol => {
+        const upperSymbol = symbol.trim().toUpperCase();
+        if (!upperSymbol) return;
+
+        // Skip if already in watchlist
+        if (existingSymbols.has(upperSymbol)) {
+          console.log(`Symbol ${upperSymbol} already in watchlist, skipping`);
+          return;
+        }
+
+        // Validate symbol format (stock symbols are typically 1-5 uppercase letters)
+        const looksLikeStock = /^[A-Z]{1,5}$/.test(upperSymbol);
+        if (!looksLikeStock) {
+          console.log(`Symbol ${upperSymbol} doesn't look like a stock symbol, skipping`);
+          return;
+        }
+
+        newSymbols.push({
+          symbol: upperSymbol,
+          price: null,
+          change: null,
+          changePercent: null,
+          volume: null,
+          assetClass: 'stocks',
+          lastUpdate: Date.now(),
+        });
+      });
+
+      if (newSymbols.length > 0) {
+        console.log(`WatchlistPanel: Adding ${newSymbols.length} symbol(s) to watchlist:`, newSymbols.map(s => s.symbol));
+        setStocks(prev => {
+          const updated = [...prev, ...newSymbols];
+          // Update ref immediately for subscription
+          stocksRef.current = updated;
+          
+          // Subscribe to new symbols immediately if WebSocket is open
+          if (wsRef.current?.readyState === WebSocket.OPEN) {
+            subscribeToSymbols.current(wsRef.current, updated, cryptoRef.current);
+          }
+          
+          return updated;
+        });
+        // Clear any error messages
+        setError(null);
+      }
+    };
+
+    window.addEventListener('loggingNodeSymbols', handleLoggingNodeSymbols as EventListener);
+    
+    return () => {
+      window.removeEventListener('loggingNodeSymbols', handleLoggingNodeSymbols as EventListener);
+    };
+  }, [stocks]);
 
   // Add symbol function
   const handleAddSymbol = () => {
@@ -426,6 +615,56 @@ export function WatchlistPanel({ editor }: WatchlistPanelProps) {
   const getChangeColor = (change: number | null): string => {
     if (change === null) return '';
     return change >= 0 ? 'positive' : 'negative';
+  };
+
+  // Fetch ticker details
+  const fetchTickerDetails = async (ticker: string, assetClass: 'stocks' | 'crypto') => {
+    setLoadingDetails(true);
+    setSelectedTicker(ticker);
+    
+    try {
+      // For crypto, Polygon ticker details endpoint expects format WITHOUT "X:" prefix
+      // e.g., "BTCUSD" not "X:BTCUSD"
+      let apiTicker = ticker;
+      if (assetClass === 'crypto' && ticker.startsWith('X:')) {
+        apiTicker = ticker.replace('X:', '');
+      }
+      
+      const response = await fetch(`http://localhost:8000/api/v1/watchlist/ticker/${encodeURIComponent(apiTicker)}`);
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch ticker details');
+      }
+      
+      const data = await response.json();
+      
+      if (data.error) {
+        console.error('Error fetching ticker details:', data.error);
+        setTickerDetails(null);
+      } else {
+        // Debug: log what we received
+        console.log('WatchlistPanel: Received ticker details:', data);
+        // Add asset class to details for UI logic
+        setTickerDetails({ ...data, assetClass });
+      }
+    } catch (error) {
+      console.error('Error fetching ticker details:', error);
+      setTickerDetails(null);
+    } finally {
+      setLoadingDetails(false);
+    }
+  };
+
+  // Handle ticker row click
+  const handleTickerClick = (ticker: string, assetClass: 'stocks' | 'crypto') => {
+    if (selectedTicker === ticker) {
+      // Click same ticker - collapse details
+      setSelectedTicker(null);
+      setTickerDetails(null);
+    } else {
+      // Click different ticker - fetch and show details
+      fetchTickerDetails(ticker, assetClass);
+    }
   };
 
   // Sort function
@@ -588,6 +827,32 @@ export function WatchlistPanel({ editor }: WatchlistPanelProps) {
               +
             </button>
           </div>
+          {currentItems.length > 0 && (
+            <button
+              className="clear-watchlist-button"
+              onClick={() => {
+                if (activeTab === 'stocks') {
+                  setStocks([]);
+                  stocksRef.current = [];
+                  // Update WebSocket subscription immediately
+                  if (wsRef.current?.readyState === WebSocket.OPEN) {
+                    subscribeToSymbols.current(wsRef.current, [], cryptoRef.current);
+                  }
+                } else {
+                  setCrypto([]);
+                  cryptoRef.current = [];
+                  // Update WebSocket subscription immediately
+                  if (wsRef.current?.readyState === WebSocket.OPEN) {
+                    subscribeToSymbols.current(wsRef.current, stocksRef.current, []);
+                  }
+                }
+                setError(null);
+              }}
+              title={`Clear all ${activeTab} symbols`}
+            >
+              🗑️ Clear Watchlist
+            </button>
+          )}
         </div>
 
         {error && (
@@ -673,7 +938,14 @@ export function WatchlistPanel({ editor }: WatchlistPanelProps) {
                     tabIndex={-1}
                   >
                     {sortedItems.map((item) => (
-                    <div key={item.symbol} className="table-row">
+                    <div 
+                      key={item.symbol} 
+                      className={`table-row ${selectedTicker === item.symbol ? 'selected' : ''} clickable`}
+                      onClick={() => {
+                        // Allow details for both stocks and crypto
+                        handleTickerClick(item.symbol, item.assetClass);
+                      }}
+                    >
                       <div className="col-symbol">{item.symbol}</div>
                       <div className="col-price">{formatPrice(item.price)}</div>
                       <div className={`col-change ${getChangeColor(item.change)}`}>
@@ -686,7 +958,10 @@ export function WatchlistPanel({ editor }: WatchlistPanelProps) {
                       <div className="col-actions">
                         <button
                           className="remove-symbol-button"
-                          onClick={() => handleRemoveSymbol(item.symbol, item.assetClass)}
+                          onClick={(e) => {
+                            e.stopPropagation(); // Prevent row click
+                            handleRemoveSymbol(item.symbol, item.assetClass);
+                          }}
                           title="Remove symbol"
                         >
                           ×
@@ -699,6 +974,246 @@ export function WatchlistPanel({ editor }: WatchlistPanelProps) {
               </div>
             )}
           </>
+        )}
+
+        {/* Ticker Details Panel */}
+        {selectedTicker && (
+          <div className="ticker-details-panel">
+            {loadingDetails ? (
+              <div className="details-loading">Loading details...</div>
+            ) : tickerDetails ? (
+              <>
+                <div className="details-header">
+                  <div className="details-title-row">
+                    <TickerLogo tickerDetails={tickerDetails} />
+                    <div className="details-title-info">
+                      <h4 className="ticker-name">{tickerDetails.name}</h4>
+                      <div className="ticker-meta">
+                        <span className="ticker-symbol">{tickerDetails.ticker}</span>
+                        {tickerDetails.primary_exchange && (
+                          <span className="ticker-exchange">• {tickerDetails.primary_exchange}</span>
+                        )}
+                        {tickerDetails.type && (
+                          <span className="ticker-type">• {tickerDetails.type}</span>
+                        )}
+                      </div>
+                    </div>
+                    <button 
+                      className="close-details-button"
+                      onClick={() => {
+                        setSelectedTicker(null);
+                        setTickerDetails(null);
+                      }}
+                      title="Close details"
+                    >
+                      ×
+                    </button>
+                  </div>
+                </div>
+                
+                <div className="details-body">
+                  {tickerDetails.description && (
+                    <div className="details-section">
+                      <p className="ticker-description">{tickerDetails.description}</p>
+                    </div>
+                  )}
+                  
+                  {!tickerDetails.description && tickerDetails.assetClass === 'crypto' && (
+                    <div className="details-section">
+                      <p className="ticker-description" style={{ color: 'var(--theme-text-secondary)', fontStyle: 'italic' }}>
+                        No description available. Click the links below for more information.
+                      </p>
+                    </div>
+                  )}
+                  
+                  <div className="details-grid">
+                    {tickerDetails.market_cap && (
+                      <div className="detail-item">
+                        <span className="detail-label">Market Cap</span>
+                        <span className="detail-value">
+                          {tickerDetails.market_cap >= 1e12 
+                            ? `$${(tickerDetails.market_cap / 1e12).toFixed(2)}T`
+                            : tickerDetails.market_cap >= 1e9
+                            ? `$${(tickerDetails.market_cap / 1e9).toFixed(2)}B`
+                            : `$${(tickerDetails.market_cap / 1e6).toFixed(2)}M`}
+                        </span>
+                      </div>
+                    )}
+                    
+                    {tickerDetails.market && (
+                      <div className="detail-item">
+                        <span className="detail-label">Market</span>
+                        <span className="detail-value">{tickerDetails.market.toUpperCase()}</span>
+                      </div>
+                    )}
+                    
+                    {tickerDetails.type && (
+                      <div className="detail-item">
+                        <span className="detail-label">Type</span>
+                        <span className="detail-value">{tickerDetails.type}</span>
+                      </div>
+                    )}
+                    
+                    {tickerDetails.total_employees && tickerDetails.assetClass !== 'crypto' && (
+                      <div className="detail-item">
+                        <span className="detail-label">Employees</span>
+                        <span className="detail-value">
+                          {tickerDetails.total_employees.toLocaleString()}
+                        </span>
+                      </div>
+                    )}
+                    
+                    {tickerDetails.sic_description && tickerDetails.assetClass !== 'crypto' && (
+                      <div className="detail-item">
+                        <span className="detail-label">Industry</span>
+                        <span className="detail-value">{tickerDetails.sic_description}</span>
+                      </div>
+                    )}
+                    
+                    {tickerDetails.list_date && (
+                      <div className="detail-item">
+                        <span className="detail-label">{tickerDetails.assetClass === 'crypto' ? 'Launched' : 'Listed'}</span>
+                        <span className="detail-value">{tickerDetails.list_date}</span>
+                      </div>
+                    )}
+                    
+                    {tickerDetails.currency_name && tickerDetails.assetClass === 'crypto' && (
+                      <div className="detail-item">
+                        <span className="detail-label">Currency</span>
+                        <span className="detail-value">{tickerDetails.currency_name}</span>
+                      </div>
+                    )}
+                    
+                    {tickerDetails.primary_exchange && (
+                      <div className="detail-item">
+                        <span className="detail-label">Exchange</span>
+                        <span className="detail-value">{tickerDetails.primary_exchange}</span>
+                      </div>
+                    )}
+                  </div>
+                  
+                  <div className="details-section">
+                    {tickerDetails.homepage_url && (
+                      <a 
+                        href={tickerDetails.homepage_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="ticker-website-link"
+                      >
+                        🌐 Visit Website →
+                      </a>
+                    )}
+                    
+                    {/* OTC Markets link for OTC stocks */}
+                    {tickerDetails.ticker && 
+                     tickerDetails.assetClass === 'stocks' &&
+                     (tickerDetails.market === 'otc' || 
+                      tickerDetails.primary_exchange?.toUpperCase().includes('OTC')) && (
+                        <a 
+                          href={`https://www.otcmarkets.com/stock/${tickerDetails.ticker}/overview`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="ticker-website-link otc-markets-link"
+                        >
+                          📊 View on OTC Markets →
+                        </a>
+                      )
+                    }
+                    
+                    {/* Crypto links to CoinMarketCap and CoinGecko */}
+                    {tickerDetails.ticker && tickerDetails.assetClass === 'crypto' && (() => {
+                      // Extract base symbol (e.g., "X:LTCUSD" or "LTCUSD" -> "LTC")
+                      const baseSymbol = tickerDetails.ticker.replace('USD', '').replace('X:', '').toUpperCase();
+                      
+                      // Map common crypto symbols to CoinMarketCap/CoinGecko slugs
+                      const cryptoSlugMap: Record<string, { cmc: string; gecko: string }> = {
+                        'BTC': { cmc: 'bitcoin', gecko: 'bitcoin' },
+                        'ETH': { cmc: 'ethereum', gecko: 'ethereum' },
+                        'SOL': { cmc: 'solana', gecko: 'solana' },
+                        'ADA': { cmc: 'cardano', gecko: 'cardano' },
+                        'DOT': { cmc: 'polkadot', gecko: 'polkadot-new' },
+                        'LTC': { cmc: 'litecoin', gecko: 'litecoin' },
+                        'MATIC': { cmc: 'polygon', gecko: 'matic-network' },
+                        'AVAX': { cmc: 'avalanche', gecko: 'avalanche-2' },
+                        'XRP': { cmc: 'xrp', gecko: 'ripple' },
+                        'DOGE': { cmc: 'dogecoin', gecko: 'dogecoin' },
+                        'BNB': { cmc: 'bnb', gecko: 'binancecoin' },
+                        'USDT': { cmc: 'tether', gecko: 'tether' },
+                        'USDC': { cmc: 'usd-coin', gecko: 'usd-coin' },
+                      };
+                      
+                      const slugInfo = cryptoSlugMap[baseSymbol];
+                      
+                      if (slugInfo) {
+                        return (
+                          <>
+                            <a 
+                              href={`https://coinmarketcap.com/currencies/${slugInfo.cmc}/`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="ticker-website-link crypto-link"
+                            >
+                              💰 View on CoinMarketCap →
+                            </a>
+                            <a 
+                              href={`https://www.coingecko.com/en/coins/${slugInfo.gecko}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="ticker-website-link crypto-link"
+                            >
+                              🦎 View on CoinGecko →
+                            </a>
+                          </>
+                        );
+                      } else {
+                        // Fallback: link to search pages if we don't have a mapping
+                        return (
+                          <>
+                            <a 
+                              href={`https://coinmarketcap.com/currencies/?q=${baseSymbol}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="ticker-website-link crypto-link"
+                            >
+                              💰 Search on CoinMarketCap →
+                            </a>
+                            <a 
+                              href={`https://www.coingecko.com/en/search?query=${baseSymbol}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="ticker-website-link crypto-link"
+                            >
+                              🦎 Search on CoinGecko →
+                            </a>
+                          </>
+                        );
+                      }
+                    })()}
+                  </div>
+                  
+                  {tickerDetails.address && tickerDetails.assetClass !== 'crypto' && (
+                    <div className="details-section">
+                      <div className="detail-label">Address</div>
+                      <div className="ticker-address">
+                        {tickerDetails.address.address1 && <div>{tickerDetails.address.address1}</div>}
+                        {(tickerDetails.address.city || tickerDetails.address.state) && (
+                          <div>
+                            {tickerDetails.address.city}
+                            {tickerDetails.address.city && tickerDetails.address.state && ', '}
+                            {tickerDetails.address.state} {tickerDetails.address.postal_code}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </>
+            ) : (
+              <div className="details-error">
+                No details available for {selectedTicker}
+              </div>
+            )}
+          </div>
         )}
       </div>
     </aside>

@@ -4,13 +4,13 @@ import './TopNav.css';
 interface TopNavProps {
   editor: EditorInstance | null;
   onToggleSidebar: () => void;
-  onToggleProperties: () => void;
+  onOpenSettings: () => void;
 }
 
 /**
  * Top navigation bar - React component for app-level navigation
  */
-export function TopNav({ editor, onToggleSidebar, onToggleProperties }: TopNavProps) {
+export function TopNav({ editor, onToggleSidebar, onOpenSettings }: TopNavProps) {
 
   return (
     <nav className="top-nav">
@@ -26,7 +26,7 @@ export function TopNav({ editor, onToggleSidebar, onToggleProperties }: TopNavPr
           <span className="icon">☰</span>
         </button>
 
-        <button onClick={onToggleProperties} className="nav-button" title="Toggle Properties">
+        <button onClick={onOpenSettings} className="nav-button" title="Settings">
           <span className="icon">⚙️</span>
         </button>
 
