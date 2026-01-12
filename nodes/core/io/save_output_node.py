@@ -7,7 +7,6 @@ from typing import Any
 from core.types_registry import (
     AssetSymbol,
     NodeCategory,
-    OHLCVBar,
 )
 from nodes.base.base_node import Base
 
@@ -59,28 +58,28 @@ class SaveOutput(Base):
 
         # Handle lists
         if isinstance(value, list):
-            return {"__type__": "list", "items": [self._serialize_value(item) for item in value]}
+            return {"__type__": "list", "items": [self._serialize_value(item) for item in value]}  # type: ignore
 
         # Handle dicts
         if isinstance(value, dict):
             # Check if it's a TypedDict (OHLCVBar, LLMChatMessage, etc.)
-            if self._is_ohlcv_bar(value):
-                return {"__type__": "OHLCVBar", "data": value}
-            elif self._is_llm_chat_message(value):
-                return {"__type__": "LLMChatMessage", "data": value}
-            elif self._is_llm_tool_spec(value):
-                return {"__type__": "LLMToolSpec", "data": value}
-            elif self._is_llm_chat_metrics(value):
-                return {"__type__": "LLMChatMetrics", "data": value}
-            elif self._is_llm_tool_history_item(value):
-                return {"__type__": "LLMToolHistoryItem", "data": value}
-            elif self._is_llm_thinking_history_item(value):
-                return {"__type__": "LLMThinkingHistoryItem", "data": value}
+            if self._is_ohlcv_bar(value):  # type: ignore
+                return {"__type__": "OHLCVBar", "data": value}  # type: ignore
+            elif self._is_llm_chat_message(value):  # type: ignore
+                return {"__type__": "LLMChatMessage", "data": value}  # type: ignore
+            elif self._is_llm_tool_spec(value):  # type: ignore
+                return {"__type__": "LLMToolSpec", "data": value}  # type: ignore
+            elif self._is_llm_chat_metrics(value):  # type: ignore
+                return {"__type__": "LLMChatMetrics", "data": value}  # type: ignore
+            elif self._is_llm_tool_history_item(value):  # type: ignore
+                return {"__type__": "LLMToolHistoryItem", "data": value}  # type: ignore
+            elif self._is_llm_thinking_history_item(value):  # type: ignore
+                return {"__type__": "LLMThinkingHistoryItem", "data": value}  # type: ignore
             else:
                 # Regular dict
                 return {
                     "__type__": "dict",
-                    "data": {k: self._serialize_value(v) for k, v in value.items()},
+                    "data": {k: self._serialize_value(v) for k, v in value.items()},  # type: ignore
                 }
 
         # Handle basic types
@@ -96,26 +95,29 @@ class SaveOutput(Base):
     def _is_ohlcv_bar(self, value: dict[str, Any]) -> bool:
         """Check if dict represents an OHLCVBar."""
         required_keys = {"timestamp", "open", "high", "low", "close", "volume"}
-        return isinstance(value, dict) and all(key in value for key in required_keys)
+        return all(key in value for key in required_keys)
 
     def _is_ohlcv_bundle(self, value: dict[str, Any]) -> bool:
         """Check if dict represents an OHLCVBundle (dict[AssetSymbol, list[OHLCVBar]])."""
-        if not isinstance(value, dict) or not value:
+        if not value:
             return False
         first_key = next(iter(value.keys()))
         first_value = value[first_key]
-        return isinstance(first_key, AssetSymbol) and isinstance(first_value, list) and (
-            not first_value or self._is_ohlcv_bar(first_value[0])
+        if not isinstance(first_value, list):
+            return False
+        return isinstance(first_key, AssetSymbol) and (
+            not first_value
+            or (isinstance(first_value[0], dict) and self._is_ohlcv_bar(first_value[0]))  # type: ignore
         )
 
     def _is_llm_chat_message(self, value: dict[str, Any]) -> bool:
         """Check if dict represents an LLMChatMessage."""
         required_keys = {"role", "content"}
-        return isinstance(value, dict) and all(key in value for key in required_keys)
+        return all(key in value for key in required_keys)
 
     def _is_llm_tool_spec(self, value: dict[str, Any]) -> bool:
         """Check if dict represents an LLMToolSpec."""
-        return isinstance(value, dict) and value.get("type") == "function" and "function" in value
+        return value.get("type") == "function" and "function" in value
 
     def _is_llm_chat_metrics(self, value: dict[str, Any]) -> bool:
         """Check if dict represents LLMChatMetrics."""
@@ -128,15 +130,15 @@ class SaveOutput(Base):
             "eval_duration",
             "error",
         }
-        return isinstance(value, dict) and any(key in value for key in metric_keys)
+        return any(key in value for key in metric_keys)
 
     def _is_llm_tool_history_item(self, value: dict[str, Any]) -> bool:
         """Check if dict represents an LLMToolHistoryItem."""
-        return isinstance(value, dict) and "call" in value and "result" in value
+        return "call" in value and "result" in value
 
     def _is_llm_thinking_history_item(self, value: dict[str, Any]) -> bool:
         """Check if dict represents an LLMThinkingHistoryItem."""
-        return isinstance(value, dict) and "thinking" in value and "iteration" in value
+        return "thinking" in value and "iteration" in value
 
     def _generate_filename(self, base_name: str, data: Any, format_ext: str = ".json") -> str:
         """Generate a unique filename based on base name, data type, timestamp, and increment if needed."""
@@ -148,16 +150,16 @@ class SaveOutput(Base):
         elif isinstance(data, list):
             if data and isinstance(data[0], AssetSymbol):
                 type_prefix = "assetsymbol_list"
-            elif data and self._is_ohlcv_bar(data[0]):
+            elif data and isinstance(data[0], dict) and self._is_ohlcv_bar(data[0]):  # type: ignore
                 type_prefix = "ohlcv_bundle"
             else:
                 type_prefix = "list"
         elif isinstance(data, dict):
-            if self._is_ohlcv_bar(data):
+            if self._is_ohlcv_bar(data):  # type: ignore
                 type_prefix = "ohlcv_bar"
-            elif self._is_ohlcv_bundle(data):
+            elif self._is_ohlcv_bundle(data):  # type: ignore
                 type_prefix = "ohlcv_bundle"
-            elif self._is_llm_chat_message(data):
+            elif self._is_llm_chat_message(data):  # type: ignore
                 type_prefix = "llm_message"
             else:
                 type_prefix = "dict"
@@ -181,9 +183,10 @@ class SaveOutput(Base):
             raise ValueError("No data provided to save")
 
         # Get parameters
-        base_filename = self.params.get("filename", "").strip()
-        format_type = self.params.get("format", "json")
-        overwrite = self.params.get("overwrite", False)
+        filename_param = self.params.get("filename", "")
+        base_filename = str(filename_param).strip() if filename_param else ""
+        format_type = str(self.params.get("format", "json"))
+        overwrite = bool(self.params.get("overwrite", False))
         format_ext = ".jsonl" if format_type == "jsonl" else ".json"
 
         # Generate initial filename
@@ -213,8 +216,8 @@ class SaveOutput(Base):
                 serialized_data = {
                     "__metadata__": {
                         "type": "jsonl",
-                        "item_type": self._infer_list_item_type(data),
-                        "count": len(data),
+                        "item_type": self._infer_list_item_type(data),  # type: ignore
+                        "count": len(data),  # type: ignore
                         "timestamp": datetime.now().isoformat(),
                     }
                 }
@@ -223,7 +226,7 @@ class SaveOutput(Base):
                     # Write metadata as first line
                     f.write(json.dumps(serialized_data, ensure_ascii=False) + "\n")
                     # Write each item as separate JSON line
-                    for item in data:
+                    for item in data:  # type: ignore
                         serialized_item = self._serialize_value(item)
                         f.write(json.dumps(serialized_item, ensure_ascii=False) + "\n")
             else:
@@ -251,16 +254,16 @@ class SaveOutput(Base):
         elif isinstance(data, list):
             if data and isinstance(data[0], AssetSymbol):
                 return "AssetSymbolList"
-            elif data and self._is_ohlcv_bar(data[0]):
+            elif data and isinstance(data[0], dict) and self._is_ohlcv_bar(data[0]):  # type: ignore
                 return "OHLCVBundle"
             else:
                 return "List"
         elif isinstance(data, dict):
-            if self._is_ohlcv_bar(data):
+            if self._is_ohlcv_bar(data):  # type: ignore
                 return "OHLCVBar"
-            elif self._is_ohlcv_bundle(data):
+            elif self._is_ohlcv_bundle(data):  # type: ignore
                 return "OHLCVBundle"
-            elif self._is_llm_chat_message(data):
+            elif self._is_llm_chat_message(data):  # type: ignore
                 return "LLMChatMessage"
             else:
                 return "Dict"

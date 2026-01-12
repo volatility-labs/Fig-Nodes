@@ -1,4 +1,6 @@
-from typing import Dict, Any
+from typing import Any
+
+from core.types_registry import NodeCategory
 from nodes.base.base_node import Base
 
 
@@ -17,12 +19,10 @@ class SystemPromptLoader(Base):
     ]
 
     # Keep visible in IO category
-    CATEGORY = 'io'
+    CATEGORY = NodeCategory.IO
 
-    async def _execute_impl(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
+    async def _execute_impl(self, inputs: dict[str, Any]) -> dict[str, Any]:
         content = self.params.get("content") or ""
         if not isinstance(content, str):
             content = str(content)
         return {"system": content}
-
-
