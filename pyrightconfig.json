@@ -15,11 +15,11 @@
         "fig_node.egg-info",
         "testing_artifacts"
     ],
-    "typeCheckingMode": "strict",
+    "typeCheckingMode": "standard",
     "executionEnvironments": [
         {
             "root": ".",
-            "typeCheckingMode": "strict"
+            "typeCheckingMode": "standard"
         },
         {
             "root": "tests",

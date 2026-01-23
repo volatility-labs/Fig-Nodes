@@ -36,6 +36,7 @@ dev = [
   "pytest-asyncio==1.1.0",
   "pytest-cov==6.2.1",
   "ruff==0.9.3",
+  "pyright>=1.1.350"
 ]
 
 [build-system]

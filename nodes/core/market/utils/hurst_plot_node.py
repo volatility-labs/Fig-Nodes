@@ -8,10 +8,21 @@ import base64
 import io
 import logging
 from datetime import datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import matplotlib
 import matplotlib.ticker
+
+from core.api_key_vault import APIKeyVault
+from core.types_registry import AssetSymbol, NodeCategory, NodeValidationError, OHLCVBar, get_type
+from nodes.base.base_node import Base
+from services.indicator_calculators.cco_calculator import calculate_cco
+from services.indicator_calculators.ema_calculator import calculate_ema
+from services.indicator_calculators.hurst_calculator import calculate_hurst_oscillator
+from services.indicator_calculators.mesa_stochastic_calculator import (
+    calculate_mesa_stochastic_multi_length,
+)
+from services.polygon_service import fetch_current_snapshot
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -50,20 +61,7 @@ plt.rcParams.update(
 if TYPE_CHECKING:
     from matplotlib.axes import Axes
     from matplotlib.figure import Figure
-else:
-    from matplotlib.axes import Axes
-    from matplotlib.figure import Figure
 
-from core.api_key_vault import APIKeyVault
-from core.types_registry import AssetSymbol, NodeCategory, NodeValidationError, OHLCVBar, get_type
-from nodes.base.base_node import Base
-from services.indicator_calculators.cco_calculator import calculate_cco
-from services.indicator_calculators.ema_calculator import calculate_ema
-from services.indicator_calculators.hurst_calculator import calculate_hurst_oscillator
-from services.indicator_calculators.mesa_stochastic_calculator import (
-    calculate_mesa_stochastic_multi_length,
-)
-from services.polygon_service import fetch_current_snapshot
 
 logger = logging.getLogger(__name__)
 
@@ -104,7 +102,9 @@ def _normalize_bars(
         timestamp_map[ts] = (ts, open_price, high_price, low_price, close_price, volume)
 
     normalized = sorted(timestamp_map.values(), key=lambda x: x[0])
-    ohlc_data = [(ts, o, h, l, c) for ts, o, h, l, c, _v in normalized]
+    ohlc_data: list[tuple[int, float, float, float, float]] = [
+        (ts, o, h, low, c) for ts, o, h, low, c, _v in normalized
+    ]
     volume_data = [_v for _, _, _, _, _, _v in normalized]
     return ohlc_data, volume_data
 
@@ -259,7 +259,7 @@ def _plot_candles(
         for ema_values, color, label, _linewidth in ema_data:
             if ema_values and len(ema_values) == len(series) and ema_values[last_index] is not None:
                 ema_value = ema_values[last_index]
-                if isinstance(ema_value, (int, float)):
+                if isinstance(ema_value, int | float):
                     legend_labels.append(f"{label}: ${ema_value:.4f}")
                 else:
                     legend_labels.append(label)
@@ -314,10 +314,11 @@ def _plot_hurst_waves(
             if period_name in bandpasses:
                 values = bandpasses[period_name]
                 color = period_colors.get(period_name, "#888888")
-                valid_indices = [i for i, v in enumerate(values) if v is not None]
-                valid_values = [values[i] for i in valid_indices]
-                valid_x = [x_indices[i] for i in valid_indices]
-                if valid_x:
+                valid_data = [
+                    (x_indices[i], cast(float, v)) for i, v in enumerate(values) if v is not None
+                ]
+                if valid_data:
+                    valid_x, valid_values = zip(*valid_data)
                     linewidth = (
                         1.8
                         if period_name in ["5_day", "10_day"]
@@ -333,8 +334,8 @@ def _plot_hurst_waves(
                         else 0.85
                     )
                     ax.plot(
-                        valid_x,
-                        valid_values,
+                        list(valid_x),
+                        list(valid_values),
                         color=color,
                         linewidth=linewidth,
                         alpha=alpha,
@@ -342,19 +343,21 @@ def _plot_hurst_waves(
                     )
 
     if show_composite and composite:
-        valid_indices = [i for i, v in enumerate(composite) if v is not None]
-        valid_values = [composite[i] for i in valid_indices]
-        valid_x = [x_indices[i] for i in valid_indices]
-        if valid_x:
+        valid_data = [
+            (x_indices[i], cast(float, v)) for i, v in enumerate(composite) if v is not None
+        ]
+        if valid_data:
+            valid_x, valid_values = zip(*valid_data)
             ax.plot(
-                valid_x,
-                valid_values,
+                list(valid_x),
+                list(valid_values),
                 color="#ff6600",
                 linewidth=2.0,
                 alpha=0.95,
                 label="Composite",
                 zorder=10,
             )
+            valid_indices = [i for i, v in enumerate(composite) if v is not None]
             if valid_indices:
                 last_composite_idx = valid_indices[-1]
                 last_index = len(x_indices) - 1
@@ -512,21 +515,33 @@ def _plot_cco(
             elif fast_val <= 0.0:
                 ax.bar(i, abs(fast_val), bottom=0.0, color="purple", alpha=0.4, width=0.6)
 
-    valid_fast_indices = [i for i, v in enumerate(fast_osc) if v is not None]
-    valid_slow_indices = [i for i, v in enumerate(slow_osc) if v is not None]
+    valid_fast_data = [
+        (x_indices[i], cast(float, v)) for i, v in enumerate(fast_osc) if v is not None
+    ]
+    valid_slow_data = [
+        (x_indices[i], cast(float, v)) for i, v in enumerate(slow_osc) if v is not None
+    ]
 
-    if valid_fast_indices:
-        valid_fast_x = [x_indices[i] for i in valid_fast_indices]
-        valid_fast_values = [fast_osc[i] for i in valid_fast_indices]
+    if valid_fast_data:
+        valid_fast_x, valid_fast_values = zip(*valid_fast_data)
         ax.plot(
-            valid_fast_x, valid_fast_values, color="red", linewidth=2, alpha=0.9, label="FastOsc"
+            list(valid_fast_x),
+            list(valid_fast_values),
+            color="red",
+            linewidth=2,
+            alpha=0.9,
+            label="FastOsc",
         )
 
-    if valid_slow_indices:
-        valid_slow_x = [x_indices[i] for i in valid_slow_indices]
-        valid_slow_values = [slow_osc[i] for i in valid_slow_indices]
+    if valid_slow_data:
+        valid_slow_x, valid_slow_values = zip(*valid_slow_data)
         ax.plot(
-            valid_slow_x, valid_slow_values, color="green", linewidth=2, alpha=0.9, label="SlowOsc"
+            list(valid_slow_x),
+            list(valid_slow_values),
+            color="green",
+            linewidth=2,
+            alpha=0.9,
+            label="SlowOsc",
         )
 
     ax.set_ylim(-0.2, 1.4)
@@ -750,66 +765,64 @@ class HurstPlot(Base):
         },
     ]
 
-    def _get_int_param(self, key: str, default: int) -> int:
-        """Get and validate an integer parameter."""
-        raw = self.params.get(key, default)
-        if isinstance(raw, (int, float, str)):
+    def _parse_params(self) -> dict[str, Any]:
+        """Parse and validate parameters, returning a dictionary of validated values."""
+        lookback_raw = self.params.get("lookback_bars")
+        lookback: int | None = None
+        if lookback_raw is not None:
+            if isinstance(lookback_raw, int | float | str):
+                try:
+                    lookback_val = int(lookback_raw)
+                    lookback = lookback_val if lookback_val > 0 else None
+                except (ValueError, TypeError):
+                    lookback = None
+
+        max_syms_raw = self.params.get("max_symbols", 20)
+        max_syms = 20
+        if isinstance(max_syms_raw, int | float | str):
             try:
-                return int(raw)
+                max_syms = int(max_syms_raw)
             except (ValueError, TypeError):
-                return default
-        return default
-
-    def _get_bool_param(self, key: str, default: bool) -> bool:
-        """Get and validate a boolean parameter."""
-        raw = self.params.get(key, default)
-        return bool(raw) if raw is not None else default
-
-    def _get_float_param(self, key: str, default: float) -> float:
-        """Get and validate a float parameter."""
-        raw = self.params.get(key, default)
-        if isinstance(raw, (int, float, str)):
-            try:
-                return float(raw)
-            except (ValueError, TypeError):
-                return default
-        return default
-
-    async def _execute_impl(self, inputs: dict[str, Any]) -> dict[str, Any]:
-        bundle: dict[AssetSymbol, list[OHLCVBar]] | None = inputs.get("ohlcv_bundle")
-        single_bundle: dict[AssetSymbol, list[OHLCVBar]] | None = inputs.get("ohlcv")
-
-        if bundle and single_bundle:
-            bundle = {**bundle, **single_bundle}
-        elif single_bundle:
-            bundle = single_bundle
-
-        if not bundle:
-            raise NodeValidationError(self.id, "Provide either 'ohlcv_bundle' or 'ohlcv'")
-
-        lookback = self._get_int_param("lookback_bars", 0) or None
-        max_syms = self._get_int_param("max_symbols", 20)
+                max_syms = 20
 
         source = str(self.params.get("source", "hl2"))
-        bandwidth = self._get_float_param("bandwidth", 0.025)
 
-        periods = {
-            "5_day": self._get_float_param("period_5_day", 4.3),
-            "10_day": self._get_float_param("period_10_day", 8.5),
-            "20_day": self._get_float_param("period_20_day", 17.0),
-            "40_day": self._get_float_param("period_40_day", 34.1),
-            "80_day": self._get_float_param("period_80_day", 68.2),
-            "20_week": self._get_float_param("period_20_week", 136.4),
-            "40_week": self._get_float_param("period_40_week", 272.8),
-            "18_month": self._get_float_param("period_18_month", 545.6),
-            "54_month": self._get_float_param("period_54_month", 1636.8),
-            "9_year": self._get_float_param("period_9_year", 3273.6),
-            "18_year": self._get_float_param("period_18_year", 6547.2),
-        }
+        bandwidth_raw = self.params.get("bandwidth", 0.025)
+        bandwidth = 0.025
+        if isinstance(bandwidth_raw, int | float | str):
+            try:
+                bandwidth = float(bandwidth_raw)
+            except (ValueError, TypeError):
+                bandwidth = 0.025
 
-        composite_selection = {
-            k: self._get_bool_param(f"composite_{k}", True) for k in periods.keys()
+        periods = {}
+        period_defaults = {
+            "5_day": 4.3,
+            "10_day": 8.5,
+            "20_day": 17.0,
+            "40_day": 34.1,
+            "80_day": 68.2,
+            "20_week": 136.4,
+            "40_week": 272.8,
+            "18_month": 545.6,
+            "54_month": 1636.8,
+            "9_year": 3273.6,
+            "18_year": 6547.2,
         }
+        for key, default in period_defaults.items():
+            raw = self.params.get(f"period_{key}", default)
+            if isinstance(raw, int | float | str):
+                try:
+                    periods[key] = float(raw)
+                except (ValueError, TypeError):
+                    periods[key] = default
+            else:
+                periods[key] = default
+
+        composite_selection = {}
+        for k in periods.keys():
+            raw = self.params.get(f"composite_{k}", True)
+            composite_selection[k] = bool(raw) if raw is not None else True
 
         show_periods = [
             k
@@ -826,18 +839,196 @@ class HurstPlot(Base):
                 "9_year",
                 "18_year",
             ]
-            if self._get_bool_param(
-                f"show_{k}", k in ["5_day", "10_day", "20_day", "40_day", "80_day"]
+            if bool(
+                self.params.get(f"show_{k}", k in ["5_day", "10_day", "20_day", "40_day", "80_day"])
             )
         ]
 
-        show_composite = self._get_bool_param("show_composite", True)
-        show_mesa = self._get_bool_param("show_mesa_stochastic", False)
-        show_cco = self._get_bool_param("show_cco", False)
-        zoom_to_recent = self._get_bool_param("zoom_to_recent", False)
+        show_composite = bool(self.params.get("show_composite", True))
+        show_mesa = bool(self.params.get("show_mesa_stochastic", False))
+        show_cco = bool(self.params.get("show_cco", False))
+        zoom_to_recent = bool(self.params.get("zoom_to_recent", False))
         y_axis_scale = str(self.params.get("y_axis_scale", "symlog"))
-        show_current_price = self._get_bool_param("show_current_price", True)
-        dpi = self._get_int_param("dpi", 60)
+        show_current_price = bool(self.params.get("show_current_price", True))
+
+        dpi_raw = self.params.get("dpi", 60)
+        dpi = 60
+        if isinstance(dpi_raw, int | float | str):
+            try:
+                dpi = int(dpi_raw)
+            except (ValueError, TypeError):
+                dpi = 60
+
+        mesa_params = {}
+        if show_mesa:
+            mesa_params["length1"] = (
+                int(self.params.get("mesa_length1", 50))
+                if isinstance(self.params.get("mesa_length1", 50), int | float)
+                else 50
+            )
+            mesa_params["length2"] = (
+                int(self.params.get("mesa_length2", 21))
+                if isinstance(self.params.get("mesa_length2", 21), int | float)
+                else 21
+            )
+            mesa_params["length3"] = (
+                int(self.params.get("mesa_length3", 14))
+                if isinstance(self.params.get("mesa_length3", 14), int | float)
+                else 14
+            )
+            mesa_params["length4"] = (
+                int(self.params.get("mesa_length4", 9))
+                if isinstance(self.params.get("mesa_length4", 9), int | float)
+                else 9
+            )
+            mesa_params["trigger_length"] = (
+                int(self.params.get("mesa_trigger_length", 2))
+                if isinstance(self.params.get("mesa_trigger_length", 2), int | float)
+                else 2
+            )
+
+        cco_params = {}
+        if show_cco:
+            cco_params["short_cycle_length"] = (
+                int(self.params.get("cco_short_cycle_length", 10))
+                if isinstance(self.params.get("cco_short_cycle_length", 10), int | float)
+                else 10
+            )
+            cco_params["medium_cycle_length"] = (
+                int(self.params.get("cco_medium_cycle_length", 30))
+                if isinstance(self.params.get("cco_medium_cycle_length", 30), int | float)
+                else 30
+            )
+            cco_params["short_cycle_multiplier"] = (
+                float(self.params.get("cco_short_cycle_multiplier", 1.0))
+                if isinstance(self.params.get("cco_short_cycle_multiplier", 1.0), int | float)
+                else 1.0
+            )
+            cco_params["medium_cycle_multiplier"] = (
+                float(self.params.get("cco_medium_cycle_multiplier", 3.0))
+                if isinstance(self.params.get("cco_medium_cycle_multiplier", 3.0), int | float)
+                else 3.0
+            )
+
+        return {
+            "lookback": lookback,
+            "max_syms": max_syms,
+            "source": source,
+            "bandwidth": bandwidth,
+            "periods": periods,
+            "composite_selection": composite_selection,
+            "show_periods": show_periods,
+            "show_composite": show_composite,
+            "show_mesa": show_mesa,
+            "show_cco": show_cco,
+            "zoom_to_recent": zoom_to_recent,
+            "y_axis_scale": y_axis_scale,
+            "show_current_price": show_current_price,
+            "dpi": dpi,
+            "mesa_params": mesa_params,
+            "cco_params": cco_params,
+        }
+
+    def _determine_display_range(
+        self,
+        norm: list[tuple[int, float, float, float, float]],
+        lookback: int | None,
+        zoom_to_recent: bool,
+    ) -> list[tuple[int, float, float, float, float]]:
+        """Determine the display range based on lookback and zoom settings."""
+        if zoom_to_recent and len(norm) > 300:
+            return norm[-300:]
+        elif lookback and len(norm) > lookback:
+            return norm[-lookback:]
+        else:
+            return norm[-2000:] if len(norm) > 2000 else norm
+
+    def _calculate_emas(
+        self, closes: list[float]
+    ) -> tuple[list[float | None], list[float | None], list[float | None]]:
+        """Calculate EMA indicators."""
+        ema_10_result = calculate_ema(closes, period=10) if len(closes) >= 10 else {"ema": []}
+        ema_30_result = calculate_ema(closes, period=30) if len(closes) >= 30 else {"ema": []}
+        ema_100_result = calculate_ema(closes, period=100) if len(closes) >= 100 else {"ema": []}
+        return (
+            ema_10_result.get("ema", []),
+            ema_30_result.get("ema", []),
+            ema_100_result.get("ema", []),
+        )
+
+    def _create_figure(
+        self, show_mesa: bool, show_cco: bool
+    ) -> tuple["Figure", "Axes", "Axes", "Axes | None", "Axes | None"]:
+        """Create matplotlib figure with appropriate number of subplots."""
+        num_subplots = 2 + (1 if show_mesa else 0) + (1 if show_cco else 0)
+
+        if num_subplots == 2:
+            fig, (ax1, ax2) = plt.subplots(
+                2, 1, figsize=(8, 6), sharex=True, height_ratios=[2.25, 1.0]
+            )
+            fig.subplots_adjust(hspace=0.20, top=0.88, bottom=0.07, left=0.08, right=0.95)
+            return fig, ax1, ax2, None, None
+        elif num_subplots == 3:
+            if show_mesa:
+                fig, (ax1, ax2, ax3) = plt.subplots(
+                    3, 1, figsize=(8, 8), sharex=True, height_ratios=[2.25, 1.0, 1.0]
+                )
+                fig.subplots_adjust(hspace=0.18, top=0.88, bottom=0.07, left=0.08, right=0.95)
+                return fig, ax1, ax2, ax3, None
+            else:
+                fig, (ax1, ax2, ax4) = plt.subplots(
+                    3, 1, figsize=(8, 8), sharex=True, height_ratios=[2.25, 1.0, 1.0]
+                )
+                fig.subplots_adjust(hspace=0.18, top=0.88, bottom=0.07, left=0.08, right=0.95)
+                return fig, ax1, ax2, None, ax4
+        else:
+            fig, (ax1, ax2, ax3, ax4) = plt.subplots(
+                4, 1, figsize=(8, 10), sharex=True, height_ratios=[2.25, 1.0, 1.0, 1.0]
+            )
+            fig.subplots_adjust(hspace=0.15, top=0.88, bottom=0.07, left=0.08, right=0.95)
+            return fig, ax1, ax2, ax3, ax4
+
+    def _format_time_axis(self, ax: "Axes", timestamps: list[int]) -> None:
+        """Format the time axis with appropriate date labels."""
+        if not timestamps:
+            return
+        try:
+            dates = [datetime.fromtimestamp(ts / 1000) for ts in timestamps]
+            if len(dates) > 1:
+                num_labels = min(8, len(dates))
+                step = max(1, len(dates) // num_labels)
+                label_indices = list(range(0, len(dates), step))
+                if len(dates) - 1 not in label_indices:
+                    label_indices.append(len(dates) - 1)
+
+                label_dates = [dates[i] for i in label_indices]
+                time_span = (dates[-1] - dates[0]).total_seconds()
+                if time_span < 86400 * 2:
+                    date_labels = [d.strftime("%H:%M") for d in label_dates]
+                elif time_span < 86400 * 30:
+                    date_labels = [d.strftime("%d/%m") for d in label_dates]
+                else:
+                    date_labels = [d.strftime("%b %Y") for d in label_dates]
+
+                ax.set_xticks(label_indices)
+                ax.set_xticklabels(date_labels, fontsize=8, rotation=45, ha="right")
+        except Exception:
+            pass
+        ax.set_xlabel("Time", fontsize=10)
+
+    async def _execute_impl(self, inputs: dict[str, Any]) -> dict[str, Any]:
+        bundle: dict[AssetSymbol, list[OHLCVBar]] | None = inputs.get("ohlcv_bundle")
+        single_bundle: dict[AssetSymbol, list[OHLCVBar]] | None = inputs.get("ohlcv")
+
+        if bundle and single_bundle:
+            bundle = {**bundle, **single_bundle}
+        elif single_bundle:
+            bundle = single_bundle
+
+        if not bundle:
+            raise NodeValidationError(self.id, "Provide either 'ohlcv_bundle' or 'ohlcv'")
+
+        params = self._parse_params()
 
         images: dict[str, str] = {}
         hurst_data_by_symbol: dict[str, dict[str, Any]] = {}
@@ -845,7 +1036,7 @@ class HurstPlot(Base):
         mesa_data_by_symbol: dict[str, dict[str, Any]] = {}
         cco_data_by_symbol: dict[str, dict[str, Any]] = {}
 
-        items = list(bundle.items())[:max_syms]
+        items = list(bundle.items())[: params["max_syms"]]
         for sym, bars in items:
             if not bars or len(bars) < 10:
                 continue
@@ -854,13 +1045,9 @@ class HurstPlot(Base):
 
             # Determine display range
             full_norm = norm
-            if zoom_to_recent and len(norm) > 300:
-                display_norm = norm[-300:]
-            elif lookback and len(norm) > lookback:
-                display_norm = norm[-lookback:]
-            else:
-                display_norm = norm[-2000:] if len(norm) > 2000 else norm
-
+            display_norm = self._determine_display_range(
+                norm, params["lookback"], params["zoom_to_recent"]
+            )
             norm = display_norm
 
             if len(norm) < 10:
@@ -880,10 +1067,10 @@ class HurstPlot(Base):
                     closes=full_closes,
                     highs=full_highs,
                     lows=full_lows,
-                    source=source,
-                    bandwidth=bandwidth,
-                    periods=periods,
-                    composite_selection=composite_selection,
+                    source=params["source"],
+                    bandwidth=params["bandwidth"],
+                    periods=params["periods"],
+                    composite_selection=params["composite_selection"],
                 )
 
                 hurst_data_by_symbol[str(sym)] = {
@@ -914,29 +1101,11 @@ class HurstPlot(Base):
 
             # Calculate EMAs
             display_volumes = volumes[-len(norm) :] if len(volumes) >= len(norm) else volumes
-            ema_calc_closes = closes
-            ema_10_result = (
-                calculate_ema(ema_calc_closes, period=10)
-                if len(ema_calc_closes) >= 10
-                else {"ema": []}
-            )
-            ema_30_result = (
-                calculate_ema(ema_calc_closes, period=30)
-                if len(ema_calc_closes) >= 30
-                else {"ema": []}
-            )
-            ema_100_result = (
-                calculate_ema(ema_calc_closes, period=100)
-                if len(ema_calc_closes) >= 100
-                else {"ema": []}
-            )
-            display_ema_10 = ema_10_result.get("ema", [])
-            display_ema_30 = ema_30_result.get("ema", [])
-            display_ema_100 = ema_100_result.get("ema", [])
+            display_ema_10, display_ema_30, display_ema_100 = self._calculate_emas(closes)
 
             # Fetch fresh price
             fresh_price: float | None = None
-            if show_current_price and len(norm) > 0:
+            if params["show_current_price"] and len(norm) > 0:
                 try:
                     api_key = APIKeyVault().get("POLYGON_API_KEY")
                     if api_key:
@@ -945,31 +1114,7 @@ class HurstPlot(Base):
                     pass
 
             # Create figure
-            num_subplots = 2 + (1 if show_mesa else 0) + (1 if show_cco else 0)
-
-            if num_subplots == 2:
-                fig, (ax1, ax2) = plt.subplots(
-                    2, 1, figsize=(8, 6), sharex=True, height_ratios=[2.25, 1.0]
-                )
-                fig.subplots_adjust(hspace=0.20, top=0.88, bottom=0.07, left=0.08, right=0.95)
-                ax3, ax4 = None, None
-            elif num_subplots == 3:
-                if show_mesa:
-                    fig, (ax1, ax2, ax3) = plt.subplots(
-                        3, 1, figsize=(8, 8), sharex=True, height_ratios=[2.25, 1.0, 1.0]
-                    )
-                    ax4 = None
-                else:
-                    fig, (ax1, ax2, ax4) = plt.subplots(
-                        3, 1, figsize=(8, 8), sharex=True, height_ratios=[2.25, 1.0, 1.0]
-                    )
-                    ax3 = None
-                fig.subplots_adjust(hspace=0.18, top=0.88, bottom=0.07, left=0.08, right=0.95)
-            else:
-                fig, (ax1, ax2, ax3, ax4) = plt.subplots(
-                    4, 1, figsize=(8, 10), sharex=True, height_ratios=[2.25, 1.0, 1.0, 1.0]
-                )
-                fig.subplots_adjust(hspace=0.15, top=0.88, bottom=0.07, left=0.08, right=0.95)
+            fig, ax1, ax2, ax3, ax4 = self._create_figure(params["show_mesa"], params["show_cco"])
 
             # Plot price chart
             _plot_candles(
@@ -979,7 +1124,7 @@ class HurstPlot(Base):
                 display_ema_10,
                 display_ema_30,
                 display_ema_100,
-                show_current_price,
+                params["show_current_price"],
                 fresh_price,
             )
             ax1.set_title(f"{str(sym)} Price Chart", fontsize=12, fontweight="bold", pad=10)
@@ -990,7 +1135,7 @@ class HurstPlot(Base):
             )
 
             try:
-                ax1.set_yscale(y_axis_scale)
+                ax1.set_yscale(params["y_axis_scale"])
             except Exception:
                 ax1.set_yscale("linear")
 
@@ -1010,7 +1155,13 @@ class HurstPlot(Base):
 
             # Plot Hurst waves
             _plot_hurst_waves(
-                ax2, timestamps, bandpasses, composite, show_periods, show_composite, y_axis_scale
+                ax2,
+                timestamps,
+                bandpasses,
+                composite,
+                params["show_periods"],
+                params["show_composite"],
+                params["y_axis_scale"],
             )
             ax2.set_title(
                 f"{str(sym)} Hurst Spectral Analysis Oscillator",
@@ -1023,37 +1174,14 @@ class HurstPlot(Base):
 
             # Set time axis labels
             bottom_ax = ax4 if ax4 else (ax3 if ax3 else ax2)
-            if len(norm) > 0:
-                try:
-                    dates = [datetime.fromtimestamp(ts / 1000) for ts in timestamps]
-                    if len(dates) > 1:
-                        num_labels = min(8, len(dates))
-                        step = max(1, len(dates) // num_labels)
-                        label_indices = list(range(0, len(dates), step))
-                        if len(dates) - 1 not in label_indices:
-                            label_indices.append(len(dates) - 1)
-
-                        label_dates = [dates[i] for i in label_indices]
-                        time_span = (dates[-1] - dates[0]).total_seconds()
-                        if time_span < 86400 * 2:
-                            date_labels = [d.strftime("%H:%M") for d in label_dates]
-                        elif time_span < 86400 * 30:
-                            date_labels = [d.strftime("%d/%m") for d in label_dates]
-                        else:
-                            date_labels = [d.strftime("%b %Y") for d in label_dates]
-
-                        bottom_ax.set_xticks(label_indices)
-                        bottom_ax.set_xticklabels(date_labels, fontsize=8, rotation=45, ha="right")
-                except Exception:
-                    pass
-                bottom_ax.set_xlabel("Time", fontsize=10)
+            self._format_time_axis(bottom_ax, timestamps)
 
             # Auto-scale Hurst Y-axis
             all_wave_values: list[float] = []
-            if show_composite and composite:
+            if params["show_composite"] and composite:
                 all_wave_values.extend([v for v in composite if v is not None])
-            if show_periods:
-                for period_name in show_periods:
+            if params["show_periods"]:
+                for period_name in params["show_periods"]:
                     if period_name in bandpasses:
                         all_wave_values.extend(
                             [v for v in bandpasses[period_name] if v is not None]
@@ -1066,21 +1194,16 @@ class HurstPlot(Base):
                 ax2.set_ylim(min_val - padding, max_val + padding)
 
             # MESA Stochastic
-            if show_mesa and ax3 is not None:
+            if params["show_mesa"] and ax3 is not None:
                 try:
-                    mesa_length1 = self._get_int_param("mesa_length1", 50)
-                    mesa_length2 = self._get_int_param("mesa_length2", 21)
-                    mesa_length3 = self._get_int_param("mesa_length3", 14)
-                    mesa_length4 = self._get_int_param("mesa_length4", 9)
-                    mesa_trigger_length = self._get_int_param("mesa_trigger_length", 2)
-
-                    full_hl2 = [(h + l) / 2.0 for h, l in zip(full_highs, full_lows)]
+                    mesa_params_dict = params["mesa_params"]
+                    full_hl2 = [(high + low) / 2.0 for high, low in zip(full_highs, full_lows)]
                     mesa_result = calculate_mesa_stochastic_multi_length(
                         prices=full_hl2,
-                        length1=mesa_length1,
-                        length2=mesa_length2,
-                        length3=mesa_length3,
-                        length4=mesa_length4,
+                        length1=mesa_params_dict["length1"],
+                        length2=mesa_params_dict["length2"],
+                        length3=mesa_params_dict["length3"],
+                        length4=mesa_params_dict["length4"],
                     )
 
                     mesa_data_by_symbol[str(sym)] = {
@@ -1094,7 +1217,9 @@ class HurstPlot(Base):
                     display_mesa = {
                         k: v[start_idx:] for k, v in mesa_result.items() if k.startswith("mesa")
                     }
-                    _plot_mesa_stochastic(ax3, timestamps, display_mesa, mesa_trigger_length)
+                    _plot_mesa_stochastic(
+                        ax3, timestamps, display_mesa, mesa_params_dict["trigger_length"]
+                    )
                     ax3.set_title(
                         f"{str(sym)} MESA Stochastic Multi Length",
                         fontsize=12,
@@ -1107,27 +1232,19 @@ class HurstPlot(Base):
                     logger.error(f"Error calculating MESA Stochastic for {sym}: {e}", exc_info=True)
 
             # CCO
-            if show_cco:
-                cco_ax = ax4 if show_mesa else ax3
+            if params["show_cco"]:
+                cco_ax = ax4 if params["show_mesa"] else ax3
                 if cco_ax is not None:
                     try:
-                        cco_short_cycle_length = self._get_int_param("cco_short_cycle_length", 10)
-                        cco_medium_cycle_length = self._get_int_param("cco_medium_cycle_length", 30)
-                        cco_short_cycle_multiplier = self._get_float_param(
-                            "cco_short_cycle_multiplier", 1.0
-                        )
-                        cco_medium_cycle_multiplier = self._get_float_param(
-                            "cco_medium_cycle_multiplier", 3.0
-                        )
-
+                        cco_params_dict = params["cco_params"]
                         cco_result = calculate_cco(
                             closes=full_closes,
                             highs=full_highs,
                             lows=full_lows,
-                            short_cycle_length=cco_short_cycle_length,
-                            medium_cycle_length=cco_medium_cycle_length,
-                            short_cycle_multiplier=cco_short_cycle_multiplier,
-                            medium_cycle_multiplier=cco_medium_cycle_multiplier,
+                            short_cycle_length=cco_params_dict["short_cycle_length"],
+                            medium_cycle_length=cco_params_dict["medium_cycle_length"],
+                            short_cycle_multiplier=cco_params_dict["short_cycle_multiplier"],
+                            medium_cycle_multiplier=cco_params_dict["medium_cycle_multiplier"],
                         )
 
                         cco_data_by_symbol[str(sym)] = {
@@ -1150,7 +1267,7 @@ class HurstPlot(Base):
                     except Exception as e:
                         logger.error(f"Error calculating CCO for {sym}: {e}", exc_info=True)
 
-            images[str(sym)] = _encode_fig_to_data_url(fig, dpi=dpi)
+            images[str(sym)] = _encode_fig_to_data_url(fig, dpi=params["dpi"])
 
         return {
             "images": images,

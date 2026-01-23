@@ -2,9 +2,14 @@ import logging
 from typing import Any, cast
 
 import numpy as np
-import pandas as pd
 
-from core.types_registry import AssetSymbol, IndicatorResult, IndicatorType, IndicatorValue, get_type
+from core.types_registry import (
+    AssetSymbol,
+    IndicatorResult,
+    IndicatorType,
+    IndicatorValue,
+    get_type,
+)
 from nodes.core.market.indicators.base.base_indicator_node import BaseIndicator
 from services.indicator_calculators.atrx_calculator import calculate_atrx
 
@@ -55,7 +60,7 @@ class AtrXIndicator(BaseIndicator):
 
         # Get the first (and typically only) symbol's bars
         ohlcv = next(iter(ohlcv_bundle.values()))
-        
+
         if not ohlcv:
             logger.warning("Empty OHLCV data provided to ATRX indicator")
             return {"results": []}
@@ -76,21 +81,14 @@ class AtrXIndicator(BaseIndicator):
             low_prices = [bar["low"] for bar in ohlcv]
             close_prices = [bar["close"] for bar in ohlcv]
 
-            # Create minimal DataFrame for calculator API
-            df_calc = pd.DataFrame(
-                {
-                    "high": high_prices,
-                    "low": low_prices,
-                    "close": close_prices,
-                }
-            )
-
-            # Call calculator directly
+            # Call calculator directly with required parameters
             atrx_result = calculate_atrx(
-                df_calc,
+                highs=high_prices,
+                lows=low_prices,
+                closes=close_prices,
+                prices=close_prices,
                 length=length_value,
                 ma_length=ma_length_value,
-                source="close",
             )
             atrx_values = atrx_result.get("atrx", [])
 

@@ -42,6 +42,11 @@ jobs:
         run: |
           uv sync
 
+      - name: Type check with pyright
+        run: |
+          uv run pip install pyright
+          uv run pyright
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:

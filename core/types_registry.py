@@ -1,7 +1,9 @@
-from collections.abc import AsyncGenerator, Callable
+from collections.abc import AsyncGenerator, Callable, Sequence
 from dataclasses import dataclass, field
 from enum import Enum, auto
 from typing import TYPE_CHECKING, Any, Literal, NotRequired, Required, TypeAlias, TypedDict
+
+from pydantic import BaseModel, Field
 
 # Type checking only import for circular dependency avoidance
 if TYPE_CHECKING:
@@ -94,56 +96,93 @@ class ExecutionResult:
         return cls(outcome=ExecutionOutcome.ERROR, error=error_msg)
 
 
-# Structured dict types with fixed fields
-class LLMToolFunction(TypedDict, total=False):
+# ============ LLM Types - Pydantic Models for Runtime Validation ============
+
+
+class LLMToolFunction(BaseModel):
+    """Function definition within a tool spec."""
+
     name: str
-    description: str | None
-    parameters: dict[str, Any]
+    description: str | None = None
+    parameters: dict[str, Any] = Field(default_factory=dict)
+
+    model_config = {"extra": "allow"}
 
 
-class LLMToolSpec(TypedDict):
-    type: Literal["function"]
+class LLMToolSpec(BaseModel):
+    """Tool specification for LLM function calling."""
+
+    type: Literal["function"] = "function"
     function: LLMToolFunction
 
-
-class LLMToolCallFunction(TypedDict, total=False):
-    name: str
-    arguments: dict[str, Any]
+    model_config = {"extra": "allow"}
 
 
-class LLMToolCall(TypedDict, total=False):
-    id: str
-    function: LLMToolCallFunction
+class LLMToolCallFunction(BaseModel):
+    """Function call details within a tool call."""
+
+    name: str = ""
+    arguments: dict[str, Any] = Field(default_factory=dict)
+
+    model_config = {"extra": "allow"}
 
 
-class LLMChatMessage(TypedDict, total=True):
+class LLMToolCall(BaseModel):
+    """A tool call from an LLM response."""
+
+    id: str = ""
+    function: LLMToolCallFunction = Field(default_factory=LLMToolCallFunction)
+
+    model_config = {"extra": "allow"}
+
+
+class LLMChatMessage(BaseModel):
+    """A chat message in LLM conversation."""
+
     role: Literal["system", "user", "assistant", "tool"]
-    content: str | dict[str, Any]
-    thinking: NotRequired[str]
-    images: NotRequired[list[str]]
-    tool_calls: NotRequired[list[LLMToolCall]]
-    tool_name: NotRequired[str]
-    tool_call_id: NotRequired[str]
+    content: str | dict[str, Any] = ""
+    thinking: str | None = None
+    images: list[str] | None = None
+    tool_calls: list[LLMToolCall] | None = None
+    tool_name: str | None = None
+    tool_call_id: str | None = None
+
+    model_config = {"extra": "allow"}
 
 
-class LLMChatMetrics(TypedDict, total=False):
-    total_duration: int
-    load_duration: int
-    prompt_eval_count: int
-    prompt_eval_duration: int
-    eval_count: int
-    eval_duration: int
-    error: str
+class LLMChatMetrics(BaseModel):
+    """Metrics from LLM generation."""
+
+    total_duration: int | None = None
+    load_duration: int | None = None
+    prompt_eval_count: int | None = None
+    prompt_eval_duration: int | None = None
+    eval_count: int | None = None
+    eval_duration: int | None = None
+    error: str | None = None
+    seed: int | None = None
+    temperature: float | None = None
+    parse_error: str | None = None
+
+    model_config = {"extra": "allow"}
 
 
-class LLMToolHistoryItem(TypedDict):
-    call: LLMToolCall
-    result: dict[str, Any]
+class LLMToolHistoryItem(BaseModel):
+    """Record of a tool call and its result."""
+
+    call: LLMToolCall | dict[str, Any]
+    result: dict[str, Any] = Field(default_factory=dict)
+
+    model_config = {"extra": "allow"}
 
 
-class LLMThinkingHistoryItem(TypedDict):
+class LLMThinkingHistoryItem(BaseModel):
+    """Record of thinking/reasoning from an LLM."""
+
     thinking: str
-    iteration: int
+    iteration: int = 0
+
+    model_config = {"extra": "allow"}
 
 
 class OHLCVBar(TypedDict, total=True):
@@ -170,7 +209,7 @@ class ParamMeta(TypedDict, total=False):
     name: Required[str]
     type: NotRequired[ParamType]
     default: NotRequired[ParamValue]
-    options: NotRequired[list[ParamScalar]]
+    options: NotRequired[Sequence[ParamScalar]]
     min: NotRequired[float]
     max: NotRequired[float]
     step: NotRequired[float]
@@ -349,6 +388,42 @@ LLMToolHistory: TypeAlias = list[LLMToolHistoryItem]
 LLMThinkingHistory: TypeAlias = list[LLMThinkingHistoryItem]
 
 
+# Helper functions for Pydantic model serialization
+def serialize_for_api(obj: Any) -> Any:
+    """Convert Pydantic models to dicts for API consumption."""
+    if isinstance(obj, BaseModel):
+        return obj.model_dump(exclude_none=True)
+    if isinstance(obj, list):
+        return [serialize_for_api(item) for item in obj]
+    if isinstance(obj, dict):
+        return {k: serialize_for_api(v) for k, v in obj.items()}
+    return obj
+
+
+def validate_llm_tool_spec(obj: Any) -> LLMToolSpec | None:
+    """Validate and convert dict to LLMToolSpec."""
+    if isinstance(obj, LLMToolSpec):
+        return obj
+    if isinstance(obj, dict):
+        try:
+            return LLMToolSpec.model_validate(obj)
+        except Exception:
+            return None
+    return None
+
+
+def validate_llm_chat_message(obj: Any) -> LLMChatMessage | None:
+    """Validate and convert dict to LLMChatMessage."""
+    if isinstance(obj, LLMChatMessage):
+        return obj
+    if isinstance(obj, dict):
+        try:
+            return LLMChatMessage.model_validate(obj)
+        except Exception:
+            return None
+    return None
+
+
 # Structured progress event contract for execution reporting
 class ProgressEvent(TypedDict, total=False):
     node_id: int
@@ -444,6 +519,9 @@ __all__ = [
     "LLMThinkingHistory",
     "TYPE_REGISTRY",
     "get_type",
+    "serialize_for_api",
+    "validate_llm_tool_spec",
+    "validate_llm_chat_message",
     "NodeError",
     "NodeValidationError",
     "NodeExecutionError",

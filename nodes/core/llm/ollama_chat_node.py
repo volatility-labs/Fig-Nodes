@@ -8,7 +8,14 @@ from typing import Any
 
 import httpx
 
-from core.types_registry import LLMToolSpec, LLMToolSpecList, NodeCategory, get_type
+from core.types_registry import (
+    LLMChatMetrics,
+    LLMToolSpec,
+    NodeCategory,
+    get_type,
+    serialize_for_api,
+    validate_llm_tool_spec,
+)
 from nodes.base.base_node import Base
 from services.tools.registry import get_all_credential_providers, get_tool_handler
 
@@ -249,20 +256,23 @@ class OllamaChat(Base):
     def _collect_tools(self, inputs: dict[str, Any]) -> list[LLMToolSpec]:
         """
         Collect and combine tools from both 'tools' (list) and 'tool' (single/multi) inputs.
+        Validates and converts dicts to LLMToolSpec Pydantic models.
         """
         result: list[LLMToolSpec] = []
 
         # Add tools from the 'tools' input (list)
-        tools_list: LLMToolSpecList = inputs.get("tools")
-        if tools_list:
-            for tool in tools_list:
-                if isinstance(tool, dict) and tool.get("type") == "function":
-                    result.append(tool)
+        tools_input = inputs.get("tools")
+        if tools_input:
+            for tool in tools_input:
+                validated = validate_llm_tool_spec(tool)
+                if validated:
+                    result.append(validated)
 
         # Add tools from the 'tool' multi-input
         for tool_spec in self.collect_multi_input("tool", inputs):
-            if isinstance(tool_spec, dict) and tool_spec.get("type") == "function":
-                result.append(tool_spec)
+            validated = validate_llm_tool_spec(tool_spec)
+            if validated:
+                result.append(validated)
 
         return result
 
@@ -367,7 +377,7 @@ class OllamaChat(Base):
         """Derive Ollama format from json_mode toggle."""
         return "json" if bool(self.params.get("json_mode", False)) else None
 
-    def _prepare_generation_options(self) -> (dict[str, Any], int | None):
+    def _prepare_generation_options(self) -> tuple[dict[str, Any], int | None]:
         """Build options dict including temperature and seed based on params.
         Returns (options, effective_seed).
         """
@@ -447,7 +457,10 @@ class OllamaChat(Base):
         # Update params_meta options dynamically for UI consumption via /nodes metadata
         for p in self.params_meta:
             if p["name"] == "selected_model":
-                p["options"] = models_list
+                # Convert list[str] to Sequence[ParamScalar] for type compatibility
+                from core.types_registry import ParamScalar
+
+                p["options"] = list[ParamScalar](models_list)  # type: ignore[assignment]
                 break
 
         selected = self.params.get("selected_model") or ""
@@ -525,7 +538,10 @@ class OllamaChat(Base):
         if client_factory is None:
             from ollama import AsyncClient
 
-            client_factory = lambda: AsyncClient(host=host)
+            def make_client() -> AsyncClient:
+                return AsyncClient(host=host)
+
+            client_factory = make_client
 
         messages = list(base_messages)
         combined_metrics: dict[str, Any] = {}
@@ -552,7 +568,7 @@ class OllamaChat(Base):
                 resp = await _invoke_chat_nonstream(client)
             finally:
                 try:
-                    await client.close()
+                    await client.close()  # type: ignore[attr-defined]
                 except Exception:
                     pass
 
@@ -672,7 +688,7 @@ class OllamaChat(Base):
         messages: list[dict[str, Any]] = self._build_messages(
             raw_messages, prompt_text, system_input
         )
-        tools: list[dict[str, Any]] = self._collect_tools(inputs)
+        tools: list[LLMToolSpec] = self._collect_tools(inputs)
 
         print(
             f"OllamaChatNode: Execute - model='{model}', host='{host}', prompt='{prompt_text}', messages_count={len(raw_messages) if raw_messages else 0}"
@@ -692,9 +708,10 @@ class OllamaChat(Base):
         if not messages and not prompt_text:
             error_msg = "No messages or prompt provided to OllamaChatNode"
             error_message = {"role": "assistant", "content": ""}
+            error_metrics = LLMChatMetrics(error=error_msg)
             return {
                 "message": error_message,
-                "metrics": {"error": error_msg},
+                "metrics": serialize_for_api(error_metrics),
                 "tool_history": [],
                 "thinking_history": [],
             }
@@ -702,6 +719,9 @@ class OllamaChat(Base):
         # effective_seed produced by helper above
 
         from ollama import AsyncClient
+
+        # Initialize resp to ensure it's always bound
+        resp: dict[str, Any] = {}
 
         try:
             # Auto-detect and apply model context window (clamp num_ctx) for execute()
@@ -721,8 +741,10 @@ class OllamaChat(Base):
                 "thinking_history": [],
             }
             if tools:
+                # Convert Pydantic models to dicts for Ollama API
+                tools_for_api: list[dict[str, Any]] = [serialize_for_api(t) for t in tools]
                 tool_rounds_info = await self._maybe_execute_tools_and_augment_messages(
-                    host, model, messages, tools, fmt, options, keep_alive, think
+                    host, model, messages, tools_for_api, fmt, options, keep_alive, think
                 )
             else:
                 client = AsyncClient(host=host)
@@ -730,12 +752,12 @@ class OllamaChat(Base):
 
                 # Cooperative cancellation for non-streaming execute()
                 chat_task = asyncio.create_task(
-                    client.chat(
+                    client.chat(  # type: ignore[call-overload]
                         model=model,
                         messages=messages,
                         tools=None,
                         stream=False,
-                        format=fmt,
+                        format=fmt,  # type: ignore[arg-type]
                         options=options,
                         keep_alive=keep_alive,
                         think=think,
@@ -755,7 +777,7 @@ class OllamaChat(Base):
                     except Exception:
                         pass
                     try:
-                        await client.close()
+                        await client.close()  # type: ignore[attr-defined]
                     except Exception:
                         pass
                     try:
@@ -764,13 +786,20 @@ class OllamaChat(Base):
                         pass
                     self._client = None
                     raise asyncio.CancelledError()
-                resp = await chat_task
+                chat_result: Any = await chat_task
+                resp = chat_result if isinstance(chat_result, dict) else {}
 
             if tools:
-                resp = tool_rounds_info.get("last_response") or {}
-                metrics = tool_rounds_info.get("metrics") or {}
-                tool_history = tool_rounds_info.get("tool_history") or []
-                thinking_history = tool_rounds_info.get("thinking_history") or []
+                last_resp_raw = tool_rounds_info.get("last_response")
+                resp = last_resp_raw if isinstance(last_resp_raw, dict) else {}
+                metrics_raw = tool_rounds_info.get("metrics")
+                metrics = metrics_raw if isinstance(metrics_raw, dict) else {}
+                tool_history_raw = tool_rounds_info.get("tool_history")
+                tool_history = tool_history_raw if isinstance(tool_history_raw, list) else []
+                thinking_history_raw = tool_rounds_info.get("thinking_history")
+                thinking_history = (
+                    thinking_history_raw if isinstance(thinking_history_raw, list) else []
+                )
             else:
                 metrics = {}
                 tool_history = []
@@ -785,24 +814,27 @@ class OllamaChat(Base):
             metrics["seed"] = int(effective_seed) if effective_seed is not None else None
             if "temperature" in options:
                 metrics["temperature"] = options["temperature"]
-            t_metrics = tool_rounds_info.get("metrics") or {}
-            if isinstance(t_metrics, dict):
-                metrics.update(t_metrics)
+            if tools:
+                t_metrics_raw = tool_rounds_info.get("metrics")
+                if isinstance(t_metrics_raw, dict):
+                    metrics.update(t_metrics_raw)
             if not tools:
                 thinking = final_message.get("thinking")
                 if thinking and isinstance(thinking, str):
                     thinking_history.append({"thinking": thinking, "iteration": 0})
+            # Convert to dict format for output (maintaining compatibility with declared outputs)
             return {
                 "message": final_message,
-                "metrics": metrics,
-                "tool_history": tool_history,
-                "thinking_history": thinking_history,
+                "metrics": serialize_for_api(metrics),
+                "tool_history": serialize_for_api(tool_history),
+                "thinking_history": serialize_for_api(thinking_history),
             }
         except Exception as e:
             error_message = {"role": "assistant", "content": ""}
+            error_metrics = LLMChatMetrics(error=str(e))
             return {
                 "message": error_message,
-                "metrics": {"error": str(e)},
+                "metrics": serialize_for_api(error_metrics),
                 "tool_history": [],
                 "thinking_history": [],
             }

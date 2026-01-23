@@ -69,12 +69,12 @@ class LodFilter(BaseIndicatorFilter):
     ]
 
     def _validate_indicator_params(self):
-        if not isinstance(self.params["lod_distance_threshold"], (int, float)):
+        if not isinstance(self.params["lod_distance_threshold"], int | float):
             raise ValueError("LoD distance threshold must be a number")
         if self.params["lod_distance_threshold"] < 0:
             raise ValueError("LoD distance threshold cannot be negative")
 
-        if not isinstance(self.params["atr_window"], (int, float)):
+        if not isinstance(self.params["atr_window"], int | float):
             raise ValueError("ATR window must be a number")
         if self.params["atr_window"] <= 0:
             raise ValueError("ATR window must be positive")
@@ -95,7 +95,7 @@ class LodFilter(BaseIndicatorFilter):
         timestamp_value: int = ohlcv_data[-1]["timestamp"]
 
         atr_window_param = self.params["atr_window"]
-        if not isinstance(atr_window_param, (int, float)):
+        if not isinstance(atr_window_param, int | float):
             return IndicatorResult(
                 indicator_type=IndicatorType.LOD,
                 timestamp=timestamp_value,
@@ -129,7 +129,13 @@ class LodFilter(BaseIndicatorFilter):
         atr = lod_result["atr"][-1]
 
         # Check for invalid calculation
-        if lod_distance_pct is None or atr is None or atr <= 0:
+        if (
+            lod_distance_pct is None
+            or atr is None
+            or atr <= 0
+            or current_price is None
+            or low_of_day is None
+        ):
             return IndicatorResult(
                 indicator_type=IndicatorType.LOD,
                 timestamp=ohlcv_data[-1]["timestamp"],
@@ -169,7 +175,7 @@ class LodFilter(BaseIndicatorFilter):
             return False
 
         lod_distance_threshold_param = self.params["lod_distance_threshold"]
-        if not isinstance(lod_distance_threshold_param, (int, float)):
+        if not isinstance(lod_distance_threshold_param, int | float):
             return False
         lod_distance_threshold = float(lod_distance_threshold_param)
 
