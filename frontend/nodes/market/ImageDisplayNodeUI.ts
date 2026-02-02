@@ -238,7 +238,6 @@ export default class ImageDisplayNodeUI extends BaseCustomNode {
             const img = this.loadedImages.get(label);
             if (!img) continue;
             
-            const aspectRatio = this.imageAspectRatios.get(label) || (img.width / img.height);
             const fitted = this.fitImageToBounds(img.width, img.height, baseCellW, baseCellH);
             const zoomedW = fitted.width * this.zoomLevel;
             const zoomedH = fitted.height * this.zoomLevel;
