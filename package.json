@@ -1,0 +1,27 @@
+{
+  "name": "fig-node",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "postinstall": "yarn workspace @fig-node/core build",
+    "build": "yarn workspaces run build",
+    "predev": "lsof -ti:8000 | xargs kill -9 2>/dev/null || true",
+    "dev": "concurrently -k -n core,server,frontend -c blue,green,magenta \"yarn dev:core\" \"yarn dev:server\" \"yarn dev:frontend\"",
+    "dev:core": "yarn workspace @fig-node/core dev",
+    "dev:server": "yarn workspace @fig-node/server dev",
+    "dev:frontend": "yarn workspace @fig-node/frontend dev",
+    "test": "yarn workspaces run test",
+    "lint": "yarn workspaces run lint",
+    "typecheck": "yarn workspaces run typecheck"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1",
+    "typescript": "^5.7.3"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "packageManager": "yarn@1.22.22"
+}
