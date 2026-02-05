@@ -680,3 +680,51 @@
   outline: 1px solid #333;
   border-color: #333;
 }
+
+/* Text display with native selection */
+.fignode-text-display {
+  box-sizing: border-box;
+  pointer-events: auto;
+  background: var(--widget-bg, rgba(0, 0, 0, 0.3));
+  border-radius: 4px;
+  color: var(--widget-text, #e0e0e0);
+  font-family: monospace;
+  font-size: 12px;
+  line-height: 1.4;
+  padding: 8px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  user-select: text;
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  cursor: text;
+}
+
+.fignode-text-display::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.fignode-text-display::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 3px;
+}
+
+.fignode-text-display::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
+}
+
+.fignode-text-display::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.fignode-text-display::selection {
+  background: rgba(59, 130, 246, 0.5);
+}
+
+.fignode-text-display:empty::before {
+  content: attr(data-placeholder);
+  color: rgba(156, 163, 175, 0.6);
+}

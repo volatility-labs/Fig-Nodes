@@ -317,7 +317,8 @@ export interface ParamMeta {
  * node outputs are visualized.
  */
 export type OutputDisplayType =
-  | 'text-display'      // Scrollable text with formatting, copy, streaming
+  | 'text-display'      // Scrollable text with formatting, copy, streaming (canvas-based)
+  | 'text-display-dom'  // DOM-based text display with native selection/copy
   | 'image-gallery'     // Grid of images with aspect ratio preservation
   | 'image-viewer'      // Zoomable/pannable single or multi-image display
   | 'chart-preview'     // Mini candlestick/line chart with modal

@@ -91,12 +91,11 @@ export class Logging extends Base {
     resizable: true,
     displayResults: false,
     outputDisplay: {
-      type: 'text-display',
+      type: 'text-display-dom',
       bind: 'output',
       options: {
         placeholder: 'Logs appear here...',
         scrollable: true,
-        copyButton: true,
         streaming: true,
         formats: ['auto', 'json', 'plain', 'markdown'],
       },

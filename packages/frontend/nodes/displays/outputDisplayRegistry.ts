@@ -3,6 +3,7 @@ import type { OutputDisplayRenderer } from './OutputDisplayRenderer';
 
 // Import renderer implementations
 import { TextDisplayRenderer } from './renderers/TextDisplayRenderer';
+import { DOMTextDisplayRenderer } from './renderers/DOMTextDisplayRenderer';
 import { ImageGalleryRenderer } from './renderers/ImageGalleryRenderer';
 import { ImageViewerRenderer } from './renderers/ImageViewerRenderer';
 import { ChartPreviewRenderer } from './renderers/ChartPreviewRenderer';
@@ -19,6 +20,7 @@ type OutputDisplayRendererFactory = () => OutputDisplayRenderer;
  */
 const registry = new Map<OutputDisplayType, OutputDisplayRendererFactory>([
   ['text-display', () => new TextDisplayRenderer()],
+  ['text-display-dom', () => new DOMTextDisplayRenderer()],
   ['image-gallery', () => new ImageGalleryRenderer()],
   ['image-viewer', () => new ImageViewerRenderer()],
   ['chart-preview', () => new ChartPreviewRenderer()],
