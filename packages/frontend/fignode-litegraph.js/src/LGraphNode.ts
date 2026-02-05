@@ -1853,6 +1853,20 @@ export class LGraphNode implements NodeLike, Positionable, IPinnable, IColorable
       options: {},
     }
 
+    // If getMinHeight/getMaxHeight are provided, create computeLayoutSize
+    // so the layout system can properly allocate space for this DOM widget
+    if (options?.getMinHeight || options?.getMaxHeight) {
+      const minHeight = options.getMinHeight?.() ?? LiteGraph.NODE_WIDGET_HEIGHT
+      const maxHeight = options.getMaxHeight?.()
+      widget.computeLayoutSize = function(_node: LGraphNode) {
+        return {
+          minHeight,
+          maxHeight,
+          minWidth: 100,
+        }
+      }
+    }
+
     this.widgets ||= []
     this.widgets.push(widget)
     this.expandToFitContent()

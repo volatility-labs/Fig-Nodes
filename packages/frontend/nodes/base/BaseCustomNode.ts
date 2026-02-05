@@ -362,6 +362,23 @@ export default class BaseCustomNode extends LGraphNode {
         textarea.spellcheck = opts?.spellcheck ?? false;
         textarea.placeholder = opts?.placeholder ?? '';
 
+        // Apply inline styles to ensure dark theme (fallback if CSS not loaded)
+        // Note: width/height are set dynamically by positionDOMWidget
+        Object.assign(textarea.style, {
+            position: 'absolute',
+            background: 'rgba(0, 0, 0, 0.5)',
+            border: '1px solid #666',
+            borderRadius: '4px',
+            color: '#ddd',
+            colorScheme: 'dark',
+            fontFamily: 'monospace',
+            fontSize: '13px',
+            padding: '8px',
+            resize: 'none',
+            outline: 'none',
+            boxSizing: 'border-box',
+        });
+
         // Add read-only support
         const isReadOnly = opts?.readonly ?? false;
         if (isReadOnly) {
@@ -407,25 +424,17 @@ export default class BaseCustomNode extends LGraphNode {
         textarea.addEventListener('keydown', (e) => e.stopPropagation());
         textarea.addEventListener('wheel', (e) => e.stopPropagation());
 
-        // Calculate widget height based on node size and title
-        const titleHeight = LiteGraph.NODE_TITLE_HEIGHT;
-        const padding = 8;
-        const widgetHeight = Math.max(50, this.size[1] - titleHeight - padding * 2);
-
         // Add widget via litegraph API
+        // The layout system (LGraphNode.#arrangeWidgets) will handle positioning and sizing
+        // by using computeLayoutSize which is created from getMinHeight/getMaxHeight
         const domWidget = this.addDOMWidget(config.id, 'textarea', textarea, {
             hideOnZoom: opts?.hideOnZoom ?? true,
             zoomThreshold: opts?.zoomThreshold,
             getValue: () => textarea.value,
             setValue: (v: unknown) => { textarea.value = String(v ?? ''); },
             getMinHeight: () => 50,
-            getMaxHeight: () => widgetHeight,
+            // No maxHeight - let the widget grow to fill all available space in the node
         });
-
-        // Store computed height for positioning
-        domWidget.computedHeight = widgetHeight;
-        // Position after title bar
-        domWidget.y = titleHeight + padding;
 
         // Store reference for cleanup
         this.domWidgetElements.set(config.id, textarea);
@@ -796,10 +805,55 @@ export default class BaseCustomNode extends LGraphNode {
 
     onConnectionsChange() { }
 
+    /**
+     * Called when node is resized. Updates DOM widget sizes to match.
+     */
+    onResize(size: [number, number]) {
+        this.updateDOMWidgetSizes(size);
+    }
+
+    /**
+     * Update DOM widget sizes based on current node size.
+     * The layout system (LGraphNode.arrange -> #arrangeWidgets) handles actual sizing
+     * via computeLayoutSize. We just need to trigger a redraw.
+     */
+    protected updateDOMWidgetSizes(_size: [number, number]): void {
+        this.setDirtyCanvas(true, true);
+    }
+
     configure(info: ISerialisedNode) {
         super.configure(info);
         this.widgetManager.syncWidgetValues();
+        this.syncDOMWidgetValues();
         this.setDirtyCanvas(true, true);
+    }
+
+    /**
+     * Sync DOM widget values from their bound properties.
+     * Called after configure() restores properties from saved data.
+     */
+    protected syncDOMWidgetValues(): void {
+        if (!this.bodyWidgets || !this.widgets) return;
+
+        for (const config of this.bodyWidgets) {
+            if (!config.bind) continue;
+
+            // Find the DOM widget by ID
+            const domWidget = this.widgets.find(
+                w => w.type === 'dom' && w.name === config.id
+            ) as IDOMWidget | undefined;
+            if (!domWidget?.domOptions?.setValue) continue;
+
+            // Get value from bound path (e.g., 'properties.value')
+            const parts = config.bind.split('.');
+            let value: unknown = this;
+            for (const p of parts) {
+                value = (value as Record<string, unknown>)?.[p];
+            }
+
+            // Update the DOM widget with the restored value
+            domWidget.domOptions.setValue(value ?? '');
+        }
     }
 
     // Delegate methods for backward compatibility

@@ -4378,13 +4378,14 @@ export class LGraphCanvas implements CustomEventDispatcher<LGraphCanvasEventMap>
     // Widget position in node-local coords
     const localY = widget.y ?? 0
     const localHeight = widget.computedHeight ?? LiteGraph.NODE_WIDGET_HEIGHT
-    const padding = 15 // Standard widget margin
+    const paddingX = 15 // Horizontal padding (left/right)
+    const paddingBottom = 12 // Extra bottom padding to avoid touching node edge
 
     // Transform to screen coords: (nodePos + localOffset + canvasOffset) * scale
-    const screenX = (node.pos[0] + padding + offset[0]) * scale
+    const screenX = (node.pos[0] + paddingX + offset[0]) * scale
     const screenY = (node.pos[1] + localY + offset[1]) * scale
-    const screenW = (node.size[0] - padding * 2) * scale
-    const screenH = localHeight * scale
+    const screenW = (node.size[0] - paddingX * 2) * scale
+    const screenH = Math.max(0, localHeight - paddingBottom) * scale
 
     // Calculate position relative to container (which has position: relative)
     const relativeX = canvasRect.left - containerRect.left + screenX
