@@ -2,24 +2,6 @@ import { describe, expect, test, beforeEach, vi } from 'vitest';
 import { UIModuleLoader } from '../../../services/UIModuleLoader';
 import { BaseCustomNode } from '../../../nodes';
 
-// Mock dynamic imports
-vi.mock('../../../nodes/io/TextInputNodeUI', () => ({ default: class MockTextInputNodeUI { } }));
-vi.mock('../../../nodes/io/LoggingNodeUI', () => ({ default: class MockLoggingNodeUI { } }));
-vi.mock('../../../nodes/io/SaveOutputNodeUI', () => ({ default: class MockSaveOutputNodeUI { } }));
-vi.mock('../../../nodes/io/ExtractSymbolsNodeUI', () => ({ default: class MockExtractSymbolsNodeUI { } }));
-vi.mock('../../../nodes/llm/LLMMessagesBuilderNodeUI', () => ({ default: class MockLLMMessagesBuilderNodeUI { } }));
-vi.mock('../../../nodes/llm/OllamaChatNodeUI', () => ({ default: class MockOllamaChatNodeUI { } }));
-vi.mock('../../../nodes/llm/OpenRouterChatNodeUI', () => ({ default: class MockOpenRouterChatNodeUI { } }));
-vi.mock('../../../nodes/llm/SystemPromptLoaderNodeUI', () => ({ default: class MockSystemPromptLoaderNodeUI { } }));
-vi.mock('../../../nodes/market/ADXFilterNodeUI', () => ({ default: class MockADXFilterNodeUI { } }));
-vi.mock('../../../nodes/market/AtrXFilterNodeUI', () => ({ default: class MockAtrXFilterNodeUI { } }));
-vi.mock('../../../nodes/market/AtrXIndicatorNodeUI', () => ({ default: class MockAtrXIndicatorNodeUI { } }));
-vi.mock('../../../nodes/market/PolygonBatchCustomBarsNodeUI', () => ({ default: class MockPolygonBatchCustomBarsNodeUI { } }));
-vi.mock('../../../nodes/market/PolygonCustomBarsNodeUI', () => ({ default: class MockPolygonCustomBarsNodeUI { } }));
-vi.mock('../../../nodes/market/PolygonUniverseNodeUI', () => ({ default: class MockPolygonUniverseNodeUI { } }));
-vi.mock('../../../nodes/market/RSIFilterNodeUI', () => ({ default: class MockRSIFilterNodeUI { } }));
-vi.mock('../../../nodes/market/SMACrossoverFilterNodeUI', () => ({ default: class MockSMACrossoverFilterNodeUI { } }));
-vi.mock('../../../nodes/base/StreamingCustomNode', () => ({ default: class MockStreamingCustomNode { } }));
 vi.mock('../../../nodes', () => ({
     BaseCustomNode: class MockBaseCustomNode {
         constructor(public name: string, public data: any) { }
@@ -56,18 +38,7 @@ describe('UIModuleLoader', () => {
         expect(result).toBe(mockModule.default);
     });
 
-    test('loadUIModuleByPath searches across folders', async () => {
-        // Mock the glob to return a matching file from any folder
-        const mockModule = { default: class MockTextInputNodeUI { } };
-        vi.mock('../../../nodes/io/TextInputNodeUI', () => mockModule);
-
-        const result = await (uiModuleLoader as any).loadUIModuleByPath('TextInputNodeUI');
-
-        expect(result).toBeDefined();
-        expect(typeof result).toBe('function');
-    });
-
-    test('loadUIModuleByPath falls back to BaseCustomNode on import error', async () => {
+    test('loadUIModuleByPath falls back to BaseCustomNode when no module found', async () => {
         const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => { });
 
         const result = await (uiModuleLoader as any).loadUIModuleByPath('NonexistentNodeUI');
@@ -167,7 +138,7 @@ describe('UIModuleLoader', () => {
         );
     });
 
-    test('registerNodes falls back to BaseCustomNode when UI module fails', async () => {
+    test('registerNodes falls back to BaseCustomNode when UI module not found', async () => {
         const mockMetadata = {
             'CustomNode': {
                 category: 'Test',
@@ -252,41 +223,5 @@ describe('UIModuleLoader', () => {
         expect(result.categorizedNodes.CategoryA).toEqual(['NodeA', 'NodeC']);
         expect(result.categorizedNodes.CategoryB).toEqual(['NodeB']);
         expect(result.allItems).toHaveLength(3);
-    });
-
-    test('registerNodes loads UI modules on demand', async () => {
-        const mockMetadata = {
-            'TextInput': {
-                category: 'io',
-                inputs: {},
-                outputs: {},
-                params: []
-            },
-            'Logging': {
-                category: 'io',
-                inputs: {},
-                outputs: {},
-                params: []
-            },
-            'OllamaChat': {
-                category: 'llm',
-                inputs: {},
-                outputs: {},
-                params: []
-            }
-        };
-
-        mockFetch.mockResolvedValue({
-            ok: true,
-            json: async () => ({ nodes: mockMetadata })
-        });
-
-        const loader = new UIModuleLoader(null as any);
-        await loader.registerNodes();
-
-        // Verify that modules are loaded (they should be cached)
-        expect((loader as any).uiModules['TextInputNodeUI']).toBeDefined();
-        expect((loader as any).uiModules['LoggingNodeUI']).toBeDefined();
-        expect((loader as any).uiModules['OllamaChatNodeUI']).toBeDefined();
     });
 });

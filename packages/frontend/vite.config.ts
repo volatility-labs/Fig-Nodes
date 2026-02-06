@@ -17,11 +17,6 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      '@components': path.resolve(__dirname, './components'),
-      '@nodes': path.resolve(__dirname, './nodes'),
-      '@utils': path.resolve(__dirname, './utils'),
-      '@tests': path.resolve(__dirname, './tests'),
-      '@': path.resolve(__dirname, './'),
       '@fig-node/litegraph': path.resolve(__dirname, './fignode-litegraph.js')
     },
   },
