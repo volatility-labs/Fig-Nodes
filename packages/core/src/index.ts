@@ -1,14 +1,20 @@
 // src/index.ts
-// Main entry point for fig-node backend
+// Main entry point for @fig-node/core
 
-// Re-export core modules
-export * from './core/index';
+// Types
+export * from './types/index';
 
-// Re-export nodes
-export * from './nodes/index';
+// Engine
+export * from './engine/index';
 
-// Re-export services
-export * from './services/index';
+// Registry
+export * from './registry/index';
+
+// Utils
+export * from './utils/index';
+
+// Base node class
+export { Base } from './nodes/base/index';
 
 // Version info
 export const VERSION = '0.1.0';

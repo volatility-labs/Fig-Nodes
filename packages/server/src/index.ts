@@ -1,5 +1,7 @@
 // @fig-node/server - Fastify-based HTTP and WebSocket server
 import 'dotenv/config';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import websocket from '@fastify/websocket';
@@ -8,6 +10,10 @@ import { graphRoutes } from './routes/graph';
 import { apiKeyRoutes } from './routes/api-keys';
 import { websocketHandler } from './websocket/handler';
 import { lifecycle } from './plugins/lifecycle';
+
+// ESM equivalent of __dirname
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Re-export types and utilities for external use
 export * from './types';
@@ -36,7 +42,10 @@ async function createServer() {
   await app.register(websocket);
 
   // Initialize fig-node core - load all nodes from directories
-  const registry = await getNodeRegistry();
+  const registry = await getNodeRegistry([
+    path.resolve(__dirname, '../../../nodes'),         // built-in node packs
+    path.resolve(__dirname, '../../../custom_nodes'),   // user extensions
+  ]);
 
   // Decorate fastify instance with registry
   app.decorate('registry', registry);

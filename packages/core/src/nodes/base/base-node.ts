@@ -13,7 +13,9 @@ import {
   ProgressCallback,
   ProgressEvent,
   ProgressState,
-} from '../../core/types';
+  type CredentialProvider,
+  CREDENTIAL_PROVIDER_KEY,
+} from '../../types';
 
 /**
  * Abstract base class for all nodes.
@@ -82,6 +84,27 @@ export abstract class Base {
    */
   get category(): NodeCategory {
     return (this.constructor as typeof Base).CATEGORY;
+  }
+
+  /**
+   * Get the credential provider injected via graphContext.
+   * Throws if no provider was injected.
+   */
+  get credentials(): CredentialProvider {
+    const provider = this.graphContext[CREDENTIAL_PROVIDER_KEY] as CredentialProvider | undefined;
+    if (!provider) {
+      throw new Error(
+        `No CredentialProvider available. Ensure GraphExecutor was constructed with a credentials parameter.`
+      );
+    }
+    return provider;
+  }
+
+  /**
+   * Check whether a credential provider is available (safe for optional keys).
+   */
+  get hasCredentialProvider(): boolean {
+    return CREDENTIAL_PROVIDER_KEY in this.graphContext;
   }
 
   /**

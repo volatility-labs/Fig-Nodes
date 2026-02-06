@@ -1,6 +1,6 @@
 // API key management routes
 import type { FastifyPluginAsync } from 'fastify';
-import { getVault } from '@fig-node/core';
+import { getCredentialStore } from '../credentials/env-credential-store';
 
 /**
  * Mask an API key for display (show first 4 and last 4 characters).
@@ -13,7 +13,7 @@ function maskKey(value: string): string {
 }
 
 export const apiKeyRoutes: FastifyPluginAsync = async (fastify) => {
-  const vault = getVault();
+  const vault = getCredentialStore();
 
   /**
    * GET /api/v1/api_keys - List all API keys (masked)

@@ -4,8 +4,9 @@ import type { WebSocket } from '@fastify/websocket';
 import {
   type NodeRegistry,
   type SerialisableGraph,
-  getVault,
+  getRequiredKeysForGraph,
 } from '@fig-node/core';
+import { getCredentialStore } from '../credentials/env-credential-store';
 import type { ExecutionQueue } from '../queue/execution-queue';
 import type { ConnectionRegistry } from '../session/connection-registry';
 import { establishSession } from '../session/connection-registry';
@@ -50,12 +51,12 @@ async function handleGraphMessage(
   const graphData = message.graph_data as SerialisableGraph;
 
   // Validate API keys
-  const vault = getVault();
-  const requiredKeys = vault.getRequiredForGraph(graphData, fastify.registry);
+  const credentialStore = getCredentialStore();
+  const requiredKeys = getRequiredKeysForGraph(graphData, fastify.registry);
   const missingKeys: string[] = [];
 
   for (const key of requiredKeys) {
-    if (!vault.get(key)) {
+    if (!credentialStore.get(key)) {
       missingKeys.push(key);
     }
   }

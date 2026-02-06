@@ -17,7 +17,7 @@
   "license": "ISC",
   "type": "module",
   "dependencies": {
-    "@fig-node/litegraph": "file:./fignode-litegraph.js",
+    "@fig-node/litegraph": "*",
     "canvas": "^2.11.2",
     "lightweight-charts": "^4.1.0"
   },

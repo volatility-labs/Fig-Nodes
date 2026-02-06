@@ -20,6 +20,7 @@ import {
   buildStoppedMessage,
 } from '../types/messages';
 import { wsSendAsync, wsSendSync, isWsConnected } from '../websocket/send-utils';
+import { getCredentialStore } from '../credentials/env-credential-store';
 
 const DISCONNECT_POLL_INTERVAL_MS = 500;
 
@@ -153,7 +154,7 @@ export async function executionWorker(
       const emittedNodeIds = new Set<number>();
 
       // Create executor
-      const executor = new GraphExecutor(job.graphData, nodeRegistry);
+      const executor = new GraphExecutor(job.graphData, nodeRegistry, getCredentialStore());
 
       // Set up callbacks
       executor.setProgressCallback(createProgressCallback(job));

@@ -1,6 +1,7 @@
 // Graph execution routes
 import type { FastifyPluginAsync } from 'fastify';
 import { GraphExecutor, type NodeRegistry, type SerialisableGraph } from '@fig-node/core';
+import { getCredentialStore } from '../credentials/env-credential-store';
 
 // Extend FastifyInstance to include our decorations
 declare module 'fastify' {
@@ -45,7 +46,7 @@ export const graphRoutes: FastifyPluginAsync = async (fastify) => {
 
     try {
       // Create executor for this graph execution
-      const executor = new GraphExecutor(graph, fastify.registry);
+      const executor = new GraphExecutor(graph, fastify.registry, getCredentialStore());
       const result = await executor.execute();
       return result;
     } catch (error) {

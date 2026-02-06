@@ -5,10 +5,12 @@
     "packages/*"
   ],
   "scripts": {
-    "postinstall": "yarn workspace @fig-node/core build",
-    "build": "yarn workspaces run build",
+    "postinstall": "yarn workspace @fig-node/litegraph build && yarn workspace @fig-node/core build",
+    "build": "yarn workspace @fig-node/litegraph build && yarn workspace @fig-node/core build && tsc -p nodes/tsconfig.json && yarn workspace @fig-node/server build",
+    "build:nodes": "tsc -p nodes/tsconfig.json",
     "predev": "lsof -ti:8000 | xargs kill -9 2>/dev/null || true",
-    "dev": "concurrently -k -n core,server,frontend -c blue,green,magenta \"yarn dev:core\" \"yarn dev:server\" \"yarn dev:frontend\"",
+    "dev": "concurrently -k -n litegraph,core,server,frontend -c yellow,blue,green,magenta \"yarn dev:litegraph\" \"yarn dev:core\" \"yarn dev:server\" \"yarn dev:frontend\"",
+    "dev:litegraph": "yarn workspace @fig-node/litegraph watch",
     "dev:core": "yarn workspace @fig-node/core dev",
     "dev:server": "yarn workspace @fig-node/server dev",
     "dev:frontend": "yarn workspace @fig-node/frontend dev",
