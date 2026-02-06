@@ -94,7 +94,7 @@ export abstract class Base {
     const provider = this.graphContext[CREDENTIAL_PROVIDER_KEY] as CredentialProvider | undefined;
     if (!provider) {
       throw new Error(
-        `No CredentialProvider available. Ensure GraphExecutor was constructed with a credentials parameter.`
+        `No CredentialProvider available. Ensure GraphDocumentExecutor was constructed with a credentials parameter.`
       );
     }
     return provider;

@@ -87,6 +87,12 @@ internal-docs/
 calculations/
 .claude/
 
+# TypeScript build artifacts in source directories
+**/src/**/*.js
+**/src/**/*.js.map
+**/src/**/*.d.ts
+**/src/**/*.d.ts.map
+
 # Extracted nodes
 custom_nodes/
 !custom_nodes/.gitkeep

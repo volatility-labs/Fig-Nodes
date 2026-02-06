@@ -68,7 +68,8 @@ export class APIKeyManager {
     async getRequiredKeysForGraph(graphData: any): Promise<string[]> {
         const meta = await this.getNodeMetadata();
         const required = new Set<string>();
-        for (const node of graphData.nodes || []) {
+        const nodes = graphData.nodes ?? {};
+        for (const node of Object.values(nodes) as any[]) {
             const nodeType = node.type;
             const nodeMeta = meta[nodeType];
             if (nodeMeta && nodeMeta.required_keys) {

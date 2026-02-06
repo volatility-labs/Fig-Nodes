@@ -29,7 +29,7 @@ export class SystemPromptLoader extends Base {
     body: [{
       type: 'textarea',
       id: 'content-display',
-      bind: 'properties.content',
+      bind: 'content',
       options: {
         placeholder: 'System prompt content...',
         hideOnZoom: true,

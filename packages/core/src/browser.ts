@@ -1,5 +1,6 @@
-// src/index.ts
-// Main entry point for @fig-node/core
+// src/browser.ts
+// Browser-safe entry point for @fig-node/core
+// Excludes registry (uses fs/path/url) and engine (server-only)
 
 // Types
 export * from './types/index';
@@ -16,17 +17,11 @@ export {
   makeEdgeEndpoint,
 } from './types/graph-document';
 
-// Engine
-export * from './engine/index';
-
-// Registry
-export * from './registry/index';
+// Tools (graph converter, validator, LLM tool types)
+export * from './tools/index';
 
 // Utils
 export * from './utils/index';
-
-// Tools (graph converter, validator, LLM tool types)
-export * from './tools/index';
 
 // Base node class
 export { Base } from './nodes/base/index';

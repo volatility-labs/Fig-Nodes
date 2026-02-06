@@ -3,8 +3,8 @@ import type { FastifyPluginAsync } from 'fastify';
 import type { WebSocket } from '@fastify/websocket';
 import {
   type NodeRegistry,
-  type SerialisableGraph,
-  getRequiredKeysForGraph,
+  type GraphDocument,
+  getRequiredKeysForDocument,
 } from '@fig-node/core';
 import { getCredentialStore } from '../credentials/env-credential-store';
 import type { ExecutionQueue } from '../queue/execution-queue';
@@ -48,11 +48,11 @@ async function handleGraphMessage(
     log: { info: (msg: unknown, ...args: unknown[]) => void };
   }
 ): Promise<ExecutionJob | null> {
-  const graphData = message.graph_data as SerialisableGraph;
+  const graphData = message.graph_data as unknown as GraphDocument;
 
   // Validate API keys
   const credentialStore = getCredentialStore();
-  const requiredKeys = getRequiredKeysForGraph(graphData, fastify.registry);
+  const requiredKeys = getRequiredKeysForDocument(graphData, fastify.registry);
   const missingKeys: string[] = [];
 
   for (const key of requiredKeys) {

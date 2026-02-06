@@ -5,7 +5,7 @@
 //
 // The corresponding Pydantic schemas are defined in server/api/websocket_schemas.py
 
-import type { SerialisableGraph } from '@fig-node/litegraph/dist/types/serialisation';
+import type { GraphDocument } from '@fig-node/core';
 import type { ExecutionResults } from './resultTypes';
 
 // ============================================================================
@@ -34,7 +34,7 @@ export enum ProgressState {
 
 export interface ClientToServerGraphMessage {
     type: 'graph';
-    graph_data: SerialisableGraph;
+    graph_data: GraphDocument;
 }
 
 export interface ClientToServerStopMessage {
@@ -81,7 +81,7 @@ export interface ServerToClientDataMessage {
 
 export interface ServerToClientProgressMessage {
     type: 'progress';
-    node_id?: number;
+    node_id?: string;
     progress?: number;
     text?: string;
     state?: ProgressState;

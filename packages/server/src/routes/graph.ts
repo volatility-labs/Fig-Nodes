@@ -1,6 +1,6 @@
 // Graph execution routes
 import type { FastifyPluginAsync } from 'fastify';
-import { GraphExecutor, type NodeRegistry, type SerialisableGraph } from '@fig-node/core';
+import { GraphDocumentExecutor, type NodeRegistry, type GraphDocument } from '@fig-node/core';
 import { getCredentialStore } from '../credentials/env-credential-store';
 
 // Extend FastifyInstance to include our decorations
@@ -34,19 +34,24 @@ function getNodeMetadata(NodeClass: any) {
     category: NodeClass.CATEGORY ?? 'base',
     requiredKeys: NodeClass.required_keys ?? [],
     description: NodeClass.__doc ?? '',
-    // NEW: Include UI configuration (ComfyUI-style)
     uiConfig: NodeClass.uiConfig ?? {},
   };
 }
 
 export const graphRoutes: FastifyPluginAsync = async (fastify) => {
-  // Execute a graph
-  fastify.post('/graphs/execute', async (request, reply) => {
-    const graph = request.body as SerialisableGraph;
+  // Execute a GraphDocument
+  fastify.post('/v1/graphs/execute', async (request, reply) => {
+    const doc = request.body as GraphDocument;
+
+    if (!doc || !doc.nodes || !doc.edges || doc.version !== 2) {
+      return reply.status(400).send({
+        error: 'Invalid GraphDocument',
+        message: 'Request body must be a valid GraphDocument with version: 2',
+      });
+    }
 
     try {
-      // Create executor for this graph execution
-      const executor = new GraphExecutor(graph, fastify.registry, getCredentialStore());
+      const executor = new GraphDocumentExecutor(doc, fastify.registry, getCredentialStore());
       const result = await executor.execute();
       return result;
     } catch (error) {
@@ -58,8 +63,7 @@ export const graphRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
-  // Get all nodes with full metadata (like ComfyUI's /object_info)
-  // This is the primary endpoint used by the frontend
+  // Get all nodes with full metadata
   fastify.get('/v1/nodes', async () => {
     const nodes: Record<string, ReturnType<typeof getNodeMetadata>> = {};
 
@@ -68,12 +72,6 @@ export const graphRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     return { nodes };
-  });
-
-  // Legacy endpoint - returns just node names
-  fastify.get('/nodes', async () => {
-    const nodeTypes = Object.keys(fastify.registry);
-    return { nodes: nodeTypes };
   });
 
   // Get individual node schema

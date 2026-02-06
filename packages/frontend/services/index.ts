@@ -1,11 +1,5 @@
 export { APIKeyManager } from './APIKeyManager';
-export { DialogManager } from './DialogManager';
-export { AppState } from './AppState';
-export { LinkModeManager } from './LinkModeManager';
-export { FileManager } from './FileManager';
-export { UIModuleLoader } from './UIModuleLoader';
-export { EditorInitializer } from './EditorInitializer';
-export { ServiceRegistry } from './ServiceRegistry';
-export { ThemeManager, THEMES, type Theme } from './ThemeManager';
-export { TypeColorRegistry, type TypeInfo } from './TypeColorRegistry';
+export { saveGraph, loadGraphFromFile, restoreFromAutosave, startAutosave } from './FileManager';
+export { ExecutionStatusService } from './ExecutionStatusService';
 export { ChartManager } from './ChartManager';
+export { setupWebSocket, stopExecution } from './WebSocketClient';

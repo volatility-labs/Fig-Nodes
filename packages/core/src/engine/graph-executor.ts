@@ -1,24 +1,30 @@
 // src/engine/graph-executor.ts
-// DAG-based graph execution engine
+// DAG-based graph execution engine using GraphDocument (string IDs, named ports)
 
 import {
   NodeCategory,
   NodeExecutionError,
-  NodeRegistry,
-  ProgressCallback,
-  ResultCallback,
-  SerialisableGraph,
-  SerialisedLink,
+  type NodeRegistry,
+  type ProgressCallback,
+  type ResultCallback,
   type CredentialProvider,
   CREDENTIAL_PROVIDER_KEY,
 } from '../types';
+import { type GraphDocument, parseEdgeEndpoint } from '../types/graph-document';
 import { Base } from '../nodes/base/base-node';
 
 // ============ Types ============
 
-type NodeId = number;
 type NodeIndex = number;
-type ExecutionResults = Record<NodeId, Record<string, unknown>>;
+
+// GraphDocument execution uses string IDs
+type StringExecutionResults = Record<string, Record<string, unknown>>;
+
+interface NamedPortLink {
+  fromNodeId: string;
+  outputPort: string;
+  inputPort: string;
+}
 
 enum GraphExecutionState {
   IDLE = 'idle',
@@ -102,34 +108,36 @@ class DiGraph {
   }
 }
 
-// ============ Graph Executor ============
+// ============ GraphDocument Executor ============
 
-export class GraphExecutor {
-  private graph: SerialisableGraph;
+/**
+ * Executor that works directly with GraphDocument (string IDs, named ports).
+ */
+export class GraphDocumentExecutor {
+  private doc: GraphDocument;
   private nodeRegistry: NodeRegistry;
   private credentials?: CredentialProvider;
-  private nodes: Map<NodeId, Base> = new Map();
-  private inputNames: Map<NodeId, string[]> = new Map();
-  private outputNames: Map<NodeId, string[]> = new Map();
+  private nodes: Map<string, Base> = new Map();
   private dag: DiGraph = new DiGraph();
-  private idToIdx: Map<NodeId, NodeIndex> = new Map();
-  private idxToId: Map<NodeIndex, NodeId> = new Map();
-  private incomingLinks: Map<NodeId, SerialisedLink[]> = new Map();
+  private strIdToIdx: Map<string, NodeIndex> = new Map();
+  private idxToStrId: Map<NodeIndex, string> = new Map();
+  private incomingLinks: Map<string, NamedPortLink[]> = new Map();
   private _state: GraphExecutionState = GraphExecutionState.IDLE;
   private _resultCallback: ResultCallback | null = null;
+  // Maps string node ID -> numeric ID assigned for Base constructor
+  private strIdToNumId: Map<string, number> = new Map();
 
-  constructor(graph: SerialisableGraph, nodeRegistry: NodeRegistry, credentials?: CredentialProvider) {
-    this.graph = graph;
+  constructor(doc: GraphDocument, nodeRegistry: NodeRegistry, credentials?: CredentialProvider) {
+    this.doc = doc;
     this.nodeRegistry = nodeRegistry;
     this.credentials = credentials;
-    this.buildGraph();
+    this.buildFromDocument();
   }
 
-  private buildGraphContext(nodeId: NodeId): Record<string, unknown> {
+  private buildGraphContext(nodeId: string): Record<string, unknown> {
     const ctx: Record<string, unknown> = {
-      graph_id: this.graph.id,
-      nodes: this.graph.nodes ?? [],
-      links: this.graph.links ?? [],
+      graph_id: this.doc.id,
+      document: this.doc,
       current_node_id: nodeId,
     };
 
@@ -140,11 +148,11 @@ export class GraphExecutor {
     return ctx;
   }
 
-  private buildGraph(): void {
-    const nodes = this.graph.nodes ?? [];
+  private buildFromDocument(): void {
+    let numericId = 1;
 
-    for (const nodeData of nodes) {
-      const nodeId = nodeData.id;
+    // Build nodes
+    for (const [nodeId, nodeData] of Object.entries(this.doc.nodes)) {
       const nodeType = nodeData.type;
 
       if (!(nodeType in this.nodeRegistry)) {
@@ -154,63 +162,52 @@ export class GraphExecutor {
       const NodeClass = this.nodeRegistry[nodeType] as new (
         id: number,
         params: Record<string, unknown>,
-        graphContext?: Record<string, unknown>
+        graphContext?: Record<string, unknown>,
       ) => Base;
 
-      this.nodes.set(
-        nodeId,
-        new NodeClass(nodeId, nodeData.properties ?? {}, this.buildGraphContext(nodeId))
-      );
-
-      const inputList = (nodeData.inputs ?? []).map((inp) => inp.name ?? '');
-      if (inputList.length > 0) {
-        this.inputNames.set(nodeId, inputList);
-      }
-
-      const outputList = (nodeData.outputs ?? []).map((out) => out.name ?? '');
-      if (outputList.length > 0) {
-        this.outputNames.set(nodeId, outputList);
-      }
+      const nid = numericId++;
+      this.strIdToNumId.set(nodeId, nid);
+      this.nodes.set(nodeId, new NodeClass(nid, nodeData.params ?? {}, this.buildGraphContext(nodeId)));
 
       const idx = this.dag.addNode();
-      this.idToIdx.set(nodeId, idx);
-      this.idxToId.set(idx, nodeId);
+      this.strIdToIdx.set(nodeId, idx);
+      this.idxToStrId.set(idx, nodeId);
     }
 
-    const links = this.graph.links ?? [];
-    for (const link of links) {
-      const fromId = link.origin_id;
-      const toId = link.target_id;
+    // Build edges from named ports
+    for (const edge of this.doc.edges) {
+      const from = parseEdgeEndpoint(edge.from);
+      const to = parseEdgeEndpoint(edge.to);
 
-      if (!this.idToIdx.has(fromId)) {
-        console.warn(
-          `Link ${link.id ?? 'unknown'} references non-existent origin node ${fromId}, skipping`
-        );
+      if (!this.strIdToIdx.has(from.nodeId)) {
+        console.warn(`Edge references non-existent source node "${from.nodeId}", skipping`);
         continue;
       }
-      if (!this.idToIdx.has(toId)) {
-        console.warn(
-          `Link ${link.id ?? 'unknown'} references non-existent target node ${toId}, skipping`
-        );
+      if (!this.strIdToIdx.has(to.nodeId)) {
+        console.warn(`Edge references non-existent target node "${to.nodeId}", skipping`);
         continue;
       }
 
-      this.dag.addEdge(this.idToIdx.get(fromId)!, this.idToIdx.get(toId)!);
+      this.dag.addEdge(this.strIdToIdx.get(from.nodeId)!, this.strIdToIdx.get(to.nodeId)!);
 
-      if (!this.incomingLinks.has(toId)) {
-        this.incomingLinks.set(toId, []);
+      if (!this.incomingLinks.has(to.nodeId)) {
+        this.incomingLinks.set(to.nodeId, []);
       }
-      this.incomingLinks.get(toId)!.push(link);
+      this.incomingLinks.get(to.nodeId)!.push({
+        fromNodeId: from.nodeId,
+        outputPort: from.portName,
+        inputPort: to.portName,
+      });
     }
 
-    // Validates the graph is a DAG (throws on cycles)
+    // Validate DAG (throws on cycles)
     this.dag.topologicalGenerations();
   }
 
   // ============ Execution ============
 
-  async execute(): Promise<ExecutionResults> {
-    const results: ExecutionResults = {};
+  async execute(): Promise<StringExecutionResults> {
+    const results: StringExecutionResults = {};
     const levels = this.dag.topologicalGenerations();
     this._state = GraphExecutionState.RUNNING;
 
@@ -218,10 +215,10 @@ export class GraphExecutor {
       for (const level of levels) {
         if (this.shouldStop()) break;
 
-        const tasks: Array<Promise<[NodeId, Record<string, unknown>]>> = [];
+        const tasks: Array<Promise<[string, Record<string, unknown>]>> = [];
 
         for (const nodeIdx of level) {
-          const nodeId = this.idxToId.get(nodeIdx)!;
+          const nodeId = this.idxToStrId.get(nodeIdx)!;
 
           // Skip isolated nodes (no connections)
           if (this.dag.inDegree(nodeIdx) === 0 && this.dag.outDegree(nodeIdx) === 0) {
@@ -260,7 +257,8 @@ export class GraphExecutor {
               const node = this.nodes.get(nodeId);
 
               if (node?.category === NodeCategory.IO && this._resultCallback) {
-                this._resultCallback(nodeId, output);
+                const numId = this.strIdToNumId.get(nodeId)!;
+                this._resultCallback(numId, output);
               }
 
               results[nodeId] = output;
@@ -278,10 +276,10 @@ export class GraphExecutor {
   }
 
   private async executeNode(
-    nodeId: NodeId,
+    nodeId: string,
     node: Base,
-    mergedInputs: Record<string, unknown>
-  ): Promise<[NodeId, Record<string, unknown>]> {
+    mergedInputs: Record<string, unknown>,
+  ): Promise<[string, Record<string, unknown>]> {
     try {
       const outputs = await node.execute(mergedInputs);
       return [nodeId, outputs];
@@ -296,40 +294,27 @@ export class GraphExecutor {
     }
   }
 
-  private getPredecessorError(nodeId: NodeId, results: ExecutionResults): string | null {
+  private getPredecessorError(nodeId: string, results: StringExecutionResults): string | null {
     for (const link of this.incomingLinks.get(nodeId) ?? []) {
-      const predResult = results[link.origin_id];
+      const predResult = results[link.fromNodeId];
       if (predResult && typeof predResult.error === 'string') {
-        return `Predecessor node ${link.origin_id} failed: ${predResult.error}`;
+        return `Predecessor node ${link.fromNodeId} failed: ${predResult.error}`;
       }
     }
     return null;
   }
 
-  private getNodeInputs(nodeId: NodeId, results: ExecutionResults): Record<string, unknown> {
+  /**
+   * Resolve inputs by named ports -- no slot index translation needed.
+   */
+  private getNodeInputs(nodeId: string, results: StringExecutionResults): Record<string, unknown> {
     const inputs: Record<string, unknown> = {};
 
     for (const link of this.incomingLinks.get(nodeId) ?? []) {
-      const predNode = this.nodes.get(link.origin_id);
-      if (!predNode) continue;
+      const predResult = results[link.fromNodeId];
+      if (!predResult || !(link.outputPort in predResult)) continue;
 
-      const predOutputs = this.outputNames.get(link.origin_id) ?? Object.keys(predNode.outputs);
-      if (link.origin_slot >= predOutputs.length) continue;
-
-      const outputKey = predOutputs[link.origin_slot];
-      if (!outputKey) continue;
-
-      const predResult = results[link.origin_id];
-      if (!predResult || !(outputKey in predResult)) continue;
-
-      const nodeInputs =
-        this.inputNames.get(nodeId) ?? Object.keys(this.nodes.get(nodeId)!.inputs);
-      if (link.target_slot < nodeInputs.length) {
-        const inputKey = nodeInputs[link.target_slot];
-        if (inputKey) {
-          inputs[inputKey] = predResult[outputKey];
-        }
-      }
+      inputs[link.inputPort] = predResult[link.outputPort];
     }
 
     return inputs;

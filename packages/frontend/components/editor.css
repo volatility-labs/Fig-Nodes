@@ -1,0 +1,654 @@
+/* editor.css - Styles for the React Flow graph editor */
+
+/* ============ App Shell ============ */
+
+#root {
+  width: 100vw;
+  height: 100vh;
+}
+
+.fig-app {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  background: #0f1419;
+  color: #d1d4dc;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+.fig-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 40px;
+  padding: 0 12px;
+  background: #161b22;
+  border-bottom: 1px solid #30363d;
+  flex-shrink: 0;
+  z-index: 10;
+}
+
+.fig-toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.fig-toolbar-center {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+}
+
+.fig-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fig-logo {
+  font-weight: 700;
+  font-size: 14px;
+  color: #58a6ff;
+}
+
+.fig-graph-name {
+  font-size: 12px;
+  color: #8b949e;
+}
+
+.fig-btn {
+  padding: 4px 12px;
+  font-size: 11px;
+  border: 1px solid #30363d;
+  border-radius: 4px;
+  background: #21262d;
+  color: #c9d1d9;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.fig-btn:hover {
+  background: #30363d;
+  border-color: #8b949e;
+}
+
+.fig-btn-execute {
+  background: #238636;
+  border-color: #2ea043;
+  color: #fff;
+}
+
+.fig-btn-execute:hover {
+  background: #2ea043;
+}
+
+.fig-btn-stop {
+  background: #b62324;
+  border-color: #da3633;
+  color: #fff;
+}
+
+.fig-btn-stop:hover {
+  background: #da3633;
+}
+
+.fig-top-progress {
+  position: relative;
+  width: 200px;
+  height: 4px;
+  background: #30363d;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.fig-top-progress-bar {
+  height: 100%;
+  background: #58a6ff;
+  transition: width 0.3s ease;
+}
+
+.fig-top-progress-text {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 10px;
+  color: #8b949e;
+  white-space: nowrap;
+}
+
+.status-indicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #484f58;
+}
+
+.status-indicator.connected {
+  background: #3fb950;
+}
+
+.polygon-status {
+  font-size: 10px;
+  color: #8b949e;
+}
+
+.fig-editor-wrapper {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+}
+
+/* ============ Loading / Error States ============ */
+
+.fig-loading,
+.fig-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100vw;
+  height: 100vh;
+  background: #0f1419;
+  color: #8b949e;
+  gap: 16px;
+}
+
+.fig-loading-text,
+.fig-error-text {
+  font-size: 16px;
+}
+
+.fig-error-text {
+  color: #f85149;
+}
+
+.fig-error button {
+  padding: 8px 16px;
+  background: #21262d;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  color: #c9d1d9;
+  cursor: pointer;
+}
+
+/* ============ Layout ============ */
+
+.fig-editor-container {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  background: #0f1419;
+  color: #d1d4dc;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+.fig-flow-container {
+  flex: 1;
+  position: relative;
+  user-select: none;
+}
+
+/* ============ Node ============ */
+
+.fig-node {
+  background: var(--node-bgcolor, #1a1a1a);
+  border: 1px solid #333;
+  border-radius: 6px;
+  min-width: 180px;
+  max-width: 350px;
+  font-size: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+/* Allow text selection only when inputs are focused */
+.fig-widget-input:focus,
+.fig-widget-textarea:focus,
+.fig-widget-number:focus {
+  user-select: text;
+}
+
+.react-flow__node.selected .fig-node {
+  border-color: #58a6ff;
+  box-shadow: 0 0 0 1px #58a6ff, 0 2px 8px rgba(88, 166, 255, 0.25);
+}
+
+.fig-node.executing {
+  border-color: #4a9eff;
+  box-shadow: 0 0 12px rgba(74, 158, 255, 0.3);
+}
+
+.fig-node.error {
+  border-color: #ef5350;
+}
+
+.fig-node-header {
+  background: var(--node-color, #2a2a2a);
+  padding: 6px 10px;
+  border-radius: 5px 5px 0 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.fig-node-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fig-node-progress {
+  font-size: 10px;
+  color: #4a9eff;
+  font-weight: normal;
+}
+
+.fig-node-error {
+  background: #3a1111;
+  color: #ef5350;
+  padding: 4px 8px;
+  font-size: 10px;
+}
+
+/* ============ Ports ============ */
+
+.fig-node-inputs,
+.fig-node-outputs {
+  padding: 2px 0;
+}
+
+.fig-node-port {
+  display: flex;
+  align-items: center;
+  padding: 3px 12px;
+  font-size: 11px;
+  position: relative;
+  min-height: 20px;
+}
+
+.fig-node-input-port {
+  justify-content: flex-start;
+  padding-left: 14px;
+}
+
+.fig-node-output-port {
+  justify-content: flex-end;
+  padding-right: 14px;
+}
+
+.fig-node-port-label {
+  color: #aaa;
+}
+
+/* Position handles on the node edge, vertically centered in their port row */
+.fig-node-port .react-flow__handle {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.fig-node-input-port .react-flow__handle {
+  left: -4px;
+}
+
+.fig-node-output-port .react-flow__handle {
+  right: -4px;
+}
+
+/* ============ Body Widgets ============ */
+
+.fig-node-body {
+  padding: 4px 8px;
+  border-top: 1px solid #333;
+}
+
+.fig-widget {
+  margin: 4px 0;
+}
+
+.fig-widget-label {
+  display: block;
+  font-size: 10px;
+  color: #888;
+  margin-bottom: 2px;
+}
+
+.fig-widget-input,
+.fig-widget-textarea {
+  width: 100%;
+  background: #111;
+  border: 1px solid #444;
+  border-radius: 3px;
+  color: #ddd;
+  padding: 4px 6px;
+  font-size: 11px;
+  font-family: 'Fira Code', 'Cascadia Code', monospace;
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+.fig-widget-select,
+.fig-widget-number {
+  width: 100%;
+  background: #111;
+  border: 1px solid #444;
+  border-radius: 3px;
+  color: #ddd;
+  padding: 4px 6px;
+  font-size: 11px;
+  font-family: 'Fira Code', 'Cascadia Code', monospace;
+  box-sizing: border-box;
+}
+
+.fig-widget-select {
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5' viewBox='0 0 8 5'%3E%3Cpath fill='%23888' d='M0 0l4 5 4-5z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 6px center;
+  padding-right: 20px;
+}
+
+.fig-widget-select option {
+  background: #1a1a1a;
+  color: #ddd;
+}
+
+.fig-widget-input:focus,
+.fig-widget-textarea:focus,
+.fig-widget-select:focus,
+.fig-widget-number:focus {
+  outline: none;
+  border-color: #4a9eff;
+}
+
+.fig-progress-bar {
+  height: 4px;
+  background: #333;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.fig-progress-fill {
+  height: 100%;
+  background: #4a9eff;
+  transition: width 0.3s ease;
+}
+
+.fig-status-text {
+  font-size: 10px;
+  color: #888;
+}
+
+/* ============ Display Area ============ */
+
+.fig-node-display {
+  border-top: 1px solid #333;
+  padding: 6px;
+  max-height: 200px;
+  overflow: auto;
+}
+
+.fig-display-text {
+  position: relative;
+}
+
+.fig-display-text.scrollable {
+  max-height: 150px;
+  overflow-y: auto;
+}
+
+.fig-display-text-content {
+  margin: 0;
+  font-size: 11px;
+  font-family: 'Fira Code', monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #ccc;
+}
+
+.fig-display-copy-btn {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  background: #333;
+  border: none;
+  border-radius: 3px;
+  padding: 2px 4px;
+  cursor: pointer;
+  font-size: 10px;
+  opacity: 0.6;
+}
+
+.fig-display-copy-btn:hover {
+  opacity: 1;
+}
+
+.fig-display-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.fig-display-image {
+  border-radius: 3px;
+  max-height: 150px;
+}
+
+.fig-display-chart {
+  cursor: pointer;
+  padding: 8px;
+  text-align: center;
+  background: #1a2a1a;
+  border-radius: 3px;
+}
+
+.fig-display-chart:hover {
+  background: #253525;
+}
+
+.fig-chart-preview-icon {
+  font-size: 24px;
+}
+
+.fig-chart-preview-label {
+  font-size: 10px;
+  color: #888;
+}
+
+.fig-display-note {
+  padding: 8px;
+  border-radius: 3px;
+}
+
+.fig-display-note-content {
+  margin: 0;
+  font-size: 11px;
+  white-space: pre-wrap;
+  color: #ddd;
+}
+
+.fig-display-empty {
+  font-size: 10px;
+  color: #666;
+  text-align: center;
+  padding: 8px;
+}
+
+.fig-display-fallback {
+  margin: 0;
+  font-size: 10px;
+  color: #888;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 100px;
+  overflow: auto;
+}
+
+/* ============ Context Menu ============ */
+
+.fig-context-menu {
+  position: fixed;
+  z-index: 1000;
+  background: #1e1e1e;
+  border: 1px solid #444;
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+  min-width: 160px;
+  max-height: 400px;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+
+.fig-context-menu-header {
+  padding: 6px 12px;
+  font-size: 11px;
+  color: #888;
+  border-bottom: 1px solid #333;
+  font-weight: 600;
+}
+
+.fig-context-menu-category-label {
+  padding: 4px 12px;
+  font-size: 10px;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.fig-context-menu-item {
+  display: block;
+  width: 100%;
+  padding: 6px 16px;
+  background: none;
+  border: none;
+  color: #ddd;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.fig-context-menu-item:hover {
+  background: #333;
+}
+
+/* ============ Node Palette ============ */
+
+.fig-node-palette {
+  width: 200px;
+  background: #161616;
+  border-right: 1px solid #333;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.fig-palette-header {
+  padding: 8px;
+  border-bottom: 1px solid #333;
+}
+
+.fig-palette-search {
+  width: 100%;
+  background: #111;
+  border: 1px solid #444;
+  border-radius: 4px;
+  color: #ddd;
+  padding: 6px 8px;
+  font-size: 12px;
+  box-sizing: border-box;
+}
+
+.fig-palette-search:focus {
+  outline: none;
+  border-color: #4a9eff;
+}
+
+.fig-palette-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+
+.fig-palette-category-label {
+  padding: 8px 12px 4px;
+  font-size: 10px;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+}
+
+.fig-palette-item {
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 12px;
+  user-select: none;
+}
+
+.fig-palette-item:hover {
+  background: #252525;
+}
+
+.fig-palette-item-name {
+  color: #ccc;
+}
+
+.fig-palette-empty {
+  padding: 16px;
+  text-align: center;
+  color: #666;
+  font-size: 12px;
+}
+
+/* ============ React Flow Overrides ============ */
+
+.react-flow__background {
+  background: #0f1419 !important;
+}
+
+.react-flow__edge-path {
+  stroke: #555;
+  stroke-width: 2;
+}
+
+.react-flow__edge.selected .react-flow__edge-path {
+  stroke: #4a9eff;
+}
+
+.react-flow__handle {
+  width: 10px;
+  height: 10px;
+  border: 2px solid #555;
+  background: #1a1a1a;
+  border-radius: 50%;
+}
+
+.react-flow__handle:hover {
+  border-color: #4a9eff;
+}
+
+.react-flow__handle.connecting {
+  border-color: #4a9eff;
+  background: #4a9eff;
+}
+
+.react-flow__controls {
+  box-shadow: none;
+}
+
+.react-flow__controls-button {
+  background: #1e1e1e;
+  border: 1px solid #333;
+  color: #ddd;
+}
+
+.react-flow__controls-button:hover {
+  background: #333;
+}

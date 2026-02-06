@@ -26,7 +26,7 @@ export class TextInput extends Base {
     body: [{
       type: 'textarea',
       id: 'text-input',
-      bind: 'properties.value',
+      bind: 'value',
       options: {
         placeholder: 'Enter text...',
         hideOnZoom: true,

@@ -1,2 +1,2 @@
 // src/engine/index.ts
-export { GraphExecutor } from './graph-executor';
+export { GraphDocumentExecutor } from './graph-executor';

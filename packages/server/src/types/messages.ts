@@ -28,7 +28,7 @@ export type ClientConnectMessage = z.infer<typeof ClientConnectMessageSchema>;
  */
 export const ClientGraphMessageSchema = z.object({
   type: z.literal('graph'),
-  graph_data: z.record(z.unknown()), // SerialisableGraph - validated separately
+  graph_data: z.record(z.unknown()), // GraphDocument - validated separately
 });
 
 export type ClientGraphMessage = z.infer<typeof ClientGraphMessageSchema>;
@@ -127,7 +127,7 @@ export type ServerDataMessage = z.infer<typeof ServerDataMessageSchema>;
  */
 export const ServerProgressMessageSchema = z.object({
   type: z.literal('progress'),
-  node_id: z.number(),
+  node_id: z.string(),
   progress: z.number().min(0).max(100).optional(),
   text: z.string().optional(),
   state: z.enum(['start', 'update', 'done', 'error', 'stopped']),
@@ -250,7 +250,7 @@ export function buildDataMessage(
 }
 
 export function buildProgressMessage(
-  nodeId: number,
+  nodeId: string,
   state: ServerProgressMessage['state'],
   jobId: number,
   options?: {

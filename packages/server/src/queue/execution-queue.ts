@@ -1,6 +1,6 @@
 // Execution queue for managing graph execution jobs
 import type { WebSocket } from '@fastify/websocket';
-import type { SerialisableGraph } from '@fig-node/core';
+import type { GraphDocument } from '@fig-node/core';
 import {
   type ExecutionJob,
   JobState,
@@ -32,7 +32,7 @@ export class ExecutionQueue {
    * Enqueue a new job for execution.
    * Starts sending queue position updates to the client.
    */
-  enqueue(websocket: WebSocket, graphData: SerialisableGraph): ExecutionJob {
+  enqueue(websocket: WebSocket, graphData: GraphDocument): ExecutionJob {
     const job = createExecutionJob(++this.jobIdCounter, websocket, graphData);
 
     this.pending.push(job);

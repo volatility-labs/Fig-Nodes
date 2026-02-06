@@ -107,6 +107,9 @@ export type BodyWidgetType =
   | 'table'
   | 'progress'
   | 'status'
+  | 'combo'
+  | 'number'
+  | 'boolean'
   | 'custom';
 
 export interface DataSource {
@@ -147,6 +150,11 @@ export interface BodyWidgetOptions {
   maxRows?: number;
   maxLines?: number;
   template?: string;
+  options?: Array<string | number | boolean>;
+  min?: number;
+  max?: number;
+  step?: number;
+  precision?: number;
 }
 
 export interface ResultWidget {

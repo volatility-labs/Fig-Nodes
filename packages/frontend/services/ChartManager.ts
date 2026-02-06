@@ -1,7 +1,6 @@
 // ChartManager - Handles chart modal rendering with Lightweight Charts
 // Follows the DialogManager pattern for modal management
 
-import { ServiceRegistry } from './ServiceRegistry';
 import { createChart, CrosshairMode, LineStyle, ColorType, IChartApi } from 'lightweight-charts';
 
 // Types matching backend ChartConfig
@@ -61,7 +60,7 @@ export class ChartManager {
     private allCharts: Record<string, ChartConfig> = {};
     private resizeObserver: ResizeObserver | null = null;
 
-    constructor(_serviceRegistry: ServiceRegistry) {
+    constructor() {
         this.setupEventListeners();
     }
 

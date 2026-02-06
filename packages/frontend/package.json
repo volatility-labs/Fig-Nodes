@@ -17,16 +17,21 @@
   "license": "ISC",
   "type": "module",
   "dependencies": {
-    "@fig-node/litegraph": "*",
-    "canvas": "^2.11.2",
-    "lightweight-charts": "^4.1.0"
+    "@xyflow/react": "^12.10.0",
+    "lightweight-charts": "^4.1.0",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "zustand": "^5.0.11"
   },
   "devDependencies": {
     "@fig-node/core": "link:../core",
     "@types/jsdom": "^27.0.0",
     "@types/node": "^20.12.12",
+    "@types/react": "^19.2.13",
+    "@types/react-dom": "^19.2.3",
     "@typescript-eslint/eslint-plugin": "^7.18.0",
     "@typescript-eslint/parser": "^7.18.0",
+    "@vitejs/plugin-react": "^5.1.3",
     "@vitest/coverage-v8": "^1.6.0",
     "eslint": "^8.57.0",
     "http-proxy-middleware": "^3.0.0",

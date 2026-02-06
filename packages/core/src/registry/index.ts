@@ -7,4 +7,4 @@ export {
   setNodeRegistry,
 } from './node-registry';
 
-export { getRequiredKeysForGraph } from './graph-keys';
+export { getRequiredKeysForDocument } from './graph-keys';

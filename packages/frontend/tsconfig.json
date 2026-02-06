@@ -8,6 +8,7 @@
             "DOM",
             "DOM.Iterable"
         ],
+        "jsx": "react-jsx",
         "types": [
             "vite/client"
         ],
@@ -25,17 +26,32 @@
         "noImplicitReturns": true,
         "noImplicitThis": true,
         "noUncheckedIndexedAccess": true,
-        "exactOptionalPropertyTypes": true,
+        "exactOptionalPropertyTypes": false,
         "baseUrl": ".",
         "paths": {
+            "@core/*": [
+                "core/*"
+            ],
+            "@graph/*": [
+                "graph/*"
+            ],
+            "@renderer/*": [
+                "renderer/*"
+            ],
+            "@services/*": [
+                "services/*"
+            ],
+            "@stores/*": [
+                "stores/*"
+            ],
+            "@ui/*": [
+                "ui/*"
+            ],
+            "@registries/*": [
+                "registries/*"
+            ],
             "@components/*": [
                 "components/*"
-            ],
-            "@nodes/*": [
-                "nodes/*"
-            ],
-            "@utils/*": [
-                "utils/*"
             ],
             "@tests/*": [
                 "tests/*"
@@ -43,13 +59,17 @@
             "@/*": [
                 "./*"
             ],
-            "@fig-node/litegraph/*": [
-                "../litegraph/*"
+            "@fig-node/core": [
+                "../core/src"
+            ],
+            "@fig-node/core/*": [
+                "../core/src/*"
             ]
         }
     },
     "include": [
         "**/*.ts",
+        "**/*.tsx",
         "**/*.d.ts"
     ]
 }

@@ -1,11 +1,13 @@
 import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
-  base: '/',  // Changed from '/static/' - serves at root
+  base: '/',
+  plugins: [react()],
   server: {
     proxy: {
       '^/(api|execute|examples)': {
@@ -17,7 +19,7 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      '@fig-node/litegraph': path.resolve(__dirname, '../litegraph')
+      '@fig-node/core': path.resolve(__dirname, '../core/src/browser.ts'),
     },
   },
   test: {
@@ -25,4 +27,4 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: './tests/setup.ts',
   },
-}); 
+});

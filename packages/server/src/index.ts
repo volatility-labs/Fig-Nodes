@@ -8,6 +8,7 @@ import websocket from '@fastify/websocket';
 import { getNodeRegistry, type NodeRegistry } from '@fig-node/core';
 import { graphRoutes } from './routes/graph';
 import { apiKeyRoutes } from './routes/api-keys';
+import { graphToolRoutes } from './routes/graph-tools';
 import { websocketHandler } from './websocket/handler';
 import { lifecycle } from './plugins/lifecycle';
 
@@ -56,6 +57,7 @@ async function createServer() {
   // Register REST routes
   await app.register(graphRoutes, { prefix: '/api' });
   await app.register(apiKeyRoutes, { prefix: '/api' });
+  await app.register(graphToolRoutes, { prefix: '/api/v1/graph' });
 
   // Register WebSocket handler (now at /execute to match legacy)
   await app.register(websocketHandler);

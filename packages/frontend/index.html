@@ -9,56 +9,7 @@
 </head>
 
 <body>
-    <div class="app-container">
-        <div id="main-content">
-            <canvas id="litegraph-canvas" tabindex="0"></canvas>
-        </div>
-        <div id="footer">
-            <div class="footer-section footer-left">
-                <div id="status-indicator" class="status-indicator"></div>
-                <div class="graph-info">
-                    <span class="graph-name" id="graph-name">default-graph.json</span>
-                </div>
-                <div id="polygon-status" class="polygon-status polygon-status-na">N/A</div>
-            </div>
-            <div class="footer-section footer-center">
-                <div class="control-group file-controls">
-                    <button id="new" class="btn-secondary">New</button>
-                    <button id="save" class="btn-secondary">Save</button>
-                    <button id="load" class="btn-secondary">Load</button>
-                </div>
-            </div>
-            <div class="footer-section footer-right">
-                <div class="control-group execution-controls">
-                    <button id="execute" class="btn-primary">Execute</button>
-                    <button id="stop" class="btn-stop" style="display: none;">Stop</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Loading Overlay -->
-    <div id="loading-overlay" style="display: none;">
-        <span>Executing...</span>
-    </div>
-
-    <!-- Node Palette Overlay -->
-    <div id="node-palette-overlay" class="node-palette-overlay" style="display: none;">
-        <div id="node-palette" class="node-palette">
-            <input id="node-palette-search" class="node-palette-search" type="text"
-                placeholder="Search nodes (type to filter, Enter to add)" autocomplete="off">
-            <div id="node-palette-list" class="node-palette-list"></div>
-        </div>
-    </div>
-
-    <input type="file" id="graph-file" accept=".json" style="display: none;">
-
-    <!-- Top Progress Bar -->
-    <div id="top-progress">
-        <div id="top-progress-bar"></div>
-        <div id="top-progress-text"></div>
-    </div>
-
+    <div id="root"></div>
     <script type="module" src="/app.ts"></script>
 </body>
 

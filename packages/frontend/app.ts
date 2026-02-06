@@ -1,12 +1,17 @@
-import { EditorInitializer } from './services/EditorInitializer';
+// app.ts — Entry point for the fig-node graph editor
+// Mounts the React Flow editor and initializes services
 
-async function createEditor(container: HTMLElement) {
-    const editorInitializer = new EditorInitializer();
-    return await editorInitializer.createEditor(container);
-}
+import React from 'react';
+import { createRoot } from 'react-dom/client';
+import { App } from './components/App';
 
 document.addEventListener('DOMContentLoaded', () => {
-    const container = document.querySelector('.app-container') as HTMLElement;
-    if (container) createEditor(container);
-    else console.error('Canvas container not found');
+  const container = document.getElementById('root');
+  if (!container) {
+    console.error('Root container not found');
+    return;
+  }
+
+  const root = createRoot(container);
+  root.render(React.createElement(App));
 });
