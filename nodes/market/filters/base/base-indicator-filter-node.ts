@@ -22,11 +22,11 @@ export abstract class BaseIndicatorFilter extends BaseFilter {
   static override CATEGORY = NodeCategory.MARKET;
 
   constructor(
-    id: number,
+    figNodeId: string,
     params: Record<string, unknown> = {},
     graphContext?: Record<string, unknown>
   ) {
-    super(id, params, graphContext ?? {});
+    super(figNodeId, params, graphContext ?? {});
     this.validateIndicatorParams();
   }
 

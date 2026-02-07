@@ -10,7 +10,7 @@
 import { validateGraphDocument } from '@fig-node/core';
 import type { GraphDocument } from '@fig-node/core';
 import { useGraphStore } from '../stores/graph-store';
-import type { NodeMetadataMap } from '../stores/flow-adapter';
+import type { NodeMetadataMap } from '../types/node-metadata';
 import { APIKeyManager } from './APIKeyManager';
 
 let lastSavedJson = '';

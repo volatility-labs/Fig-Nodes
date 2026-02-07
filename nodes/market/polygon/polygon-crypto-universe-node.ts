@@ -120,7 +120,7 @@ export class PolygonCryptoUniverse extends Base {
       return { symbols };
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
-      console.error(`PolygonCryptoUniverse node ${this.id} failed: ${errorMsg}`);
+      console.error(`PolygonCryptoUniverse node ${this.figNodeId} failed: ${errorMsg}`);
       throw error;
     }
   }

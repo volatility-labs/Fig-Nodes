@@ -1,5 +1,7 @@
-// backend/nodes/base/base-node.ts
-// Translated from: nodes/base/base_node.py
+// src/nodes/base/base-node.ts
+// Rete-native base node class
+
+import { ClassicPreset } from 'rete';
 
 import {
   DefaultParams,
@@ -17,10 +19,14 @@ import {
   CREDENTIAL_PROVIDER_KEY,
 } from '../../types';
 
+import { parsePortType, validatePortValue } from '../../utils/type-utils';
+import { getOrCreateSocket } from '../../sockets/socket-registry';
+
 /**
  * Abstract base class for all nodes.
+ * Extends ClassicPreset.Node so it can be used directly with Rete's NodeEditor and DataflowEngine.
  */
-export abstract class Base {
+export abstract class Base extends ClassicPreset.Node {
   // Class-level defaults (override in subclasses)
   static inputs: NodeInputs = {};
   static outputs: NodeOutputs = {};
@@ -33,17 +39,6 @@ export abstract class Base {
 
   /**
    * UI configuration for the node (ComfyUI-style).
-   *
-   * IMPORTANT: All subclasses MUST override this with their own uiConfig.
-   * This ensures consistent UI behavior and serves as implicit documentation.
-   * The NodeRegistry will warn if a node doesn't define its own uiConfig.
-   *
-   * @example
-   * static uiConfig: NodeUIConfig = {
-   *   size: [240, 120],
-   *   displayResults: false,
-   *   resizable: true,
-   * };
    */
   static uiConfig: NodeUIConfig = {
     size: [200, 100],
@@ -52,31 +47,64 @@ export abstract class Base {
   };
 
   // Instance properties
-  readonly id: number;
+  readonly figNodeId: string;
   params: Record<string, unknown>;
-  inputs: NodeInputs;
-  outputs: NodeOutputs;
+  nodeInputs: NodeInputs;
+  nodeOutputs: NodeOutputs;
   graphContext: Record<string, unknown>;
 
   protected _progressCallback: ProgressCallback | null = null;
   protected _isStopped = false;
 
   constructor(
-    id: number,
+    figNodeId: string,
     params: Record<string, unknown>,
     graphContext: Record<string, unknown> = {}
   ) {
-    this.id = id;
+    // Pass class name as label to Rete
+    super((new.target as typeof Base).name);
+
+    this.figNodeId = figNodeId;
 
     // Merge default params with provided params
     const defaults = (this.constructor as typeof Base).defaultParams;
     this.params = { ...defaults, ...(params ?? {}) };
 
     // Copy class-level inputs/outputs to instance
-    this.inputs = { ...(this.constructor as typeof Base).inputs };
-    this.outputs = { ...(this.constructor as typeof Base).outputs };
+    this.nodeInputs = { ...(this.constructor as typeof Base).inputs };
+    this.nodeOutputs = { ...(this.constructor as typeof Base).outputs };
 
     this.graphContext = graphContext;
+
+    // Register Rete inputs from static inputs
+    for (const [name, typeStr] of Object.entries(this.nodeInputs)) {
+      const socket = getOrCreateSocket(String(typeStr));
+      this.addInput(name, new ClassicPreset.Input(socket, name));
+    }
+
+    // Register Rete outputs from static outputs
+    for (const [name, typeStr] of Object.entries(this.nodeOutputs)) {
+      const socket = getOrCreateSocket(String(typeStr));
+      this.addOutput(name, new ClassicPreset.Output(socket, name));
+    }
+  }
+
+  /**
+   * Rete DataflowEngine entry point.
+   * Called by the engine to compute this node's outputs from its inputs.
+   */
+  async data(inputs: Record<string, unknown[]>): Promise<Record<string, unknown>> {
+    // Flatten: Rete passes arrays (one per connection), take first value
+    const flat: Record<string, unknown> = {};
+    for (const [key, values] of Object.entries(inputs)) {
+      flat[key] = Array.isArray(values) && values.length > 0 ? values[0] : values;
+    }
+    // Merge params as defaults for unconnected inputs
+    const merged = { ...this.params };
+    for (const [k, v] of Object.entries(flat)) {
+      merged[k] = v;
+    }
+    return this.execute(merged);
   }
 
   /**
@@ -88,7 +116,6 @@ export abstract class Base {
 
   /**
    * Get the credential provider injected via graphContext.
-   * Throws if no provider was injected.
    */
   get credentials(): CredentialProvider {
     const provider = this.graphContext[CREDENTIAL_PROVIDER_KEY] as CredentialProvider | undefined;
@@ -101,7 +128,7 @@ export abstract class Base {
   }
 
   /**
-   * Check whether a credential provider is available (safe for optional keys).
+   * Check whether a credential provider is available.
    */
   get hasCredentialProvider(): boolean {
     return CREDENTIAL_PROVIDER_KEY in this.graphContext;
@@ -116,19 +143,34 @@ export abstract class Base {
     }
     if (typeof tp === 'string') {
       const lower = tp.toLowerCase();
-      // 'any' type accepts all values including null/undefined
       return lower === 'any' || lower.includes('null') || lower.includes('undefined') || lower.includes('optional');
     }
     return false;
   }
 
   /**
-   * Validate that required inputs are present.
+   * Validate that required inputs are present and type-check values against
+   * declared port types.
    */
   validateInputs(inputs: Record<string, unknown>): void {
-    for (const key of Object.keys(this.inputs)) {
-      if (!(key in inputs) && !this.typeAllowsNull(this.inputs[key])) {
-        throw new NodeValidationError(this.id, `Missing required input: ${key}`);
+    for (const key of Object.keys(this.nodeInputs)) {
+      const typeStr = this.nodeInputs[key];
+      const parsed = typeof typeStr === 'string' ? parsePortType(typeStr) : null;
+
+      if (!(key in inputs)) {
+        if (!this.typeAllowsNull(typeStr)) {
+          throw new NodeValidationError(this.figNodeId, `Missing required input: ${key}`);
+        }
+        continue;
+      }
+
+      if (typeof typeStr === 'string' && parsed) {
+        const result = validatePortValue(inputs[key], typeStr);
+        if (result !== true) {
+          console.warn(
+            `[Node ${this.figNodeId}] Input "${key}" type mismatch: ${result}`,
+          );
+        }
       }
     }
   }
@@ -150,7 +192,7 @@ export abstract class Base {
   }
 
   /**
-   * Emit a progress event.
+   * Emit a progress event using figNodeId (the graph document ID).
    */
   protected emitProgress(
     state: ProgressState,
@@ -163,7 +205,7 @@ export abstract class Base {
     }
 
     const event: ProgressEvent = {
-      node_id: this.id,
+      node_id: this.figNodeId,
       state,
     };
 
@@ -192,10 +234,10 @@ export abstract class Base {
    */
   forceStop(): void {
     console.debug(
-      `BaseNode: force_stop called for node ${this.id}, already stopped: ${this._isStopped}`
+      `BaseNode: force_stop called for node ${this.figNodeId}, already stopped: ${this._isStopped}`
     );
     if (this._isStopped) {
-      return; // Idempotent
+      return;
     }
     this._isStopped = true;
     this.emitProgress(ProgressState.STOPPED, 100.0, 'stopped');
@@ -226,13 +268,12 @@ export abstract class Base {
         100.0,
         `error: ${error.name}: ${error.message}`
       );
-      throw new NodeExecutionError(this.id, 'Execution failed', error);
+      throw new NodeExecutionError(this.figNodeId, 'Execution failed', error);
     }
   }
 
   /**
    * Core execution logic - implement in subclasses.
-   * Do not add try/catch here; let base handle errors.
    */
   protected abstract executeImpl(inputs: Record<string, unknown>): Promise<Record<string, unknown>>;
 }

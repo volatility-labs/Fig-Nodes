@@ -51,11 +51,11 @@ export class IndustryFilter extends BaseFilter {
   };
 
   constructor(
-    id: number,
+    figNodeId: string,
     params: Record<string, unknown> = {},
     graphContext?: Record<string, unknown>
   ) {
-    super(id, params, graphContext ?? {});
+    super(figNodeId, params, graphContext ?? {});
     const allowedIndustriesParam = this.params.allowed_industries ?? [];
     if (Array.isArray(allowedIndustriesParam)) {
       this.allowedIndustries = allowedIndustriesParam.map((ind) =>

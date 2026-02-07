@@ -225,6 +225,151 @@ export function parseTypeString(typeStr: string): Record<string, unknown> {
   return { base, subtypes: [parseTypeString(inner)] };
 }
 
+// ============ Port Type Parsing & Compatibility ============
+
+export interface ParsedPortType {
+  types: string[];
+  optional: boolean;
+}
+
+/**
+ * Normalize a type name alias to its canonical form.
+ * Maps Python-style names (returned by detectType) and common aliases to
+ * canonical TS-style names used in port type declarations.
+ */
+const TYPE_ALIASES: Record<string, string> = {
+  str: 'string',
+  int: 'number',
+  float: 'number',
+  bool: 'boolean',
+  list: 'array',
+  dict: 'object',
+};
+
+/**
+ * Domain-specific subtypes that are compatible with their base types.
+ */
+const SUBTYPE_MAP: Record<string, string> = {
+  Score: 'number',
+  Exchange: 'string',
+  AssetSymbolList: 'array',
+  LLMChatMessageList: 'array',
+  LLMToolSpecList: 'array',
+  LLMToolHistory: 'array',
+  LLMThinkingHistory: 'array',
+  IndicatorResultList: 'array',
+  OHLCVBundle: 'object',
+  IndicatorValue: 'object',
+  IndicatorResult: 'object',
+  LLMChatMessage: 'object',
+  LLMToolSpec: 'object',
+  LLMChatMetrics: 'object',
+  LLMToolHistoryItem: 'object',
+  LLMThinkingHistoryItem: 'object',
+};
+
+function normalizeTypeName(t: string): string {
+  const trimmed = t.trim();
+  return TYPE_ALIASES[trimmed] ?? trimmed;
+}
+
+/**
+ * Parse a comma-separated port type string.
+ * E.g. `"string,LLMChatMessage,optional"` → `{ types: ['string', 'LLMChatMessage'], optional: true }`
+ */
+export function parsePortType(typeStr: string): ParsedPortType {
+  const parts = typeStr.split(',').map((s) => s.trim()).filter(Boolean);
+  const optional = parts.includes('optional');
+  const types = parts.filter((p) => p !== 'optional');
+  return { types, optional };
+}
+
+/**
+ * Check whether a single output type is compatible with a single input type.
+ * After normalization, checks for exact match, then subtype relationships.
+ */
+function isSingleTypeCompatible(outputType: string, inputType: string): boolean {
+  const normOut = normalizeTypeName(outputType);
+  const normIn = normalizeTypeName(inputType);
+
+  // Exact match after normalization
+  if (normOut === normIn) return true;
+
+  // Output is a subtype of the input's base type
+  const outBase = SUBTYPE_MAP[outputType];
+  if (outBase && normalizeTypeName(outBase) === normIn) return true;
+
+  // Input is a subtype — allow if normalized bases match
+  const inBase = SUBTYPE_MAP[inputType];
+  if (inBase && normalizeTypeName(inBase) === normOut) return true;
+
+  // Both are subtypes of the same base
+  if (outBase && inBase && normalizeTypeName(outBase) === normalizeTypeName(inBase)) return true;
+
+  return false;
+}
+
+/**
+ * Check whether an output port type is compatible with an input port type.
+ * Both are comma-separated strings (e.g. `"string"`, `"string,LLMChatMessage,optional"`).
+ *
+ * Rules:
+ * - `"any"` on either side → always compatible
+ * - Each output type must match at least one input union member
+ * - `"optional"` is ignored (it's a presence-only concern)
+ */
+export function areTypesCompatible(outputTypeStr: string, inputTypeStr: string): boolean {
+  const output = parsePortType(outputTypeStr);
+  const input = parsePortType(inputTypeStr);
+
+  // "any" on either side → always compatible
+  if (output.types.some((t) => normalizeTypeName(t) === 'any')) return true;
+  if (input.types.some((t) => normalizeTypeName(t) === 'any')) return true;
+
+  // Every output type must match at least one input type
+  for (const outType of output.types) {
+    let matched = false;
+    for (const inType of input.types) {
+      if (isSingleTypeCompatible(outType, inType)) {
+        matched = true;
+        break;
+      }
+    }
+    if (!matched) return false;
+  }
+
+  return true;
+}
+
+/**
+ * Validate a runtime value against a port type string.
+ * Returns `true` if valid, or a descriptive error string.
+ */
+export function validatePortValue(value: unknown, portTypeStr: string): true | string {
+  const parsed = parsePortType(portTypeStr);
+
+  // Optional port with null/undefined → valid
+  if (parsed.optional && (value === null || value === undefined)) {
+    return true;
+  }
+
+  // "any" type → always valid
+  if (parsed.types.some((t) => normalizeTypeName(t) === 'any')) {
+    return true;
+  }
+
+  const detectedType = detectType(value);
+
+  // Check if the detected type is compatible with any declared type
+  for (const declaredType of parsed.types) {
+    if (isSingleTypeCompatible(detectedType, declaredType)) {
+      return true;
+    }
+  }
+
+  return `Expected ${parsed.types.join(' | ')}, got ${detectedType}`;
+}
+
 /**
  * Split generic arguments handling nested generics.
  */

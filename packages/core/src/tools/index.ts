@@ -1,5 +1,5 @@
 // src/tools/index.ts
-export { validateGraphDocument, hasCycles, type ValidationError, type ValidationResult } from './graph-validator';
+export { validateGraphDocument, validateEdgeTypes, hasCycles, type ValidationError, type ValidationResult } from './graph-validator';
 export {
   GRAPH_TOOLS,
   applyAddNode,

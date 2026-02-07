@@ -28,6 +28,9 @@ export * from './utils/index';
 // Tools (graph converter, validator, LLM tool types)
 export * from './tools/index';
 
+// Sockets
+export * from './sockets/index';
+
 // Base node class
 export { Base } from './nodes/base/index';
 

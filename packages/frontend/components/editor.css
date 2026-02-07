@@ -1,4 +1,4 @@
-/* editor.css - Styles for the React Flow graph editor */
+/* editor.css - Styles for the Rete.js graph editor */
 
 /* ============ App Shell ============ */
 
@@ -188,7 +188,6 @@
 .fig-flow-container {
   flex: 1;
   position: relative;
-  user-select: none;
 }
 
 /* ============ Node ============ */
@@ -201,16 +200,10 @@
   max-width: 350px;
   font-size: 12px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  user-select: none;
 }
 
-/* Allow text selection only when inputs are focused */
-.fig-widget-input:focus,
-.fig-widget-textarea:focus,
-.fig-widget-number:focus {
-  user-select: text;
-}
-
-.react-flow__node.selected .fig-node {
+.fig-node.selected {
   border-color: #58a6ff;
   box-shadow: 0 0 0 1px #58a6ff, 0 2px 8px rgba(88, 166, 255, 0.25);
 }
@@ -286,19 +279,21 @@
   color: #aaa;
 }
 
-/* Position handles on the node edge, vertically centered in their port row */
-.fig-node-port .react-flow__handle {
+/* Rete socket positioning */
+.fig-node-input-port .fig-rete-socket,
+.fig-node-input-port [data-testid="socket"] {
   position: absolute;
+  left: -4px;
   top: 50%;
   transform: translateY(-50%);
 }
 
-.fig-node-input-port .react-flow__handle {
-  left: -4px;
-}
-
-.fig-node-output-port .react-flow__handle {
+.fig-node-output-port .fig-rete-socket,
+.fig-node-output-port [data-testid="socket"] {
+  position: absolute;
   right: -4px;
+  top: 50%;
+  transform: translateY(-50%);
 }
 
 /* ============ Body Widgets ============ */
@@ -607,48 +602,55 @@
   font-size: 12px;
 }
 
-/* ============ React Flow Overrides ============ */
+/* ============ Rete.js Overrides ============ */
 
-.react-flow__background {
+/* Rete area background */
+.rete-area {
   background: #0f1419 !important;
 }
 
-.react-flow__edge-path {
-  stroke: #555;
-  stroke-width: 2;
-}
-
-.react-flow__edge.selected .react-flow__edge-path {
-  stroke: #4a9eff;
-}
-
-.react-flow__handle {
+/* Rete sockets */
+.fig-rete-socket,
+[data-testid="socket"] {
   width: 10px;
   height: 10px;
   border: 2px solid #555;
   background: #1a1a1a;
   border-radius: 50%;
+  cursor: crosshair;
 }
 
-.react-flow__handle:hover {
+.fig-rete-socket:hover,
+[data-testid="socket"]:hover {
   border-color: #4a9eff;
 }
 
-.react-flow__handle.connecting {
-  border-color: #4a9eff;
-  background: #4a9eff;
+/* Rete connections */
+.rete-connection path {
+  stroke: #555;
+  stroke-width: 2;
+  fill: none;
 }
 
-.react-flow__controls {
-  box-shadow: none;
+.rete-connection.selected path {
+  stroke: #4a9eff;
 }
 
-.react-flow__controls-button {
-  background: #1e1e1e;
+/* Rete minimap */
+.rete-minimap {
+  position: absolute;
+  bottom: 12px;
+  right: 12px;
+  background: #1a1a1a;
   border: 1px solid #333;
-  color: #ddd;
+  border-radius: 4px;
+  overflow: hidden;
 }
 
-.react-flow__controls-button:hover {
+.rete-minimap-viewport {
+  border: 1px solid #4a9eff;
+}
+
+.rete-minimap-node {
   background: #333;
 }

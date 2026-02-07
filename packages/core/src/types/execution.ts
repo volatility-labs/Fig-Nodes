@@ -7,13 +7,13 @@ import { ExecutionOutcome, ProgressState, AssetSymbol } from './domain';
 
 export interface ExecutionResult {
   outcome: ExecutionOutcome;
-  results: Record<number, Record<string, unknown>> | null;
+  results: Record<string, Record<string, unknown>> | null;
   error: string | null;
   cancelledBy: string | null;
 }
 
 export const ExecutionResultFactory = {
-  success(results: Record<number, Record<string, unknown>>): ExecutionResult {
+  success(results: Record<string, Record<string, unknown>>): ExecutionResult {
     return { outcome: ExecutionOutcome.SUCCESS, results, error: null, cancelledBy: null };
   },
   cancelled(by = 'user'): ExecutionResult {
@@ -33,7 +33,7 @@ export const ExecutionResultFactory = {
 // ============ Progress Types ============
 
 export interface ProgressEvent {
-  node_id: number;
+  node_id: string;
   state: ProgressState;
   progress?: number;
   text?: string;
@@ -41,12 +41,12 @@ export interface ProgressEvent {
 }
 
 export type ProgressCallback = (event: ProgressEvent) => void;
-export type ResultCallback = (nodeId: number, output: Record<string, unknown>) => void;
+export type ResultCallback = (nodeId: string, output: Record<string, unknown>) => void;
 
 // ============ Node Registry Type ============
 
 export type NodeConstructor = new (
-  id: number,
+  figNodeId: string,
   params: Record<string, unknown>,
   graphContext?: Record<string, unknown>
 ) => unknown;

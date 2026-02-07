@@ -9,7 +9,7 @@ export class NodeError extends Error {
 }
 
 export class NodeValidationError extends NodeError {
-  constructor(nodeId: number, message: string) {
+  constructor(nodeId: string, message: string) {
     super(`Node ${nodeId}: ${message}`);
     this.name = 'NodeValidationError';
   }
@@ -18,7 +18,7 @@ export class NodeValidationError extends NodeError {
 export class NodeExecutionError extends NodeError {
   originalError?: Error;
 
-  constructor(nodeId: number, message: string, originalError?: Error) {
+  constructor(nodeId: string, message: string, originalError?: Error) {
     super(`Node ${nodeId}: ${message}`);
     this.name = 'NodeExecutionError';
     this.originalError = originalError;

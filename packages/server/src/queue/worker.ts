@@ -67,17 +67,13 @@ async function monitorCancel(
  */
 function createProgressCallback(
   job: ExecutionJob,
-  numIdToStringId: Map<number, string>,
 ): (event: ProgressEvent) => void {
   return (event: ProgressEvent) => {
     if (!isWsConnected(job.websocket)) {
       return;
     }
 
-    // Map numeric node_id to string ID from GraphDocument
-    const stringId = numIdToStringId.get(event.node_id) ?? String(event.node_id);
-
-    const message = buildProgressMessage(stringId, event.state, job.id, {
+    const message = buildProgressMessage(event.node_id, event.state, job.id, {
       progress: event.progress,
       text: event.text,
       meta: event.meta,
@@ -90,28 +86,19 @@ function createProgressCallback(
 /**
  * Create result callback for immediate emission of IO node results.
  * IO category nodes emit their results immediately rather than waiting for batch completion.
- *
- * Note: GraphDocumentExecutor still passes numeric IDs to the ResultCallback
- * (because Base node constructor requires numeric IDs). We map them back to string IDs
- * using the strIdToNumId mapping built during execution.
  */
 function createResultCallback(
   job: ExecutionJob,
   nodeRegistry: NodeRegistry,
   emittedNodeIds: Set<string>,
-  numIdToStringId: Map<number, string>,
-): (nodeId: number, output: Record<string, unknown>) => void {
-  return (nodeId: number, output: Record<string, unknown>) => {
+): (nodeId: string, output: Record<string, unknown>) => void {
+  return (nodeId: string, output: Record<string, unknown>) => {
     if (!isWsConnected(job.websocket)) {
       return;
     }
 
-    // Map numeric ID back to string ID
-    const stringId = numIdToStringId.get(nodeId);
-    if (!stringId) return;
-
     // Look up node type from the document
-    const node = job.graphData.nodes[stringId];
+    const node = job.graphData.nodes[nodeId];
     if (!node) return;
 
     const NodeClass = nodeRegistry[node.type] as { CATEGORY?: string } | undefined;
@@ -119,10 +106,10 @@ function createResultCallback(
 
     // Only emit immediately for IO nodes
     if (category === NodeCategory.IO || category === 'io') {
-      emittedNodeIds.add(stringId);
+      emittedNodeIds.add(nodeId);
 
       const serializedOutput = serializeForApi(output) as Record<string, unknown>;
-      const message = buildDataMessage({ [stringId]: serializedOutput }, job.id);
+      const message = buildDataMessage({ [nodeId]: serializedOutput }, job.id);
       wsSendAsync(job.websocket, message);
     }
   };
@@ -172,17 +159,9 @@ export async function executionWorker(
       // Create executor from GraphDocument directly
       const executor = new GraphDocumentExecutor(job.graphData, nodeRegistry, getCredentialStore());
 
-      // Build numeric→string ID map for the result callback
-      // (ResultCallback receives numeric IDs from Base node instances)
-      const numIdToStringId = new Map<number, string>();
-      let nid = 1;
-      for (const nodeId of Object.keys(job.graphData.nodes)) {
-        numIdToStringId.set(nid++, nodeId);
-      }
-
       // Set up callbacks
-      executor.setProgressCallback(createProgressCallback(job, numIdToStringId));
-      executor.setResultCallback(createResultCallback(job, nodeRegistry, emittedNodeIds, numIdToStringId));
+      executor.setProgressCallback(createProgressCallback(job));
+      executor.setResultCallback(createResultCallback(job, nodeRegistry, emittedNodeIds));
 
       // Start execution
       const executionPromise = executor.execute();

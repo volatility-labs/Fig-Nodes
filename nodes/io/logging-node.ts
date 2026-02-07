@@ -94,16 +94,16 @@ export class Logging extends Base {
   private lastContentLength = 0;
 
   constructor(
-    id: number,
+    figNodeId: string,
     params: Record<string, unknown>,
     graphContext: Record<string, unknown> = {}
   ) {
-    super(id, params, graphContext);
+    super(figNodeId, params, graphContext);
   }
 
   private safePrint(message: string): void {
     try {
-      console.log(`LoggingNode ${this.id}: ${message.trimEnd()}`);
+      console.log(`LoggingNode ${this.figNodeId}: ${message.trimEnd()}`);
     } catch {
       // Fallback if logging fails
       console.log(message.trimEnd());

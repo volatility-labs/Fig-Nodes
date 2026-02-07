@@ -4,6 +4,7 @@
 import type { NodeRegistry } from '../types';
 import type { GraphDocument, GraphEdge } from '../types/graph-document';
 import { parseEdgeEndpoint } from '../types/graph-document';
+import { areTypesCompatible } from '../utils/type-utils';
 
 export interface ValidationError {
   path: string;
@@ -136,7 +137,60 @@ export function validateGraphDocument(
     }
   }
 
+  // Edge type compatibility checks (when registry is available)
+  if (nodeRegistry) {
+    const edgeTypeErrors = validateEdgeTypes(d as unknown as GraphDocument, nodeRegistry);
+    errors.push(...edgeTypeErrors);
+  }
+
   return { valid: errors.length === 0, errors };
+}
+
+/**
+ * Validate that each edge connects type-compatible ports.
+ * Looks up the static `inputs`/`outputs` on node classes from the registry.
+ */
+export function validateEdgeTypes(
+  doc: GraphDocument,
+  nodeRegistry: NodeRegistry,
+): ValidationError[] {
+  const errors: ValidationError[] = [];
+
+  for (let i = 0; i < doc.edges.length; i++) {
+    const edge = doc.edges[i]!;
+    let from, to;
+    try {
+      from = parseEdgeEndpoint(edge.from);
+      to = parseEdgeEndpoint(edge.to);
+    } catch {
+      continue; // Malformed edges are caught by structural validation
+    }
+
+    const sourceNode = doc.nodes[from.nodeId];
+    const targetNode = doc.nodes[to.nodeId];
+    if (!sourceNode || !targetNode) continue;
+
+    const SourceClass = nodeRegistry[sourceNode.type] as
+      | (Function & { outputs?: Record<string, unknown> })
+      | undefined;
+    const TargetClass = nodeRegistry[targetNode.type] as
+      | (Function & { inputs?: Record<string, unknown> })
+      | undefined;
+    if (!SourceClass || !TargetClass) continue;
+
+    const outputTypeStr = SourceClass.outputs?.[from.portName];
+    const inputTypeStr = TargetClass.inputs?.[to.portName];
+    if (outputTypeStr == null || inputTypeStr == null) continue;
+
+    if (!areTypesCompatible(String(outputTypeStr), String(inputTypeStr))) {
+      errors.push({
+        path: `edges[${i}]`,
+        message: `Type mismatch: output "${from.portName}" (${outputTypeStr}) → input "${to.portName}" (${inputTypeStr})`,
+      });
+    }
+  }
+
+  return errors;
 }
 
 /**

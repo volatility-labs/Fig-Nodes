@@ -123,11 +123,11 @@ export class OpenRouterVisionChat extends Base {
   private abortController: AbortController | null = null;
 
   constructor(
-    id: number,
+    figNodeId: string,
     params: Record<string, unknown>,
     graphContext: Record<string, unknown> = {}
   ) {
-    super(id, params, graphContext);
+    super(figNodeId, params, graphContext);
   }
 
   forceStop(): void {

@@ -2,7 +2,7 @@
 // Right-click context menu for the graph canvas and nodes
 
 import { useCallback, useEffect, useRef } from 'react';
-import type { NodeMetadataMap } from '../stores/flow-adapter';
+import type { NodeMetadataMap } from '../types/node-metadata';
 import type { GraphNode } from '@fig-node/core';
 import { useGraphStore } from '../stores/graph-store';
 

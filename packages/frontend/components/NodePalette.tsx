@@ -2,7 +2,7 @@
 // Searchable sidebar listing available node types
 
 import React, { useState, useMemo, useCallback } from 'react';
-import type { NodeMetadataMap } from '../stores/flow-adapter';
+import type { NodeMetadataMap } from '../types/node-metadata';
 import type { GraphNode } from '@fig-node/core';
 import { useGraphStore } from '../stores/graph-store';
 

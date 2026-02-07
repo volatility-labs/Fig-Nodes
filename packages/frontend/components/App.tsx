@@ -2,8 +2,8 @@
 // Root application component — fetches node metadata, initializes services, renders editor
 
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { Editor } from './Editor';
-import type { NodeMetadataMap } from '../stores/flow-adapter';
+import { ReteEditor } from '../rete/ReteEditor';
+import type { NodeMetadataMap } from '../types/node-metadata';
 import { useGraphStore } from '../stores/graph-store';
 import { setupWebSocket, stopExecution } from '../services/WebSocketClient';
 import { saveGraph, loadGraphFromFile, restoreFromAutosave, startAutosave } from '../services/FileManager';
@@ -137,7 +137,7 @@ export function App() {
 
       {/* Editor */}
       <div className="fig-editor-wrapper">
-        <Editor nodeMetadata={nodeMetadata} />
+        <ReteEditor nodeMetadata={nodeMetadata} />
       </div>
     </div>
   );

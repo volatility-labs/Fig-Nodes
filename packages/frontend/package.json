@@ -17,10 +17,16 @@
   "license": "ISC",
   "type": "module",
   "dependencies": {
-    "@xyflow/react": "^12.10.0",
     "lightweight-charts": "^4.1.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
+    "rete": "^2.0.3",
+    "rete-area-plugin": "^2.0.3",
+    "rete-connection-plugin": "^2.0.2",
+    "rete-minimap-plugin": "^2.0.1",
+    "rete-react-plugin": "^2.0.5",
+    "rete-render-utils": "^2.0.2",
+    "styled-components": "^6.1.8",
     "zustand": "^5.0.11"
   },
   "devDependencies": {
