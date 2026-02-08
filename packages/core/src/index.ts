@@ -1,5 +1,5 @@
 // src/index.ts
-// Main entry point for @fig-node/core (browser-safe)
+// Main entry point for @sosa/core (browser-safe)
 // Node-only exports (node registry, dynamic discovery) live in ./node-runtime.ts
 
 // Types (execution, credentials, ports, node-ui, errors)

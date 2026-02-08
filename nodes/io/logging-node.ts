@@ -1,4 +1,4 @@
-import { Node, NodeCategory, port, type NodeDefinition } from '@fig-node/core';
+import { Node, NodeCategory, port, type NodeDefinition } from '@sosa/core';
 import { AssetSymbol, type OHLCVBar } from '../market/types';
 import type { LLMChatMessage } from '../llm/types';
 

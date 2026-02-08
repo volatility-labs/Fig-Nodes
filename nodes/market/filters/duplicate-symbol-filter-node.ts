@@ -1,8 +1,8 @@
 // src/nodes/core/market/filters/duplicate-symbol-filter-node.ts
 
 import { BaseFilter } from './base/base-filter-node';
-import { port } from '@fig-node/core';
-import type { NodeDefinition } from '@fig-node/core';
+import { port } from '@sosa/core';
+import type { NodeDefinition } from '@sosa/core';
 import { AssetSymbol, type OHLCVBar, type OHLCVBundle } from '../types';
 
 /**

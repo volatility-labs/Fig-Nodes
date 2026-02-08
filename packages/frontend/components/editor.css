@@ -1,4 +1,4 @@
-/* editor.css - All styles for the fig-node frontend */
+/* editor.css - All styles for the sosa frontend */
 
 /* ============ Global Reset ============ */
 
@@ -265,7 +265,7 @@ body {
 
 /* ============ Node ============ */
 
-.fig-node {
+.sosa {
   background: var(--node-bgcolor, #1a1a1a);
   border: 1px solid #333;
   border-radius: 6px;
@@ -276,21 +276,21 @@ body {
   user-select: none;
 }
 
-.fig-node.selected {
+.sosa.selected {
   border-color: #58a6ff;
   box-shadow: 0 0 0 1px #58a6ff, 0 2px 8px rgba(88, 166, 255, 0.25);
 }
 
-.fig-node.executing {
+.sosa.executing {
   border-color: #4a9eff;
   box-shadow: 0 0 12px rgba(74, 158, 255, 0.3);
 }
 
-.fig-node.error {
+.sosa.error {
   border-color: #ef5350;
 }
 
-.fig-node-header {
+.sosa-header {
   background: var(--node-color, #2a2a2a);
   padding: 6px 10px;
   border-radius: 5px 5px 0 0;
@@ -303,19 +303,19 @@ body {
   letter-spacing: 0.5px;
 }
 
-.fig-node-title {
+.sosa-title {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.fig-node-progress {
+.sosa-progress {
   font-size: 10px;
   color: #4a9eff;
   font-weight: normal;
 }
 
-.fig-node-error {
+.sosa-error {
   background: #3a1111;
   color: #ef5350;
   padding: 4px 8px;
@@ -324,12 +324,12 @@ body {
 
 /* ============ Ports ============ */
 
-.fig-node-inputs,
-.fig-node-outputs {
+.sosa-inputs,
+.sosa-outputs {
   padding: 2px 0;
 }
 
-.fig-node-port {
+.sosa-port {
   display: flex;
   align-items: center;
   padding: 3px 12px;
@@ -338,21 +338,21 @@ body {
   min-height: 20px;
 }
 
-.fig-node-input-port {
+.sosa-input-port {
   justify-content: flex-start;
   padding-left: 14px;
 }
 
-.fig-node-output-port {
+.sosa-output-port {
   justify-content: flex-end;
   padding-right: 14px;
 }
 
-.fig-node-port-label {
+.sosa-port-label {
   color: #aaa;
 }
 
-.fig-node-port-type {
+.sosa-port-type {
   margin-left: 6px;
   margin-right: 6px;
   padding: 1px 5px;
@@ -368,7 +368,7 @@ body {
 /* Socket positioning within ports.
    Use top/bottom with matching values instead of transform: translateY(-50%)
    because Rete measures positions via offsetTop which ignores CSS transforms. */
-.fig-node-input-port .input-socket {
+.sosa-input-port .input-socket {
   position: absolute;
   left: -8px;
   top: 0;
@@ -377,7 +377,7 @@ body {
   align-items: center;
 }
 
-.fig-node-output-port .output-socket {
+.sosa-output-port .output-socket {
   position: absolute;
   right: -8px;
   top: 0;
@@ -386,14 +386,14 @@ body {
   align-items: center;
 }
 
-.fig-node-input-port .fig-socket:hover,
-.fig-node-output-port .fig-socket:hover {
+.sosa-input-port .fig-socket:hover,
+.sosa-output-port .fig-socket:hover {
   transform: scale(1.3);
 }
 
 /* ============ Body Widgets ============ */
 
-.fig-node-body {
+.sosa-body {
   padding: 4px 8px;
   border-top: 1px solid #333;
 }
@@ -478,7 +478,7 @@ body {
 
 /* ============ Display Area ============ */
 
-.fig-node-display {
+.sosa-display {
   border-top: 1px solid #333;
   padding: 6px;
   max-height: 200px;
@@ -630,7 +630,7 @@ body {
 
 /* ============ Node Palette ============ */
 
-.fig-node-palette {
+.sosa-palette {
   width: 200px;
   background: #161616;
   border-right: 1px solid #333;

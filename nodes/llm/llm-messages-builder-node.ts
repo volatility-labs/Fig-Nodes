@@ -6,7 +6,7 @@ import {
   serializeForApi,
   port,
   type NodeDefinition,
-} from '@fig-node/core';
+} from '@sosa/core';
 import { validateLLMChatMessage, type LLMChatMessage } from './types';
 
 /**

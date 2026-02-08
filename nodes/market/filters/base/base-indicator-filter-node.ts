@@ -1,8 +1,8 @@
 // src/nodes/core/market/filters/base/base-indicator-filter-node.ts
 
 import { BaseFilter } from './base-filter-node';
-import { NodeCategory } from '@fig-node/core';
-import type { NodeDefinition } from '@fig-node/core';
+import { NodeCategory } from '@sosa/core';
+import type { NodeDefinition } from '@sosa/core';
 import {
   AssetSymbol,
   type OHLCVBar,

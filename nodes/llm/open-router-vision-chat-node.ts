@@ -7,7 +7,7 @@ import {
   ProgressState,
   port,
   type NodeDefinition,
-} from '@fig-node/core';
+} from '@sosa/core';
 import type { LLMChatMessage, LLMThinkingHistory } from './types';
 import type { ConfigDict } from '../market/types';
 

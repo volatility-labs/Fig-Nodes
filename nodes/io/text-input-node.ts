@@ -1,6 +1,6 @@
 // src/nodes/core/io/text-input-node.ts
 
-import { Node, port, type NodeDefinition } from '@fig-node/core';
+import { Node, port, type NodeDefinition } from '@sosa/core';
 
 /**
  * Simple node that outputs a static text value from parameters.

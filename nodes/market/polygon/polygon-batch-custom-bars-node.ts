@@ -1,6 +1,6 @@
 // src/nodes/custom/polygon/polygon-batch-custom-bars-node.ts
 
-import { Node, NodeCategory, ProgressState, port, type NodeDefinition } from '@fig-node/core';
+import { Node, NodeCategory, ProgressState, port, type NodeDefinition } from '@sosa/core';
 import { AssetSymbol, type OHLCVBar } from '../types';
 import { RateLimiter } from '../rate-limiter';
 import { fetchBars } from '../services/polygon-service';

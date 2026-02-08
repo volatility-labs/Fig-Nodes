@@ -1,7 +1,7 @@
 // src/nodes/core/market/indicators/base/base-indicator-node.ts
 
-import { Node, port } from '@fig-node/core';
-import type { NodeDefinition } from '@fig-node/core';
+import { Node, port } from '@sosa/core';
+import type { NodeDefinition } from '@sosa/core';
 import { IndicatorType, type IndicatorValue } from '../../types';
 
 /**

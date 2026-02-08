@@ -5,7 +5,7 @@
  * read executionUI from the store reactively.
  */
 
-import { ExecutionState } from '@fig-node/core';
+import { ExecutionState } from '@sosa/core';
 import { useGraphStore } from '../stores/graphStore';
 
 export type ConnectionStatus = 'connected' | 'disconnected' | 'loading' | 'executing' | 'stopping';

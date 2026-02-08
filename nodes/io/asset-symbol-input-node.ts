@@ -1,6 +1,6 @@
 // src/nodes/core/io/asset-symbol-input-node.ts
 
-import { Node, port, type NodeDefinition } from '@fig-node/core';
+import { Node, port, type NodeDefinition } from '@sosa/core';
 import { AssetClass, AssetSymbol, InstrumentType } from '../market/types';
 
 /**

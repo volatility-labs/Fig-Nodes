@@ -1,12 +1,12 @@
 // src/nodes/core/market/filters/base/base-filter-node.ts
 
-import { Node, port } from '@fig-node/core';
+import { Node, port } from '@sosa/core';
 import type {
   NodeDefinition,
   NodeInputs,
   NodeOutputs,
   NodeUIConfig,
-} from '@fig-node/core';
+} from '@sosa/core';
 import { AssetSymbol, type OHLCVBar, type OHLCVBundle } from '../../types';
 
 /**

@@ -2,7 +2,7 @@
 // Renders text/DOM output in a node display area
 
 import { useMemo } from 'react';
-import type { OutputDisplayOptions } from '@fig-node/core';
+import type { OutputDisplayOptions } from '@sosa/core';
 
 interface TextDisplayProps {
   value: Record<string, unknown>;

@@ -6,7 +6,7 @@ import {
   type ProgressEvent,
   NodeCategory,
   serializeForApi,
-} from '@fig-node/core';
+} from '@sosa/core';
 import type { ExecutionQueue } from './execution-queue.js';
 import type { ExecutionJob } from '../types/job.js';
 import { JobState } from '../types/job.js';

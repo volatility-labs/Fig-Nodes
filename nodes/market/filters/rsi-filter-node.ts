@@ -1,7 +1,7 @@
 // src/nodes/core/market/filters/rsi-filter-node.ts
 
 import { BaseIndicatorFilter } from './base/base-indicator-filter-node';
-import type { NodeDefinition } from '@fig-node/core';
+import type { NodeDefinition } from '@sosa/core';
 import { IndicatorType, createIndicatorResult, createIndicatorValue, type OHLCVBar, type IndicatorResult } from '../types';
 import { calculateRsi } from '../calculators/rsi-calculator';
 

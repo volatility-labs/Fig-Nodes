@@ -1,7 +1,7 @@
 // components/displays/ChartDisplay.tsx
 // Static chart preview — shows chart count from execution results
 
-import type { OutputDisplayOptions } from '@fig-node/core';
+import type { OutputDisplayOptions } from '@sosa/core';
 
 interface ChartDisplayProps {
   value: Record<string, unknown>;

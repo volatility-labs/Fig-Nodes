@@ -1,6 +1,6 @@
 // src/nodes/core/io/note-node.ts
 
-import { Node, NodeCategory, type NodeDefinition } from '@fig-node/core';
+import { Node, NodeCategory, type NodeDefinition } from '@sosa/core';
 
 /**
  * A visual note/annotation node for organizing and labeling groups of nodes.

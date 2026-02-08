@@ -1,4 +1,4 @@
-// app.ts — Entry point for the fig-node graph editor
+// app.ts — Entry point for the sosa graph editor
 // Mounts the React Flow editor and initializes services
 
 import React from 'react';

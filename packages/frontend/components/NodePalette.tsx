@@ -48,14 +48,14 @@ export function NodePalette({ nodeMetadata }: NodePaletteProps) {
 
   const handleDragStart = useCallback(
     (e: React.DragEvent, type: string) => {
-      e.dataTransfer.setData('application/fig-node-type', type);
+      e.dataTransfer.setData('application/sosa-type', type);
       e.dataTransfer.effectAllowed = 'move';
     },
     [],
   );
 
   return (
-    <div className="fig-node-palette">
+    <div className="sosa-palette">
       <div className="fig-palette-header">
         <input
           type="text"

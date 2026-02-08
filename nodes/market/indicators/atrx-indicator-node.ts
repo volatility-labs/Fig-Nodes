@@ -1,7 +1,7 @@
 // src/nodes/core/market/indicators/atrx-indicator-node.ts
 
 import { BaseIndicator } from './base/base-indicator-node';
-import type { NodeDefinition } from '@fig-node/core';
+import type { NodeDefinition } from '@sosa/core';
 import { IndicatorType, createIndicatorResult, createIndicatorValue, type IndicatorValue, type OHLCVBar, type OHLCVBundle } from '../types';
 import { calculateAtrx } from '../calculators/atrx-calculator';
 

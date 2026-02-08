@@ -2,7 +2,7 @@
 // Central registry for widget renderers — replaces the switch/case in BodyWidget
 
 import type React from 'react';
-import type { DataSource } from '@fig-node/core';
+import type { DataSource } from '@sosa/core';
 
 export interface WidgetProps {
   widget: {

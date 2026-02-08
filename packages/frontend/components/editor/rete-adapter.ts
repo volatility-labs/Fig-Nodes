@@ -4,8 +4,8 @@
 
 import { NodeEditor, ClassicPreset } from 'rete';
 import { AreaPlugin } from 'rete-area-plugin';
-import type { Graph, GraphEdge, GraphNode } from '@fig-node/core';
-import { parseEdgeEndpoint, getOrCreateSocket } from '@fig-node/core';
+import type { Graph, GraphEdge, GraphNode } from '@sosa/core';
+import { parseEdgeEndpoint, getOrCreateSocket } from '@sosa/core';
 import type { NodeMetadataMap } from '../../types/nodes';
 
 // ============ Lightweight wrapper for frontend-only nodes ============

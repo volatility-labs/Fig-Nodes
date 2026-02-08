@@ -4,7 +4,7 @@
 // The Python version used matplotlib for server-side rendering.
 // In this architecture, we return computed data for frontend rendering.
 
-import { Node, NodeCategory, port, type NodeDefinition } from '@fig-node/core';
+import { Node, NodeCategory, port, type NodeDefinition } from '@sosa/core';
 import { AssetSymbol, AssetClass, type OHLCVBar } from '../types';
 import { calculateEma } from '../calculators/ema-calculator';
 import { calculateSma } from '../calculators/sma-calculator';

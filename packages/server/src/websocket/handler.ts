@@ -6,8 +6,8 @@ import {
   type Graph,
   hasCycles,
   validateGraph,
-} from '@fig-node/core';
-import { getRequiredKeysForDocument } from '@fig-node/core/node-runtime';
+} from '@sosa/core';
+import { getRequiredKeysForDocument } from '@sosa/core/node-runtime';
 import { getCredentialStore } from '../credentials/env-credential-store.js';
 import type { ExecutionQueue } from '../queue/execution-queue.js';
 import type { ConnectionRegistry } from '../session/connection-registry.js';

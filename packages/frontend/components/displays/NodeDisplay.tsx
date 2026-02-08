@@ -1,7 +1,7 @@
 // components/displays/NodeDisplay.tsx
 // Routes display rendering to the appropriate component based on type
 
-import type { OutputDisplayType, OutputDisplayOptions } from '@fig-node/core';
+import type { OutputDisplayType, OutputDisplayOptions } from '@sosa/core';
 import { ChartDisplay } from './ChartDisplay';
 import { ImageDisplay } from './ImageDisplay';
 import { TextDisplay } from './TextDisplay';

@@ -1,6 +1,6 @@
 // Market domain types: enums, core value types, and type aliases
 
-import { registerType } from '@fig-node/core';
+import { registerType } from '@sosa/core';
 
 // ============ Enums ============
 

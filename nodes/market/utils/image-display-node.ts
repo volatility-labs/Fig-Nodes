@@ -1,6 +1,6 @@
 // src/nodes/core/market/utils/image-display-node.ts
 
-import { Node, NodeCategory, port, type NodeDefinition } from '@fig-node/core';
+import { Node, NodeCategory, port, type NodeDefinition } from '@sosa/core';
 
 /**
  * Display node for images. Takes images as input and passes them through for display in the UI.

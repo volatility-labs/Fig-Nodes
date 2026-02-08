@@ -1,6 +1,6 @@
 // src/nodes/custom/polygon/polygon-stock-universe-node.ts
 
-import { Node, NodeCategory, port, type NodeDefinition } from '@fig-node/core';
+import { Node, NodeCategory, port, type NodeDefinition } from '@sosa/core';
 import { AssetClass, AssetSymbol, InstrumentType } from '../types';
 import {
   isUSMarketOpen,

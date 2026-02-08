@@ -1,7 +1,7 @@
 // src/nodes/core/market/filters/industry-filter-node.ts
 
 import { BaseFilter } from './base/base-filter-node';
-import type { NodeDefinition } from '@fig-node/core';
+import type { NodeDefinition } from '@sosa/core';
 import { AssetSymbol, type OHLCVBar, type OHLCVBundle } from '../types';
 
 /**

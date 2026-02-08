@@ -1,7 +1,7 @@
 // types/nodes.ts
 // Framework-agnostic node type metadata
 
-import type { NodeUIConfig, ParamMeta, PortSpec } from '@fig-node/core';
+import type { NodeUIConfig, ParamMeta, PortSpec } from '@sosa/core';
 
 /** Metadata about a node type, fetched from /api/v1/nodes */
 export interface NodeTypeMetadata {

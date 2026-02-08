@@ -9,8 +9,8 @@
  * - Autosave to localStorage
  */
 
-import { validateGraph } from '@fig-node/core';
-import type { Graph } from '@fig-node/core';
+import { validateGraph } from '@sosa/core';
+import type { Graph } from '@sosa/core';
 import { useGraphStore } from '../stores/graphStore';
 import { getEditorAdapter } from '../components/editor/editor-ref';
 import { isDirty, clearDirty } from '../components/editor/editor-actions';
@@ -122,7 +122,7 @@ function doAutosave(): void {
     const json = JSON.stringify(doc);
     if (json !== lastSavedJson) {
       const payload = { graph: doc, name: doc.name };
-      safeLocalStorageSet('fig-nodes:autosave:v2', JSON.stringify(payload));
+      safeLocalStorageSet('sosa:autosave:v2', JSON.stringify(payload));
       lastSavedJson = json;
     }
     clearDirty();
@@ -131,7 +131,7 @@ function doAutosave(): void {
 
 export function restoreFromAutosave(): boolean {
   try {
-    const saved = safeLocalStorageGet('fig-nodes:autosave:v2');
+    const saved = safeLocalStorageGet('sosa:autosave:v2');
     if (saved) {
       const parsed = JSON.parse(saved);
       if (parsed?.graph?.version === 2) {

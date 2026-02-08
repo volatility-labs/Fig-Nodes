@@ -1,7 +1,7 @@
 // src/nodes/core/market/filters/atr-filter-node.ts
 
 import { BaseIndicatorFilter } from './base/base-indicator-filter-node';
-import type { NodeDefinition } from '@fig-node/core';
+import type { NodeDefinition } from '@sosa/core';
 import { IndicatorType, createIndicatorResult, createIndicatorValue, type OHLCVBar, type IndicatorResult } from '../types';
 import { calculateAtr } from '../calculators/atr-calculator';
 

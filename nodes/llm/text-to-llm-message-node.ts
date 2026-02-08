@@ -1,6 +1,6 @@
 // src/nodes/core/llm/text-to-llm-message-node.ts
 
-import { Node, NodeCategory, port, type NodeDefinition } from '@fig-node/core';
+import { Node, NodeCategory, port, type NodeDefinition } from '@sosa/core';
 
 type RoleType = 'user' | 'assistant' | 'system' | 'tool';
 type FormatType = 'json' | 'readable' | 'compact';

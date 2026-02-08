@@ -1,12 +1,12 @@
-// @fig-node/server - Fastify-based HTTP and WebSocket server
+// @sosa/server - Fastify-based HTTP and WebSocket server
 import 'dotenv/config';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import websocket from '@fastify/websocket';
-import type { NodeRegistry } from '@fig-node/core';
-import { getNodeRegistry, validateNodeDefinitions } from '@fig-node/core/node-runtime';
+import type { NodeRegistry } from '@sosa/core';
+import { getNodeRegistry, validateNodeDefinitions } from '@sosa/core/node-runtime';
 import { graphRoutes } from './routes/graph.js';
 import { graphToolRoutes } from './routes/graph-tools.js';
 import { websocketHandler } from './websocket/handler.js';
@@ -42,7 +42,7 @@ async function createServer() {
   });
   await app.register(websocket);
 
-  // Initialize fig-node core - load all nodes from directories
+  // Initialize sosa core - load all nodes from directories
   const registry = await getNodeRegistry([
     path.resolve(__dirname, '../../../nodes'),         // built-in node packs
     path.resolve(__dirname, '../../../custom_nodes'),   // user extensions

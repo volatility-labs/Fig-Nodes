@@ -1,6 +1,6 @@
 // Execution queue for managing graph execution jobs
 import type { WebSocket } from '@fastify/websocket';
-import type { Graph } from '@fig-node/core';
+import type { Graph } from '@sosa/core';
 import {
   type ExecutionJob,
   JobState,

@@ -22,7 +22,7 @@ import {
   type ServerStatusMessage,
   type ServerErrorMessage,
   type ServerQueuePositionMessage,
-} from '@fig-node/core';
+} from '@sosa/core';
 import type { ExecutionStatusService } from './ExecutionStatusService';
 
 // ============ State ============
@@ -196,7 +196,7 @@ function dispatchMessage(data: ServerMessage) {
  * shown after session establishment and the optional close/error callbacks.
  */
 function connectWebSocket(
-  doc: import('@fig-node/core').Graph,
+  doc: import('@sosa/core').Graph,
   sessionLabel: string,
   opts?: { onClose?: () => void; onError?: () => void },
 ) {
@@ -240,7 +240,7 @@ function connectWebSocket(
 
 // ============ Reconnection ============
 
-function attemptReconnect(doc: import('@fig-node/core').Graph) {
+function attemptReconnect(doc: import('@sosa/core').Graph) {
   if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
     console.warn(`Max reconnect attempts (${MAX_RECONNECT_ATTEMPTS}) reached`);
     forceCleanup();

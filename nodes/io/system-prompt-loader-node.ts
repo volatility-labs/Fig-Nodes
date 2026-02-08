@@ -1,6 +1,6 @@
 // src/nodes/core/io/system-prompt-loader-node.ts
 
-import { Node, NodeCategory, port, type NodeDefinition } from '@fig-node/core';
+import { Node, NodeCategory, port, type NodeDefinition } from '@sosa/core';
 
 /**
  * Loads a system prompt from UI-provided content (e.g., uploaded .md/.txt).

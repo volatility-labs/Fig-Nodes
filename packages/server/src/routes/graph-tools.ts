@@ -16,7 +16,7 @@ import {
   createEmptyDocument,
   hasCycles,
   GraphExecutor,
-} from '@fig-node/core';
+} from '@sosa/core';
 import { getCredentialStore } from '../credentials/env-credential-store.js';
 import { getNodeMetadata } from './node-metadata-helper.js';
 

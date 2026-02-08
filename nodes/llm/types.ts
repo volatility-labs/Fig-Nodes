@@ -1,7 +1,7 @@
 // LLM types with Zod schemas for runtime validation
 
 import { z } from 'zod';
-import { registerType } from '@fig-node/core';
+import { registerType } from '@sosa/core';
 
 // ============ Zod Schemas ============
 

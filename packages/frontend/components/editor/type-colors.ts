@@ -1,8 +1,8 @@
 // components/editor/type-colors.ts
 // Deterministic type → color mapping for handles and edges.
 
-import { getSocketKey } from '@fig-node/core';
-import type { PortSpec } from '@fig-node/core';
+import { getSocketKey } from '@sosa/core';
+import type { PortSpec } from '@sosa/core';
 
 const overrides: Record<string, string> = {
   assetsymbol: '#FF6D00',

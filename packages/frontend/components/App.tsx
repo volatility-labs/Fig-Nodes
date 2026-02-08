@@ -109,7 +109,7 @@ export function App() {
       {/* Toolbar */}
       <div className="fig-toolbar">
         <div className="fig-toolbar-left">
-          <span className="fig-logo">fig-node</span>
+          <span className="fig-logo">sosa</span>
           <span className="fig-graph-name">{docName}</span>
         </div>
         <div className="fig-toolbar-center">

@@ -1,7 +1,7 @@
 // components/displays/NoteDisplay.tsx
 // Renders a note/sticky display in a node
 
-import type { OutputDisplayOptions } from '@fig-node/core';
+import type { OutputDisplayOptions } from '@sosa/core';
 
 interface NoteDisplayProps {
   value: Record<string, unknown>;

@@ -1,6 +1,6 @@
 // src/nodes/core/io/xcom-users-feed-node.ts
 
-import { Node, NodeCategory, port, type NodeDefinition } from '@fig-node/core';
+import { Node, NodeCategory, port, type NodeDefinition } from '@sosa/core';
 
 /**
  * Represents a post from X.com

@@ -4,7 +4,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as dotenv from 'dotenv';
-import type { CredentialProvider } from '@fig-node/core';
+import type { CredentialProvider } from '@sosa/core';
 
 /**
  * Singleton credential store backed by .env files and process.env.

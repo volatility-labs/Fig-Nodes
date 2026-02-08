@@ -1,18 +1,18 @@
 {
-  "name": "fig-node",
+  "name": "sosa",
   "private": true,
   "workspaces": [
     "packages/*"
   ],
   "scripts": {
-    "postinstall": "yarn workspace @fig-node/core build",
-    "build": "yarn workspace @fig-node/core build && tsc -p nodes/tsconfig.json && yarn workspace @fig-node/server build",
+    "postinstall": "yarn workspace @sosa/core build",
+    "build": "yarn workspace @sosa/core build && tsc -p nodes/tsconfig.json && yarn workspace @sosa/server build",
     "build:nodes": "tsc -p nodes/tsconfig.json",
     "predev": "lsof -ti:8000 | xargs kill -9 2>/dev/null || true",
-    "dev": "yarn workspace @fig-node/core build && concurrently -k -n core,server,frontend -c blue,green,magenta \"yarn dev:core\" \"yarn dev:server\" \"yarn dev:frontend\"",
-    "dev:core": "yarn workspace @fig-node/core dev",
-    "dev:server": "yarn workspace @fig-node/server dev",
-    "dev:frontend": "yarn workspace @fig-node/frontend dev",
+    "dev": "yarn workspace @sosa/core build && concurrently -k -n core,server,frontend -c blue,green,magenta \"yarn dev:core\" \"yarn dev:server\" \"yarn dev:frontend\"",
+    "dev:core": "yarn workspace @sosa/core dev",
+    "dev:server": "yarn workspace @sosa/server dev",
+    "dev:frontend": "yarn workspace @sosa/frontend dev",
     "test": "yarn workspaces run test",
     "lint": "yarn workspaces run lint",
     "typecheck": "yarn workspaces run typecheck"

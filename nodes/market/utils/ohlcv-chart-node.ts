@@ -2,7 +2,7 @@
 // Instead of generating images server-side, it outputs structured chart data
 // that the frontend can render with Lightweight Charts or similar.
 
-import { Node, NodeCategory, port, type NodeDefinition } from '@fig-node/core';
+import { Node, NodeCategory, port, type NodeDefinition } from '@sosa/core';
 import type { OHLCVBar } from '../types';
 import { calculateSma } from '../calculators/sma-calculator';
 import { calculateEma } from '../calculators/ema-calculator';

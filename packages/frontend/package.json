@@ -1,5 +1,5 @@
 {
-  "name": "@fig-node/frontend",
+  "name": "@sosa/frontend",
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
@@ -17,7 +17,7 @@
   "license": "ISC",
   "type": "module",
   "dependencies": {
-    "@fig-node/core": "*",
+    "@sosa/core": "*",
     "elkjs": "^0.11.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",

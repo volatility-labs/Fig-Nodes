@@ -1,6 +1,6 @@
 # Test Structure
 
-This directory contains the refactored test suite for the fig-node UI application.
+This directory contains the refactored test suite for the sosa UI application.
 
 ## Structure
 

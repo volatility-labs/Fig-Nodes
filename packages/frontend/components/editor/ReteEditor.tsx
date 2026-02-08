@@ -14,7 +14,7 @@ import { HistoryPlugin, Presets as HistoryPresets } from 'rete-history-plugin';
 import { AutoArrangePlugin, Presets as ArrangePresets } from 'rete-auto-arrange-plugin';
 import { ContextMenuPlugin, Presets as ContextMenuPresets } from 'rete-context-menu-plugin';
 import { getDOMSocketPosition } from 'rete-render-utils';
-import { getSocketKey, areSocketKeysCompatible, getOrCreateSocket } from '@fig-node/core';
+import { getSocketKey, areSocketKeysCompatible, getOrCreateSocket } from '@sosa/core';
 
 import type { NodeMetadataMap } from '../../types/nodes';
 import { typeColor } from './type-colors';
@@ -303,7 +303,7 @@ export function ReteEditor({ nodeMetadata }: ReteEditorProps) {
     (event: React.DragEvent) => {
       event.preventDefault();
 
-      const type = event.dataTransfer.getData('application/fig-node-type');
+      const type = event.dataTransfer.getData('application/sosa-type');
       if (!type) return;
 
       const area = areaRef.current;

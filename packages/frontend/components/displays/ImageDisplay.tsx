@@ -2,7 +2,7 @@
 // Renders image gallery or single image viewer
 
 // ImageDisplay component
-import type { OutputDisplayOptions } from '@fig-node/core';
+import type { OutputDisplayOptions } from '@sosa/core';
 
 interface ImageDisplayProps {
   value: Record<string, unknown>;

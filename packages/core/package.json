@@ -1,7 +1,7 @@
 {
-  "name": "@fig-node/core",
+  "name": "@sosa/core",
   "version": "0.1.0",
-  "description": "Fig-Node Core - Framework-agnostic graph execution engine for agentic workflows",
+  "description": "Sosa Core - Framework-agnostic graph execution engine for agentic workflows",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

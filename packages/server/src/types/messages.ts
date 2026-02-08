@@ -1,6 +1,6 @@
 // WebSocket message schemas using Zod
 import { z } from 'zod';
-import { ExecutionState } from '@fig-node/core';
+import { ExecutionState } from '@sosa/core';
 
 export { ExecutionState };
 

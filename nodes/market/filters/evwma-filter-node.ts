@@ -1,7 +1,7 @@
 // src/nodes/core/market/filters/evwma-filter-node.ts
 
 import { BaseIndicatorFilter } from './base/base-indicator-filter-node';
-import type { NodeDefinition } from '@fig-node/core';
+import type { NodeDefinition } from '@sosa/core';
 import { IndicatorType, createIndicatorResult, createIndicatorValue, AssetSymbol, type OHLCVBar, type IndicatorResult, type OHLCVBundle } from '../types';
 import { calculateEvwma, calculateRollingCorrelation } from '../calculators/evwma-calculator';
 import { fetchBars } from '../services/polygon-service';

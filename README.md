@@ -7,7 +7,7 @@ Node-based workflow tool for traders to build and execute agentic graph pipeline
 Fig Nodes is a TypeScript monorepo (Yarn workspaces) with three packages:
 
 ```
-fig-node/
+sosa/
 ├── packages/
 │   ├── core/          # Framework-agnostic graph execution engine
 │   ├── server/        # Fastify HTTP + WebSocket server
@@ -20,11 +20,11 @@ fig-node/
 └── .env.example       # Environment variable template
 ```
 
-**Core** (`@fig-node/core`) — the graph execution engine. Computes a topological sort of the node graph, executes nodes in parallel within each dependency level, and supports cancellation via AbortController. Exports the `GraphExecutor`, node registry, `Node` base class, and shared types (`Graph`, `ExecutionResults`, `ProgressEvent`). Has no server or frontend dependencies.
+**Core** (`@sosa/core`) — the graph execution engine. Computes a topological sort of the node graph, executes nodes in parallel within each dependency level, and supports cancellation via AbortController. Exports the `GraphExecutor`, node registry, `Node` base class, and shared types (`Graph`, `ExecutionResults`, `ProgressEvent`). Has no server or frontend dependencies.
 
-**Server** (`@fig-node/server`) — a Fastify server that imports Core to execute graphs. Exposes a REST API (`GET /api/v1/nodes` for node metadata) and a WebSocket endpoint (`/execute`) for real-time graph execution with progress streaming. Jobs run through a FIFO execution queue (one at a time), with IO-category nodes streaming results immediately.
+**Server** (`@sosa/server`) — a Fastify server that imports Core to execute graphs. Exposes a REST API (`GET /api/v1/nodes` for node metadata) and a WebSocket endpoint (`/execute`) for real-time graph execution with progress streaming. Jobs run through a FIFO execution queue (one at a time), with IO-category nodes streaming results immediately.
 
-**Frontend** (`@fig-node/frontend`) — a Vite + React app that provides a Rete.js v2-based graph editor. Fetches node metadata from the server at startup and dynamically creates editor nodes with typed sockets. Connects to the server over WebSocket for execution. The frontend is a generic renderer — node UI is entirely driven by backend-defined metadata (`paramsMeta`, `uiConfig`).
+**Frontend** (`@sosa/frontend`) — a Vite + React app that provides a Rete.js v2-based graph editor. Fetches node metadata from the server at startup and dynamically creates editor nodes with typed sockets. Connects to the server over WebSocket for execution. The frontend is a generic renderer — node UI is entirely driven by backend-defined metadata (`paramsMeta`, `uiConfig`).
 
 The server and frontend run as **separate processes**. In development, the Vite dev server proxies `/api/*` and `/execute` (including WebSocket upgrades) to the Fastify server.
 
@@ -85,10 +85,10 @@ Builds in order: core → nodes → server.
 
 ## Custom Nodes
 
-Create a `.ts` file in the `custom_nodes/` directory. Extend the `Node` class from `@fig-node/core`:
+Create a `.ts` file in the `custom_nodes/` directory. Extend the `Node` class from `@sosa/core`:
 
 ```typescript
-import { Node, NodeCategory } from '@fig-node/core';
+import { Node, NodeCategory } from '@sosa/core';
 
 export class MyCustomNode extends Node {
   static inputs = { text: 'string' };

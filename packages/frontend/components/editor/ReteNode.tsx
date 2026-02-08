@@ -3,7 +3,7 @@
 
 import React, { useCallback, useState } from 'react';
 import { Presets } from 'rete-react-plugin';
-import { getSocketKey } from '@fig-node/core';
+import { getSocketKey } from '@sosa/core';
 import type { FigReteNode } from './rete-adapter';
 import { useGraphStore } from '../../stores/graphStore';
 import type { NodeMetadataMap } from '../../types/nodes';
@@ -97,17 +97,17 @@ export function ReteNodeComponent({ data: node, emit }: ReteNodeProps) {
 
   return (
     <div
-      className={`fig-node ${node.selected ? 'selected' : ''} ${executing ? 'executing' : ''} ${error ? 'error' : ''}`}
+      className={`sosa ${node.selected ? 'selected' : ''} ${executing ? 'executing' : ''} ${error ? 'error' : ''}`}
       style={{
         '--node-color': meta?.uiConfig?.color ?? '#2a2a2a',
         '--node-bgcolor': meta?.uiConfig?.bgcolor ?? '#1a1a1a',
       } as React.CSSProperties}
     >
       {/* Header */}
-      <div className="fig-node-header">
-        <span className="fig-node-title">{node.label}</span>
+      <div className="sosa-header">
+        <span className="sosa-title">{node.label}</span>
         {executing && (
-          <span className="fig-node-progress">
+          <span className="sosa-progress">
             {progress !== undefined ? `${Math.round(progress)}%` : '...'}
           </span>
         )}
@@ -115,16 +115,16 @@ export function ReteNodeComponent({ data: node, emit }: ReteNodeProps) {
 
       {/* Error banner */}
       {error && (
-        <div className="fig-node-error">{error}</div>
+        <div className="sosa-error">{error}</div>
       )}
 
       {/* Input ports */}
-      <div className="fig-node-inputs">
+      <div className="sosa-inputs">
         {inputPorts.map((input) => {
           const socket = node.inputs[input.name];
           const isExec = getSocketKey(input.spec) === 'exec';
           return (
-            <div key={input.name} className={`fig-node-port fig-node-input-port${isExec ? ' fig-exec-port' : ''}`}>
+            <div key={input.name} className={`sosa-port sosa-input-port${isExec ? ' fig-exec-port' : ''}`}>
               {socket && (
                 <Presets.classic.RefSocket
                   name="input-socket"
@@ -136,9 +136,9 @@ export function ReteNodeComponent({ data: node, emit }: ReteNodeProps) {
                   data-testid="input-socket"
                 />
               )}
-              <span className="fig-node-port-label">{formatPortLabel(input.name)}</span>
+              <span className="sosa-port-label">{formatPortLabel(input.name)}</span>
               {!isExec && (
-                <span className="fig-node-port-type" title={`Socket: ${getSocketKey(input.spec)}`}>
+                <span className="sosa-port-type" title={`Socket: ${getSocketKey(input.spec)}`}>
                   {getSocketKey(input.spec)}
                 </span>
               )}
@@ -149,7 +149,7 @@ export function ReteNodeComponent({ data: node, emit }: ReteNodeProps) {
 
       {/* Body widgets */}
       {effectiveWidgets.length > 0 && (
-        <div className="fig-node-body">
+        <div className="sosa-body">
           {effectiveWidgets.map((widget) => (
             <BodyWidget
               key={widget.id}
@@ -162,18 +162,18 @@ export function ReteNodeComponent({ data: node, emit }: ReteNodeProps) {
       )}
 
       {/* Output ports */}
-      <div className="fig-node-outputs">
+      <div className="sosa-outputs">
         {outputPorts.map((output) => {
           const socket = node.outputs[output.name];
           const isExec = getSocketKey(output.spec) === 'exec';
           return (
-            <div key={output.name} className={`fig-node-port fig-node-output-port${isExec ? ' fig-exec-port' : ''}`}>
+            <div key={output.name} className={`sosa-port sosa-output-port${isExec ? ' fig-exec-port' : ''}`}>
               {!isExec && (
-                <span className="fig-node-port-type" title={`Socket: ${getSocketKey(output.spec)}`}>
+                <span className="sosa-port-type" title={`Socket: ${getSocketKey(output.spec)}`}>
                   {getSocketKey(output.spec)}
                 </span>
               )}
-              <span className="fig-node-port-label">{formatPortLabel(output.name)}</span>
+              <span className="sosa-port-label">{formatPortLabel(output.name)}</span>
               {socket && (
                 <Presets.classic.RefSocket
                   name="output-socket"
@@ -192,7 +192,7 @@ export function ReteNodeComponent({ data: node, emit }: ReteNodeProps) {
 
       {/* Display area */}
       {displayResult && outputDisplay && (
-        <div className="fig-node-display">
+        <div className="sosa-display">
           <NodeDisplay
             type={outputDisplay.type}
             value={displayResult}

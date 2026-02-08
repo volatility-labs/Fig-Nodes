@@ -6,7 +6,7 @@ import {
   port,
   serializeForApi,
   type NodeDefinition,
-} from '@fig-node/core';
+} from '@sosa/core';
 import { validateLLMToolSpec, type LLMToolSpec } from './types';
 
 /**

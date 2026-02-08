@@ -1,7 +1,7 @@
 {
-  "name": "@fig-node/server",
+  "name": "@sosa/server",
   "version": "0.1.0",
-  "description": "Fig-Node Server - Fastify-based HTTP and WebSocket server",
+  "description": "Sosa Server - Fastify-based HTTP and WebSocket server",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -18,7 +18,7 @@
     "@fastify/cors": "^10.0.2",
     "@fastify/static": "^8.0.4",
     "@fastify/websocket": "^11.0.1",
-    "@fig-node/core": "*",
+    "@sosa/core": "*",
     "dotenv": "^16.4.5",
     "fastify": "^5.2.1",
     "fastify-plugin": "^5.0.0",
