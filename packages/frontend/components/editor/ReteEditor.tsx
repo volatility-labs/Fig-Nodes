@@ -19,6 +19,7 @@ import {
   type AreaExtra,
 } from './rete-adapter';
 import { setEditorAdapter } from './editor-ref';
+import { restoreFromAutosave } from '../../services/FileManager';
 import { ReteNodeComponent, setNodeMetadata } from './ReteNode';
 import { ContextMenu } from '../ContextMenu';
 import { NodePalette } from '../NodePalette';
@@ -98,7 +99,7 @@ export function clearDirty(): void {
   _dirty = false;
 }
 
-function markDirty(): void {
+export function markDirty(): void {
   _dirty = true;
 }
 
@@ -188,6 +189,18 @@ export function ReteEditor({ nodeMetadata }: ReteEditorProps) {
           if (!areSocketKeysCompatible(sourceKey, targetKey)) {
             return undefined; // Block incompatible connection
           }
+
+          const targetMeta = nodeMetadata[targetNode.nodeType];
+          const inputSpec = targetMeta?.inputs?.[data.targetInput];
+          const inputAllowsMultiple = inputSpec?.multi === true;
+          if (!inputAllowsMultiple) {
+            const hasExistingConnection = editor.getConnections().some((conn) =>
+              conn.target === data.target && conn.targetInput === data.targetInput
+            );
+            if (hasExistingConnection) {
+              return undefined; // Block ambiguous extra connection on single-input ports
+            }
+          }
         }
       }
       return ctx;
@@ -223,8 +236,8 @@ export function ReteEditor({ nodeMetadata }: ReteEditorProps) {
     });
     AreaExtensions.simpleNodesOrder(area as any);
 
-    // The adapter starts empty. restoreFromAutosave() (called from App's
-    // useEffect) will load the saved graph into Rete after this effect runs.
+    // Restore autosaved graph now that the adapter and all plugins are ready
+    restoreFromAutosave();
 
     // ============ Cleanup ============
     return () => {

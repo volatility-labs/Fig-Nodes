@@ -181,18 +181,6 @@ export class OHLCVChart extends Node {
         },
       },
     },
-    defaults: {
-      max_symbols: 12,
-      lookback_bars: 60,
-      overlay1_enabled: true,
-      overlay1_type: 'SMA',
-      overlay1_period: 20,
-      overlay1_color: '#2196F3',
-      overlay2_enabled: true,
-      overlay2_type: 'SMA',
-      overlay2_period: 50,
-      overlay2_color: '#FF9800',
-    },
     params: [
       {
         name: 'max_symbols',

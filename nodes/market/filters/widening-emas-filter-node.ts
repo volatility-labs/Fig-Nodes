@@ -21,11 +21,6 @@ import { calculateEma } from '../calculators/ema-calculator';
 export class WideningEMAsFilter extends BaseIndicatorFilter {
   static override definition: NodeDefinition = {
     ...BaseIndicatorFilter.definition,
-    defaults: {
-      fast_ema_period: 10,
-      slow_ema_period: 30,
-      widening: true,
-    },
     params: [
       {
         name: 'fast_ema_period',

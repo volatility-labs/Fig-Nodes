@@ -11,11 +11,6 @@ import { calculateRsi } from '../calculators/rsi-calculator';
 export class RSIFilter extends BaseIndicatorFilter {
   static override definition: NodeDefinition = {
     ...BaseIndicatorFilter.definition,
-    defaults: {
-      min_rsi: 30.0,
-      max_rsi: 70.0,
-      timeperiod: 14,
-    },
     params: [
       {
         name: 'min_rsi',

@@ -41,8 +41,6 @@ export class PolygonCryptoUniverse extends Node {
     category: NodeCategory.MARKET,
     requiredCredentials: ['POLYGON_API_KEY'],
 
-    defaults: {},
-
     params: [
       {
         name: 'min_change_perc',

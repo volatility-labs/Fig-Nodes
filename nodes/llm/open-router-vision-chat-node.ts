@@ -71,20 +71,12 @@ export class OpenRouterVisionChat extends Node {
     },
     category: NodeCategory.LLM,
     requiredCredentials: ['OPENROUTER_API_KEY'],
-    defaults: {
-      model: 'google/gemini-2.0-flash-001',
-      temperature: 0.2,
-      max_tokens: 20000,
-      seed: 0,
-      seed_mode: 'fixed',
-      inject_graph_context: 'false',
-    },
     params: [
       { name: 'model', type: 'combo', default: 'google/gemini-2.0-flash-001', options: ['google/gemini-2.0-flash-001', 'openai/gpt-4o'] },
       {
         name: 'temperature',
         type: 'number',
-        default: 0.7,
+        default: 0.2,
         min: 0.0,
         max: 2.0,
         step: 0.05,
@@ -103,13 +95,6 @@ export class OpenRouterVisionChat extends Node {
         type: 'combo',
         default: 'fixed',
         options: ['fixed', 'random', 'increment'],
-      },
-      {
-        name: 'inject_graph_context',
-        type: 'combo',
-        default: 'false',
-        options: ['true', 'false'],
-        description: 'Inject graph context (nodes and data flow) into the first user message',
       },
     ],
     ui: {},
@@ -318,162 +303,6 @@ export class OpenRouterVisionChat extends Node {
     return OpenRouterChatResponseSchema.parse(respData);
   }
 
-  private parseBoolParam(paramName: string, defaultVal = false): boolean {
-    const value = this.params[paramName] ?? defaultVal;
-    if (typeof value === 'boolean') {
-      return value;
-    }
-    if (typeof value === 'string') {
-      return value.toLowerCase() === 'true';
-    }
-    return Boolean(value);
-  }
-
-  private formatGraphContextForLLM(): string {
-    if (!this.graphContext) {
-      return '';
-    }
-
-    const nodes = (this.graphContext.nodes as Array<Record<string, unknown>>) ?? [];
-    const links = (this.graphContext.links as Array<Record<string, unknown>>) ?? [];
-    const currentNodeId = this.graphContext.current_node_id;
-
-    if (!nodes.length) {
-      return '';
-    }
-
-    const lines: string[] = [];
-    lines.push('=== Graph Context ===');
-    lines.push(`This node (ID: ${currentNodeId}) is part of a data processing pipeline.`);
-    lines.push('');
-
-    // Build node lookup
-    const nodeLookup: Record<number, Record<string, unknown>> = {};
-    for (const node of nodes) {
-      const nodeId = node.id as number;
-      if (nodeId !== undefined) {
-        nodeLookup[nodeId] = node;
-      }
-    }
-
-    // Build concise node summary
-    lines.push('Workflow Nodes:');
-    for (const node of nodes) {
-      const nodeId = node.id as number;
-      const nodeType = (node.type as string) ?? 'Unknown';
-      const properties = (node.properties as Record<string, unknown>) ?? {};
-      const inputs = (node.inputs as Array<Record<string, unknown>>) ?? [];
-      const outputs = (node.outputs as Array<Record<string, unknown>>) ?? [];
-
-      // Extract key properties
-      const keyProps: Record<string, unknown> = {};
-      for (const [key, value] of Object.entries(properties)) {
-        if (value !== null && !['pos', 'size', 'flags', 'order', 'mode'].includes(key)) {
-          if (typeof value === 'string' && value.length > 80) {
-            keyProps[key] = value.slice(0, 80) + '...';
-          } else {
-            keyProps[key] = value;
-          }
-        }
-      }
-
-      let nodeDesc = `[${nodeId}] ${nodeType}`;
-      if (nodeId === currentNodeId) {
-        nodeDesc += ' (current node)';
-      }
-
-      if (Object.keys(keyProps).length > 0) {
-        const propsStr = Object.entries(keyProps)
-          .slice(0, 5)
-          .map(([k, v]) => `${k}=${v}`)
-          .join(', ');
-        nodeDesc += `\n    Config: ${propsStr}`;
-        if (Object.keys(keyProps).length > 5) {
-          nodeDesc += ` ... (+${Object.keys(keyProps).length - 5} more)`;
-        }
-      }
-
-      const inputNames = inputs
-        .filter((inp) => typeof inp === 'object' && inp.name)
-        .map((inp) => inp.name as string);
-      const outputNames = outputs
-        .filter((out) => typeof out === 'object' && out.name)
-        .map((out) => out.name as string);
-
-      if (inputNames.length > 0) {
-        nodeDesc += `\n    Inputs: ${inputNames.slice(0, 3).join(', ')}`;
-        if (inputNames.length > 3) {
-          nodeDesc += ` ... (+${inputNames.length - 3} more)`;
-        }
-      }
-      if (outputNames.length > 0) {
-        nodeDesc += `\n    Outputs: ${outputNames.slice(0, 3).join(', ')}`;
-        if (outputNames.length > 3) {
-          nodeDesc += ` ... (+${outputNames.length - 3} more)`;
-        }
-      }
-
-      lines.push(`  ${nodeDesc}`);
-    }
-
-    lines.push('');
-
-    // Build data flow representation
-    if (links.length > 0) {
-      lines.push('Data Flow (connections):');
-      const linksByOrigin: Record<number, Array<Record<string, unknown>>> = {};
-
-      for (const link of links) {
-        const originId = link.origin_id as number;
-        if (originId !== undefined) {
-          if (!linksByOrigin[originId]) {
-            linksByOrigin[originId] = [];
-          }
-          linksByOrigin[originId].push(link);
-        }
-      }
-
-      for (const originId of Object.keys(linksByOrigin).map(Number).sort((a, b) => a - b)) {
-        const originNode = nodeLookup[originId] ?? {};
-        const originType = (originNode.type as string) ?? 'Unknown';
-        const originLinks = linksByOrigin[originId] ?? [];
-
-        for (const link of originLinks) {
-          const targetId = link.target_id as number;
-          const targetNode = targetId !== undefined ? (nodeLookup[targetId] ?? {}) : {};
-          const targetType = (targetNode.type as string) ?? 'Unknown';
-          const dataType = (link.type as string) ?? 'data';
-
-          lines.push(`  [${originId}] ${originType} -> [${targetId}] ${targetType} (${dataType})`);
-        }
-      }
-    }
-
-    lines.push('');
-    lines.push('Use this context to understand the workflow structure and provide relevant responses.');
-    lines.push('===');
-
-    return lines.join('\n');
-  }
-
-  private injectGraphContextIntoPrompt(prompt: string | null): string {
-    const injectEnabled = this.parseBoolParam('inject_graph_context', false);
-
-    if (!injectEnabled) {
-      return prompt ?? '';
-    }
-
-    const contextText = this.formatGraphContextForLLM();
-    if (!contextText) {
-      return prompt ?? '';
-    }
-
-    if (prompt) {
-      return `${contextText}\n\n${prompt}`;
-    }
-    return contextText;
-  }
-
   private ensureAssistantRoleInplace(message: LLMChatMessage): void {
     if (!message.role) {
       message.role = 'assistant';
@@ -492,7 +321,7 @@ export class OpenRouterVisionChat extends Node {
   }
 
   protected async run(inputs: Record<string, unknown>): Promise<Record<string, unknown>> {
-    let promptText = inputs.prompt as string | null;
+    const promptText = inputs.prompt as string | null;
     const systemText = inputs.system_text as string | null;
     const systemMessage = inputs.system_message;
     let systemInput: LLMChatMessage | string | null = null;
@@ -502,9 +331,6 @@ export class OpenRouterVisionChat extends Node {
       systemInput = systemText;
     }
     const images = inputs.images as ConfigDict | null;
-
-    // Inject graph context into prompt if enabled
-    promptText = this.injectGraphContextIntoPrompt(promptText);
 
     // Collect messages from message_0 to message_4
     const merged: LLMChatMessage[] = [];

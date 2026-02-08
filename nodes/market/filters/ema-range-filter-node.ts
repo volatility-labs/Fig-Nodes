@@ -11,10 +11,6 @@ import { calculateEma } from '../calculators/ema-calculator';
 export class EmaRangeFilter extends BaseIndicatorFilter {
   static override definition: NodeDefinition = {
     ...BaseIndicatorFilter.definition,
-    defaults: {
-      timeperiod: 10,
-      divisor: 100.0,
-    },
     params: [
       { name: 'timeperiod', type: 'number', default: 10, min: 1, step: 1 },
       { name: 'divisor', type: 'number', default: 100.0, min: 1.0, step: 1.0 },

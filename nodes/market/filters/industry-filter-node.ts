@@ -14,10 +14,6 @@ export class IndustryFilter extends BaseFilter {
   static override definition: NodeDefinition = {
     ...BaseFilter.definition,
     requiredCredentials: ['POLYGON_API_KEY'],
-    defaults: {
-      allowed_industries: [],
-      date: null,
-    },
     params: [
       {
         name: 'allowed_industries',

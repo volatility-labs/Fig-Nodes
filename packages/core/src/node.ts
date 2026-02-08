@@ -4,7 +4,6 @@
 import { ClassicPreset } from 'rete';
 
 import {
-  type DefaultParams,
   NodeCategory,
   NodeExecutionError,
   type NodeInputs,
@@ -27,7 +26,6 @@ export interface NodeDefinition {
   inputs?: NodeInputs;
   outputs?: NodeOutputs;
   params?: ParamMeta[];
-  defaults?: DefaultParams;
   category?: NodeCategory;
   requiredCredentials?: string[];
   ui?: NodeUIConfig;
@@ -61,8 +59,11 @@ export abstract class Node extends ClassicPreset.Node {
     // Read definition from the concrete class
     const def = (this.constructor as typeof Node).definition;
 
-    // Merge default params with provided params
-    const defaults = def.defaults ?? {};
+    // Derive defaults from params[].default (single source of truth)
+    const defaults: Record<string, unknown> = {};
+    for (const p of def.params ?? []) {
+      if (p.default !== undefined) defaults[p.name] = p.default;
+    }
     this.params = { ...defaults, ...(params ?? {}) };
 
     // Copy definition inputs/outputs to instance

@@ -21,19 +21,6 @@ export class VBPLevelFilter extends BaseIndicatorFilter {
   static override definition: NodeDefinition = {
     ...BaseIndicatorFilter.definition,
     requiredCredentials: ['POLYGON_API_KEY'],
-    defaults: {
-      bins: 50,
-      lookback_years: 2,
-      lookback_years_2: null,
-      num_levels: 5,
-      max_distance_to_support: 5.0,
-      min_distance_to_resistance: 5.0,
-      use_weekly: false,
-      max_concurrent: 10,
-      rate_limit_per_second: 95,
-      use_dollar_weighted: false,
-      use_close_only: false,
-    },
     params: [
       {
         name: 'bins',

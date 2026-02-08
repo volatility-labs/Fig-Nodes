@@ -13,13 +13,6 @@ export class AssetSymbolInput extends Node {
 
     ui: {},
 
-    defaults: {
-      ticker: '',
-      asset_class: AssetClass.CRYPTO,
-      quote_currency: 'USDT',
-      instrument_type: InstrumentType.PERPETUAL,
-    },
-
     params: [
       { name: 'ticker', type: 'text', default: '' },
       {
@@ -31,7 +24,7 @@ export class AssetSymbolInput extends Node {
       {
         name: 'quote_currency',
         type: 'combo',
-        default: 'USD',
+        default: 'USDT',
         options: ['USD', 'USDC', 'USDT'],
       },
       {

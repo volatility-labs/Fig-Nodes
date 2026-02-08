@@ -20,10 +20,6 @@ export class OrbIndicator extends BaseIndicator {
     outputs: {
       results: port('IndicatorResultList'),
     },
-    defaults: {
-      or_minutes: 5,
-      avg_period: 14,
-    },
     params: [
       { name: 'or_minutes', type: 'number', default: 5, min: 1, step: 1 },
       { name: 'avg_period', type: 'number', default: 14, min: 1, step: 1 },

@@ -17,10 +17,6 @@ import { calculateAtrx } from '../calculators/atrx-calculator';
 export class AtrXIndicator extends BaseIndicator {
   static override definition: NodeDefinition = {
     ...BaseIndicator.definition,
-    defaults: {
-      length: 14, // ATR period
-      ma_length: 50, // SMA period for trend calculation
-    },
     params: [
       { name: 'length', type: 'integer', default: 14, description: 'ATR period' },
       {

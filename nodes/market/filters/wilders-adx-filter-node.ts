@@ -19,14 +19,6 @@ import { calculateAdx } from '../calculators/adx-calculator';
 export class WildersADXFilter extends BaseIndicatorFilter {
   static override definition: NodeDefinition = {
     ...BaseIndicatorFilter.definition,
-    defaults: {
-      min_adx: 25.0,
-      timeperiod: 14,
-      direction: 'any',
-      require_crossover: false,
-      di_lookback_bars: 3,
-      require_adx_rising: false,
-    },
     params: [
       {
         name: 'min_adx',

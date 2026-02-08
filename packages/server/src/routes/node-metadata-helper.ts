@@ -5,8 +5,12 @@ export function getNodeMetadata(NodeClass: any) {
   const def = NodeClass.definition ?? {};
 
   const params = def.params?.length > 0 ? def.params : [];
-  const defaults = def.defaults && Object.keys(def.defaults).length > 0
-    ? def.defaults : {};
+
+  // Derive defaultParams from params[].default (single source of truth)
+  const defaults: Record<string, unknown> = {};
+  for (const p of params) {
+    if (p.default !== undefined) defaults[p.name] = p.default;
+  }
 
   return {
     inputs: def.inputs ?? {},

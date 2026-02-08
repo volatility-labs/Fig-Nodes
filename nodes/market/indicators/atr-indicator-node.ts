@@ -12,9 +12,6 @@ import { calculateAtr } from '../calculators/atr-calculator';
 export class ATRIndicator extends BaseIndicator {
   static override definition: NodeDefinition = {
     ...BaseIndicator.definition,
-    defaults: {
-      window: 14,
-    },
     params: [
       { name: 'window', type: 'integer', default: 14, min: 1, step: 1 },
     ],

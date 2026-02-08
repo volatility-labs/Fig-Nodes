@@ -153,6 +153,17 @@ export function validateEdgeTypes(
   nodeRegistry: NodeRegistry,
 ): ValidationError[] {
   const errors: ValidationError[] = [];
+  const targetInputEdgeCounts = new Map<string, number>();
+
+  for (const edge of doc.edges) {
+    try {
+      const to = parseEdgeEndpoint(edge.to);
+      const key = `${to.nodeId}.${to.portName}`;
+      targetInputEdgeCounts.set(key, (targetInputEdgeCounts.get(key) ?? 0) + 1);
+    } catch {
+      // skip malformed edges
+    }
+  }
 
   for (let i = 0; i < doc.edges.length; i++) {
     const edge = doc.edges[i]!;
@@ -189,6 +200,20 @@ export function validateEdgeTypes(
       errors.push({
         path: `edges[${i}]`,
         message: `Unknown target input port: "${to.portName}" on node "${to.nodeId}"`,
+      });
+      continue;
+    }
+
+    const targetEndpointKey = `${to.nodeId}.${to.portName}`;
+    const inputAllowsMultiple = typeof inputSpec === 'object'
+      && inputSpec !== null
+      && 'multi' in inputSpec
+      && (inputSpec as { multi?: boolean }).multi === true;
+    const incomingEdgeCount = targetInputEdgeCounts.get(targetEndpointKey) ?? 0;
+    if (!inputAllowsMultiple && incomingEdgeCount > 1) {
+      errors.push({
+        path: `edges[${i}]`,
+        message: `Input "${to.portName}" on node "${to.nodeId}" accepts a single connection, but found ${incomingEdgeCount}`,
       });
       continue;
     }

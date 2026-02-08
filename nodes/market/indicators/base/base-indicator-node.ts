@@ -16,9 +16,6 @@ export abstract class BaseIndicator extends Node {
     outputs: {
       results: port('IndicatorResultList'),
     },
-    defaults: {
-      timeframe: '1d',
-    },
     params: [
       {
         name: 'indicators',

@@ -128,7 +128,6 @@ export type {
   ParamValue,
   ParamType,
   ParamMeta,
-  DefaultParams,
   NodeInputs,
   NodeOutputs,
 } from './ports.js';

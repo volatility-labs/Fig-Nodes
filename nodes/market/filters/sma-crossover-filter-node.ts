@@ -11,10 +11,6 @@ import { calculateSma } from '../calculators/sma-calculator';
 export class SMACrossoverFilter extends BaseIndicatorFilter {
   static override definition: NodeDefinition = {
     ...BaseIndicatorFilter.definition,
-    defaults: {
-      short_period: 20,
-      long_period: 50,
-    },
     params: [
       { name: 'short_period', type: 'number', default: 20, min: 1, step: 1 },
       { name: 'long_period', type: 'number', default: 50, min: 1, step: 1 },

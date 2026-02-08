@@ -22,10 +22,6 @@ export class PriceDataFetching extends Node {
     },
     category: NodeCategory.MARKET,
     ui: {},
-    defaults: {
-      scan_name: 'default_scan',
-      save_to_csv: true,
-    },
     params: [
       {
         name: 'scan_name',

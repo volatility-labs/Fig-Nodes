@@ -28,11 +28,6 @@ export class Note extends Node {
       },
     ],
 
-    defaults: {
-      text: 'Note',
-      color: '#334',
-    },
-
     ui: {
       outputDisplay: {
         type: 'note-display',

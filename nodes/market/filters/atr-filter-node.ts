@@ -11,10 +11,6 @@ import { calculateAtr } from '../calculators/atr-calculator';
 export class ATRFilter extends BaseIndicatorFilter {
   static override definition: NodeDefinition = {
     ...BaseIndicatorFilter.definition,
-    defaults: {
-      min_atr: 0.0,
-      window: 14,
-    },
     params: [
       { name: 'min_atr', type: 'number', default: 0.0, min: 0.0, step: 0.1 },
       { name: 'window', type: 'number', default: 14, min: 1, step: 1 },

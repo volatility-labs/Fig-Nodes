@@ -25,6 +25,5 @@ export interface PortSpec {
   optional?: boolean;
 }
 
-export type DefaultParams = Record<string, ParamValue>;
 export type NodeInputs = Record<string, PortSpec>;
 export type NodeOutputs = Record<string, PortSpec>;

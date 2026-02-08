@@ -12,12 +12,6 @@ import { calculateEma } from '../calculators/ema-calculator';
 export class MovingAverageFilter extends BaseIndicatorFilter {
   static override definition: NodeDefinition = {
     ...BaseIndicatorFilter.definition,
-    defaults: {
-      period: 200,
-      prior_bars: 1,
-      ma_type: 'SMA',
-      require_price_above_ma: 'true',
-    },
     params: [
       { name: 'period', type: 'number', default: 200, min: 2, step: 1 },
       {

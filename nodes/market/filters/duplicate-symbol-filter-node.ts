@@ -19,11 +19,6 @@ export class DuplicateSymbolFilter extends BaseFilter {
       ohlcv_bundle_2: port('OHLCVBundle'),
       ohlcv_bundle_3: port('OHLCVBundle'),
     },
-    defaults: {
-      operation: 'common', // common, unique_to_1, unique_to_2, unique_to_3, all
-      compare_by: 'ticker', // ticker, symbol_string
-      case_insensitive: true,
-    },
     params: [
       {
         name: 'operation',

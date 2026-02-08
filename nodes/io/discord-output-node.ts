@@ -24,12 +24,6 @@ export class DiscordOutput extends Node {
 
     ui: {},
 
-    defaults: {
-      message_template:
-        '📊 **Trading Symbols Update**\n\n{symbol_list}\n\n*Total: {count} symbols*',
-      max_symbols_display: 50,
-    },
-
     params: [
       {
         name: 'message_template',
@@ -147,7 +141,7 @@ export class DiscordOutput extends Node {
     const messageTemplate =
       typeof messageTemplateRaw === 'string'
         ? messageTemplateRaw
-        : (DiscordOutput.definition.defaults!.message_template as string);
+        : '📊 **Trading Symbols Update**\n\n{symbol_list}\n\n*Total: {count} symbols*';
 
     const maxDisplayRaw = this.params.max_symbols_display;
     const maxDisplay =

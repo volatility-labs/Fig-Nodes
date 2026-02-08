@@ -9,6 +9,7 @@ import { useGraphStore } from '../../stores/graphStore';
 import type { NodeMetadataMap } from '../../types/nodes';
 import { BodyWidget } from '../widgets/BodyWidget';
 import { NodeDisplay } from '../displays/NodeDisplay';
+import { markDirty } from './ReteEditor';
 
 // Shared metadata reference — set by the editor on init
 let _nodeMetadata: NodeMetadataMap = {};
@@ -44,6 +45,7 @@ export function ReteNodeComponent({ data: node, emit }: ReteNodeProps) {
       const updated = { ...node.params, [key]: value };
       node.params = updated;
       setParams(updated);
+      markDirty();
     },
     [node],
   );
@@ -52,6 +54,8 @@ export function ReteNodeComponent({ data: node, emit }: ReteNodeProps) {
   const bodyWidgets = meta?.uiConfig?.body ?? [];
   const paramsMeta = meta?.params ?? [];
 
+  const dataSources = meta?.uiConfig?.dataSources ?? {};
+
   const effectiveWidgets = bodyWidgets.length > 0
     ? bodyWidgets.map((w) => ({
         type: w.type,
@@ -59,20 +63,25 @@ export function ReteNodeComponent({ data: node, emit }: ReteNodeProps) {
         label: w.label,
         bind: w.bind,
         options: w.options as Record<string, unknown> | undefined,
+        dataSource: w.dataSource,
       }))
-    : paramsMeta.map((p) => ({
-        type: p.type ?? 'text',
-        id: p.name,
-        bind: p.name,
-        label: p.label ?? p.name,
-        options: {
-          options: Array.isArray(p.options) ? p.options as Array<string | number | boolean> : undefined,
-          min: p.min,
-          max: p.max,
-          step: p.step,
-          placeholder: p.description,
-        },
-      }));
+    : paramsMeta.map((p) => {
+        const matchingDs = Object.values(dataSources).find((ds) => ds.targetParam === p.name);
+        return {
+          type: p.type ?? 'text',
+          id: p.name,
+          bind: p.name,
+          label: p.label ?? p.name,
+          dataSource: matchingDs,
+          options: {
+            options: Array.isArray(p.options) ? p.options as Array<string | number | boolean> : undefined,
+            min: p.min,
+            max: p.max,
+            step: p.step,
+            placeholder: p.description,
+          },
+        };
+      });
 
   const outputDisplay = meta?.uiConfig?.outputDisplay;
 

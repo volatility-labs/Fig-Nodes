@@ -11,15 +11,6 @@ import { calculateAtrxLastValue } from '../calculators/atrx-calculator';
 export class AtrXFilter extends BaseIndicatorFilter {
   static override definition: NodeDefinition = {
     ...BaseIndicatorFilter.definition,
-    defaults: {
-      length: 14,
-      smoothing: 'RMA',
-      price: 'Close',
-      ma_length: 50,
-      upper_threshold: 6.0,
-      lower_threshold: -4.0,
-      filter_condition: 'outside',
-    },
     params: [
       { name: 'length', type: 'integer', default: 14 },
       { name: 'smoothing', type: 'combo', default: 'RMA', options: ['RMA', 'EMA', 'SMA'] },

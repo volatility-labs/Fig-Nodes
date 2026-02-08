@@ -12,7 +12,6 @@ export class SystemPromptLoader extends Node {
   static definition: NodeDefinition = {
     inputs: {},
     outputs: { system: port('string') },
-    defaults: { content: '', file: '' },
     params: [
       { name: 'content', type: 'textarea', default: '' },
       { name: 'file', type: 'fileupload', default: '', options: { accept: '.txt,.md' } },

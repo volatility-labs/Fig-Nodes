@@ -29,11 +29,6 @@ import { calculateLod } from '../calculators/lod-calculator';
 export class LodFilter extends BaseIndicatorFilter {
   static override definition: NodeDefinition = {
     ...BaseIndicatorFilter.definition,
-    defaults: {
-      lod_distance_threshold: 3.16,
-      atr_window: 14,
-      filter_mode: 'min',
-    },
     params: [
       {
         name: 'lod_distance_threshold',

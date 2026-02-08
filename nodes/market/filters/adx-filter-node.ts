@@ -11,10 +11,6 @@ import { calculateAdx } from '../calculators/adx-calculator';
 export class ADXFilter extends BaseIndicatorFilter {
   static override definition: NodeDefinition = {
     ...BaseIndicatorFilter.definition,
-    defaults: {
-      min_adx: 25.0,
-      timeperiod: 14,
-    },
     params: [
       {
         name: 'min_adx',

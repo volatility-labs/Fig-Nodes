@@ -18,7 +18,6 @@ export class ExtractSymbols extends Node {
       symbols: port('AssetSymbolList'),
     },
     ui: {},
-    defaults: {},
     params: [],
   };
 

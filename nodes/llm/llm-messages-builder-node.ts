@@ -27,7 +27,6 @@ export class LLMMessagesBuilder extends Node {
       messages: port('LLMChatMessageList'),
     },
     params: [],
-    defaults: {},
     category: NodeCategory.LLM,
     ui: {
       resultDisplay: 'json',  // Shows message list as JSON

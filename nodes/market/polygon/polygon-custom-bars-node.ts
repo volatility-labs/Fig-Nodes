@@ -21,15 +21,6 @@ export class PolygonCustomBars extends Node {
     category: NodeCategory.MARKET,
     requiredCredentials: ['POLYGON_API_KEY'],
 
-    defaults: {
-      multiplier: 1,
-      timespan: 'day',
-      lookback_period: '3 months',
-      adjusted: true,
-      sort: 'asc',
-      limit: 5000,
-    },
-
     params: [
       { name: 'multiplier', type: 'number', default: 1, min: 1, step: 1 },
       {

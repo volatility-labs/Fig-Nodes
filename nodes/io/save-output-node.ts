@@ -96,12 +96,6 @@ export class SaveOutput extends Node {
 
     category: NodeCategory.IO,
 
-    defaults: {
-      filename: '',
-      format: 'json',
-      overwrite: false,
-    },
-
     params: [
       { name: 'filename', type: 'text', default: '' },
       { name: 'format', type: 'combo', default: 'json', options: ['json', 'jsonl'] },

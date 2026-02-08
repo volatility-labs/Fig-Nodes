@@ -38,12 +38,6 @@ export class XcomUsersFeed extends Node {
 
     ui: {},
 
-    defaults: {
-      tweets_per_user: 10,
-      include_retweets: false,
-      include_replies: false,
-    },
-
     params: [
       {
         name: 'tweets_per_user',

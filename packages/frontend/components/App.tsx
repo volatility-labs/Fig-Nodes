@@ -6,7 +6,7 @@ import { ReteEditor } from './editor/ReteEditor';
 import type { NodeMetadataMap } from '../types/nodes';
 import { useGraphStore } from '../stores/graphStore';
 import { setupWebSocket, stopExecution } from '../services/WebSocketClient';
-import { saveGraph, loadGraphFromFile, restoreFromAutosave, startAutosave } from '../services/FileManager';
+import { saveGraph, loadGraphFromFile, startAutosave } from '../services/FileManager';
 import { ExecutionStatusService } from '../services/ExecutionStatusService';
 import { Toast } from './Toast';
 import './editor.css';
@@ -46,7 +46,6 @@ export function App() {
   useEffect(() => {
     statusServiceRef.current = new ExecutionStatusService();
     setupWebSocket(statusServiceRef.current);
-    restoreFromAutosave();
     const cleanup = startAutosave();
     return cleanup;
   }, []);

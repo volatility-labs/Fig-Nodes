@@ -31,7 +31,6 @@ export class ImageDisplay extends Node {
         },
       },
     },
-    defaults: {},
     params: [],
   };
 

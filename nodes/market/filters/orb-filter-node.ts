@@ -14,16 +14,6 @@ export class OrbFilter extends BaseIndicatorFilter {
   static override definition: NodeDefinition = {
     ...BaseIndicatorFilter.definition,
     requiredCredentials: ['POLYGON_API_KEY'],
-    defaults: {
-      or_minutes: 5,
-      rel_vol_threshold: 100.0,
-      direction: 'both',
-      avg_period: 14,
-      filter_above_orh: 'false',
-      filter_below_orl: 'false',
-      max_concurrent: 10,
-      rate_limit_per_second: 95,
-    },
     params: [
       { name: 'or_minutes', type: 'number', default: 5, min: 1, step: 1 },
       { name: 'rel_vol_threshold', type: 'number', default: 100.0, min: 0.0, step: 1.0 },

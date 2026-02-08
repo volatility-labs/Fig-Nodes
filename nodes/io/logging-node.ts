@@ -71,8 +71,6 @@ export class Logging extends Node {
 
     category: NodeCategory.IO,
 
-    defaults: {},
-
     params: [],
 
     ui: {

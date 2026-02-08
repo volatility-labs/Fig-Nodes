@@ -20,20 +20,6 @@ export class EVWMAFilter extends BaseIndicatorFilter {
   static override definition: NodeDefinition = {
     ...BaseIndicatorFilter.definition,
     requiredCredentials: ['POLYGON_API_KEY'],
-    defaults: {
-      evwma1_timeframe: '1min',
-      evwma2_timeframe: '5min',
-      evwma3_timeframe: '15min',
-      length: 325,
-      use_cum_volume: false,
-      roll_window: 325,
-      corr_smooth_window: 1,
-      correlation_threshold: 0.6,
-      require_alignment: true,
-      require_price_above_evwma: true,
-      max_concurrent: 10,
-      rate_limit_per_second: 95,
-    },
     params: [
       {
         name: 'evwma1_timeframe',

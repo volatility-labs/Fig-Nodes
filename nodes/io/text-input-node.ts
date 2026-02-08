@@ -11,11 +11,10 @@ export class TextInput extends Node {
     inputs: {},
     outputs: { text: port('string') },
 
-    // Support both legacy "value" and preferred "text" parameter keys
-    defaults: { value: '' },
-
-    // No params needed - textarea is defined in body, not as param widget
-    params: [],
+    // Default for body-bound textarea widget
+    params: [
+      { name: 'value', type: 'textarea', default: '' },
+    ],
 
     // UI configuration: use DOM textarea widget in body
     ui: {

@@ -29,10 +29,6 @@ export class TextToLLMMessage extends Node {
     outputs: {
       message: port('LLMChatMessage'),
     },
-    defaults: {
-      role: 'user',
-      format: 'readable',
-    },
     params: [
       {
         name: 'role',
