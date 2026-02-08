@@ -1,10 +1,10 @@
-# Fig Nodes (Beta)
+# Sosa
 
-Node-based workflow tool for traders to build and execute agentic graph pipelines — scan markets, research ideas, integrate LLMs for filtering and reasoning, and more.
+Node-based workflow tool for building and executing agentic graph pipelines — scan markets, research ideas, integrate LLMs for filtering and reasoning, and more.
 
 ## Architecture
 
-Fig Nodes is a TypeScript monorepo (Yarn workspaces) with three packages:
+Sosa is a TypeScript monorepo (Yarn workspaces) with three packages:
 
 ```
 sosa/
@@ -20,32 +20,30 @@ sosa/
 └── .env.example       # Environment variable template
 ```
 
-**Core** (`@sosa/core`) — the graph execution engine. Computes a topological sort of the node graph, executes nodes in parallel within each dependency level, and supports cancellation via AbortController. Exports the `GraphExecutor`, node registry, `Node` base class, and shared types (`Graph`, `ExecutionResults`, `ProgressEvent`). Has no server or frontend dependencies.
+**Core** (`@sosa/core`) — Graph execution engine. Topological sort, parallel execution within dependency levels, cancellation via AbortController. Exports `GraphExecutor`, node registry, `Node` base class, and shared types.
 
-**Server** (`@sosa/server`) — a Fastify server that imports Core to execute graphs. Exposes a REST API (`GET /api/v1/nodes` for node metadata) and a WebSocket endpoint (`/execute`) for real-time graph execution with progress streaming. Jobs run through a FIFO execution queue (one at a time), with IO-category nodes streaming results immediately.
+**Server** (`@sosa/server`) — Fastify server with REST API (`GET /api/v1/nodes`) and WebSocket endpoint (`/execute`) for real-time execution with progress streaming. FIFO execution queue with IO nodes streaming results immediately.
 
-**Frontend** (`@sosa/frontend`) — a Vite + React app that provides a Rete.js v2-based graph editor. Fetches node metadata from the server at startup and dynamically creates editor nodes with typed sockets. Connects to the server over WebSocket for execution. The frontend is a generic renderer — node UI is entirely driven by backend-defined metadata (`paramsMeta`, `uiConfig`).
+**Frontend** (`@sosa/frontend`) — Vite + React app with a Rete.js v2 graph editor. Node UI is entirely driven by backend-defined metadata (`paramsMeta`, `uiConfig`).
 
-The server and frontend run as **separate processes**. In development, the Vite dev server proxies `/api/*` and `/execute` (including WebSocket upgrades) to the Fastify server.
+The server and frontend run as separate processes. In dev, Vite proxies `/api/*` and `/execute` to the Fastify server.
 
-## Requirements
+## Getting Started
+
+### Requirements
 
 - Node.js >= 20.0.0
 - Yarn 1.22.22
 
-## Installation
+### Install
 
 ```bash
-git clone https://github.com/volatility-labs/Fig-Nodes.git
-cd Fig-Nodes
+git clone <repo-url>
+cd sosa
 yarn install
 ```
 
-`yarn install` automatically builds the core package via the `postinstall` script.
-
-## Environment Variables
-
-Copy the example env file and fill in your keys:
+### Environment Variables
 
 ```bash
 cp .env.example .env
@@ -53,19 +51,15 @@ cp .env.example .env
 
 | Variable | Used By |
 |---|---|
-| `POLYGON_API_KEY` | Market data nodes (Polygon universe, custom bars, ORB filter, industry filter) |
+| `POLYGON_API_KEY` | Market data nodes |
 | `TAVILY_API_KEY` | Web search tool node |
 | `OPENROUTER_API_KEY` | LLM chat and vision nodes |
 
-## Development
-
-Start all three packages concurrently:
+### Development
 
 ```bash
 yarn dev
 ```
-
-This runs:
 
 | Package | Command | Port |
 |---|---|---|
@@ -73,19 +67,17 @@ This runs:
 | server | `tsx watch` | 8000 |
 | frontend | `vite dev` | 5173 |
 
-Open `http://localhost:5173` in your browser. The default graph should load — press **Execute** at the bottom right of the canvas.
+Open `http://localhost:5173` and press **Execute**.
 
-## Production Build
+### Production Build
 
 ```bash
 yarn build
 ```
 
-Builds in order: core → nodes → server.
-
 ## Custom Nodes
 
-Create a `.ts` file in the `custom_nodes/` directory. Extend the `Node` class from `@sosa/core`:
+Create a `.ts` file in `custom_nodes/`. Extend the `Node` class from `@sosa/core`:
 
 ```typescript
 import { Node, NodeCategory } from '@sosa/core';
@@ -107,7 +99,7 @@ Nodes are auto-discovered at server startup — no registration needed.
 
 **IO** — TextInput, AssetSymbolInput, Logging, SaveOutput, SystemPromptLoader, Note, DiscordOutput, XcomUsersFeed
 
-**LLM** — OpenRouterChat, OpenRouterVisionChat, LLMMessagesBuilder, TextToLLMMessage, ToolsBuilder (with web search and tool registry services)
+**LLM** — OpenRouterChat, OpenRouterVisionChat, LLMMessagesBuilder, TextToLLMMessage, ToolsBuilder
 
 **Market** — Polygon stock/crypto universe, custom bars, batch custom bars, 15 technical filters (ADX, ATR, RSI, EMA range, SMA crossover, VBP levels, etc.), indicators (ATR, ATRX, ORB), charting (OHLCV chart, Hurst plot, image display), and utility nodes (extract symbols, price data fetching)
 
@@ -115,7 +107,7 @@ Nodes are auto-discovered at server startup — no registration needed.
 
 | Command | Description |
 |---|---|
-| `yarn dev` | Start all packages in development mode |
+| `yarn dev` | Start all packages in dev mode |
 | `yarn build` | Production build (core → nodes → server) |
 | `yarn build:nodes` | Build only the nodes directory |
 | `yarn test` | Run tests across all workspaces |
@@ -124,4 +116,4 @@ Nodes are auto-discovered at server startup — no registration needed.
 
 ## License
 
-Fig Nodes is licensed under the Apache License 2.0. See [LICENSE](LICENSE) for details.
+Sosa is licensed under the Apache License 2.0. See [LICENSE](LICENSE) for details.
