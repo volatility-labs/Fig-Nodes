@@ -1,7 +1,14 @@
 // Graph execution routes
 import type { FastifyPluginAsync } from 'fastify';
-import { GraphDocumentExecutor, type NodeRegistry, type GraphDocument } from '@fig-node/core';
-import { getCredentialStore } from '../credentials/env-credential-store';
+import {
+  GraphExecutor,
+  type NodeRegistry,
+  type Graph,
+  validateGraph,
+  hasCycles,
+} from '@fig-node/core';
+import { getCredentialStore } from '../credentials/env-credential-store.js';
+import { getNodeMetadata } from './node-metadata-helper.js';
 
 // Extend FastifyInstance to include our decorations
 declare module 'fastify' {
@@ -10,48 +17,28 @@ declare module 'fastify' {
   }
 }
 
-/**
- * Helper to extract node metadata from a node class.
- * Handles both paramsMeta and params_meta naming conventions.
- */
-function getNodeMetadata(NodeClass: any) {
-  // Handle both paramsMeta and params_meta (legacy naming inconsistency)
-  // Use Object.hasOwn to check if the subclass defines its own property,
-  // avoiding inheritance of empty defaults from Base class
-  const hasOwnParamsMeta = Object.hasOwn(NodeClass, 'paramsMeta') && NodeClass.paramsMeta?.length > 0;
-  const hasOwnParamsMeta_ = Object.hasOwn(NodeClass, 'params_meta') && NodeClass.params_meta?.length > 0;
-  const params = hasOwnParamsMeta ? NodeClass.paramsMeta : (hasOwnParamsMeta_ ? NodeClass.params_meta : []);
-
-  const hasOwnDefaultParams = Object.hasOwn(NodeClass, 'defaultParams') && Object.keys(NodeClass.defaultParams || {}).length > 0;
-  const hasOwnDefaultParams_ = Object.hasOwn(NodeClass, 'default_params') && Object.keys(NodeClass.default_params || {}).length > 0;
-  const defaultParams = hasOwnDefaultParams ? NodeClass.defaultParams : (hasOwnDefaultParams_ ? NodeClass.default_params : {});
-
-  return {
-    inputs: NodeClass.inputs ?? {},
-    outputs: NodeClass.outputs ?? {},
-    params,
-    defaultParams,
-    category: NodeClass.CATEGORY ?? 'base',
-    requiredKeys: NodeClass.required_keys ?? [],
-    description: NodeClass.__doc ?? '',
-    uiConfig: NodeClass.uiConfig ?? {},
-  };
-}
-
 export const graphRoutes: FastifyPluginAsync = async (fastify) => {
-  // Execute a GraphDocument
+  // Execute a Graph
   fastify.post('/v1/graphs/execute', async (request, reply) => {
-    const doc = request.body as GraphDocument;
+    const doc = request.body as Graph;
 
-    if (!doc || !doc.nodes || !doc.edges || doc.version !== 2) {
+    const validation = validateGraph(doc, fastify.registry);
+    if (!validation.valid) {
       return reply.status(400).send({
-        error: 'Invalid GraphDocument',
-        message: 'Request body must be a valid GraphDocument with version: 2',
+        error: 'Invalid Graph',
+        details: validation.errors,
+      });
+    }
+
+    if (hasCycles(doc)) {
+      return reply.status(400).send({
+        error: 'Invalid Graph',
+        message: 'Graph contains cycles',
       });
     }
 
     try {
-      const executor = new GraphDocumentExecutor(doc, fastify.registry, getCredentialStore());
+      const executor = new GraphExecutor(doc, fastify.registry, getCredentialStore());
       const result = await executor.execute();
       return result;
     } catch (error) {
@@ -63,15 +50,18 @@ export const graphRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
-  // Get all nodes with full metadata
-  fastify.get('/v1/nodes', async () => {
-    const nodes: Record<string, ReturnType<typeof getNodeMetadata>> = {};
+  // Get all nodes with full metadata (cached since definitions are static)
+  let cachedNodes: Record<string, ReturnType<typeof getNodeMetadata>> | null = null;
 
-    for (const [name, NodeClass] of Object.entries(fastify.registry)) {
-      nodes[name] = getNodeMetadata(NodeClass);
+  fastify.get('/v1/nodes', async () => {
+    if (!cachedNodes) {
+      cachedNodes = {};
+      for (const [name, NodeClass] of Object.entries(fastify.registry)) {
+        cachedNodes[name] = getNodeMetadata(NodeClass);
+      }
     }
 
-    return { nodes };
+    return { nodes: cachedNodes };
   });
 
   // Get individual node schema

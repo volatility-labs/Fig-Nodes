@@ -1,15 +1,15 @@
 // Execution queue for managing graph execution jobs
 import type { WebSocket } from '@fastify/websocket';
-import type { GraphDocument } from '@fig-node/core';
+import type { Graph } from '@fig-node/core';
 import {
   type ExecutionJob,
   JobState,
   createExecutionJob,
   createDeferred,
   type Deferred,
-} from '../types/job';
-import { buildQueuePositionMessage } from '../types/messages';
-import { wsSendAsync, isWsConnected } from '../websocket/send-utils';
+} from '../types/job.js';
+import { buildQueuePositionMessage } from '../types/messages.js';
+import { wsSendAsync, isWsConnected } from '../websocket/send-utils.js';
 
 const POSITION_UPDATE_INTERVAL_MS = 1000;
 
@@ -32,7 +32,7 @@ export class ExecutionQueue {
    * Enqueue a new job for execution.
    * Starts sending queue position updates to the client.
    */
-  enqueue(websocket: WebSocket, graphData: GraphDocument): ExecutionJob {
+  enqueue(websocket: WebSocket, graphData: Graph): ExecutionJob {
     const job = createExecutionJob(++this.jobIdCounter, websocket, graphData);
 
     this.pending.push(job);
@@ -40,9 +40,10 @@ export class ExecutionQueue {
     // Start position update interval
     this.startPositionUpdates(job);
 
-    // Wake up the worker if it's waiting
-    this.wakeup.resolve();
+    // Wake up the worker if it's waiting (atomic swap: create new deferred before resolving old)
+    const prev = this.wakeup;
     this.wakeup = createDeferred();
+    prev.resolve();
 
     return job;
   }

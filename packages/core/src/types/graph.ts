@@ -1,71 +1,70 @@
-// src/types/graph.ts
-// Simplified graph serialization types for the backend execution engine.
-//
-// These are intentionally looser versions of the canonical types defined in
-// @fig-node/litegraph (packages/litegraph/src/types/serialisation.ts).
-// Litegraph uses precise branded aliases (NodeId, LinkId, Point, etc.)
-// whereas these use plain number/number[]/unknown for backend flexibility.
-// A value conforming to litegraph's SerialisableGraph is assignable to this one.
+// src/types/graph-document.ts
+// Clean, LLM-friendly graph document schema
+// This is the single source of truth for graph state in the new Svelte Flow editor.
 
-export interface SerialisedLink {
-  id: number;
-  origin_id: number;
-  origin_slot: number;
-  target_id: number;
-  target_slot: number;
-  type: unknown;
-  parentId?: number;
-}
+// ============ Core Types ============
 
-export interface SerialisedNodeInput {
-  name: string;
-  type: unknown;
-  linkIds?: number[];
-}
-
-export interface SerialisedNodeOutput {
-  name: string;
-  type: unknown;
-  linkIds?: number[];
-}
-
-export interface SerialisedNode {
-  id: number;
+export interface GraphNode {
   type: string;
+  params: Record<string, unknown>;
   title?: string;
-  pos?: number[];
-  size?: number[];
-  flags?: Record<string, unknown>;
-  order?: number;
-  mode?: number;
-  inputs?: SerialisedNodeInput[];
-  outputs?: SerialisedNodeOutput[];
-  properties?: Record<string, unknown>;
-  shape?: unknown;
-  boxcolor?: string;
+  position?: [number, number];
+  size?: [number, number];
+}
+
+export interface GraphEdge {
+  from: string; // "nodeId.outputName"
+  to: string;   // "nodeId.inputName"
+}
+
+export interface GraphGroup {
+  id: string;
+  title: string;
   color?: string;
-  bgcolor?: string;
-  showAdvanced?: boolean;
-  widgets_values?: unknown[];
+  bounds: { x: number; y: number; width: number; height: number };
+  children?: string[]; // node IDs
 }
 
-export interface SerialisedGraphState {
-  lastNodeId: number;
-  lastLinkId: number;
-  lastGroupId: number;
-  lastRerouteId: number;
+export interface GraphLayout {
+  zoom?: number;
+  offset?: [number, number];
 }
 
-export interface SerialisableGraph {
-  id?: string;
-  revision?: number;
-  version?: number;
-  state?: SerialisedGraphState;
-  nodes?: SerialisedNode[];
-  links?: SerialisedLink[];
-  floatingLinks?: SerialisedLink[];
-  reroutes?: Array<Record<string, unknown>>;
-  groups?: Array<Record<string, unknown>>;
-  extra?: Record<string, unknown>;
-  definitions?: Record<string, unknown>;
+export interface GraphDocument {
+  id: string;
+  name: string;
+  version: 2;
+  nodes: Record<string, GraphNode>;       // "chat_1" -> { type, params }
+  edges: GraphEdge[];                      // [{ from: "node.output", to: "node.input" }]
+  groups?: GraphGroup[];
+  layout?: GraphLayout;
+}
+
+// ============ Factory ============
+
+export function createEmptyDocument(name = 'untitled'): GraphDocument {
+  return {
+    id: crypto.randomUUID(),
+    name,
+    version: 2,
+    nodes: {},
+    edges: [],
+  };
+}
+
+// ============ Edge Helpers ============
+
+export function parseEdgeEndpoint(endpoint: string): { nodeId: string; portName: string } {
+  const dotIndex = endpoint.indexOf('.');
+  if (dotIndex === -1) {
+    throw new Error(`Invalid edge endpoint: "${endpoint}" (expected "nodeId.portName")`);
+  }
+  return {
+    nodeId: endpoint.substring(0, dotIndex),
+    portName: endpoint.substring(dotIndex + 1),
+  };
+}
+
+export function makeEdgeEndpoint(nodeId: string, portName: string): string {
+  return `${nodeId}.${portName}`;
 }

@@ -1,15 +1,15 @@
 // Execution worker - processes jobs from the queue
 import type { FastifyBaseLogger } from 'fastify';
 import {
-  GraphDocumentExecutor,
+  GraphExecutor,
   type NodeRegistry,
   type ProgressEvent,
   NodeCategory,
   serializeForApi,
 } from '@fig-node/core';
-import type { ExecutionQueue } from './execution-queue';
-import type { ExecutionJob } from '../types/job';
-import { JobState } from '../types/job';
+import type { ExecutionQueue } from './execution-queue.js';
+import type { ExecutionJob } from '../types/job.js';
+import { JobState } from '../types/job.js';
 import {
   ExecutionState,
   buildStatusMessage,
@@ -17,11 +17,12 @@ import {
   buildDataMessage,
   buildErrorMessage,
   buildStoppedMessage,
-} from '../types/messages';
-import { wsSendAsync, wsSendSync, isWsConnected } from '../websocket/send-utils';
-import { getCredentialStore } from '../credentials/env-credential-store';
+} from '../types/messages.js';
+import { wsSendAsync, wsSendSync, isWsConnected } from '../websocket/send-utils.js';
+import { getCredentialStore } from '../credentials/env-credential-store.js';
 
 const DISCONNECT_POLL_INTERVAL_MS = 500;
+const EXECUTION_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 
 /**
  * Monitor for cancellation or disconnection.
@@ -101,8 +102,8 @@ function createResultCallback(
     const node = job.graphData.nodes[nodeId];
     if (!node) return;
 
-    const NodeClass = nodeRegistry[node.type] as { CATEGORY?: string } | undefined;
-    const category = NodeClass?.CATEGORY ?? 'base';
+    const NodeClass = nodeRegistry[node.type] as { definition?: { category?: string } } | undefined;
+    const category = NodeClass?.definition?.category ?? 'base';
 
     // Only emit immediately for IO nodes
     if (category === NodeCategory.IO || category === 'io') {
@@ -156,18 +157,22 @@ export async function executionWorker(
       // Track which nodes have already emitted results (IO nodes)
       const emittedNodeIds = new Set<string>();
 
-      // Create executor from GraphDocument directly
-      const executor = new GraphDocumentExecutor(job.graphData, nodeRegistry, getCredentialStore());
+      // Create executor from Graph directly
+      const executor = new GraphExecutor(job.graphData, nodeRegistry, getCredentialStore());
 
       // Set up callbacks
       executor.setProgressCallback(createProgressCallback(job));
       executor.setResultCallback(createResultCallback(job, nodeRegistry, emittedNodeIds));
 
-      // Start execution
+      // Start execution with timeout
       const executionPromise = executor.execute();
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error(`Execution timed out after ${EXECUTION_TIMEOUT_MS / 1000}s`)), EXECUTION_TIMEOUT_MS)
+      );
+      const timedExecution = Promise.race([executionPromise, timeoutPromise]);
 
       // Monitor for cancellation/disconnection
-      const outcome = await monitorCancel(job, executionPromise);
+      const outcome = await monitorCancel(job, timedExecution);
 
       if (outcome.reason === 'user') {
         logger.info({ jobId: job.id }, 'Job cancelled by user');

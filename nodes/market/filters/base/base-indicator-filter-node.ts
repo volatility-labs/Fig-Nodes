@@ -1,16 +1,16 @@
 // src/nodes/core/market/filters/base/base-indicator-filter-node.ts
-// Translated from: nodes/core/market/filters/base/base_indicator_filter_node.py
 
 import { BaseFilter } from './base-filter-node';
 import { NodeCategory } from '@fig-node/core';
-import type {
-  NodeInputs,
-  NodeOutputs,
-  OHLCVBar,
-  OHLCVBundle,
-  IndicatorResult,
-} from '@fig-node/core';
-import { AssetSymbol } from '@fig-node/core';
+import type { NodeDefinition } from '@fig-node/core';
+import {
+  AssetSymbol,
+  type OHLCVBar,
+  type OHLCVBundle,
+  type IndicatorResult,
+  type SerializedOHLCVBundle,
+  deserializeOHLCVBundle,
+} from '../../types';
 
 /**
  * Base class for indicator filter nodes that filter OHLCV bundles based on technical indicators.
@@ -19,14 +19,17 @@ import { AssetSymbol } from '@fig-node/core';
  * Output: Filtered OHLCV bundle (Map<AssetSymbol, OHLCVBar[]>)
  */
 export abstract class BaseIndicatorFilter extends BaseFilter {
-  static override CATEGORY = NodeCategory.MARKET;
+  static override definition: NodeDefinition = {
+    ...BaseFilter.definition,
+    category: NodeCategory.MARKET,
+  };
 
   constructor(
-    figNodeId: string,
+    nodeId: string,
     params: Record<string, unknown> = {},
     graphContext?: Record<string, unknown>
   ) {
-    super(figNodeId, params, graphContext ?? {});
+    super(nodeId, params, graphContext ?? {});
     this.validateIndicatorParams();
   }
 
@@ -44,7 +47,7 @@ export abstract class BaseIndicatorFilter extends BaseFilter {
    * upstream nodes may not have normalized null values in bundles. Empty arrays
    * indicate no data and are skipped during execution.
    */
-  override validateInputs(inputs: NodeInputs): void {
+  override validateInputs(inputs: Record<string, unknown>): void {
     const bundleRaw = inputs.ohlcv_bundle;
 
     if (bundleRaw !== null && bundleRaw !== undefined) {
@@ -63,19 +66,8 @@ export abstract class BaseIndicatorFilter extends BaseFilter {
         }
         inputs.ohlcv_bundle = normalizedBundle;
       } else if (typeof bundleRaw === 'object') {
-        // Convert plain object to Map
-        const normalizedBundle: OHLCVBundle = new Map();
-        for (const [_key, value] of Object.entries(bundleRaw)) {
-          // Try to reconstruct AssetSymbol if it's serialized
-          // For now, skip non-AssetSymbol keys
-          if (value === null || value === undefined) {
-            continue;
-          } else if (Array.isArray(value)) {
-            // This branch handles cases where the key might be a serialized symbol
-            // In production, proper deserialization would be needed
-          }
-        }
-        inputs.ohlcv_bundle = normalizedBundle;
+        // Convert plain object to Map via deserialization
+        inputs.ohlcv_bundle = deserializeOHLCVBundle(bundleRaw as SerializedOHLCVBundle);
       }
     }
 
@@ -94,7 +86,7 @@ export abstract class BaseIndicatorFilter extends BaseFilter {
    */
   protected abstract shouldPassFilter(indicatorResult: IndicatorResult): boolean;
 
-  protected override async executeImpl(inputs: NodeInputs): Promise<NodeOutputs> {
+  protected override async run(inputs: Record<string, unknown>): Promise<Record<string, unknown>> {
     const ohlcvBundle = (inputs.ohlcv_bundle as OHLCVBundle) ?? new Map();
 
     if (ohlcvBundle.size === 0) {
@@ -107,7 +99,7 @@ export abstract class BaseIndicatorFilter extends BaseFilter {
 
     // Initial progress signal
     try {
-      this.reportProgress(0.0, `0/${totalSymbols}`);
+      this.progress(0.0, `0/${totalSymbols}`);
     } catch {
       // Ignore progress reporting errors
     }
@@ -116,8 +108,8 @@ export abstract class BaseIndicatorFilter extends BaseFilter {
       if (!ohlcvData || ohlcvData.length === 0) {
         processedSymbols++;
         try {
-          const progress = (processedSymbols / Math.max(1, totalSymbols)) * 100.0;
-          this.reportProgress(progress, `${processedSymbols}/${totalSymbols}`);
+          const pct = (processedSymbols / Math.max(1, totalSymbols)) * 100.0;
+          this.progress(pct, `${processedSymbols}/${totalSymbols}`);
         } catch {
           // Ignore progress reporting errors
         }
@@ -135,8 +127,8 @@ export abstract class BaseIndicatorFilter extends BaseFilter {
         // Progress should still advance even on failure
         processedSymbols++;
         try {
-          const progress = (processedSymbols / Math.max(1, totalSymbols)) * 100.0;
-          this.reportProgress(progress, `${processedSymbols}/${totalSymbols}`);
+          const pct = (processedSymbols / Math.max(1, totalSymbols)) * 100.0;
+          this.progress(pct, `${processedSymbols}/${totalSymbols}`);
         } catch {
           // Ignore progress reporting errors
         }
@@ -146,8 +138,8 @@ export abstract class BaseIndicatorFilter extends BaseFilter {
       // Advance progress after successful processing
       processedSymbols++;
       try {
-        const progress = (processedSymbols / Math.max(1, totalSymbols)) * 100.0;
-        this.reportProgress(progress, `${processedSymbols}/${totalSymbols}`);
+        const pct = (processedSymbols / Math.max(1, totalSymbols)) * 100.0;
+        this.progress(pct, `${processedSymbols}/${totalSymbols}`);
       } catch {
         // Ignore progress reporting errors
       }

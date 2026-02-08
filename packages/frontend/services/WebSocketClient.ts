@@ -2,11 +2,11 @@
  * WebSocket Client for Graph Execution
  *
  * Handles WebSocket communication between the frontend and backend execution queue.
- * Uses GraphDocument store instead of LiteGraph.
+ * Serializes graph from Rete (the single source of truth) via the adapter.
  */
 
-import { useGraphStore } from '../stores/graph-store';
-import { APIKeyManager } from './APIKeyManager';
+import { useGraphStore } from '../stores/graphStore';
+import { getEditorAdapter } from '../components/editor/editor-ref';
 import type { ExecutionResults } from '../types/resultTypes';
 import type {
   ClientToServerMessage,
@@ -32,21 +32,9 @@ let ws: WebSocket | null = null;
 let stopPromiseResolver: (() => void) | null = null;
 let sessionId: string | null = localStorage.getItem('session_id');
 let statusService: ExecutionStatusService | null = null;
-const apiKeyManager = new APIKeyManager();
-
-function showExecuteButton() {
-  const execute = document.getElementById('execute');
-  const stop = document.getElementById('stop');
-  if (execute) execute.style.display = 'inline-block';
-  if (stop) stop.style.display = 'none';
-}
-
-function showStopButton() {
-  const execute = document.getElementById('execute');
-  const stop = document.getElementById('stop');
-  if (execute) execute.style.display = 'none';
-  if (stop) stop.style.display = 'inline-block';
-}
+let reconnectAttempts = 0;
+const MAX_RECONNECT_ATTEMPTS = 5;
+const BASE_RECONNECT_DELAY_MS = 1000;
 
 function clearAllHighlights() {
   useGraphStore.getState().clearNodeStatus();
@@ -74,7 +62,7 @@ export async function stopExecution(): Promise<void> {
 }
 
 function forceCleanup() {
-  showExecuteButton();
+  useGraphStore.getState().setIsExecuting(false);
   clearAllHighlights();
   statusService?.setIdle();
   if (stopPromiseResolver) {
@@ -96,12 +84,10 @@ function handleErrorMessage(data: { message: string; code?: string; missing_keys
   console.error('Execution error:', data.message);
   statusService?.error(null, data.message);
 
-  if (data.code === 'MISSING_API_KEYS' && Array.isArray(data.missing_keys)) {
-    try { alert(data.message || 'Missing API keys. Opening settings...'); } catch { /* ignore in tests */ }
-    apiKeyManager.setLastMissingKeys(data.missing_keys);
-    apiKeyManager.openSettings(data.missing_keys);
+  if (data.code === 'MISSING_API_KEYS') {
+    useGraphStore.getState().setNotification({ message: data.message || 'Missing API keys. Check your .env file.', type: 'error' });
   } else {
-    try { alert('Error: ' + data.message); } catch { /* ignore in tests */ }
+    useGraphStore.getState().setNotification({ message: 'Error: ' + data.message, type: 'error' });
   }
 
   closeWebSocket();
@@ -115,12 +101,12 @@ function handleStatusMessage(message: ServerToClientStatusMessage) {
   statusService?.updateFromBackendState(message.state, message.message, message.job_id);
 
   if (message.state === 'finished' || message.state === 'error') {
-    showExecuteButton();
+    useGraphStore.getState().setIsExecuting(false);
   }
 }
 
 function handleStoppedMessage(_data: { message: string }) {
-  showExecuteButton();
+  useGraphStore.getState().setIsExecuting(false);
   clearAllHighlights();
   statusService?.stopped(null);
   if (stopPromiseResolver) {
@@ -147,14 +133,12 @@ function handleDataMessage(data: { results: ExecutionResults }) {
 }
 
 function handleProgressMessage(data: {
-  node_id?: string;
+  node_id: string;
   progress?: number;
   text?: string;
   state?: ProgressState;
   meta?: Record<string, unknown>;
 }) {
-  if (data.node_id === undefined) return;
-
   const nodeId = data.node_id;
   const store = useGraphStore.getState();
   const state = data.state;
@@ -170,26 +154,15 @@ function handleProgressMessage(data: {
     store.setNodeError(nodeId, data.text ?? 'Error');
   }
 
-  // Handle polygon data status metadata
-  if (data.meta?.polygon_data_status) {
-    updatePolygonStatus(data.meta.polygon_data_status as string);
+  // Forward string metadata entries to the store
+  if (data.meta) {
+    const store = useGraphStore.getState();
+    for (const [key, val] of Object.entries(data.meta)) {
+      if (typeof val === 'string') {
+        store.setMetaStatus(key, val);
+      }
+    }
   }
-}
-
-function updatePolygonStatus(status: string) {
-  const element = document.getElementById('polygon-status');
-  if (!element) return;
-
-  element.className = `polygon-status ${status}`;
-  const labels: Record<string, string> = {
-    'real-time': 'Real-Time',
-    'delayed': 'Delayed',
-    'market-closed': 'Market Closed',
-    'unknown': 'Unknown',
-    'na': 'N/A',
-  };
-  element.textContent = labels[status] || status;
-  element.setAttribute('title', `Polygon Data Status: ${labels[status] || status}`);
 }
 
 function handleQueuePositionMessage(message: ServerToClientQueuePositionMessage) {
@@ -199,6 +172,70 @@ function handleQueuePositionMessage(message: ServerToClientQueuePositionMessage)
   } else {
     statusService?.setQueuePosition(statusService.getCurrentJobId() ?? -1, position);
   }
+}
+
+// ============ Reconnection ============
+
+function getWsUrl(): string {
+  const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+  const backendHost = window.location.hostname;
+  return `${protocol}://${backendHost}${window.location.port === '8000' ? '' : ':8000'}/execute`;
+}
+
+function attemptReconnect(doc: import('@fig-node/core').Graph) {
+  if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+    console.warn(`Max reconnect attempts (${MAX_RECONNECT_ATTEMPTS}) reached`);
+    forceCleanup();
+    return;
+  }
+
+  const delay = BASE_RECONNECT_DELAY_MS * Math.pow(2, reconnectAttempts);
+  reconnectAttempts++;
+  statusService?.setConnection('disconnected', `Reconnecting in ${Math.round(delay / 1000)}s...`);
+
+  setTimeout(() => {
+    if (!useGraphStore.getState().isExecuting) return; // User stopped execution
+
+    ws = new WebSocket(getWsUrl());
+
+    ws.onopen = () => {
+      reconnectAttempts = 0;
+      const connectMessage: ClientToServerMessage = sessionId
+        ? { type: 'connect', session_id: sessionId }
+        : { type: 'connect' };
+      ws?.send(JSON.stringify(connectMessage));
+    };
+
+    ws.onmessage = (event) => {
+      const data: ServerToClientMessage = JSON.parse(event.data as string);
+
+      if (isSessionMessage(data)) {
+        sessionId = data.session_id;
+        localStorage.setItem('session_id', sessionId);
+        statusService?.setConnection('executing', 'Reconnected — re-executing...');
+        const message: ClientToServerMessage = { type: 'graph', graph_data: doc };
+        ws?.send(JSON.stringify(message));
+        return;
+      }
+
+      if (isErrorMessage(data)) handleErrorMessage(data);
+      else if (isStatusMessage(data)) handleStatusMessage(data);
+      else if (isStoppedMessage(data)) handleStoppedMessage(data);
+      else if (isDataMessage(data)) handleDataMessage(data);
+      else if (isProgressMessage(data)) handleProgressMessage(data);
+      else if (isQueuePositionMessage(data)) handleQueuePositionMessage(data);
+    };
+
+    ws.onclose = (event) => {
+      if (event.code !== 1000) {
+        attemptReconnect(doc);
+      }
+    };
+
+    ws.onerror = () => {
+      closeWebSocket();
+    };
+  }, delay);
 }
 
 // ============ Setup ============
@@ -213,42 +250,27 @@ export function setupWebSocket(service: ExecutionStatusService) {
       return;
     }
 
-    // Get graph document from store — send directly to backend
-    const doc = useGraphStore.getState().doc;
-
-    // Preflight API key check
-    try {
-      const requiredKeys = await apiKeyManager.getRequiredKeysForGraph(doc as unknown as Record<string, unknown>);
-      if (requiredKeys.length > 0) {
-        const missing = await apiKeyManager.checkMissingKeys(requiredKeys);
-        if (missing.length > 0) {
-          try {
-            alert(`Missing API keys for this graph: ${missing.join(', ')}. Please set them in the settings menu.`);
-          } catch { /* ignore in tests */ }
-          apiKeyManager.setLastMissingKeys(missing);
-          await apiKeyManager.openSettings(missing);
-          showExecuteButton();
-          return;
-        }
-      }
-    } catch {
-      // Fall back to server-side validation
+    // Serialize graph from Rete (the source of truth)
+    const adapter = getEditorAdapter();
+    if (!adapter) {
+      console.error('No editor adapter available');
+      return;
     }
+    const { docName, docId } = useGraphStore.getState();
+    const doc = adapter.serializeGraph(docName, docId);
 
     // Clear previous execution state
     useGraphStore.getState().clearNodeStatus();
     useGraphStore.getState().clearDisplayResults();
 
-    showStopButton();
+    useGraphStore.getState().setIsExecuting(true);
     statusService?.startConnecting();
 
     // WebSocket connection
-    const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-    const backendHost = window.location.hostname;
-    const wsUrl = `${protocol}://${backendHost}${window.location.port === '8000' ? '' : ':8000'}/execute`;
+    reconnectAttempts = 0;
 
     if (!ws || ws.readyState !== WebSocket.OPEN) {
-      ws = new WebSocket(wsUrl);
+      ws = new WebSocket(getWsUrl());
 
       ws.onopen = () => {
         const connectMessage: ClientToServerMessage = sessionId
@@ -280,13 +302,14 @@ export function setupWebSocket(service: ExecutionStatusService) {
       ws.onclose = (event) => {
         if (event.code !== 1000) {
           statusService?.setConnection('disconnected', 'Disconnected');
+          attemptReconnect(doc);
         }
       };
 
       ws.onerror = () => {
         statusService?.setConnection('disconnected', 'Connection error');
         closeWebSocket();
-        forceCleanup();
+        // Don't forceCleanup here — let onclose handle reconnection
       };
     } else {
       statusService?.setConnection('executing', 'Executing...');
