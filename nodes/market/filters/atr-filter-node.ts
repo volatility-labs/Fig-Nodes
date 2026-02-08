@@ -1,40 +1,31 @@
 // src/nodes/core/market/filters/atr-filter-node.ts
-// Translated from: nodes/core/market/filters/atr_filter_node.py
 
 import { BaseIndicatorFilter } from './base/base-indicator-filter-node';
-import { IndicatorType, createIndicatorResult, createIndicatorValue } from '@fig-node/core';
-import type {
-  ParamMeta,
-  DefaultParams,
-  OHLCVBar,
-  IndicatorResult,
-  NodeUIConfig,
-} from '@fig-node/core';
+import type { NodeDefinition } from '@fig-node/core';
+import { IndicatorType, createIndicatorResult, createIndicatorValue, type OHLCVBar, type IndicatorResult } from '../types';
 import { calculateAtr } from '../calculators/atr-calculator';
 
 /**
  * Filters assets based on ATR (Average True Range) values.
  */
 export class ATRFilter extends BaseIndicatorFilter {
-  static override defaultParams: DefaultParams = {
-    min_atr: 0.0,
-    window: 14,
-  };
-
-  static override paramsMeta: ParamMeta[] = [
-    { name: 'min_atr', type: 'number', default: 0.0, min: 0.0, step: 0.1 },
-    { name: 'window', type: 'number', default: 14, min: 1, step: 1 },
-  ];
-
-  // UI configuration (ComfyUI-style) - replaces separate ATRFilterNodeUI.ts
-  static override uiConfig: NodeUIConfig = {
-    size: [360, 160],
-    displayResults: false,
-    resultDisplay: 'none',
-    actions: [
-      { id: 'previewFiltered', label: 'Preview Filtered', icon: '👁' },
-      { id: 'copySummary', label: 'Copy Summary', icon: '📋' },
+  static override definition: NodeDefinition = {
+    ...BaseIndicatorFilter.definition,
+    defaults: {
+      min_atr: 0.0,
+      window: 14,
+    },
+    params: [
+      { name: 'min_atr', type: 'number', default: 0.0, min: 0.0, step: 0.1 },
+      { name: 'window', type: 'number', default: 14, min: 1, step: 1 },
     ],
+    ui: {
+      resultDisplay: 'none',
+      actions: [
+        { id: 'previewFiltered', label: 'Preview Filtered', icon: '👁' },
+        { id: 'copySummary', label: 'Copy Summary', icon: '📋' },
+      ],
+    },
   };
 
   protected override validateIndicatorParams(): void {

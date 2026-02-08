@@ -1,50 +1,24 @@
 // src/nodes/core/market/indicators/atr-indicator-node.ts
-// Translated from: nodes/core/market/indicators/atr_indicator_node.py
 
 import { BaseIndicator } from './base/base-indicator-node';
-import {
-  IndicatorType,
-  createIndicatorResult,
-  createIndicatorValue,
-  getType,
-} from '@fig-node/core';
-import type {
-  ParamMeta,
-  DefaultParams,
-  NodeInputs,
-  NodeOutputs,
-  IndicatorValue,
-  OHLCVBar,
-  OHLCVBundle,
-  NodeUIConfig,
-} from '@fig-node/core';
+import { port } from '@fig-node/core';
+import type { NodeDefinition } from '@fig-node/core';
+import { IndicatorType, createIndicatorResult, createIndicatorValue, type IndicatorValue, type OHLCVBar, type OHLCVBundle } from '../types';
 import { calculateAtr } from '../calculators/atr-calculator';
 
 /**
  * Computes the ATR indicator for a single asset's OHLCV data.
  */
 export class ATRIndicator extends BaseIndicator {
-  static uiConfig: NodeUIConfig = {
-    size: [220, 100],
-    displayResults: false,
-    resizable: false,
+  static override definition: NodeDefinition = {
+    ...BaseIndicator.definition,
+    defaults: {
+      window: 14,
+    },
+    params: [
+      { name: 'window', type: 'integer', default: 14, min: 1, step: 1 },
+    ],
   };
-
-  static override inputs: Record<string, unknown> = {
-    ohlcv: getType('OHLCVBundle'),
-  };
-
-  static override outputs: Record<string, unknown> = {
-    results: Array, // list[IndicatorResult]
-  };
-
-  static override defaultParams: DefaultParams = {
-    window: 14,
-  };
-
-  static override paramsMeta: ParamMeta[] = [
-    { name: 'window', type: 'integer', default: 14, min: 1, step: 1 },
-  ];
 
   protected mapToIndicatorValue(
     _indType: IndicatorType,
@@ -55,7 +29,7 @@ export class ATRIndicator extends BaseIndicator {
     throw new Error('Unsupported indicator type for ATRIndicator');
   }
 
-  protected override async executeImpl(inputs: NodeInputs): Promise<NodeOutputs> {
+  protected async run(inputs: Record<string, unknown>): Promise<Record<string, unknown>> {
     const ohlcvBundle = inputs.ohlcv as OHLCVBundle | undefined;
     if (!ohlcvBundle || ohlcvBundle.size === 0) {
       return { results: [] };

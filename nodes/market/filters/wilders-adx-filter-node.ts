@@ -1,15 +1,8 @@
 // src/nodes/core/market/filters/wilders-adx-filter-node.ts
-// Translated from: nodes/core/market/filters/wilders_adx_filter_node.py
 
 import { BaseIndicatorFilter } from './base/base-indicator-filter-node';
-import { IndicatorType, createIndicatorResult, createIndicatorValue } from '@fig-node/core';
-import type {
-  ParamMeta,
-  DefaultParams,
-  OHLCVBar,
-  IndicatorResult,
-  NodeUIConfig,
-} from '@fig-node/core';
+import type { NodeDefinition } from '@fig-node/core';
+import { IndicatorType, createIndicatorResult, createIndicatorValue, type OHLCVBar, type IndicatorResult } from '../types';
 import { calculateAdx } from '../calculators/adx-calculator';
 
 /**
@@ -24,40 +17,36 @@ import { calculateAdx } from '../calculators/adx-calculator';
  * - require_adx_rising: Require ADX rising vs previous bar (default: false)
  */
 export class WildersADXFilter extends BaseIndicatorFilter {
-  static override defaultParams: DefaultParams = {
-    min_adx: 25.0,
-    timeperiod: 14,
-    direction: 'any',
-    require_crossover: false,
-    di_lookback_bars: 3,
-    require_adx_rising: false,
-  };
-
-  static override paramsMeta: ParamMeta[] = [
-    {
-      name: 'min_adx',
-      type: 'number',
-      default: 25.0,
-      min: 0.0,
-      max: 100.0,
-      step: 0.1,
+  static override definition: NodeDefinition = {
+    ...BaseIndicatorFilter.definition,
+    defaults: {
+      min_adx: 25.0,
+      timeperiod: 14,
+      direction: 'any',
+      require_crossover: false,
+      di_lookback_bars: 3,
+      require_adx_rising: false,
     },
-    { name: 'timeperiod', type: 'number', default: 14, min: 1, step: 1 },
-    {
-      name: 'direction',
-      type: 'combo',
-      default: 'any',
-      options: ['any', 'bullish', 'bearish'],
-    },
-    { name: 'require_crossover', type: 'combo', default: false, options: [true, false] },
-    { name: 'di_lookback_bars', type: 'number', default: 3, min: 1, step: 1 },
-    { name: 'require_adx_rising', type: 'combo', default: false, options: [true, false] },
-  ];
-
-  static uiConfig: NodeUIConfig = {
-    size: [220, 100],
-    displayResults: false,
-    resizable: false,
+    params: [
+      {
+        name: 'min_adx',
+        type: 'number',
+        default: 25.0,
+        min: 0.0,
+        max: 100.0,
+        step: 0.1,
+      },
+      { name: 'timeperiod', type: 'number', default: 14, min: 1, step: 1 },
+      {
+        name: 'direction',
+        type: 'combo',
+        default: 'any',
+        options: ['any', 'bullish', 'bearish'],
+      },
+      { name: 'require_crossover', type: 'combo', default: false, options: [true, false] },
+      { name: 'di_lookback_bars', type: 'number', default: 3, min: 1, step: 1 },
+      { name: 'require_adx_rising', type: 'combo', default: false, options: [true, false] },
+    ],
   };
 
   protected override validateIndicatorParams(): void {

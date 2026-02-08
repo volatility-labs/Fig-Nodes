@@ -1,26 +1,11 @@
 // src/nodes/core/market/filters/vbp-level-filter-node.ts
-// Translated from: nodes/core/market/filters/vbp_level_filter_node.py
 
 import { BaseIndicatorFilter } from './base/base-indicator-filter-node';
-import {
-  IndicatorType,
-  createIndicatorResult,
-  createIndicatorValue,
-  AssetSymbol,
-} from '@fig-node/core';
-import type {
-  ParamMeta,
-  DefaultParams,
-  OHLCVBar,
-  IndicatorResult,
-  NodeInputs,
-  NodeOutputs,
-  OHLCVBundle,
-  NodeUIConfig,
-} from '@fig-node/core';
+import type { NodeDefinition } from '@fig-node/core';
+import { IndicatorType, createIndicatorResult, createIndicatorValue, AssetSymbol, type OHLCVBar, type IndicatorResult, type OHLCVBundle } from '../types';
 import { calculateVbp } from '../calculators/vbp-calculator';
 import { fetchBars } from '../services/polygon-service';
-import { RateLimiter } from '@fig-node/core';
+import { RateLimiter } from '../rate-limiter';
 
 // Constants
 const MIN_BARS_REQUIRED = 10;
@@ -33,83 +18,79 @@ const DAYS_PER_YEAR = 365.25;
  * is within specified distance from support (below) and resistance (above).
  */
 export class VBPLevelFilter extends BaseIndicatorFilter {
-  static required_keys = ['POLYGON_API_KEY'];
+  static override definition: NodeDefinition = {
+    ...BaseIndicatorFilter.definition,
+    requiredCredentials: ['POLYGON_API_KEY'],
+    defaults: {
+      bins: 50,
+      lookback_years: 2,
+      lookback_years_2: null,
+      num_levels: 5,
+      max_distance_to_support: 5.0,
+      min_distance_to_resistance: 5.0,
+      use_weekly: false,
+      max_concurrent: 10,
+      rate_limit_per_second: 95,
+      use_dollar_weighted: false,
+      use_close_only: false,
+    },
+    params: [
+      {
+        name: 'bins',
+        type: 'number',
+        default: 50,
+        min: 10,
+        max: 200,
+        step: 5,
+        label: 'Number of Bins',
+        description: 'Number of bins for volume histogram. More bins = finer granularity',
+      },
+      {
+        name: 'lookback_years',
+        type: 'number',
+        default: 2,
+        min: 1,
+        max: 10,
+        step: 1,
+        label: 'Lookback Period (Years)',
+        description: 'Number of years to look back for volume data',
+      },
+      {
+        name: 'num_levels',
+        type: 'number',
+        default: 5,
+        min: 1,
+        max: 20,
+        step: 1,
+        label: 'Number of Levels',
+        description: 'Number of significant volume levels to identify',
+      },
+      {
+        name: 'max_distance_to_support',
+        type: 'number',
+        default: 5.0,
+        min: 0.0,
+        max: 50.0,
+        step: 0.1,
+        precision: 2,
+        label: 'Max Distance to Support (%)',
+        description: 'Maximum % distance to nearest support level',
+      },
+      {
+        name: 'min_distance_to_resistance',
+        type: 'number',
+        default: 5.0,
+        min: 0.0,
+        max: 50.0,
+        step: 0.1,
+        precision: 2,
+        label: 'Min Distance to Resistance (%)',
+        description: 'Minimum % distance to nearest resistance level',
+      },
+    ],
+  };
+
   private maxSafeConcurrency = 5;
-
-  static override defaultParams: DefaultParams = {
-    bins: 50,
-    lookback_years: 2,
-    lookback_years_2: null,
-    num_levels: 5,
-    max_distance_to_support: 5.0,
-    min_distance_to_resistance: 5.0,
-    use_weekly: false,
-    max_concurrent: 10,
-    rate_limit_per_second: 95,
-    use_dollar_weighted: false,
-    use_close_only: false,
-  };
-
-  static override paramsMeta: ParamMeta[] = [
-    {
-      name: 'bins',
-      type: 'number',
-      default: 50,
-      min: 10,
-      max: 200,
-      step: 5,
-      label: 'Number of Bins',
-      description: 'Number of bins for volume histogram. More bins = finer granularity',
-    },
-    {
-      name: 'lookback_years',
-      type: 'number',
-      default: 2,
-      min: 1,
-      max: 10,
-      step: 1,
-      label: 'Lookback Period (Years)',
-      description: 'Number of years to look back for volume data',
-    },
-    {
-      name: 'num_levels',
-      type: 'number',
-      default: 5,
-      min: 1,
-      max: 20,
-      step: 1,
-      label: 'Number of Levels',
-      description: 'Number of significant volume levels to identify',
-    },
-    {
-      name: 'max_distance_to_support',
-      type: 'number',
-      default: 5.0,
-      min: 0.0,
-      max: 50.0,
-      step: 0.1,
-      precision: 2,
-      label: 'Max Distance to Support (%)',
-      description: 'Maximum % distance to nearest support level',
-    },
-    {
-      name: 'min_distance_to_resistance',
-      type: 'number',
-      default: 5.0,
-      min: 0.0,
-      max: 50.0,
-      step: 0.1,
-      precision: 2,
-      label: 'Min Distance to Resistance (%)',
-      description: 'Minimum % distance to nearest resistance level',
-    },
-  ];
-
-  static uiConfig: NodeUIConfig = {
-    size: [220, 100],
-    displayResults: false,
-    resizable: false,
-  };
 
   protected override validateIndicatorParams(): void {
     const binsRaw = this.params.bins ?? 50;
@@ -401,7 +382,7 @@ export class VBPLevelFilter extends BaseIndicatorFilter {
     return true;
   }
 
-  protected override async executeImpl(inputs: NodeInputs): Promise<NodeOutputs> {
+  protected override async run(inputs: Record<string, unknown>): Promise<Record<string, unknown>> {
     const useWeekly = this.getBoolParam('use_weekly', false);
 
     // If use_weekly, we need to fetch weekly bars from API
@@ -460,8 +441,8 @@ export class VBPLevelFilter extends BaseIndicatorFilter {
           }
 
           completedCount++;
-          const progress = (completedCount / totalSymbols) * 100;
-          this.reportProgress(progress, `${completedCount}/${totalSymbols}`);
+          const pct = (completedCount / totalSymbols) * 100;
+          this.progress(pct, `${completedCount}/${totalSymbols}`);
         } catch (error) {
           console.error(`Error processing VBP for ${symbol.ticker}:`, error);
         }
@@ -475,7 +456,7 @@ export class VBPLevelFilter extends BaseIndicatorFilter {
       return { filtered_ohlcv_bundle: filteredBundle };
     }
 
-    // Call parent's execute implementation when not fetching weekly bars
-    return super.executeImpl(inputs);
+    // Call parent's run implementation when not fetching weekly bars
+    return super.run(inputs);
   }
 }

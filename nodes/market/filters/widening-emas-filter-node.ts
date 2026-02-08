@@ -1,15 +1,8 @@
 // src/nodes/core/market/filters/widening-emas-filter-node.ts
-// Translated from: nodes/core/market/filters/widening_emas_filter_node.py
 
 import { BaseIndicatorFilter } from './base/base-indicator-filter-node';
-import { IndicatorType, createIndicatorResult, createIndicatorValue } from '@fig-node/core';
-import type {
-  ParamMeta,
-  DefaultParams,
-  OHLCVBar,
-  IndicatorResult,
-  NodeUIConfig,
-} from '@fig-node/core';
+import type { NodeDefinition } from '@fig-node/core';
+import { IndicatorType, createIndicatorResult, createIndicatorValue, type OHLCVBar, type IndicatorResult } from '../types';
 import { calculateEma } from '../calculators/ema-calculator';
 
 /**
@@ -26,44 +19,40 @@ import { calculateEma } from '../calculators/ema-calculator';
  * Only assets meeting the widening/narrowing condition will pass the filter.
  */
 export class WideningEMAsFilter extends BaseIndicatorFilter {
-  static override defaultParams: DefaultParams = {
-    fast_ema_period: 10,
-    slow_ema_period: 30,
-    widening: true,
-  };
-
-  static override paramsMeta: ParamMeta[] = [
-    {
-      name: 'fast_ema_period',
-      type: 'number',
-      default: 10,
-      min: 2,
-      step: 1,
-      label: 'Fast EMA Period',
-      description: 'Period for the faster EMA (e.g., 10)',
+  static override definition: NodeDefinition = {
+    ...BaseIndicatorFilter.definition,
+    defaults: {
+      fast_ema_period: 10,
+      slow_ema_period: 30,
+      widening: true,
     },
-    {
-      name: 'slow_ema_period',
-      type: 'number',
-      default: 30,
-      min: 2,
-      step: 1,
-      label: 'Slow EMA Period',
-      description: 'Period for the slower EMA (e.g., 30)',
-    },
-    {
-      name: 'widening',
-      type: 'text',
-      default: 'true',
-      label: 'Check for Widening',
-      description: 'true: filter for widening EMAs, false: filter for narrowing EMAs',
-    },
-  ];
-
-  static uiConfig: NodeUIConfig = {
-    size: [220, 100],
-    displayResults: false,
-    resizable: false,
+    params: [
+      {
+        name: 'fast_ema_period',
+        type: 'number',
+        default: 10,
+        min: 2,
+        step: 1,
+        label: 'Fast EMA Period',
+        description: 'Period for the faster EMA (e.g., 10)',
+      },
+      {
+        name: 'slow_ema_period',
+        type: 'number',
+        default: 30,
+        min: 2,
+        step: 1,
+        label: 'Slow EMA Period',
+        description: 'Period for the slower EMA (e.g., 30)',
+      },
+      {
+        name: 'widening',
+        type: 'text',
+        default: 'true',
+        label: 'Check for Widening',
+        description: 'true: filter for widening EMAs, false: filter for narrowing EMAs',
+      },
+    ],
   };
 
   protected override validateIndicatorParams(): void {

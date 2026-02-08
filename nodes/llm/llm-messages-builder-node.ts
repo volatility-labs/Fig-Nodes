@@ -1,59 +1,45 @@
 // src/nodes/core/llm/llm-messages-builder-node.ts
-// Translated from: nodes/core/llm/llm_messages_builder_node.py
 
-import { Base, NodeCategory, getType, validateLLMChatMessage, serializeForApi } from '@fig-node/core';
-import type {
-  NodeInputs,
-  NodeOutputs,
-  ParamMeta,
-  DefaultParams,
-  LLMChatMessage,
-  NodeUIConfig,
+import {
+  Node,
+  NodeCategory,
+  serializeForApi,
+  port,
+  type NodeDefinition,
 } from '@fig-node/core';
+import { validateLLMChatMessage, type LLMChatMessage } from './types';
 
 /**
  * Builds a well-formed LLMChatMessageList by merging multiple input messages.
  *
  * Inputs:
- * - message_i: LLMChatMessage (optional, up to 10) – individual messages to append in order
+ * - messages: LLMChatMessage (multi-connection) – individual messages to append in order
  *
  * Output:
  * - messages: LLMChatMessageList – merged, ordered, filtered
  */
-export class LLMMessagesBuilder extends Base {
-  static override inputs: Record<string, unknown> = {
-    message_0: getType('LLMChatMessage'),
-    message_1: getType('LLMChatMessage'),
-    message_2: getType('LLMChatMessage'),
-    message_3: getType('LLMChatMessage'),
-    message_4: getType('LLMChatMessage'),
-    message_5: getType('LLMChatMessage'),
-    message_6: getType('LLMChatMessage'),
-    message_7: getType('LLMChatMessage'),
-    message_8: getType('LLMChatMessage'),
-    message_9: getType('LLMChatMessage'),
+export class LLMMessagesBuilder extends Node {
+  static definition: NodeDefinition = {
+    inputs: {
+      messages: port('LLMChatMessage', { multi: true, optional: true }),
+    },
+    outputs: {
+      messages: port('LLMChatMessageList'),
+    },
+    params: [],
+    defaults: {},
+    category: NodeCategory.LLM,
+    ui: {
+      resultDisplay: 'json',  // Shows message list as JSON
+    },
   };
 
-  static override outputs: Record<string, unknown> = {
-    messages: getType('LLMChatMessageList'),
-  };
+  protected async run(inputs: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const rawMessages = inputs.messages;
+    const messagesInput = (Array.isArray(rawMessages) ? rawMessages : []) as unknown[];
 
-  static override defaultParams: DefaultParams = {};
-  static override paramsMeta: ParamMeta[] = [];
-  static override CATEGORY = NodeCategory.LLM;
-
-  // UI configuration (ComfyUI-style) - replaces separate LLMMessagesBuilderNodeUI.ts
-  static override uiConfig: NodeUIConfig = {
-    size: [340, 240],
-    displayResults: true,
-    resultDisplay: 'json',  // Shows message list as JSON
-  };
-
-  protected override async executeImpl(inputs: NodeInputs): Promise<NodeOutputs> {
     const merged: LLMChatMessage[] = [];
-
-    for (let i = 0; i < 10; i++) {
-      const msg = inputs[`message_${i}`];
+    for (const msg of messagesInput) {
       if (msg) {
         const validated = validateLLMChatMessage(msg);
         if (validated) {

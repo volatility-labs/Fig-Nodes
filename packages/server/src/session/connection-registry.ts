@@ -1,10 +1,10 @@
 // Connection registry for managing WebSocket sessions
 import type { WebSocket } from '@fastify/websocket';
 import { randomUUID } from 'crypto';
-import type { ExecutionJob } from '../types/job';
-import type { ClientConnectMessage, ServerSessionMessage } from '../types/messages';
-import { buildSessionMessage } from '../types/messages';
-import { wsSendSync, isWsConnected } from '../websocket/send-utils';
+import type { ExecutionJob } from '../types/job.js';
+import type { ClientConnectMessage, ServerSessionMessage } from '../types/messages.js';
+import { buildSessionMessage } from '../types/messages.js';
+import { wsSendSync, isWsConnected } from '../websocket/send-utils.js';
 
 /**
  * ConnectionRegistry manages WebSocket sessions and their associated jobs.

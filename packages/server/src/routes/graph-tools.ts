@@ -4,9 +4,9 @@
 
 import type { FastifyPluginAsync } from 'fastify';
 import {
-  type GraphDocument,
+  type Graph,
   type NodeRegistry,
-  validateGraphDocument,
+  validateGraph,
   GRAPH_TOOLS,
   applyAddNode,
   applyRemoveNode,
@@ -15,23 +15,24 @@ import {
   applySetParam,
   createEmptyDocument,
   hasCycles,
-  GraphDocumentExecutor,
+  GraphExecutor,
 } from '@fig-node/core';
-import { getCredentialStore } from '../credentials/env-credential-store';
+import { getCredentialStore } from '../credentials/env-credential-store.js';
+import { getNodeMetadata } from './node-metadata-helper.js';
 
 // In-memory graph document state (one graph per server for now)
-let currentDocument: GraphDocument = createEmptyDocument();
+let currentDocument: Graph = createEmptyDocument();
 
 // Listeners for graph updates (WebSocket push)
-type GraphUpdateListener = (doc: GraphDocument) => void;
+type GraphUpdateListener = (doc: Graph) => void;
 const listeners = new Set<GraphUpdateListener>();
 
-export function setCurrentDocument(doc: GraphDocument): void {
+export function setCurrentDocument(doc: Graph): void {
   currentDocument = doc;
   notifyListeners();
 }
 
-export function getCurrentDocument(): GraphDocument {
+export function getCurrentDocument(): Graph {
   return currentDocument;
 }
 
@@ -44,28 +45,6 @@ function notifyListeners(): void {
   for (const listener of listeners) {
     try { listener(currentDocument); } catch { /* ignore */ }
   }
-}
-
-function getNodeMetadata(NodeClass: unknown): Record<string, unknown> {
-  const cls = NodeClass as Record<string, unknown>;
-  const hasOwnParamsMeta = Object.hasOwn(cls, 'paramsMeta') && (cls.paramsMeta as unknown[])?.length > 0;
-  const hasOwnParamsMeta_ = Object.hasOwn(cls, 'params_meta') && (cls.params_meta as unknown[])?.length > 0;
-  const params = hasOwnParamsMeta ? cls.paramsMeta : (hasOwnParamsMeta_ ? cls.params_meta : []);
-
-  const hasOwnDefaultParams = Object.hasOwn(cls, 'defaultParams') && Object.keys((cls.defaultParams as Record<string, unknown>) || {}).length > 0;
-  const hasOwnDefaultParams_ = Object.hasOwn(cls, 'default_params') && Object.keys((cls.default_params as Record<string, unknown>) || {}).length > 0;
-  const defaultParams = hasOwnDefaultParams ? cls.defaultParams : (hasOwnDefaultParams_ ? cls.default_params : {});
-
-  return {
-    inputs: cls.inputs ?? {},
-    outputs: cls.outputs ?? {},
-    params,
-    defaultParams,
-    category: cls.CATEGORY ?? 'base',
-    requiredKeys: cls.required_keys ?? [],
-    description: cls.__doc ?? '',
-    uiConfig: cls.uiConfig ?? {},
-  };
 }
 
 export const graphToolRoutes: FastifyPluginAsync = async (fastify) => {
@@ -138,6 +117,14 @@ export const graphToolRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.status(400).send({ error: 'Connection would create a cycle' });
       }
 
+      const validation = validateGraph(newDoc, fastify.registry as NodeRegistry);
+      if (!validation.valid) {
+        return reply.status(400).send({
+          error: 'Connection is incompatible with socket types',
+          details: validation.errors,
+        });
+      }
+
       currentDocument = newDoc;
       notifyListeners();
       return { ok: true, document: currentDocument };
@@ -182,7 +169,7 @@ export const graphToolRoutes: FastifyPluginAsync = async (fastify) => {
 
   // POST /api/v1/graph/tools/validate
   fastify.post('/tools/validate', async () => {
-    const result = validateGraphDocument(currentDocument, fastify.registry as NodeRegistry);
+    const result = validateGraph(currentDocument, fastify.registry as NodeRegistry);
     const cycles = hasCycles(currentDocument);
 
     return {
@@ -200,7 +187,7 @@ export const graphToolRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.status(400).send({ error: 'document is required' });
     }
 
-    const result = validateGraphDocument(body.document);
+    const result = validateGraph(body.document, fastify.registry as NodeRegistry);
     if (!result.valid) {
       return reply.status(400).send({
         error: 'Invalid graph document',
@@ -208,14 +195,18 @@ export const graphToolRoutes: FastifyPluginAsync = async (fastify) => {
       });
     }
 
-    currentDocument = body.document as GraphDocument;
+    if (hasCycles(body.document as Graph)) {
+      return reply.status(400).send({ error: 'Graph contains cycles' });
+    }
+
+    currentDocument = body.document as Graph;
     notifyListeners();
     return { ok: true, document: currentDocument };
   });
 
   // POST /api/v1/graph/tools/execute — execute the current graph document directly
   fastify.post('/tools/execute', async (_request, reply) => {
-    const result = validateGraphDocument(currentDocument, fastify.registry as NodeRegistry);
+    const result = validateGraph(currentDocument, fastify.registry as NodeRegistry);
     if (!result.valid) {
       return reply.status(400).send({
         error: 'Graph validation failed',
@@ -228,7 +219,7 @@ export const graphToolRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     try {
-      const executor = new GraphDocumentExecutor(
+      const executor = new GraphExecutor(
         currentDocument,
         fastify.registry as NodeRegistry,
         getCredentialStore(),

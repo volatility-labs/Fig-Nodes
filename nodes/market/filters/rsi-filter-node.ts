@@ -1,57 +1,48 @@
 // src/nodes/core/market/filters/rsi-filter-node.ts
-// Translated from: nodes/core/market/filters/rsi_filter_node.py
 
 import { BaseIndicatorFilter } from './base/base-indicator-filter-node';
-import { IndicatorType, createIndicatorResult, createIndicatorValue } from '@fig-node/core';
-import type {
-  ParamMeta,
-  DefaultParams,
-  OHLCVBar,
-  IndicatorResult,
-  NodeUIConfig,
-} from '@fig-node/core';
+import type { NodeDefinition } from '@fig-node/core';
+import { IndicatorType, createIndicatorResult, createIndicatorValue, type OHLCVBar, type IndicatorResult } from '../types';
 import { calculateRsi } from '../calculators/rsi-calculator';
 
 /**
  * Filters assets based on RSI (Relative Strength Index) values.
  */
 export class RSIFilter extends BaseIndicatorFilter {
+  static override definition: NodeDefinition = {
+    ...BaseIndicatorFilter.definition,
+    defaults: {
+      min_rsi: 30.0,
+      max_rsi: 70.0,
+      timeperiod: 14,
+    },
+    params: [
+      {
+        name: 'min_rsi',
+        type: 'number',
+        default: 30.0,
+        min: 0.0,
+        max: 100.0,
+        step: 1.0,
+      },
+      {
+        name: 'max_rsi',
+        type: 'number',
+        default: 70.0,
+        min: 0.0,
+        max: 100.0,
+        step: 1.0,
+      },
+      { name: 'timeperiod', type: 'number', default: 14, min: 1, step: 1 },
+    ],
+    ui: {
+      resultDisplay: 'none',
+    },
+  };
+
   private minRsi: number = 30.0;
   private maxRsi: number = 70.0;
   private timeperiod: number = 14;
-
-  static override defaultParams: DefaultParams = {
-    min_rsi: 30.0,
-    max_rsi: 70.0,
-    timeperiod: 14,
-  };
-
-  static override paramsMeta: ParamMeta[] = [
-    {
-      name: 'min_rsi',
-      type: 'number',
-      default: 30.0,
-      min: 0.0,
-      max: 100.0,
-      step: 1.0,
-    },
-    {
-      name: 'max_rsi',
-      type: 'number',
-      default: 70.0,
-      min: 0.0,
-      max: 100.0,
-      step: 1.0,
-    },
-    { name: 'timeperiod', type: 'number', default: 14, min: 1, step: 1 },
-  ];
-
-  // UI configuration (ComfyUI-style) - replaces separate RSIFilterNodeUI.ts
-  static override uiConfig: NodeUIConfig = {
-    size: [360, 160],
-    displayResults: false,
-    resultDisplay: 'none',
-  };
 
   protected override validateIndicatorParams(): void {
     const minRsiValue = this.params.min_rsi ?? 30.0;

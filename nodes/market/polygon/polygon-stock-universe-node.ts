@@ -1,16 +1,7 @@
 // src/nodes/custom/polygon/polygon-stock-universe-node.ts
-// Translated from: nodes/custom/polygon/polygon_stock_universe_node.py
 
-import { Base } from '@fig-node/core';
-import {
-  AssetClass,
-  AssetSymbol,
-  InstrumentType,
-  NodeCategory,
-  NodeUIConfig,
-  ParamMeta,
-  getType,
-} from '@fig-node/core';
+import { Node, NodeCategory, port, type NodeDefinition } from '@fig-node/core';
+import { AssetClass, AssetSymbol, InstrumentType } from '../types';
 import {
   isUSMarketOpen,
   massiveFetchFilteredTickers,
@@ -40,92 +31,89 @@ interface TickerData {
  *
  * Endpoint: https://api.massive.com/v2/snapshot/locale/us/markets/stocks/tickers
  */
-export class PolygonStockUniverse extends Base {
-  static inputs = {};
-  static outputs = { symbols: getType('AssetSymbolList') };
-  static required_keys = ['POLYGON_API_KEY'];
-  static uiConfig: NodeUIConfig = {
-    size: [280, 140],
-    displayResults: false,
-    resizable: true,
+export class PolygonStockUniverse extends Node {
+  static definition: NodeDefinition = {
+    inputs: {},
+    outputs: { symbols: port('AssetSymbolList') },
+    ui: {},
+    category: NodeCategory.MARKET,
+    requiredCredentials: ['POLYGON_API_KEY'],
+
+    defaults: {},
+
+    params: [
+      {
+        name: 'min_change_perc',
+        type: 'number',
+        default: undefined,
+        label: 'Min Change',
+        unit: '%',
+        description: 'Minimum daily percentage change (e.g., 5 for 5%)',
+        step: 0.01,
+      },
+      {
+        name: 'max_change_perc',
+        type: 'number',
+        default: undefined,
+        label: 'Max Change',
+        unit: '%',
+        description: 'Maximum daily percentage change (e.g., 10 for 10%)',
+        step: 0.01,
+      },
+      {
+        name: 'min_volume',
+        type: 'number',
+        default: undefined,
+        label: 'Min Volume',
+        unit: 'shares/contracts',
+        description: 'Minimum daily trading volume in shares or contracts',
+      },
+      {
+        name: 'min_price',
+        type: 'number',
+        default: undefined,
+        label: 'Min Price',
+        unit: 'USD',
+        description: 'Minimum closing price in USD',
+      },
+      {
+        name: 'max_price',
+        type: 'number',
+        default: 1000000,
+        label: 'Max Price',
+        unit: 'USD',
+        description: 'Maximum closing price in USD',
+      },
+      {
+        name: 'include_otc',
+        type: 'combo',
+        default: false,
+        options: [true, false],
+        label: 'Include OTC',
+        description: 'Include over-the-counter symbols',
+      },
+      {
+        name: 'exclude_etfs',
+        type: 'combo',
+        default: true,
+        options: [true, false],
+        label: 'Exclude ETFs',
+        description:
+          'If true, filters out ETFs (keeps only stocks). If false, keeps only ETFs.',
+      },
+      {
+        name: 'data_day',
+        type: 'combo',
+        default: 'auto',
+        options: ['auto', 'today', 'prev_day'],
+        label: 'Data Day',
+        description:
+          'Use intraday (today), previous day, or auto-select based on US market hours',
+      },
+    ],
   };
 
-  static paramsMeta: ParamMeta[] = [
-    {
-      name: 'min_change_perc',
-      type: 'number',
-      default: undefined,
-      label: 'Min Change',
-      unit: '%',
-      description: 'Minimum daily percentage change (e.g., 5 for 5%)',
-      step: 0.01,
-    },
-    {
-      name: 'max_change_perc',
-      type: 'number',
-      default: undefined,
-      label: 'Max Change',
-      unit: '%',
-      description: 'Maximum daily percentage change (e.g., 10 for 10%)',
-      step: 0.01,
-    },
-    {
-      name: 'min_volume',
-      type: 'number',
-      default: undefined,
-      label: 'Min Volume',
-      unit: 'shares/contracts',
-      description: 'Minimum daily trading volume in shares or contracts',
-    },
-    {
-      name: 'min_price',
-      type: 'number',
-      default: undefined,
-      label: 'Min Price',
-      unit: 'USD',
-      description: 'Minimum closing price in USD',
-    },
-    {
-      name: 'max_price',
-      type: 'number',
-      default: 1000000,
-      label: 'Max Price',
-      unit: 'USD',
-      description: 'Maximum closing price in USD',
-    },
-    {
-      name: 'include_otc',
-      type: 'combo',
-      default: false,
-      options: [true, false],
-      label: 'Include OTC',
-      description: 'Include over-the-counter symbols',
-    },
-    {
-      name: 'exclude_etfs',
-      type: 'combo',
-      default: true,
-      options: [true, false],
-      label: 'Exclude ETFs',
-      description:
-        'If true, filters out ETFs (keeps only stocks). If false, keeps only ETFs.',
-    },
-    {
-      name: 'data_day',
-      type: 'combo',
-      default: 'auto',
-      options: ['auto', 'today', 'prev_day'],
-      label: 'Data Day',
-      description:
-        'Use intraday (today), previous day, or auto-select based on US market hours',
-    },
-  ];
-
-  static defaultParams = {};
-
-  static CATEGORY = NodeCategory.MARKET;
-
-  protected async executeImpl(
+  protected async run(
     _inputs: Record<string, unknown>
   ): Promise<Record<string, unknown>> {
     try {
@@ -133,7 +121,7 @@ export class PolygonStockUniverse extends Base {
       return { symbols };
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
-      console.error(`PolygonStockUniverse node ${this.figNodeId} failed: ${errorMsg}`);
+      console.error(`PolygonStockUniverse node ${this.nodeId} failed: ${errorMsg}`);
       throw error;
     }
   }
@@ -155,7 +143,7 @@ export class PolygonStockUniverse extends Base {
       market,
       excludeEtfs,
       includeOtc,
-      (progress, text) => this.reportProgress(progress, text)
+      (pct, text) => this.progress(pct, text)
     );
 
     const tickersData = await massiveFetchSnapshot(
@@ -234,7 +222,7 @@ export class PolygonStockUniverse extends Base {
       symbols.push(symbol);
     }
 
-    this.reportProgress(100.0, `Completed: ${symbols.length} symbols from ${totalTickers} tickers`);
+    this.progress(100.0, `Completed: ${symbols.length} symbols from ${totalTickers} tickers`);
     return symbols;
   }
 

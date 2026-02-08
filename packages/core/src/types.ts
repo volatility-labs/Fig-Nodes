@@ -11,6 +11,14 @@ export enum ProgressState {
   STOPPED = 'stopped',
 }
 
+export enum ExecutionState {
+  QUEUED = 'queued',
+  RUNNING = 'running',
+  FINISHED = 'finished',
+  ERROR = 'error',
+  CANCELLED = 'cancelled',
+}
+
 export enum ExecutionOutcome {
   SUCCESS = 'success',
   CANCELLED = 'cancelled',

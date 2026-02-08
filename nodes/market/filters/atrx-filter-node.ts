@@ -1,50 +1,39 @@
 // src/nodes/core/market/filters/atrx-filter-node.ts
-// Translated from: nodes/core/market/filters/atrx_filter_node.py
 
 import { BaseIndicatorFilter } from './base/base-indicator-filter-node';
-import { IndicatorType, createIndicatorResult, createIndicatorValue } from '@fig-node/core';
-import type {
-  ParamMeta,
-  DefaultParams,
-  OHLCVBar,
-  IndicatorResult,
-  NodeUIConfig,
-} from '@fig-node/core';
+import type { NodeDefinition } from '@fig-node/core';
+import { IndicatorType, createIndicatorResult, createIndicatorValue, type OHLCVBar, type IndicatorResult } from '../types';
 import { calculateAtrxLastValue } from '../calculators/atrx-calculator';
 
 /**
  * Filters OHLCV bundle based on ATRX indicator thresholds.
  */
 export class AtrXFilter extends BaseIndicatorFilter {
-  static override defaultParams: DefaultParams = {
-    length: 14,
-    smoothing: 'RMA',
-    price: 'Close',
-    ma_length: 50,
-    upper_threshold: 6.0,
-    lower_threshold: -4.0,
-    filter_condition: 'outside',
-  };
-
-  static override paramsMeta: ParamMeta[] = [
-    { name: 'length', type: 'integer', default: 14 },
-    { name: 'smoothing', type: 'combo', default: 'RMA', options: ['RMA', 'EMA', 'SMA'] },
-    { name: 'price', type: 'text', default: 'Close' },
-    { name: 'ma_length', type: 'integer', default: 50 },
-    { name: 'upper_threshold', type: 'float', default: 6.0 },
-    { name: 'lower_threshold', type: 'float', default: -4.0 },
-    {
-      name: 'filter_condition',
-      type: 'combo',
-      default: 'outside',
-      options: ['outside', 'inside'],
+  static override definition: NodeDefinition = {
+    ...BaseIndicatorFilter.definition,
+    defaults: {
+      length: 14,
+      smoothing: 'RMA',
+      price: 'Close',
+      ma_length: 50,
+      upper_threshold: 6.0,
+      lower_threshold: -4.0,
+      filter_condition: 'outside',
     },
-  ];
-
-  static uiConfig: NodeUIConfig = {
-    size: [220, 100],
-    displayResults: false,
-    resizable: false,
+    params: [
+      { name: 'length', type: 'integer', default: 14 },
+      { name: 'smoothing', type: 'combo', default: 'RMA', options: ['RMA', 'EMA', 'SMA'] },
+      { name: 'price', type: 'text', default: 'Close' },
+      { name: 'ma_length', type: 'integer', default: 50 },
+      { name: 'upper_threshold', type: 'float', default: 6.0 },
+      { name: 'lower_threshold', type: 'float', default: -4.0 },
+      {
+        name: 'filter_condition',
+        type: 'combo',
+        default: 'outside',
+        options: ['outside', 'inside'],
+      },
+    ],
   };
 
   protected calculateIndicator(ohlcvData: OHLCVBar[]): IndicatorResult {

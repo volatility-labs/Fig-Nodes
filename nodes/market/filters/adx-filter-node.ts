@@ -1,42 +1,31 @@
 // src/nodes/core/market/filters/adx-filter-node.ts
-// Translated from: nodes/core/market/filters/adx_filter_node.py
 
 import { BaseIndicatorFilter } from './base/base-indicator-filter-node';
-import { IndicatorType, createIndicatorResult, createIndicatorValue } from '@fig-node/core';
-import type {
-  ParamMeta,
-  DefaultParams,
-  OHLCVBar,
-  IndicatorResult,
-  NodeUIConfig,
-} from '@fig-node/core';
+import type { NodeDefinition } from '@fig-node/core';
+import { IndicatorType, createIndicatorResult, createIndicatorValue, type OHLCVBar, type IndicatorResult } from '../types';
 import { calculateAdx } from '../calculators/adx-calculator';
 
 /**
  * Filters assets based on ADX (Average Directional Index) values.
  */
 export class ADXFilter extends BaseIndicatorFilter {
-  static override defaultParams: DefaultParams = {
-    min_adx: 25.0,
-    timeperiod: 14,
-  };
-
-  static override paramsMeta: ParamMeta[] = [
-    {
-      name: 'min_adx',
-      type: 'number',
-      default: 25.0,
-      min: 0.0,
-      max: 100.0,
-      step: 0.1,
+  static override definition: NodeDefinition = {
+    ...BaseIndicatorFilter.definition,
+    defaults: {
+      min_adx: 25.0,
+      timeperiod: 14,
     },
-    { name: 'timeperiod', type: 'number', default: 14, min: 1, step: 1 },
-  ];
-
-  static uiConfig: NodeUIConfig = {
-    size: [220, 100],
-    displayResults: false,
-    resizable: false,
+    params: [
+      {
+        name: 'min_adx',
+        type: 'number',
+        default: 25.0,
+        min: 0.0,
+        max: 100.0,
+        step: 0.1,
+      },
+      { name: 'timeperiod', type: 'number', default: 14, min: 1, step: 1 },
+    ],
   };
 
   protected override validateIndicatorParams(): void {

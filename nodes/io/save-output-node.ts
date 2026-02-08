@@ -1,10 +1,8 @@
-// Translated from: legacy/nodes/core/io/save_output_node.py
-
 import * as fs from 'fs';
 import * as path from 'path';
 import { randomUUID } from 'crypto';
-import { Base, NodeCategory, AssetSymbol, OHLCVBar } from '@fig-node/core';
-import type { ParamMeta, NodeUIConfig } from '@fig-node/core';
+import { Node, NodeCategory, port, type NodeDefinition } from '@fig-node/core';
+import { AssetSymbol, type OHLCVBar } from '../market/types';
 
 // Type guards
 function isOHLCVBar(value: unknown): value is OHLCVBar {
@@ -84,42 +82,32 @@ interface SerializedValue {
  * The saved data is serialized in a format that preserves type information
  * so it can be read back by a corresponding load node.
  */
-export class SaveOutput extends Base {
-  static inputs = {
-    data: 'any',
+export class SaveOutput extends Node {
+  static definition: NodeDefinition = {
+    inputs: {
+      data: port('any'),
+    },
+
+    outputs: {
+      filepath: port('string'),
+    },
+
+    ui: {},
+
+    category: NodeCategory.IO,
+
+    defaults: {
+      filename: '',
+      format: 'json',
+      overwrite: false,
+    },
+
+    params: [
+      { name: 'filename', type: 'text', default: '' },
+      { name: 'format', type: 'combo', default: 'json', options: ['json', 'jsonl'] },
+      { name: 'overwrite', type: 'combo', default: false, options: [true, false] },
+    ],
   };
-
-  static outputs = {
-    filepath: 'string',
-  };
-
-  static uiConfig: NodeUIConfig = {
-    size: [260, 120],
-    displayResults: false,
-    resizable: false,
-  };
-
-  static CATEGORY = NodeCategory.IO;
-
-  static defaultParams = {
-    filename: '',
-    format: 'json',
-    overwrite: false,
-  };
-
-  static paramsMeta: ParamMeta[] = [
-    { name: 'filename', type: 'text', default: '' },
-    { name: 'format', type: 'combo', default: 'json', options: ['json', 'jsonl'] },
-    { name: 'overwrite', type: 'combo', default: false, options: [true, false] },
-  ];
-
-  constructor(
-    figNodeId: string,
-    params: Record<string, unknown>,
-    graphContext: Record<string, unknown> = {}
-  ) {
-    super(figNodeId, params, graphContext);
-  }
 
   private serializeValue(value: unknown): SerializedValue {
     if (value === null || value === undefined) {
@@ -257,7 +245,7 @@ export class SaveOutput extends Base {
     return baseName;
   }
 
-  protected async executeImpl(inputs: Record<string, unknown>): Promise<Record<string, unknown>> {
+  protected async run(inputs: Record<string, unknown>): Promise<Record<string, unknown>> {
     const data = inputs.data;
     if (data === null || data === undefined) {
       throw new Error('No data provided to save');

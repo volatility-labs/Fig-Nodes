@@ -10,10 +10,15 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
+    },
+    "./node-runtime": {
+      "types": "./dist/node-runtime.d.ts",
+      "import": "./dist/node-runtime.js",
+      "default": "./dist/node-runtime.js"
     }
   },
   "scripts": {
-    "build": "tsc",
+    "build": "node -e \"require('fs').rmSync('dist', { recursive: true, force: true })\" && tsc",
     "dev": "tsc --watch",
     "test": "vitest",
     "test:run": "vitest run",

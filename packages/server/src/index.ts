@@ -5,23 +5,23 @@ import { fileURLToPath } from 'url';
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import websocket from '@fastify/websocket';
-import { getNodeRegistry, type NodeRegistry } from '@fig-node/core';
-import { graphRoutes } from './routes/graph';
-import { apiKeyRoutes } from './routes/api-keys';
-import { graphToolRoutes } from './routes/graph-tools';
-import { websocketHandler } from './websocket/handler';
-import { lifecycle } from './plugins/lifecycle';
+import type { NodeRegistry } from '@fig-node/core';
+import { getNodeRegistry, validateNodeDefinitions } from '@fig-node/core/node-runtime';
+import { graphRoutes } from './routes/graph.js';
+import { graphToolRoutes } from './routes/graph-tools.js';
+import { websocketHandler } from './websocket/handler.js';
+import { lifecycle } from './plugins/lifecycle.js';
 
 // ESM equivalent of __dirname
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Re-export types and utilities for external use
-export * from './types';
-export * from './queue';
-export * from './session';
-export * from './websocket';
-export * from './plugins';
+export * from './types/index.js';
+export * from './queue/index.js';
+export * from './session/index.js';
+export * from './websocket/index.js';
+export * from './plugins/index.js';
 
 const PORT = parseInt(process.env.PORT || '8000', 10);
 const HOST = process.env.HOST || '0.0.0.0';
@@ -48,6 +48,14 @@ async function createServer() {
     path.resolve(__dirname, '../../../custom_nodes'),   // user extensions
   ]);
 
+  // Validate all node definitions against the type registry
+  const typeErrors = validateNodeDefinitions(registry);
+  if (typeErrors.length > 0) {
+    console.error('Invalid port types in node definitions:');
+    typeErrors.forEach(e => console.error(`  ${e}`));
+    process.exit(1);
+  }
+
   // Decorate fastify instance with registry
   app.decorate('registry', registry);
 
@@ -56,7 +64,6 @@ async function createServer() {
 
   // Register REST routes
   await app.register(graphRoutes, { prefix: '/api' });
-  await app.register(apiKeyRoutes, { prefix: '/api' });
   await app.register(graphToolRoutes, { prefix: '/api/v1/graph' });
 
   // Register WebSocket handler (now at /execute to match legacy)

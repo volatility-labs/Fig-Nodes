@@ -1,14 +1,6 @@
 // src/nodes/core/llm/text-to-llm-message-node.ts
-// Translated from: nodes/core/llm/text_to_llm_message_node.py
 
-import { Base, NodeCategory, getType } from '@fig-node/core';
-import type {
-  NodeInputs,
-  NodeOutputs,
-  ParamMeta,
-  DefaultParams,
-  NodeUIConfig,
-} from '@fig-node/core';
+import { Node, NodeCategory, port, type NodeDefinition } from '@fig-node/core';
 
 type RoleType = 'user' | 'assistant' | 'system' | 'tool';
 type FormatType = 'json' | 'readable' | 'compact';
@@ -29,42 +21,35 @@ type FormatType = 'json' | 'readable' | 'compact';
  * Outputs:
  * - message: LLMChatMessage
  */
-export class TextToLLMMessage extends Base {
-  static override inputs: Record<string, unknown> = {
-    data: getType('any'),
-  };
-
-  static override outputs: Record<string, unknown> = {
-    message: getType('LLMChatMessage'),
-  };
-
-  static override uiConfig: NodeUIConfig = {
-    size: [220, 100],
-    displayResults: false,
-    resizable: false,
-  };
-
-  static override defaultParams: DefaultParams = {
-    role: 'user',
-    format: 'readable',
-  };
-
-  static override paramsMeta: ParamMeta[] = [
-    {
-      name: 'role',
-      type: 'combo',
-      default: 'user',
-      options: ['user', 'assistant', 'system', 'tool'],
+export class TextToLLMMessage extends Node {
+  static definition: NodeDefinition = {
+    inputs: {
+      data: port('any'),
     },
-    {
-      name: 'format',
-      type: 'combo',
-      default: 'readable',
-      options: ['json', 'readable', 'compact'],
+    outputs: {
+      message: port('LLMChatMessage'),
     },
-  ];
-
-  static override CATEGORY = NodeCategory.LLM;
+    defaults: {
+      role: 'user',
+      format: 'readable',
+    },
+    params: [
+      {
+        name: 'role',
+        type: 'combo',
+        default: 'user',
+        options: ['user', 'assistant', 'system', 'tool'],
+      },
+      {
+        name: 'format',
+        type: 'combo',
+        default: 'readable',
+        options: ['json', 'readable', 'compact'],
+      },
+    ],
+    category: NodeCategory.LLM,
+    ui: {},
+  };
 
   private isOhlcvBar(data: unknown): data is Record<string, unknown> {
     if (typeof data !== 'object' || data === null) return false;
@@ -320,7 +305,7 @@ export class TextToLLMMessage extends Base {
     return String(data);
   }
 
-  protected override async executeImpl(inputs: NodeInputs): Promise<NodeOutputs> {
+  protected async run(inputs: Record<string, unknown>): Promise<Record<string, unknown>> {
     const data = inputs.data;
     let role = String(this.params.role ?? 'user').toLowerCase() as RoleType;
     let formatType = String(this.params.format ?? 'readable').toLowerCase() as FormatType;

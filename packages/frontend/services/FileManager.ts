@@ -1,26 +1,39 @@
 /**
- * FileManager - Graph save/load using GraphDocument format
+ * FileManager - Graph save/load using Graph format
+ *
+ * Serializes from Rete (the single source of truth) via the adapter.
  *
  * Supports:
- * - Saving GraphDocument as JSON
- * - Loading GraphDocument
+ * - Saving Graph as JSON
+ * - Loading Graph
  * - Autosave to localStorage
  */
 
-import { validateGraphDocument } from '@fig-node/core';
-import type { GraphDocument } from '@fig-node/core';
-import { useGraphStore } from '../stores/graph-store';
-import type { NodeMetadataMap } from '../types/node-metadata';
-import { APIKeyManager } from './APIKeyManager';
+import { validateGraph } from '@fig-node/core';
+import type { Graph } from '@fig-node/core';
+import { useGraphStore } from '../stores/graphStore';
+import { getEditorAdapter } from '../components/editor/editor-ref';
+import { isDirty, clearDirty } from '../components/editor/ReteEditor';
+import type { NodeMetadataMap } from '../types/nodes';
 
 let lastSavedJson = '';
 let autosaveInterval: ReturnType<typeof setInterval> | null = null;
-const apiKeyManager = new APIKeyManager();
+
+// ============ Helpers ============
+
+function getSerializedDoc(): Graph | null {
+  const adapter = getEditorAdapter();
+  if (!adapter) return null;
+  const { docName, docId } = useGraphStore.getState();
+  return adapter.serializeGraph(docName, docId);
+}
 
 // ============ Save ============
 
 export function saveGraph(): void {
-  const doc = useGraphStore.getState().doc;
+  const doc = getSerializedDoc();
+  if (!doc) return;
+
   const json = JSON.stringify(doc, null, 2);
   const blob = new Blob([json], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
@@ -30,6 +43,7 @@ export function saveGraph(): void {
   a.click();
   URL.revokeObjectURL(url);
   lastSavedJson = json;
+  clearDirty();
 }
 
 // ============ Load ============
@@ -42,47 +56,47 @@ export async function loadGraphFromFile(
     const content = await file.text();
     const data = JSON.parse(content);
 
-    let doc: GraphDocument;
+    let doc: Graph;
 
-    // Validate GraphDocument format (version === 2, nodes as Record)
+    // Validate Graph format (version === 2, nodes as Record)
     if (data.version === 2 && data.nodes && !Array.isArray(data.nodes)) {
-      const validation = validateGraphDocument(data);
+      const validation = validateGraph(data);
       if (!validation.valid) {
-        try {
-          alert('Invalid graph document: ' + validation.errors.map((e) => e.message).join(', '));
-        } catch { /* ignore in tests */ }
+        useGraphStore.getState().setNotification({
+          message: 'Invalid graph document: ' + validation.errors.map((e) => e.message).join(', '),
+          type: 'error',
+        });
         return;
       }
-      doc = data as GraphDocument;
+      doc = data as Graph;
     } else {
-      try { alert('Unsupported graph format. Only GraphDocument (version 2) is supported.'); } catch { /* ignore in tests */ }
+      useGraphStore.getState().setNotification({
+        message: 'Unsupported graph format. Only Graph (version 2) is supported.',
+        type: 'error',
+      });
       return;
     }
 
-    useGraphStore.getState().loadDocument(doc);
+    // Load into Rete (the source of truth)
+    const adapter = getEditorAdapter();
+    if (adapter) {
+      await adapter.loadDocument(doc);
+    }
+
+    // Update store identity
     updateGraphName(file.name);
+    useGraphStore.getState().setDocId(doc.id);
+    useGraphStore.getState().clearDisplayResults();
+    useGraphStore.getState().clearNodeStatus();
 
     try {
       lastSavedJson = JSON.stringify(doc);
     } catch {
       lastSavedJson = '';
     }
-
-    // Proactive API key check after load
-    try {
-      const requiredKeys = await apiKeyManager.getRequiredKeysForGraph(data);
-      if (requiredKeys.length > 0) {
-        const missing = await apiKeyManager.checkMissingKeys(requiredKeys);
-        if (missing.length > 0) {
-          try {
-            alert(`Missing API keys for this graph: ${missing.join(', ')}. Please set them in the settings menu.`);
-          } catch { /* ignore in tests */ }
-          apiKeyManager.openSettings(missing);
-        }
-      }
-    } catch { /* ignore */ }
+    clearDirty();
   } catch {
-    try { alert('Invalid graph file'); } catch { /* ignore in tests */ }
+    useGraphStore.getState().setNotification({ message: 'Invalid graph file', type: 'error' });
   }
 }
 
@@ -100,13 +114,18 @@ export function startAutosave(): () => void {
 
 function doAutosave(): void {
   try {
-    const doc = useGraphStore.getState().doc;
+    if (!isDirty()) return;
+
+    const doc = getSerializedDoc();
+    if (!doc) return;
+
     const json = JSON.stringify(doc);
     if (json !== lastSavedJson) {
       const payload = { graph: doc, name: doc.name };
       safeLocalStorageSet('fig-nodes:autosave:v2', JSON.stringify(payload));
       lastSavedJson = json;
     }
+    clearDirty();
   } catch { /* ignore */ }
 }
 
@@ -116,11 +135,19 @@ export function restoreFromAutosave(): boolean {
     if (saved) {
       const parsed = JSON.parse(saved);
       if (parsed?.graph?.version === 2) {
-        const validation = validateGraphDocument(parsed.graph);
+        const validation = validateGraph(parsed.graph);
         if (validation.valid) {
-          useGraphStore.getState().loadDocument(parsed.graph as GraphDocument);
+          const doc = parsed.graph as Graph;
+
+          // Load into Rete via adapter
+          const adapter = getEditorAdapter();
+          if (adapter) {
+            adapter.loadDocument(doc);
+          }
+
           updateGraphName(parsed.name || 'autosave.json');
-          lastSavedJson = JSON.stringify(parsed.graph);
+          useGraphStore.getState().setDocId(doc.id);
+          lastSavedJson = JSON.stringify(doc);
           return true;
         }
       }
@@ -136,8 +163,6 @@ export function restoreFromAutosave(): boolean {
 
 function updateGraphName(name: string): void {
   useGraphStore.getState().setDocName(name);
-  const graphNameEl = document.getElementById('graph-name');
-  if (graphNameEl) graphNameEl.textContent = name;
 }
 
 function safeLocalStorageSet(key: string, value: string): void {

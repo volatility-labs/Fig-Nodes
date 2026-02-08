@@ -1,22 +1,9 @@
 // src/nodes/core/market/indicators/orb-indicator-node.ts
-// Translated from: nodes/core/market/indicators/orb_indicator_node.py
 
 import { BaseIndicator } from './base/base-indicator-node';
-import {
-  IndicatorType,
-  createIndicatorResult,
-  createIndicatorValue,
-  getType,
-  AssetSymbol,
-} from '@fig-node/core';
-import type {
-  ParamMeta,
-  DefaultParams,
-  NodeInputs,
-  NodeOutputs,
-  IndicatorValue,
-  NodeUIConfig,
-} from '@fig-node/core';
+import { port } from '@fig-node/core';
+import type { NodeDefinition } from '@fig-node/core';
+import { IndicatorType, createIndicatorResult, createIndicatorValue, AssetSymbol, type IndicatorValue } from '../types';
 import { calculateOrb } from '../calculators/orb-calculator';
 import { fetchBars } from '../services/polygon-service';
 
@@ -25,40 +12,34 @@ import { fetchBars } from '../services/polygon-service';
  * Outputs relative volume (RVOL) and direction (bullish/bearish/doji).
  */
 export class OrbIndicator extends BaseIndicator {
-  static required_keys = ['POLYGON_API_KEY'];
-  static uiConfig: NodeUIConfig = {
-    size: [220, 100],
-    displayResults: false,
-    resizable: false,
+  static override definition: NodeDefinition = {
+    ...BaseIndicator.definition,
+    inputs: {
+      symbol: port('AssetSymbol'),
+    },
+    outputs: {
+      results: port('IndicatorResultList'),
+    },
+    defaults: {
+      or_minutes: 5,
+      avg_period: 14,
+    },
+    params: [
+      { name: 'or_minutes', type: 'number', default: 5, min: 1, step: 1 },
+      { name: 'avg_period', type: 'number', default: 14, min: 1, step: 1 },
+    ],
+    requiredCredentials: ['POLYGON_API_KEY'],
   };
-
-  static override inputs: Record<string, unknown> = {
-    symbol: getType('AssetSymbol'),
-  };
-
-  static override outputs: Record<string, unknown> = {
-    results: Array, // list[IndicatorResult]
-  };
-
-  static override defaultParams: DefaultParams = {
-    or_minutes: 5,
-    avg_period: 14,
-  };
-
-  static override paramsMeta: ParamMeta[] = [
-    { name: 'or_minutes', type: 'number', default: 5, min: 1, step: 1 },
-    { name: 'avg_period', type: 'number', default: 14, min: 1, step: 1 },
-  ];
 
   protected mapToIndicatorValue(
     _indType: IndicatorType,
     _raw: Record<string, unknown>
   ): IndicatorValue {
-    // ORB node uses its own _executeImpl path and does not rely on base mapping.
+    // ORB node uses its own run path and does not rely on base mapping.
     return createIndicatorValue({ single: NaN });
   }
 
-  protected override async executeImpl(inputs: NodeInputs): Promise<NodeOutputs> {
+  protected async run(inputs: Record<string, unknown>): Promise<Record<string, unknown>> {
     console.log('='.repeat(80));
     console.log('ORB INDICATOR: Starting execution');
     console.log('='.repeat(80));

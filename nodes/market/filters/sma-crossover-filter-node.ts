@@ -1,39 +1,28 @@
 // src/nodes/core/market/filters/sma-crossover-filter-node.ts
-// Translated from: nodes/core/market/filters/sma_crossover_filter_node.py
 
 import { BaseIndicatorFilter } from './base/base-indicator-filter-node';
-import { IndicatorType, createIndicatorResult, createIndicatorValue } from '@fig-node/core';
-import type {
-  ParamMeta,
-  DefaultParams,
-  OHLCVBar,
-  IndicatorResult,
-  NodeUIConfig,
-} from '@fig-node/core';
+import type { NodeDefinition } from '@fig-node/core';
+import { IndicatorType, createIndicatorResult, createIndicatorValue, type OHLCVBar, type IndicatorResult } from '../types';
 import { calculateSma } from '../calculators/sma-calculator';
 
 /**
  * Filters assets where short-term SMA crosses above long-term SMA (bullish crossover).
  */
 export class SMACrossoverFilter extends BaseIndicatorFilter {
+  static override definition: NodeDefinition = {
+    ...BaseIndicatorFilter.definition,
+    defaults: {
+      short_period: 20,
+      long_period: 50,
+    },
+    params: [
+      { name: 'short_period', type: 'number', default: 20, min: 1, step: 1 },
+      { name: 'long_period', type: 'number', default: 50, min: 1, step: 1 },
+    ],
+  };
+
   private shortPeriod: number = 20;
   private longPeriod: number = 50;
-
-  static override defaultParams: DefaultParams = {
-    short_period: 20,
-    long_period: 50,
-  };
-
-  static override paramsMeta: ParamMeta[] = [
-    { name: 'short_period', type: 'number', default: 20, min: 1, step: 1 },
-    { name: 'long_period', type: 'number', default: 50, min: 1, step: 1 },
-  ];
-
-  static uiConfig: NodeUIConfig = {
-    size: [220, 100],
-    displayResults: false,
-    resizable: false,
-  };
 
   protected override validateIndicatorParams(): void {
     const shortPeriodValue = this.params.short_period ?? 20;

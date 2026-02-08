@@ -1,8 +1,13 @@
 // src/nodes/core/llm/tools-builder-node.ts
-// Translated from: nodes/core/llm/tools_builder_node.py
 
-import { Base, NodeCategory, getType, LLMToolSpec, validateLLMToolSpec, serializeForApi } from '@fig-node/core';
-import type { NodeUIConfig } from '@fig-node/core';
+import {
+  Node,
+  NodeCategory,
+  port,
+  serializeForApi,
+  type NodeDefinition,
+} from '@fig-node/core';
+import { validateLLMToolSpec, type LLMToolSpec } from './types';
 
 /**
  * Takes a list of max 5 tool specs and outputs them as LLMToolSpecList.
@@ -13,26 +18,19 @@ import type { NodeUIConfig } from '@fig-node/core';
  * Output:
  * - tools: LLMToolSpecList
  */
-export class ToolsBuilder extends Base {
-  static inputs = {
-    tools_list: getType('LLMToolSpecList'),
+export class ToolsBuilder extends Node {
+  static definition: NodeDefinition = {
+    inputs: {
+      tools_list: port('LLMToolSpecList', { optional: true }),
+    },
+    outputs: {
+      tools: port('LLMToolSpecList'),
+    },
+    category: NodeCategory.LLM,
+    ui: {},
   };
 
-  static optional_inputs = ['tools_list'];
-
-  static outputs = {
-    tools: getType('LLMToolSpecList'),
-  };
-
-  static CATEGORY = NodeCategory.LLM;
-
-  static uiConfig: NodeUIConfig = {
-    size: [200, 80],
-    displayResults: false,
-    resizable: false,
-  };
-
-  protected async executeImpl(
+  protected async run(
     inputs: Record<string, unknown>
   ): Promise<Record<string, unknown>> {
     const toolsInput = (inputs.tools_list as LLMToolSpec[]) || [];

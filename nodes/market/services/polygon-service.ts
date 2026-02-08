@@ -1,8 +1,7 @@
 // src/services/polygon-service.ts
 // Translated from: services/polygon_service.py
 
-import type { AssetSymbol, OHLCVBar } from '@fig-node/core';
-import { AssetClass } from '@fig-node/core';
+import { AssetClass, type AssetSymbol, type OHLCVBar } from '../types';
 
 export interface FetchBarsParams {
   multiplier: number;

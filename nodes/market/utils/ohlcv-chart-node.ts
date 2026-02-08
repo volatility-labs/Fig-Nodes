@@ -1,17 +1,9 @@
-// Translated from: legacy/nodes/core/market/utils/ohlcv_plot_node.py
-// and legacy/nodes/core/market/utils/ohlcv_plot_enhanced_node.py
-//
 // This node prepares OHLCV data for frontend chart rendering.
 // Instead of generating images server-side, it outputs structured chart data
 // that the frontend can render with Lightweight Charts or similar.
 
-import { Base } from '@fig-node/core';
-import {
-  NodeCategory,
-  OHLCVBar,
-  type ParamMeta,
-  type NodeUIConfig,
-} from '@fig-node/core';
+import { Node, NodeCategory, port, type NodeDefinition } from '@fig-node/core';
+import type { OHLCVBar } from '../types';
 import { calculateSma } from '../calculators/sma-calculator';
 import { calculateEma } from '../calculators/ema-calculator';
 
@@ -169,123 +161,109 @@ function calculateOverlay(
  * Outputs:
  * - charts: Dict mapping symbol strings to ChartConfig objects
  */
-export class OHLCVChart extends Base {
-  static inputs = {
-    ohlcv_bundle: 'OHLCVBundle',
-  };
-
-  static outputs = {
-    charts: 'ConfigDict', // Record<string, ChartConfig>
-  };
-
-  static CATEGORY = NodeCategory.MARKET;
-
-  static uiConfig: NodeUIConfig = {
-    size: [280, 200],
-    resizable: true,
-    displayResults: false,
-    outputDisplay: {
-      type: 'chart-preview',
-      bind: 'charts',
-      options: {
-        chartType: 'candlestick',
-        modalEnabled: true,
-        symbolSelector: true,
+export class OHLCVChart extends Node {
+  static definition: NodeDefinition = {
+    inputs: {
+      ohlcv_bundle: port('OHLCVBundle'),
+    },
+    outputs: {
+      charts: port('ConfigDict'),
+    },
+    category: NodeCategory.MARKET,
+    ui: {
+      outputDisplay: {
+        type: 'chart-preview',
+        bind: 'charts',
+        options: {
+          chartType: 'candlestick',
+          modalEnabled: true,
+          symbolSelector: true,
+        },
       },
     },
+    defaults: {
+      max_symbols: 12,
+      lookback_bars: 60,
+      overlay1_enabled: true,
+      overlay1_type: 'SMA',
+      overlay1_period: 20,
+      overlay1_color: '#2196F3',
+      overlay2_enabled: true,
+      overlay2_type: 'SMA',
+      overlay2_period: 50,
+      overlay2_color: '#FF9800',
+    },
+    params: [
+      {
+        name: 'max_symbols',
+        type: 'integer',
+        default: 12,
+        min: 1,
+        max: 64,
+        step: 4,
+        description: 'Maximum number of symbols to process',
+      },
+      {
+        name: 'lookback_bars',
+        type: 'number',
+        default: 60,
+        min: 10,
+        max: 5000,
+        step: 10,
+        description: 'Number of bars to include (from most recent)',
+      },
+      {
+        name: 'overlay1_enabled',
+        type: 'combo',
+        default: true,
+        options: [true, false],
+      },
+      {
+        name: 'overlay1_type',
+        type: 'combo',
+        default: 'SMA',
+        options: ['SMA', 'EMA'],
+      },
+      {
+        name: 'overlay1_period',
+        type: 'number',
+        default: 20,
+        min: 2,
+        max: 200,
+        step: 1,
+      },
+      {
+        name: 'overlay1_color',
+        type: 'text',
+        default: '#2196F3',
+      },
+      {
+        name: 'overlay2_enabled',
+        type: 'combo',
+        default: true,
+        options: [true, false],
+      },
+      {
+        name: 'overlay2_type',
+        type: 'combo',
+        default: 'SMA',
+        options: ['SMA', 'EMA'],
+      },
+      {
+        name: 'overlay2_period',
+        type: 'number',
+        default: 50,
+        min: 2,
+        max: 200,
+        step: 1,
+      },
+      {
+        name: 'overlay2_color',
+        type: 'text',
+        default: '#FF9800',
+      },
+    ],
   };
-
-  static defaultParams = {
-    max_symbols: 12,
-    lookback_bars: 60,
-    overlay1_enabled: true,
-    overlay1_type: 'SMA',
-    overlay1_period: 20,
-    overlay1_color: '#2196F3',
-    overlay2_enabled: true,
-    overlay2_type: 'SMA',
-    overlay2_period: 50,
-    overlay2_color: '#FF9800',
-  };
-
-  static paramsMeta: ParamMeta[] = [
-    {
-      name: 'max_symbols',
-      type: 'integer',
-      default: 12,
-      min: 1,
-      max: 64,
-      step: 4,
-      description: 'Maximum number of symbols to process',
-    },
-    {
-      name: 'lookback_bars',
-      type: 'number',
-      default: 60,
-      min: 10,
-      max: 5000,
-      step: 10,
-      description: 'Number of bars to include (from most recent)',
-    },
-    {
-      name: 'overlay1_enabled',
-      type: 'combo',
-      default: true,
-      options: [true, false],
-    },
-    {
-      name: 'overlay1_type',
-      type: 'combo',
-      default: 'SMA',
-      options: ['SMA', 'EMA'],
-    },
-    {
-      name: 'overlay1_period',
-      type: 'number',
-      default: 20,
-      min: 2,
-      max: 200,
-      step: 1,
-    },
-    {
-      name: 'overlay1_color',
-      type: 'text',
-      default: '#2196F3',
-    },
-    {
-      name: 'overlay2_enabled',
-      type: 'combo',
-      default: true,
-      options: [true, false],
-    },
-    {
-      name: 'overlay2_type',
-      type: 'combo',
-      default: 'SMA',
-      options: ['SMA', 'EMA'],
-    },
-    {
-      name: 'overlay2_period',
-      type: 'number',
-      default: 50,
-      min: 2,
-      max: 200,
-      step: 1,
-    },
-    {
-      name: 'overlay2_color',
-      type: 'text',
-      default: '#FF9800',
-    },
-  ];
-
-  constructor(
-    figNodeId: string,
-    params: Record<string, unknown>,
-    graphContext: Record<string, unknown> = {}
-  ) {
-    super(figNodeId, params, graphContext);
-  }
 
   private getIntParam(key: string, defaultVal: number): number {
     const raw = this.params[key] ?? defaultVal;
@@ -310,7 +288,7 @@ export class OHLCVChart extends Base {
     return String(raw);
   }
 
-  protected async executeImpl(inputs: Record<string, unknown>): Promise<Record<string, unknown>> {
+  protected async run(inputs: Record<string, unknown>): Promise<Record<string, unknown>> {
     // Get OHLCV bundle - can be Map or plain object
     let bundle: Map<string, OHLCVBar[]> | Record<string, OHLCVBar[]> | null = null;
 

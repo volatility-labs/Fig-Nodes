@@ -4,15 +4,14 @@ Node-based workflow tool for traders to build and execute agentic graph pipeline
 
 ## Architecture
 
-Fig Nodes is a TypeScript monorepo (Yarn workspaces) with four packages:
+Fig Nodes is a TypeScript monorepo (Yarn workspaces) with three packages:
 
 ```
 fig-node/
 ├── packages/
 │   ├── core/          # Framework-agnostic graph execution engine
 │   ├── server/        # Fastify HTTP + WebSocket server
-│   ├── frontend/      # Vite-based graph editor UI
-│   └── litegraph/     # Maintained fork of litegraph.js
+│   └── frontend/      # Rete.js v2-based graph editor UI
 ├── nodes/             # Built-in node implementations
 │   ├── io/            # Input/output (text input, logging, Discord, X/Twitter)
 │   ├── llm/           # LLM chat, vision, message building, tool use
@@ -21,13 +20,11 @@ fig-node/
 └── .env.example       # Environment variable template
 ```
 
-**Core** (`@fig-node/core`) — the graph execution engine. Computes a topological sort of the node graph, executes nodes in parallel within each dependency level, and supports cancellation via AbortController. Exports the `GraphExecutor`, node registry, `Base` node class, and shared types (`SerialisableGraph`, `ExecutionResults`, `ProgressEvent`). Has no server or frontend dependencies.
+**Core** (`@fig-node/core`) — the graph execution engine. Computes a topological sort of the node graph, executes nodes in parallel within each dependency level, and supports cancellation via AbortController. Exports the `GraphExecutor`, node registry, `Node` base class, and shared types (`Graph`, `ExecutionResults`, `ProgressEvent`). Has no server or frontend dependencies.
 
 **Server** (`@fig-node/server`) — a Fastify server that imports Core to execute graphs. Exposes a REST API (`GET /api/v1/nodes` for node metadata) and a WebSocket endpoint (`/execute`) for real-time graph execution with progress streaming. Jobs run through a FIFO execution queue (one at a time), with IO-category nodes streaming results immediately.
 
-**Frontend** (`@fig-node/frontend`) — a Vite app that provides a canvas-based graph editor using the litegraph fork. Fetches node metadata from the server at startup and dynamically registers nodes. Connects to the server over WebSocket for execution. The frontend is a generic renderer — node UI is entirely driven by backend-defined metadata (`paramsMeta`, `uiConfig`).
-
-**Litegraph** (`@fig-node/litegraph`) — a maintained fork of [litegraph.js](https://github.com/Comfy-Org/litegraph.js) providing the `LGraph`, `LGraphCanvas`, and `LGraphNode` classes for the graph editor.
+**Frontend** (`@fig-node/frontend`) — a Vite + React app that provides a Rete.js v2-based graph editor. Fetches node metadata from the server at startup and dynamically creates editor nodes with typed sockets. Connects to the server over WebSocket for execution. The frontend is a generic renderer — node UI is entirely driven by backend-defined metadata (`paramsMeta`, `uiConfig`).
 
 The server and frontend run as **separate processes**. In development, the Vite dev server proxies `/api/*` and `/execute` (including WebSocket upgrades) to the Fastify server.
 
@@ -44,7 +41,7 @@ cd Fig-Nodes
 yarn install
 ```
 
-`yarn install` automatically builds the litegraph and core packages via the `postinstall` script.
+`yarn install` automatically builds the core package via the `postinstall` script.
 
 ## Environment Variables
 
@@ -58,11 +55,11 @@ cp .env.example .env
 |---|---|
 | `POLYGON_API_KEY` | Market data nodes (Polygon universe, custom bars, ORB filter, industry filter) |
 | `TAVILY_API_KEY` | Web search tool node |
-| `OPENROUTER_API_KEY` | LLM chat and vision nodes (set in the frontend API key manager) |
+| `OPENROUTER_API_KEY` | LLM chat and vision nodes |
 
 ## Development
 
-Start all four packages concurrently:
+Start all three packages concurrently:
 
 ```bash
 yarn dev
@@ -72,7 +69,6 @@ This runs:
 
 | Package | Command | Port |
 |---|---|---|
-| litegraph | `vite` (watch mode) | — |
 | core | `tsc --watch` | — |
 | server | `tsx watch` | 8000 |
 | frontend | `vite dev` | 5173 |
@@ -85,16 +81,16 @@ Open `http://localhost:5173` in your browser. The default graph should load — 
 yarn build
 ```
 
-Builds in order: litegraph → core → nodes → server.
+Builds in order: core → nodes → server.
 
 ## Custom Nodes
 
-Create a `.ts` file in the `custom_nodes/` directory. Extend the `Base` class from `@fig-node/core`:
+Create a `.ts` file in the `custom_nodes/` directory. Extend the `Node` class from `@fig-node/core`:
 
 ```typescript
-import { Base, NodeCategory } from '@fig-node/core';
+import { Node, NodeCategory } from '@fig-node/core';
 
-export class MyCustomNode extends Base {
+export class MyCustomNode extends Node {
   static inputs = { text: 'string' };
   static outputs = { result: 'string' };
   static CATEGORY = NodeCategory.IO;
@@ -120,7 +116,7 @@ Nodes are auto-discovered at server startup — no registration needed.
 | Command | Description |
 |---|---|
 | `yarn dev` | Start all packages in development mode |
-| `yarn build` | Production build (litegraph → core → nodes → server) |
+| `yarn build` | Production build (core → nodes → server) |
 | `yarn build:nodes` | Build only the nodes directory |
 | `yarn test` | Run tests across all workspaces |
 | `yarn lint` | Lint all workspaces |

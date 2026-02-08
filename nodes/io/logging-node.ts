@@ -1,7 +1,6 @@
-// Translated from: legacy/nodes/core/io/logging_node.py
-
-import { Base, NodeCategory, LLMChatMessage, OHLCVBar, AssetSymbol, getType } from '@fig-node/core';
-import type { ParamMeta, NodeUIConfig, NodeInputs, NodeOutputs, DefaultParams } from '@fig-node/core';
+import { Node, NodeCategory, port, type NodeDefinition } from '@fig-node/core';
+import { AssetSymbol, type OHLCVBar } from '../market/types';
+import type { LLMChatMessage } from '../llm/types';
 
 // Type guards
 function isDictWithKey(value: unknown, key: string): value is Record<string, unknown> {
@@ -60,33 +59,32 @@ function isOHLCVBundle(value: unknown): value is Record<string, OHLCVBar[]> {
 /**
  * Logging node that outputs data to console/logs with format options.
  */
-export class Logging extends Base {
-  static override inputs: Record<string, unknown> = {
-    input: getType('any'),
-  };
+export class Logging extends Node {
+  static definition: NodeDefinition = {
+    inputs: {
+      input: port('any'),
+    },
 
-  static override outputs: Record<string, unknown> = {
-    output: getType('string'),
-  };
+    outputs: {
+      output: port('string'),
+    },
 
-  static override CATEGORY = NodeCategory.IO;
+    category: NodeCategory.IO,
 
-  static override defaultParams: DefaultParams = {};
+    defaults: {},
 
-  static override paramsMeta: ParamMeta[] = [];
+    params: [],
 
-  static override uiConfig: NodeUIConfig = {
-    size: [400, 300],
-    resizable: true,
-    displayResults: false,
-    outputDisplay: {
-      type: 'text-display-dom',
-      bind: 'output',
-      options: {
-        placeholder: 'Logs appear here...',
-        scrollable: true,
-        streaming: true,
-        formats: ['auto', 'json', 'plain', 'markdown'],
+    ui: {
+      outputDisplay: {
+        type: 'text-display-dom',
+        bind: 'output',
+        options: {
+          placeholder: 'Logs appear here...',
+          scrollable: true,
+          streaming: true,
+          formats: ['auto', 'json', 'plain', 'markdown'],
+        },
       },
     },
   };
@@ -94,23 +92,23 @@ export class Logging extends Base {
   private lastContentLength = 0;
 
   constructor(
-    figNodeId: string,
+    nodeId: string,
     params: Record<string, unknown>,
     graphContext: Record<string, unknown> = {}
   ) {
-    super(figNodeId, params, graphContext);
+    super(nodeId, params, graphContext);
   }
 
   private safePrint(message: string): void {
     try {
-      console.log(`LoggingNode ${this.figNodeId}: ${message.trimEnd()}`);
+      console.log(`LoggingNode ${this.nodeId}: ${message.trimEnd()}`);
     } catch {
       // Fallback if logging fails
       console.log(message.trimEnd());
     }
   }
 
-  protected override async executeImpl(inputs: NodeInputs): Promise<NodeOutputs> {
+  protected async run(inputs: Record<string, unknown>): Promise<Record<string, unknown>> {
     const value = inputs.input;
 
     // Handle missing or null input

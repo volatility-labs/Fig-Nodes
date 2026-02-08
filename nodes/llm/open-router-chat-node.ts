@@ -1,8 +1,14 @@
-// Translated from: legacy/nodes/core/llm/open_router_chat_node.py
+// src/nodes/core/llm/open-router-chat-node.ts
 
 import { z } from 'zod';
-import { Base, NodeCategory, ProgressState, LLMChatMessage, LLMThinkingHistory } from '@fig-node/core';
-import type { ParamMeta, NodeUIConfig } from '@fig-node/core';
+import {
+  Node,
+  NodeCategory,
+  ProgressState,
+  port,
+  type NodeDefinition,
+} from '@fig-node/core';
+import type { LLMChatMessage, LLMThinkingHistory } from './types';
 
 // Response models for validation
 const OpenRouterChatMessageSchema = z.object({
@@ -39,104 +45,100 @@ type OpenRouterChatResponse = z.infer<typeof OpenRouterChatResponseSchema>;
  * Web search is always enabled by default.
  * For vision/image inputs, use OpenRouterVisionChat instead.
  */
-export class OpenRouterChat extends Base {
-  static inputs = {
-    prompt: 'string',
-    system: 'string,LLMChatMessage,optional',
-    message_0: 'LLMChatMessage,optional',
-    message_1: 'LLMChatMessage,optional',
-    message_2: 'LLMChatMessage,optional',
-    message_3: 'LLMChatMessage,optional',
-    message_4: 'LLMChatMessage,optional',
-  };
-
-  static outputs = {
-    response: 'LLMChatMessage',
-    thinking_history: 'LLMThinkingHistory',
-  };
-
-  static CATEGORY = NodeCategory.LLM;
-  static required_keys = ['OPENROUTER_API_KEY'];
-
-  static defaultParams = {
-    model: 'z-ai/glm-4.6',
-    temperature: 0.2,
-    max_tokens: 20000,
-    seed: 0,
-    seed_mode: 'fixed',
-    inject_graph_context: 'false',
-  };
-
-  static paramsMeta: ParamMeta[] = [
-    {
-      name: 'model',
-      type: 'combo',
-      default: 'z-ai/glm-4.6',
-      options: [
-        'z-ai/glm-4.6',
-        'openai/gpt-4o',
-        'openai/gpt-4o-mini',
-        'anthropic/claude-3.5-sonnet',
-        'google/gemini-2.0-flash-001',
-      ],
+export class OpenRouterChat extends Node {
+  static definition: NodeDefinition = {
+    inputs: {
+      prompt: port('string', { optional: true }),
+      system_text: port('string', { optional: true }),
+      system_message: port('LLMChatMessage', { optional: true }),
+      message_0: port('LLMChatMessage', { optional: true }),
+      message_1: port('LLMChatMessage', { optional: true }),
+      message_2: port('LLMChatMessage', { optional: true }),
+      message_3: port('LLMChatMessage', { optional: true }),
+      message_4: port('LLMChatMessage', { optional: true }),
     },
-    {
-      name: 'temperature',
-      type: 'number',
-      default: 0.7,
-      min: 0.0,
-      max: 2.0,
-      step: 0.05,
+    outputs: {
+      response: port('LLMChatMessage'),
+      thinking_history: port('LLMThinkingHistory'),
     },
-    {
-      name: 'max_tokens',
-      type: 'number',
-      default: 20000,
-      min: 1,
-      step: 1,
-      precision: 0,
+    category: NodeCategory.LLM,
+    requiredCredentials: ['OPENROUTER_API_KEY'],
+    defaults: {
+      model: 'z-ai/glm-4.6',
+      temperature: 0.2,
+      max_tokens: 20000,
+      seed: 0,
+      seed_mode: 'fixed',
+      inject_graph_context: 'false',
     },
-    { name: 'seed', type: 'number', default: 0, min: 0, step: 1, precision: 0 },
-    {
-      name: 'seed_mode',
-      type: 'combo',
-      default: 'fixed',
-      options: ['fixed', 'random', 'increment'],
-    },
-    {
-      name: 'inject_graph_context',
-      type: 'combo',
-      default: 'false',
-      options: ['true', 'false'],
-      description: 'Inject graph context (nodes and data flow) into the first user message',
-    },
-  ];
-
-  static uiConfig: NodeUIConfig = {
-    size: [280, 180],
-    displayResults: false,
-    dataSources: {
-      models: {
-        endpoint: 'https://openrouter.ai/api/v1/models',
-        method: 'GET',
-        transform: 'data',
-        targetParam: 'model',
-        valueField: 'id',
-        fallback: [
+    params: [
+      {
+        name: 'model',
+        type: 'combo',
+        default: 'z-ai/glm-4.6',
+        options: [
           'z-ai/glm-4.6',
           'openai/gpt-4o',
           'openai/gpt-4o-mini',
-          'openai/gpt-4-turbo',
           'anthropic/claude-3.5-sonnet',
-          'anthropic/claude-3-opus',
-          'anthropic/claude-3-haiku',
           'google/gemini-2.0-flash-001',
-          'google/gemini-pro',
-          'meta-llama/llama-3.1-70b-instruct',
-          'meta-llama/llama-3.1-8b-instruct',
-          'mistralai/mistral-large',
-          'mistralai/mixtral-8x7b-instruct',
         ],
+      },
+      {
+        name: 'temperature',
+        type: 'number',
+        default: 0.7,
+        min: 0.0,
+        max: 2.0,
+        step: 0.05,
+      },
+      {
+        name: 'max_tokens',
+        type: 'number',
+        default: 20000,
+        min: 1,
+        step: 1,
+        precision: 0,
+      },
+      { name: 'seed', type: 'number', default: 0, min: 0, step: 1, precision: 0 },
+      {
+        name: 'seed_mode',
+        type: 'combo',
+        default: 'fixed',
+        options: ['fixed', 'random', 'increment'],
+      },
+      {
+        name: 'inject_graph_context',
+        type: 'combo',
+        default: 'false',
+        options: ['true', 'false'],
+        description: 'Inject graph context (nodes and data flow) into the first user message',
+      },
+    ],
+    ui: {
+      dataSources: {
+        models: {
+          endpoint: 'https://openrouter.ai/api/v1/models',
+          method: 'GET',
+          transform: 'data',
+          targetParam: 'model',
+          valueField: 'id',
+          fallback: [
+            'z-ai/glm-4.6',
+            'openai/gpt-4o',
+            'openai/gpt-4o-mini',
+            'openai/gpt-4-turbo',
+            'anthropic/claude-3.5-sonnet',
+            'anthropic/claude-3-opus',
+            'anthropic/claude-3-haiku',
+            'google/gemini-2.0-flash-001',
+            'google/gemini-pro',
+            'meta-llama/llama-3.1-70b-instruct',
+            'meta-llama/llama-3.1-8b-instruct',
+            'mistralai/mistral-large',
+            'mistralai/mixtral-8x7b-instruct',
+          ],
+        },
       },
     },
   };
@@ -150,11 +152,11 @@ export class OpenRouterChat extends Base {
   private abortController: AbortController | null = null;
 
   constructor(
-    figNodeId: string,
+    nodeId: string,
     params: Record<string, unknown>,
     graphContext: Record<string, unknown> = {}
   ) {
-    super(figNodeId, params, graphContext);
+    super(nodeId, params, graphContext);
   }
 
   forceStop(): void {
@@ -289,7 +291,7 @@ export class OpenRouterChat extends Base {
       ...options,
     };
 
-    if (this._isStopped) {
+    if (this.cancelled) {
       throw new Error('Node stopped before HTTP request');
     }
 
@@ -305,7 +307,7 @@ export class OpenRouterChat extends Base {
       signal: this.abortController.signal,
     });
 
-    if (this._isStopped) {
+    if (this.cancelled) {
       throw new Error('Node stopped during HTTP request');
     }
 
@@ -491,9 +493,17 @@ export class OpenRouterChat extends Base {
     );
   }
 
-  protected async executeImpl(inputs: Record<string, unknown>): Promise<Record<string, unknown>> {
+  protected async run(inputs: Record<string, unknown>): Promise<Record<string, unknown>> {
     let promptText = inputs.prompt as string | null;
-    const systemInput = inputs.system as LLMChatMessage | string | null;
+    const systemText = inputs.system_text as string | null;
+    const systemMessage = inputs.system_message;
+    let systemInput: LLMChatMessage | string | null = null;
+
+    if (this.isLLMChatMessage(systemMessage)) {
+      systemInput = systemMessage;
+    } else if (typeof systemText === 'string' && systemText.trim()) {
+      systemInput = systemText;
+    }
 
     // Inject graph context into prompt if enabled
     promptText = this.injectGraphContextIntoPrompt(promptText);

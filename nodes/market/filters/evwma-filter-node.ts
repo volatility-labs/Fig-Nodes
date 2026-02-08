@@ -1,26 +1,11 @@
 // src/nodes/core/market/filters/evwma-filter-node.ts
-// Translated from: nodes/core/market/filters/evwma_filter_node.py
 
 import { BaseIndicatorFilter } from './base/base-indicator-filter-node';
-import {
-  IndicatorType,
-  createIndicatorResult,
-  createIndicatorValue,
-  AssetSymbol,
-} from '@fig-node/core';
-import type {
-  ParamMeta,
-  DefaultParams,
-  OHLCVBar,
-  IndicatorResult,
-  NodeInputs,
-  NodeOutputs,
-  OHLCVBundle,
-  NodeUIConfig,
-} from '@fig-node/core';
+import type { NodeDefinition } from '@fig-node/core';
+import { IndicatorType, createIndicatorResult, createIndicatorValue, AssetSymbol, type OHLCVBar, type IndicatorResult, type OHLCVBundle } from '../types';
 import { calculateEvwma, calculateRollingCorrelation } from '../calculators/evwma-calculator';
 import { fetchBars } from '../services/polygon-service';
-import { RateLimiter } from '@fig-node/core';
+import { RateLimiter } from '../rate-limiter';
 
 /**
  * EVWMA (Exponential Volume Weighted Moving Average) Filter
@@ -32,75 +17,71 @@ import { RateLimiter } from '@fig-node/core';
  * Note: Higher timeframes (4hr, 1day, weekly) are less accurate than shorter ones (1min, 5min, 15min).
  */
 export class EVWMAFilter extends BaseIndicatorFilter {
-  static required_keys = ['POLYGON_API_KEY'];
+  static override definition: NodeDefinition = {
+    ...BaseIndicatorFilter.definition,
+    requiredCredentials: ['POLYGON_API_KEY'],
+    defaults: {
+      evwma1_timeframe: '1min',
+      evwma2_timeframe: '5min',
+      evwma3_timeframe: '15min',
+      length: 325,
+      use_cum_volume: false,
+      roll_window: 325,
+      corr_smooth_window: 1,
+      correlation_threshold: 0.6,
+      require_alignment: true,
+      require_price_above_evwma: true,
+      max_concurrent: 10,
+      rate_limit_per_second: 95,
+    },
+    params: [
+      {
+        name: 'evwma1_timeframe',
+        type: 'combo',
+        default: '1min',
+        options: ['', '1min', '5min', '15min', '30min', '1hr', '4hr', '1day', 'weekly'],
+        label: 'EVWMA 1 Timeframe',
+        description: 'First EVWMA timeframe (leave blank to skip).',
+      },
+      {
+        name: 'evwma2_timeframe',
+        type: 'combo',
+        default: '5min',
+        options: ['', '1min', '5min', '15min', '30min', '1hr', '4hr', '1day', 'weekly'],
+        label: 'EVWMA 2 Timeframe',
+        description: 'Second EVWMA timeframe (leave blank to skip).',
+      },
+      {
+        name: 'evwma3_timeframe',
+        type: 'combo',
+        default: '15min',
+        options: ['', '1min', '5min', '15min', '30min', '1hr', '4hr', '1day', 'weekly'],
+        label: 'EVWMA 3 Timeframe',
+        description: 'Third EVWMA timeframe (leave blank to skip).',
+      },
+      {
+        name: 'length',
+        type: 'number',
+        default: 325,
+        min: 1,
+        step: 1,
+        label: 'EVWMA Length',
+        description: 'Period for EVWMA calculation',
+      },
+      {
+        name: 'correlation_threshold',
+        type: 'number',
+        default: 0.6,
+        min: 0.0,
+        max: 1.0,
+        step: 0.01,
+        label: 'Correlation Threshold',
+        description: 'Minimum correlation between EVWMAs to pass filter',
+      },
+    ],
+  };
+
   private maxSafeConcurrency = 5;
-
-  static override defaultParams: DefaultParams = {
-    evwma1_timeframe: '1min',
-    evwma2_timeframe: '5min',
-    evwma3_timeframe: '15min',
-    length: 325,
-    use_cum_volume: false,
-    roll_window: 325,
-    corr_smooth_window: 1,
-    correlation_threshold: 0.6,
-    require_alignment: true,
-    require_price_above_evwma: true,
-    max_concurrent: 10,
-    rate_limit_per_second: 95,
-  };
-
-  static override paramsMeta: ParamMeta[] = [
-    {
-      name: 'evwma1_timeframe',
-      type: 'combo',
-      default: '1min',
-      options: ['', '1min', '5min', '15min', '30min', '1hr', '4hr', '1day', 'weekly'],
-      label: 'EVWMA 1 Timeframe',
-      description: 'First EVWMA timeframe (leave blank to skip).',
-    },
-    {
-      name: 'evwma2_timeframe',
-      type: 'combo',
-      default: '5min',
-      options: ['', '1min', '5min', '15min', '30min', '1hr', '4hr', '1day', 'weekly'],
-      label: 'EVWMA 2 Timeframe',
-      description: 'Second EVWMA timeframe (leave blank to skip).',
-    },
-    {
-      name: 'evwma3_timeframe',
-      type: 'combo',
-      default: '15min',
-      options: ['', '1min', '5min', '15min', '30min', '1hr', '4hr', '1day', 'weekly'],
-      label: 'EVWMA 3 Timeframe',
-      description: 'Third EVWMA timeframe (leave blank to skip).',
-    },
-    {
-      name: 'length',
-      type: 'number',
-      default: 325,
-      min: 1,
-      step: 1,
-      label: 'EVWMA Length',
-      description: 'Period for EVWMA calculation',
-    },
-    {
-      name: 'correlation_threshold',
-      type: 'number',
-      default: 0.6,
-      min: 0.0,
-      max: 1.0,
-      step: 0.01,
-      label: 'Correlation Threshold',
-      description: 'Minimum correlation between EVWMAs to pass filter',
-    },
-  ];
-
-  static uiConfig: NodeUIConfig = {
-    size: [220, 100],
-    displayResults: false,
-    resizable: false,
-  };
 
   protected override validateIndicatorParams(): void {
     const length = this.params.length ?? 325;
@@ -390,7 +371,7 @@ export class EVWMAFilter extends BaseIndicatorFilter {
     return correlationPassed > 0.5;
   }
 
-  protected override async executeImpl(inputs: NodeInputs): Promise<NodeOutputs> {
+  protected override async run(inputs: Record<string, unknown>): Promise<Record<string, unknown>> {
     const apiKey = this.credentials.get('POLYGON_API_KEY');
     if (!apiKey) {
       throw new Error('Polygon API key not found in vault');
@@ -432,8 +413,8 @@ export class EVWMAFilter extends BaseIndicatorFilter {
         }
 
         completedCount++;
-        const progress = (completedCount / totalSymbols) * 100;
-        this.reportProgress(progress, `${completedCount}/${totalSymbols}`);
+        const pct = (completedCount / totalSymbols) * 100;
+        this.progress(pct, `${completedCount}/${totalSymbols}`);
       } catch (error) {
         console.error(`Error processing EVWMA for ${symbol.ticker}:`, error);
       }

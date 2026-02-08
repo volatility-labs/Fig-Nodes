@@ -1,40 +1,37 @@
 // src/nodes/core/io/text-input-node.ts
-// Translated from: nodes/core/io/text_input_node.py
 
-import { Base } from '@fig-node/core';
-import type { NodeInputs, NodeOutputs, ParamMeta, DefaultParams, NodeUIConfig } from '@fig-node/core';
+import { Node, port, type NodeDefinition } from '@fig-node/core';
 
 /**
  * Simple node that outputs a static text value from parameters.
  * Uses a DOM textarea widget for input via uiConfig.body.
  */
-export class TextInput extends Base {
-  static override inputs: Record<string, unknown> = {};
-  static override outputs: Record<string, unknown> = { text: 'string' };
+export class TextInput extends Node {
+  static definition: NodeDefinition = {
+    inputs: {},
+    outputs: { text: port('string') },
 
-  // Support both legacy "value" and preferred "text" parameter keys
-  static override defaultParams: DefaultParams = { value: '' };
+    // Support both legacy "value" and preferred "text" parameter keys
+    defaults: { value: '' },
 
-  // No paramsMeta needed - textarea is defined in body, not as param widget
-  static override paramsMeta: ParamMeta[] = [];
+    // No params needed - textarea is defined in body, not as param widget
+    params: [],
 
-  // UI configuration: use DOM textarea widget in body
-  static override uiConfig: NodeUIConfig = {
-    size: [360, 200],
-    resizable: true,
-    displayResults: false,
-    body: [{
-      type: 'textarea',
-      id: 'text-input',
-      bind: 'value',
-      options: {
-        placeholder: 'Enter text...',
-        hideOnZoom: true,
-      }
-    }]
+    // UI configuration: use DOM textarea widget in body
+    ui: {
+      body: [{
+        type: 'textarea',
+        id: 'text-input',
+        bind: 'value',
+        options: {
+          placeholder: 'Enter text...',
+          hideOnZoom: true,
+        }
+      }]
+    },
   };
 
-  protected override async executeImpl(_inputs: NodeInputs): Promise<NodeOutputs> {
+  protected async run(_inputs: Record<string, unknown>): Promise<Record<string, unknown>> {
     return { text: this.params.value ?? '' };
   }
 }

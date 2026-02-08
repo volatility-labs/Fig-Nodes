@@ -1,35 +1,24 @@
 // src/nodes/core/market/filters/ema-range-filter-node.ts
-// Translated from: nodes/core/market/filters/ema_range_filter_node.py
 
 import { BaseIndicatorFilter } from './base/base-indicator-filter-node';
-import { IndicatorType, createIndicatorResult, createIndicatorValue } from '@fig-node/core';
-import type {
-  ParamMeta,
-  DefaultParams,
-  OHLCVBar,
-  IndicatorResult,
-  NodeUIConfig,
-} from '@fig-node/core';
+import type { NodeDefinition } from '@fig-node/core';
+import { IndicatorType, createIndicatorResult, createIndicatorValue, type OHLCVBar, type IndicatorResult } from '../types';
 import { calculateEma } from '../calculators/ema-calculator';
 
 /**
  * Filters assets where EMA(10, high-low range) > close / 100
  */
 export class EmaRangeFilter extends BaseIndicatorFilter {
-  static override defaultParams: DefaultParams = {
-    timeperiod: 10,
-    divisor: 100.0,
-  };
-
-  static override paramsMeta: ParamMeta[] = [
-    { name: 'timeperiod', type: 'number', default: 10, min: 1, step: 1 },
-    { name: 'divisor', type: 'number', default: 100.0, min: 1.0, step: 1.0 },
-  ];
-
-  static uiConfig: NodeUIConfig = {
-    size: [220, 100],
-    displayResults: false,
-    resizable: false,
+  static override definition: NodeDefinition = {
+    ...BaseIndicatorFilter.definition,
+    defaults: {
+      timeperiod: 10,
+      divisor: 100.0,
+    },
+    params: [
+      { name: 'timeperiod', type: 'number', default: 10, min: 1, step: 1 },
+      { name: 'divisor', type: 'number', default: 100.0, min: 1.0, step: 1.0 },
+    ],
   };
 
   protected override validateIndicatorParams(): void {

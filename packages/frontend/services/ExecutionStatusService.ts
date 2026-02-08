@@ -1,11 +1,12 @@
 /**
  * ExecutionStatusService - Manages execution status UI state
  *
- * No longer depends on ServiceRegistry or LiteGraph.
- * Status is applied directly to DOM elements and can be read by React components.
+ * Writes to the Zustand store instead of the DOM. React components
+ * read executionUI from the store reactively.
  */
 
-import { ExecutionState } from '../types/websocketType';
+import { ExecutionState } from '@fig-node/core';
+import { useGraphStore } from '../stores/graphStore';
 
 export type ConnectionStatus = 'connected' | 'disconnected' | 'loading' | 'executing' | 'stopping';
 
@@ -42,7 +43,7 @@ export class ExecutionStatusService {
   setConnection(status: ConnectionStatus, message?: string) {
     this.currentState = status;
     const isIdle = status === 'connected';
-    this.applyToDOM({
+    this.applyToStore({
       jobId: this.currentJobId,
       status,
       message: message ?? this.labelFor(status),
@@ -54,7 +55,7 @@ export class ExecutionStatusService {
 
   startConnecting() {
     this.currentState = 'loading';
-    this.applyToDOM({
+    this.applyToStore({
       jobId: this.currentJobId,
       status: 'loading',
       message: 'Starting...',
@@ -66,7 +67,7 @@ export class ExecutionStatusService {
 
   setStopping() {
     this.currentState = 'stopping';
-    this.applyToDOM({
+    this.applyToStore({
       jobId: this.currentJobId,
       status: 'stopping',
       message: 'Stopping...',
@@ -91,7 +92,7 @@ export class ExecutionStatusService {
       queuePosition: null,
     };
     this.jobs.set(jobId, st);
-    this.applyToDOM(st);
+    this.applyToStore(st);
   }
 
   updateFromBackendState(backendState: ExecutionState, message: string, jobId: number) {
@@ -165,7 +166,7 @@ export class ExecutionStatusService {
 
   setIdle() {
     this.currentState = 'connected';
-    this.applyToDOM({
+    this.applyToStore({
       jobId: this.currentJobId,
       status: 'connected',
       message: 'Ready',
@@ -198,7 +199,7 @@ export class ExecutionStatusService {
 
   private applyIfActive(st: JobUIState) {
     if (st.jobId === this.currentJobId || st.jobId === -1) {
-      this.applyToDOM(st);
+      this.applyToStore(st);
     }
   }
 
@@ -210,42 +211,12 @@ export class ExecutionStatusService {
     return 'Disconnected';
   }
 
-  private applyToDOM(st: JobUIState) {
-    const indicator = document.getElementById('status-indicator');
-    if (indicator) {
-      indicator.className = `status-indicator ${st.status}`;
-      const label = st.message || this.labelFor(st.status);
-      indicator.setAttribute('title', label);
-      indicator.setAttribute('aria-label', label);
-      if (indicator.firstChild) {
-        indicator.textContent = '';
-      }
-    }
-
-    const progressRoot = document.getElementById('top-progress');
-    const progressBar = document.getElementById('top-progress-bar');
-    const progressText = document.getElementById('top-progress-text');
-
-    if (progressRoot) {
-      if (st.progress === 0 && st.determinate) {
-        progressRoot.style.display = 'none';
-      } else {
-        progressRoot.style.display = 'block';
-      }
-    }
-
-    if (progressText) {
-      progressText.textContent = st.message;
-    }
-
-    if (progressBar) {
-      if (st.determinate) {
-        progressBar.classList.remove('indeterminate');
-        (progressBar as HTMLElement).style.width = `${(st.progress ?? 0).toFixed(1)}%`;
-      } else {
-        progressBar.classList.add('indeterminate');
-        (progressBar as HTMLElement).style.width = '100%';
-      }
-    }
+  private applyToStore(st: JobUIState) {
+    useGraphStore.getState().setExecutionUI({
+      status: st.status,
+      message: st.message || this.labelFor(st.status),
+      progress: st.progress,
+      determinate: st.determinate,
+    });
   }
 }

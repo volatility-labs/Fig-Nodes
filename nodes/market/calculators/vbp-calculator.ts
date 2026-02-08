@@ -1,7 +1,7 @@
 // src/services/indicator-calculators/vbp-calculator.ts
 // Translated from: services/indicator_calculators/vbp_calculator.py
 
-import type { OHLCVBar } from '@fig-node/core';
+import type { OHLCVBar } from '../types';
 
 export interface VbpHistogramBin {
   priceLow: number;

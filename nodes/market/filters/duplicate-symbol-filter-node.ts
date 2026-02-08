@@ -1,18 +1,9 @@
 // src/nodes/core/market/filters/duplicate-symbol-filter-node.ts
-// Translated from: nodes/core/market/filters/duplicate_symbol_filter_node.py
 
 import { BaseFilter } from './base/base-filter-node';
-import { getType } from '@fig-node/core';
-import type {
-  NodeInputs,
-  NodeOutputs,
-  ParamMeta,
-  DefaultParams,
-  OHLCVBar,
-  OHLCVBundle,
-  NodeUIConfig,
-} from '@fig-node/core';
-import { AssetSymbol } from '@fig-node/core';
+import { port } from '@fig-node/core';
+import type { NodeDefinition } from '@fig-node/core';
+import { AssetSymbol, type OHLCVBar, type OHLCVBundle } from '../types';
 
 /**
  * Compare symbols across up to 3 inputs to find common or unique symbols.
@@ -21,49 +12,44 @@ import { AssetSymbol } from '@fig-node/core';
  * Connect up to 3 inputs to compare symbols between them.
  */
 export class DuplicateSymbolFilter extends BaseFilter {
-  static override inputs: Record<string, unknown> = {
-    ohlcv_bundle_1: getType('OHLCVBundle'),
-    ohlcv_bundle_2: getType('OHLCVBundle'),
-    ohlcv_bundle_3: getType('OHLCVBundle'),
-  };
-
-  static override defaultParams: DefaultParams = {
-    operation: 'common', // common, unique_to_1, unique_to_2, unique_to_3, all
-    compare_by: 'ticker', // ticker, symbol_string
-    case_insensitive: true,
-  };
-
-  static override paramsMeta: ParamMeta[] = [
-    {
-      name: 'operation',
-      type: 'combo',
-      default: 'common',
-      options: ['common', 'unique_to_1', 'unique_to_2', 'unique_to_3', 'all'],
-      label: 'Operation',
-      description:
-        'common: symbols in all connected inputs | unique_to_X: symbols only in ohlcv_bundle_X | all: union of all symbols',
+  static override definition: NodeDefinition = {
+    ...BaseFilter.definition,
+    inputs: {
+      ohlcv_bundle_1: port('OHLCVBundle'),
+      ohlcv_bundle_2: port('OHLCVBundle'),
+      ohlcv_bundle_3: port('OHLCVBundle'),
     },
-    {
-      name: 'compare_by',
-      type: 'combo',
-      default: 'ticker',
-      options: ['ticker', 'symbol_string'],
-      label: 'Compare By',
-      description: 'Compare symbols by ticker (base symbol) or full symbol string',
+    defaults: {
+      operation: 'common', // common, unique_to_1, unique_to_2, unique_to_3, all
+      compare_by: 'ticker', // ticker, symbol_string
+      case_insensitive: true,
     },
-    {
-      name: 'case_insensitive',
-      type: 'boolean',
-      default: true,
-      label: 'Case Insensitive',
-      description: 'Compare symbols case-insensitively',
-    },
-  ];
-
-  static uiConfig: NodeUIConfig = {
-    size: [220, 100],
-    displayResults: false,
-    resizable: false,
+    params: [
+      {
+        name: 'operation',
+        type: 'combo',
+        default: 'common',
+        options: ['common', 'unique_to_1', 'unique_to_2', 'unique_to_3', 'all'],
+        label: 'Operation',
+        description:
+          'common: symbols in all connected inputs | unique_to_X: symbols only in ohlcv_bundle_X | all: union of all symbols',
+      },
+      {
+        name: 'compare_by',
+        type: 'combo',
+        default: 'ticker',
+        options: ['ticker', 'symbol_string'],
+        label: 'Compare By',
+        description: 'Compare symbols by ticker (base symbol) or full symbol string',
+      },
+      {
+        name: 'case_insensitive',
+        type: 'boolean',
+        default: true,
+        label: 'Case Insensitive',
+        description: 'Compare symbols case-insensitively',
+      },
+    ],
   };
 
   /**
@@ -135,7 +121,7 @@ export class DuplicateSymbolFilter extends BaseFilter {
     return key;
   }
 
-  protected override async executeImpl(inputs: NodeInputs): Promise<NodeOutputs> {
+  protected override async run(inputs: Record<string, unknown>): Promise<Record<string, unknown>> {
     // Normalize all inputs to OHLCV bundle format
     const ohlcvBundle1 = this.normalizeInput(inputs.ohlcv_bundle_1);
     const ohlcvBundle2 = this.normalizeInput(inputs.ohlcv_bundle_2);

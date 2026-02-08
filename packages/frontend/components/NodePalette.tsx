@@ -2,9 +2,9 @@
 // Searchable sidebar listing available node types
 
 import React, { useState, useMemo, useCallback } from 'react';
-import type { NodeMetadataMap } from '../types/node-metadata';
-import type { GraphNode } from '@fig-node/core';
-import { useGraphStore } from '../stores/graph-store';
+import type { NodeMetadataMap } from '../types/nodes';
+import { getEditorAdapter } from './editor/editor-ref';
+import { addNodeToEditor } from './editor/add-node';
 
 interface NodePaletteProps {
   nodeMetadata: NodeMetadataMap;
@@ -12,7 +12,6 @@ interface NodePaletteProps {
 
 export function NodePalette({ nodeMetadata }: NodePaletteProps) {
   const [search, setSearch] = useState('');
-  const addNode = useGraphStore((s) => s.addNode);
 
   const filteredTypes = useMemo(() => {
     const query = search.toLowerCase();
@@ -39,16 +38,12 @@ export function NodePalette({ nodeMetadata }: NodePaletteProps) {
 
   const handleAddNode = useCallback(
     (type: string) => {
-      const meta = nodeMetadata[type];
-      const id = `${type.toLowerCase()}_${Date.now()}`;
-      const node: GraphNode = {
-        type,
-        params: meta?.defaultParams ? { ...meta.defaultParams } : {},
-        position: [100, 100],
-      };
-      addNode(id, node);
+      const adapter = getEditorAdapter();
+      if (!adapter) return;
+
+      addNodeToEditor(adapter, type, [100, 100], nodeMetadata);
     },
-    [nodeMetadata, addNode],
+    [nodeMetadata],
   );
 
   const handleDragStart = useCallback(

@@ -7,12 +7,8 @@
 
 import { useGraphStore } from '../stores/graphStore';
 import { getEditorAdapter } from '../components/editor/editor-ref';
-import type { ExecutionResults } from '../types/resultTypes';
-import type {
-  ClientToServerMessage,
-  ServerToClientMessage,
-} from '../types/websocketType';
 import {
+  ProgressState,
   isErrorMessage,
   isStatusMessage,
   isStoppedMessage,
@@ -20,10 +16,13 @@ import {
   isProgressMessage,
   isQueuePositionMessage,
   isSessionMessage,
-  ProgressState,
-  type ServerToClientStatusMessage,
-  type ServerToClientQueuePositionMessage,
-} from '../types/websocketType';
+  type ExecutionResults,
+  type ClientMessage,
+  type ServerMessage,
+  type ServerStatusMessage,
+  type ServerErrorMessage,
+  type ServerQueuePositionMessage,
+} from '@fig-node/core';
 import type { ExecutionStatusService } from './ExecutionStatusService';
 
 // ============ State ============
@@ -51,7 +50,7 @@ export async function stopExecution(): Promise<void> {
   return new Promise((resolve) => {
     stopPromiseResolver = resolve;
     if (ws && ws.readyState === WebSocket.OPEN) {
-      const message: ClientToServerMessage = { type: 'stop' };
+      const message: ClientMessage = { type: 'stop' };
       ws.send(JSON.stringify(message));
     } else {
       closeWebSocket();
@@ -80,7 +79,7 @@ function closeWebSocket() {
 
 // ============ Message Handlers ============
 
-function handleErrorMessage(data: { message: string; code?: string; missing_keys?: string[] }) {
+function handleErrorMessage(data: ServerErrorMessage) {
   console.error('Execution error:', data.message);
   statusService?.error(null, data.message);
 
@@ -94,7 +93,7 @@ function handleErrorMessage(data: { message: string; code?: string; missing_keys
   forceCleanup();
 }
 
-function handleStatusMessage(message: ServerToClientStatusMessage) {
+function handleStatusMessage(message: ServerStatusMessage) {
   if (statusService?.getCurrentJobId() !== message.job_id) {
     statusService?.adoptJob(message.job_id);
   }
@@ -165,7 +164,7 @@ function handleProgressMessage(data: {
   }
 }
 
-function handleQueuePositionMessage(message: ServerToClientQueuePositionMessage) {
+function handleQueuePositionMessage(message: ServerQueuePositionMessage) {
   const position = message.position;
   if (position === 0) {
     statusService?.setQueuePosition(statusService.getCurrentJobId() ?? -1, 0);
@@ -174,13 +173,72 @@ function handleQueuePositionMessage(message: ServerToClientQueuePositionMessage)
   }
 }
 
-// ============ Reconnection ============
+// ============ WebSocket Wiring ============
 
 function getWsUrl(): string {
   const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
   const backendHost = window.location.hostname;
   return `${protocol}://${backendHost}${window.location.port === '8000' ? '' : ':8000'}/execute`;
 }
+
+function dispatchMessage(data: ServerMessage) {
+  if (isErrorMessage(data)) handleErrorMessage(data);
+  else if (isStatusMessage(data)) handleStatusMessage(data);
+  else if (isStoppedMessage(data)) handleStoppedMessage(data);
+  else if (isDataMessage(data)) handleDataMessage(data);
+  else if (isProgressMessage(data)) handleProgressMessage(data);
+  else if (isQueuePositionMessage(data)) handleQueuePositionMessage(data);
+}
+
+/**
+ * Create a new WebSocket and wire up handlers.
+ * The only variation between initial connect and reconnect is the status label
+ * shown after session establishment and the optional close/error callbacks.
+ */
+function connectWebSocket(
+  doc: import('@fig-node/core').Graph,
+  sessionLabel: string,
+  opts?: { onClose?: () => void; onError?: () => void },
+) {
+  ws = new WebSocket(getWsUrl());
+
+  ws.onopen = () => {
+    reconnectAttempts = 0;
+    const connectMessage: ClientMessage = sessionId
+      ? { type: 'connect', session_id: sessionId }
+      : { type: 'connect' };
+    ws?.send(JSON.stringify(connectMessage));
+  };
+
+  ws.onmessage = (event) => {
+    const data: ServerMessage = JSON.parse(event.data as string);
+
+    if (isSessionMessage(data)) {
+      sessionId = data.session_id;
+      localStorage.setItem('session_id', sessionId);
+      statusService?.setConnection('executing', sessionLabel);
+      const message: ClientMessage = { type: 'graph', graph_data: doc };
+      ws?.send(JSON.stringify(message));
+      return;
+    }
+
+    dispatchMessage(data);
+  };
+
+  ws.onclose = (event) => {
+    if (event.code !== 1000) {
+      opts?.onClose?.();
+      attemptReconnect(doc);
+    }
+  };
+
+  ws.onerror = () => {
+    opts?.onError?.();
+    closeWebSocket();
+  };
+}
+
+// ============ Reconnection ============
 
 function attemptReconnect(doc: import('@fig-node/core').Graph) {
   if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
@@ -194,47 +252,8 @@ function attemptReconnect(doc: import('@fig-node/core').Graph) {
   statusService?.setConnection('disconnected', `Reconnecting in ${Math.round(delay / 1000)}s...`);
 
   setTimeout(() => {
-    if (!useGraphStore.getState().isExecuting) return; // User stopped execution
-
-    ws = new WebSocket(getWsUrl());
-
-    ws.onopen = () => {
-      reconnectAttempts = 0;
-      const connectMessage: ClientToServerMessage = sessionId
-        ? { type: 'connect', session_id: sessionId }
-        : { type: 'connect' };
-      ws?.send(JSON.stringify(connectMessage));
-    };
-
-    ws.onmessage = (event) => {
-      const data: ServerToClientMessage = JSON.parse(event.data as string);
-
-      if (isSessionMessage(data)) {
-        sessionId = data.session_id;
-        localStorage.setItem('session_id', sessionId);
-        statusService?.setConnection('executing', 'Reconnected — re-executing...');
-        const message: ClientToServerMessage = { type: 'graph', graph_data: doc };
-        ws?.send(JSON.stringify(message));
-        return;
-      }
-
-      if (isErrorMessage(data)) handleErrorMessage(data);
-      else if (isStatusMessage(data)) handleStatusMessage(data);
-      else if (isStoppedMessage(data)) handleStoppedMessage(data);
-      else if (isDataMessage(data)) handleDataMessage(data);
-      else if (isProgressMessage(data)) handleProgressMessage(data);
-      else if (isQueuePositionMessage(data)) handleQueuePositionMessage(data);
-    };
-
-    ws.onclose = (event) => {
-      if (event.code !== 1000) {
-        attemptReconnect(doc);
-      }
-    };
-
-    ws.onerror = () => {
-      closeWebSocket();
-    };
+    if (!useGraphStore.getState().isExecuting) return;
+    connectWebSocket(doc, 'Reconnected \u2014 re-executing...');
   }, delay);
 }
 
@@ -243,14 +262,12 @@ function attemptReconnect(doc: import('@fig-node/core').Graph) {
 export function setupWebSocket(service: ExecutionStatusService) {
   statusService = service;
 
-  // Listen for execute event from the toolbar
   window.addEventListener('fig:execute', async () => {
     if (statusService?.getState() === 'stopping') {
       console.warn('Cannot start execution while stopping previous one');
       return;
     }
 
-    // Serialize graph from Rete (the source of truth)
     const adapter = getEditorAdapter();
     if (!adapter) {
       console.error('No editor adapter available');
@@ -259,61 +276,20 @@ export function setupWebSocket(service: ExecutionStatusService) {
     const { docName, docId } = useGraphStore.getState();
     const doc = adapter.serializeGraph(docName, docId);
 
-    // Clear previous execution state
     useGraphStore.getState().clearNodeStatus();
     useGraphStore.getState().clearDisplayResults();
-
     useGraphStore.getState().setIsExecuting(true);
     statusService?.startConnecting();
-
-    // WebSocket connection
     reconnectAttempts = 0;
 
     if (!ws || ws.readyState !== WebSocket.OPEN) {
-      ws = new WebSocket(getWsUrl());
-
-      ws.onopen = () => {
-        const connectMessage: ClientToServerMessage = sessionId
-          ? { type: 'connect', session_id: sessionId }
-          : { type: 'connect' };
-        ws?.send(JSON.stringify(connectMessage));
-      };
-
-      ws.onmessage = (event) => {
-        const data: ServerToClientMessage = JSON.parse(event.data as string);
-
-        if (isSessionMessage(data)) {
-          sessionId = data.session_id;
-          localStorage.setItem('session_id', sessionId);
-          statusService?.setConnection('executing', 'Executing...');
-          const message: ClientToServerMessage = { type: 'graph', graph_data: doc };
-          ws?.send(JSON.stringify(message));
-          return;
-        }
-
-        if (isErrorMessage(data)) handleErrorMessage(data);
-        else if (isStatusMessage(data)) handleStatusMessage(data);
-        else if (isStoppedMessage(data)) handleStoppedMessage(data);
-        else if (isDataMessage(data)) handleDataMessage(data);
-        else if (isProgressMessage(data)) handleProgressMessage(data);
-        else if (isQueuePositionMessage(data)) handleQueuePositionMessage(data);
-      };
-
-      ws.onclose = (event) => {
-        if (event.code !== 1000) {
-          statusService?.setConnection('disconnected', 'Disconnected');
-          attemptReconnect(doc);
-        }
-      };
-
-      ws.onerror = () => {
-        statusService?.setConnection('disconnected', 'Connection error');
-        closeWebSocket();
-        // Don't forceCleanup here — let onclose handle reconnection
-      };
+      connectWebSocket(doc, 'Executing...', {
+        onClose: () => statusService?.setConnection('disconnected', 'Disconnected'),
+        onError: () => statusService?.setConnection('disconnected', 'Connection error'),
+      });
     } else {
       statusService?.setConnection('executing', 'Executing...');
-      const message: ClientToServerMessage = { type: 'graph', graph_data: doc };
+      const message: ClientMessage = { type: 'graph', graph_data: doc };
       ws.send(JSON.stringify(message));
     }
   });

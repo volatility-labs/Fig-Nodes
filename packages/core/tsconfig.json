@@ -4,13 +4,7 @@
     "outDir": "./dist",
     "rootDir": "./src",
     "exactOptionalPropertyTypes": false,
-    "noEmitOnError": false,
-    "paths": {
-      "@core/*": ["./src/core/*"],
-      "@nodes/*": ["./src/nodes/*"],
-      "@services/*": ["./src/services/*"]
-    },
-    "baseUrl": "."
+    "noEmitOnError": false
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist", "**/*.test.ts"]

@@ -3,15 +3,17 @@ import type { FastifyPluginAsync } from 'fastify';
 import type { WebSocket } from '@fastify/websocket';
 import {
   type NodeRegistry,
-  type GraphDocument,
-  getRequiredKeysForDocument,
+  type Graph,
+  hasCycles,
+  validateGraph,
 } from '@fig-node/core';
-import { getCredentialStore } from '../credentials/env-credential-store';
-import type { ExecutionQueue } from '../queue/execution-queue';
-import type { ConnectionRegistry } from '../session/connection-registry';
-import { establishSession } from '../session/connection-registry';
-import type { ExecutionJob } from '../types/job';
-import { JobState } from '../types/job';
+import { getRequiredKeysForDocument } from '@fig-node/core/node-runtime';
+import { getCredentialStore } from '../credentials/env-credential-store.js';
+import type { ExecutionQueue } from '../queue/execution-queue.js';
+import type { ConnectionRegistry } from '../session/connection-registry.js';
+import { establishSession } from '../session/connection-registry.js';
+import type { ExecutionJob } from '../types/job.js';
+import { JobState } from '../types/job.js';
 import {
   parseClientMessageOrdered,
   type ClientConnectMessage,
@@ -22,8 +24,8 @@ import {
   buildStoppedMessage,
   buildPongMessage,
   ExecutionState,
-} from '../types/messages';
-import { wsSendSync, wsSendAsync, isWsConnected } from './send-utils';
+} from '../types/messages.js';
+import { wsSendSync, wsSendAsync, isWsConnected } from './send-utils.js';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -48,7 +50,30 @@ async function handleGraphMessage(
     log: { info: (msg: unknown, ...args: unknown[]) => void };
   }
 ): Promise<ExecutionJob | null> {
-  const graphData = message.graph_data as unknown as GraphDocument;
+  const graphData = message.graph_data as unknown as Graph;
+
+  // Validate graph structure and socket compatibility before queueing execution.
+  const validation = validateGraph(graphData, fastify.registry);
+  if (!validation.valid) {
+    const details = validation.errors
+      .slice(0, 5)
+      .map((e) => `${e.path || 'document'}: ${e.message}`)
+      .join('; ');
+
+    await wsSendSync(
+      websocket,
+      buildErrorMessage(`Graph validation failed: ${details}`, 'VALIDATION_ERROR')
+    );
+    return null;
+  }
+
+  if (hasCycles(graphData)) {
+    await wsSendSync(
+      websocket,
+      buildErrorMessage('Graph validation failed: graph contains cycles', 'VALIDATION_ERROR')
+    );
+    return null;
+  }
 
   // Validate API keys
   const credentialStore = getCredentialStore();

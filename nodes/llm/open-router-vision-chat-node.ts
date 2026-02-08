@@ -1,9 +1,15 @@
-// Translated from: legacy/nodes/core/llm/open_router_chat_node.py
-// Vision-specific variant of OpenRouterChat
+// src/nodes/core/llm/open-router-vision-chat-node.ts
 
 import { z } from 'zod';
-import { Base, NodeCategory, ProgressState, LLMChatMessage, LLMThinkingHistory, ConfigDict } from '@fig-node/core';
-import type { ParamMeta, NodeUIConfig } from '@fig-node/core';
+import {
+  Node,
+  NodeCategory,
+  ProgressState,
+  port,
+  type NodeDefinition,
+} from '@fig-node/core';
+import type { LLMChatMessage, LLMThinkingHistory } from './types';
+import type { ConfigDict } from '../market/types';
 
 // Response models for validation
 const OpenRouterChatMessageSchema = z.object({
@@ -46,72 +52,67 @@ interface MessageContent {
  * Supports multimodal inputs with images for vision-capable models.
  * Web search is always enabled by default.
  */
-export class OpenRouterVisionChat extends Base {
-  static inputs = {
-    prompt: 'string',
-    system: 'string,LLMChatMessage',
-    images: 'ConfigDict',
-    message_0: 'LLMChatMessage',
-    message_1: 'LLMChatMessage',
-    message_2: 'LLMChatMessage',
-    message_3: 'LLMChatMessage',
-    message_4: 'LLMChatMessage',
-  };
-
-  static outputs = {
-    response: 'LLMChatMessage',
-    thinking_history: 'LLMThinkingHistory',
-  };
-
-  static CATEGORY = NodeCategory.LLM;
-  static required_keys = ['OPENROUTER_API_KEY'];
-
-  static defaultParams = {
-    model: 'google/gemini-2.0-flash-001',
-    temperature: 0.2,
-    max_tokens: 20000,
-    seed: 0,
-    seed_mode: 'fixed',
-    inject_graph_context: 'false',
-  };
-
-  static paramsMeta: ParamMeta[] = [
-    { name: 'model', type: 'combo', default: 'google/gemini-2.0-flash-001', options: ['google/gemini-2.0-flash-001', 'openai/gpt-4o'] },
-    {
-      name: 'temperature',
-      type: 'number',
-      default: 0.7,
-      min: 0.0,
-      max: 2.0,
-      step: 0.05,
+export class OpenRouterVisionChat extends Node {
+  static definition: NodeDefinition = {
+    inputs: {
+      prompt: port('string', { optional: true }),
+      system_text: port('string', { optional: true }),
+      system_message: port('LLMChatMessage', { optional: true }),
+      images: port('ConfigDict', { optional: true }),
+      message_0: port('LLMChatMessage', { optional: true }),
+      message_1: port('LLMChatMessage', { optional: true }),
+      message_2: port('LLMChatMessage', { optional: true }),
+      message_3: port('LLMChatMessage', { optional: true }),
+      message_4: port('LLMChatMessage', { optional: true }),
     },
-    {
-      name: 'max_tokens',
-      type: 'number',
-      default: 20000,
-      min: 1,
-      step: 1,
-      precision: 0,
+    outputs: {
+      response: port('LLMChatMessage'),
+      thinking_history: port('LLMThinkingHistory'),
     },
-    { name: 'seed', type: 'number', default: 0, min: 0, step: 1, precision: 0 },
-    {
-      name: 'seed_mode',
-      type: 'combo',
-      default: 'fixed',
-      options: ['fixed', 'random', 'increment'],
+    category: NodeCategory.LLM,
+    requiredCredentials: ['OPENROUTER_API_KEY'],
+    defaults: {
+      model: 'google/gemini-2.0-flash-001',
+      temperature: 0.2,
+      max_tokens: 20000,
+      seed: 0,
+      seed_mode: 'fixed',
+      inject_graph_context: 'false',
     },
-    {
-      name: 'inject_graph_context',
-      type: 'combo',
-      default: 'false',
-      options: ['true', 'false'],
-      description: 'Inject graph context (nodes and data flow) into the first user message',
-    },
-  ];
-
-  static uiConfig: NodeUIConfig = {
-    size: [280, 200],
-    displayResults: false,
+    params: [
+      { name: 'model', type: 'combo', default: 'google/gemini-2.0-flash-001', options: ['google/gemini-2.0-flash-001', 'openai/gpt-4o'] },
+      {
+        name: 'temperature',
+        type: 'number',
+        default: 0.7,
+        min: 0.0,
+        max: 2.0,
+        step: 0.05,
+      },
+      {
+        name: 'max_tokens',
+        type: 'number',
+        default: 20000,
+        min: 1,
+        step: 1,
+        precision: 0,
+      },
+      { name: 'seed', type: 'number', default: 0, min: 0, step: 1, precision: 0 },
+      {
+        name: 'seed_mode',
+        type: 'combo',
+        default: 'fixed',
+        options: ['fixed', 'random', 'increment'],
+      },
+      {
+        name: 'inject_graph_context',
+        type: 'combo',
+        default: 'false',
+        options: ['true', 'false'],
+        description: 'Inject graph context (nodes and data flow) into the first user message',
+      },
+    ],
+    ui: {},
   };
 
   private static readonly DEFAULT_ASSISTANT_MESSAGE: LLMChatMessage = {
@@ -123,11 +124,11 @@ export class OpenRouterVisionChat extends Base {
   private abortController: AbortController | null = null;
 
   constructor(
-    figNodeId: string,
+    nodeId: string,
     params: Record<string, unknown>,
     graphContext: Record<string, unknown> = {}
   ) {
-    super(figNodeId, params, graphContext);
+    super(nodeId, params, graphContext);
   }
 
   forceStop(): void {
@@ -288,7 +289,7 @@ export class OpenRouterVisionChat extends Base {
       ...options,
     };
 
-    if (this._isStopped) {
+    if (this.cancelled) {
       throw new Error('Node stopped before HTTP request');
     }
 
@@ -304,7 +305,7 @@ export class OpenRouterVisionChat extends Base {
       signal: this.abortController.signal,
     });
 
-    if (this._isStopped) {
+    if (this.cancelled) {
       throw new Error('Node stopped during HTTP request');
     }
 
@@ -490,9 +491,16 @@ export class OpenRouterVisionChat extends Base {
     );
   }
 
-  protected async executeImpl(inputs: Record<string, unknown>): Promise<Record<string, unknown>> {
+  protected async run(inputs: Record<string, unknown>): Promise<Record<string, unknown>> {
     let promptText = inputs.prompt as string | null;
-    const systemInput = inputs.system as LLMChatMessage | string | null;
+    const systemText = inputs.system_text as string | null;
+    const systemMessage = inputs.system_message;
+    let systemInput: LLMChatMessage | string | null = null;
+    if (this.isLLMChatMessage(systemMessage)) {
+      systemInput = systemMessage;
+    } else if (typeof systemText === 'string' && systemText.trim()) {
+      systemInput = systemText;
+    }
     const images = inputs.images as ConfigDict | null;
 
     // Inject graph context into prompt if enabled

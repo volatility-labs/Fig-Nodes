@@ -1,8 +1,6 @@
 // src/nodes/core/io/xcom-users-feed-node.ts
-// Translated from: nodes/core/io/xcom_users_feed_node.py
 
-import { Base, NodeCategory, ParamMeta } from '@fig-node/core';
-import type { NodeUIConfig } from '@fig-node/core';
+import { Node, NodeCategory, port, type NodeDefinition } from '@fig-node/core';
 
 /**
  * Represents a post from X.com
@@ -32,56 +30,55 @@ export interface XPost {
  * - feed_text: str - Concatenated text of all posts for downstream processing
  * - post_count: int - Total number of posts retrieved
  */
-export class XcomUsersFeed extends Base {
-  static inputs = { text: String };
-  static outputs = { posts: Array, feed_text: String, post_count: Number };
-  static required_keys = ['XCOM_BEARER_TOKEN'];
+export class XcomUsersFeed extends Node {
+  static definition: NodeDefinition = {
+    inputs: { text: port('string') },
+    outputs: { posts: port('array'), feed_text: port('string'), post_count: port('number') },
+    requiredCredentials: ['XCOM_BEARER_TOKEN'],
 
-  static uiConfig: NodeUIConfig = {
-    size: [280, 140],
-    displayResults: false,
-    resizable: true,
+    ui: {},
+
+    defaults: {
+      tweets_per_user: 10,
+      include_retweets: false,
+      include_replies: false,
+    },
+
+    params: [
+      {
+        name: 'tweets_per_user',
+        type: 'integer',
+        default: 10,
+        label: 'Posts Per User',
+        description: 'Number of recent posts to fetch per user',
+        min: 1,
+        max: 100,
+      },
+      {
+        name: 'include_retweets',
+        type: 'combo',
+        default: false,
+        options: [true, false],
+        label: 'Include Retweets',
+      },
+      {
+        name: 'include_replies',
+        type: 'combo',
+        default: false,
+        options: [true, false],
+        label: 'Include Replies',
+      },
+    ],
+
+    category: NodeCategory.IO,
   };
 
-  static defaultParams = {
-    tweets_per_user: 10,
-    include_retweets: false,
-    include_replies: false,
-  };
-
-  static paramsMeta: ParamMeta[] = [
-    {
-      name: 'tweets_per_user',
-      type: 'integer',
-      default: 10,
-      label: 'Posts Per User',
-      description: 'Number of recent posts to fetch per user',
-      min: 1,
-      max: 100,
-    },
-    {
-      name: 'include_retweets',
-      type: 'combo',
-      default: false,
-      options: [true, false],
-      label: 'Include Retweets',
-    },
-    {
-      name: 'include_replies',
-      type: 'combo',
-      default: false,
-      options: [true, false],
-      label: 'Include Replies',
-    },
-  ];
-
-  static CATEGORY = NodeCategory.IO;
   static ui_module = 'XcomUsersFeedNodeUI';
 
   private static API_BASE = 'https://api.x.com/2';
   private static RATE_LIMIT_DELAY = 1000; // ms
 
-  protected async executeImpl(
+  protected async run(
     inputs: Record<string, unknown>
   ): Promise<Record<string, unknown>> {
     const bearerToken = this.credentials.get('XCOM_BEARER_TOKEN');
@@ -101,7 +98,7 @@ export class XcomUsersFeed extends Base {
       'Content-Type': 'application/json',
     };
 
-    this.reportProgress(10.0, `Resolving ${usernames.length} usernames...`);
+    this.progress(10.0, `Resolving ${usernames.length} usernames...`);
     const users = await this.resolveUsernames(headers, usernames);
 
     if (users.length === 0) {
@@ -115,8 +112,8 @@ export class XcomUsersFeed extends Base {
       const user = users[idx];
       if (!user) continue;
 
-      const progress = 15.0 + (idx / totalUsers) * 80.0;
-      this.reportProgress(progress, `Fetching posts from @${user.username}...`);
+      const progressVal = 15.0 + (idx / totalUsers) * 80.0;
+      this.progress(progressVal, `Fetching posts from @${user.username}...`);
 
       const posts = await this.getUserTweets(headers, user);
       allPosts.push(...posts);
@@ -131,7 +128,7 @@ export class XcomUsersFeed extends Base {
     const postsDicts = allPosts.map((p) => this.postToDict(p));
     const feedText = this.buildFeedText(allPosts);
 
-    this.reportProgress(
+    this.progress(
       100.0,
       `Completed: ${allPosts.length} posts from ${totalUsers} users`
     );

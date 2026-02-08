@@ -1,12 +1,25 @@
 // src/index.ts
-// Main entry point for @fig-node/core
+// Main entry point for @fig-node/core (browser-safe)
+// Node-only exports (node registry, dynamic discovery) live in ./node-runtime.ts
 
-// Types
-export * from './types/index';
+// Types (execution, credentials, ports, node-ui, errors)
+export * from './types.js';
 
-// GraphDocument types
+// WebSocket message types (shared client ↔ server contract)
+export * from './messages.js';
+
+// Type registry
 export {
-  type GraphDocument,
+  TYPE_ALIASES,
+  registerType,
+  isRegisteredType,
+  getRegisteredTypes,
+  port,
+} from './type-registry.js';
+
+// Graph types
+export {
+  type Graph,
   type GraphNode,
   type GraphEdge,
   type GraphGroup,
@@ -14,25 +27,46 @@ export {
   createEmptyDocument,
   parseEdgeEndpoint,
   makeEdgeEndpoint,
-} from './types/graph-document';
+} from './graph.js';
 
 // Engine
-export * from './engine/index';
+export { GraphExecutor } from './engine.js';
 
-// Registry
-export * from './registry/index';
-
-// Utils
-export * from './utils/index';
-
-// Tools (graph converter, validator, LLM tool types)
-export * from './tools/index';
+// Tools (graph mutation, validator, LLM tool types)
+export {
+  validateGraph,
+  validateEdgeTypes,
+  hasCycles,
+  type ValidationError,
+  type ValidationResult,
+} from './validator.js';
+export {
+  GRAPH_TOOLS,
+  applyAddNode,
+  applyRemoveNode,
+  applyConnect,
+  applyDisconnect,
+  applySetParam,
+  type AddNodeInput,
+  type RemoveNodeInput,
+  type ConnectInput,
+  type DisconnectInput,
+  type SetParamInput,
+  type LoadGraphInput,
+  type ToolDefinition,
+} from './graph-tools.js';
 
 // Sockets
-export * from './sockets/index';
+export {
+  getOrCreateSocket,
+  anySocket,
+  getSocketKey,
+  areSocketKeysCompatible,
+  areSocketTypesCompatible,
+} from './sockets.js';
 
-// Base node class
-export { Base } from './nodes/base/index';
+// Node base class
+export { Node, type NodeDefinition } from './node.js';
 
 // Version info
 export const VERSION = '0.1.0';

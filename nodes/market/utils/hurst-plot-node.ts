@@ -1,18 +1,11 @@
 // src/nodes/core/market/utils/hurst-plot-node.ts
-// Translated from: nodes/core/market/utils/hurst_plot_node.py
 //
 // NOTE: This TypeScript version computes chart data but does NOT render images.
 // The Python version used matplotlib for server-side rendering.
 // In this architecture, we return computed data for frontend rendering.
 
-import { Base } from '@fig-node/core';
-import {
-  NodeCategory,
-  OHLCVBar,
-  ParamMeta,
-  getType,
-  type NodeUIConfig,
-} from '@fig-node/core';
+import { Node, NodeCategory, port, type NodeDefinition } from '@fig-node/core';
+import type { OHLCVBar } from '../types';
 import { calculateHurstOscillator } from '../calculators/hurst-calculator';
 import { calculateEma } from '../calculators/ema-calculator';
 import { calculateCco } from '../calculators/cco-calculator';
@@ -89,125 +82,117 @@ function normalizeBars(bars: OHLCVBar[]): NormalizedBar[] {
  * Inputs: 'ohlcv_bundle' (Map<string, OHLCVBar[]>)
  * Output: 'chart_data' -> structured data for frontend charting
  */
-export class HurstPlot extends Base {
-  static inputs = {
-    ohlcv_bundle: getType('OHLCVBundle'),
-  };
-
-  static optional_inputs = ['ohlcv_bundle', 'ohlcv'];
-
-  static outputs = {
-    chart_data: getType('ConfigDict'),
-    hurst_data: getType('ConfigDict'),
-    ohlcv_bundle: getType('OHLCVBundle'),
-    mesa_data: getType('ConfigDict'),
-    cco_data: getType('ConfigDict'),
-  };
-
-  static CATEGORY = NodeCategory.MARKET;
-
-  static uiConfig: NodeUIConfig = {
-    size: [320, 240],
-    resizable: true,
-    displayResults: false,
-    outputDisplay: {
-      type: 'chart-preview',
-      bind: 'chart_data',
-      options: {
-        chartType: 'candlestick',
-        modalEnabled: true,
-        symbolSelector: true,
+export class HurstPlot extends Node {
+  static definition: NodeDefinition = {
+    inputs: {
+      ohlcv_bundle: port('OHLCVBundle', { optional: true }),
+    },
+    outputs: {
+      chart_data: port('ConfigDict'),
+      hurst_data: port('ConfigDict'),
+      ohlcv_bundle: port('OHLCVBundle'),
+      mesa_data: port('ConfigDict'),
+      cco_data: port('ConfigDict'),
+    },
+    category: NodeCategory.MARKET,
+    ui: {
+      outputDisplay: {
+        type: 'chart-preview',
+        bind: 'chart_data',
+        options: {
+          chartType: 'candlestick',
+          modalEnabled: true,
+          symbolSelector: true,
+        },
       },
     },
+    defaults: {
+      max_symbols: 20,
+      lookback_bars: 100,
+      zoom_to_recent: false,
+      y_axis_scale: 'symlog',
+      show_current_price: true,
+      source: 'hl2',
+      bandwidth: 0.025,
+      show_5_day: true,
+      show_10_day: true,
+      show_20_day: true,
+      show_40_day: true,
+      show_80_day: true,
+      show_20_week: false,
+      show_40_week: false,
+      show_18_month: false,
+      show_54_month: false,
+      show_9_year: false,
+      show_18_year: false,
+      show_composite: true,
+      composite_5_day: true,
+      composite_10_day: true,
+      composite_20_day: true,
+      composite_40_day: true,
+      composite_80_day: true,
+      composite_20_week: true,
+      composite_40_week: true,
+      composite_18_month: true,
+      composite_54_month: true,
+      composite_9_year: true,
+      composite_18_year: true,
+      period_5_day: 4.3,
+      period_10_day: 8.5,
+      period_20_day: 17.0,
+      period_40_day: 34.1,
+      period_80_day: 68.2,
+      period_20_week: 136.4,
+      period_40_week: 272.8,
+      period_18_month: 545.6,
+      period_54_month: 1636.8,
+      period_9_year: 3273.6,
+      period_18_year: 6547.2,
+      show_mesa_stochastic: false,
+      mesa_length1: 50,
+      mesa_length2: 21,
+      mesa_length3: 14,
+      mesa_length4: 9,
+      mesa_trigger_length: 2,
+      show_cco: false,
+      cco_short_cycle_length: 10,
+      cco_medium_cycle_length: 30,
+      cco_short_cycle_multiplier: 1.0,
+      cco_medium_cycle_multiplier: 3.0,
+    },
+    params: [
+      { name: 'max_symbols', type: 'integer', default: 20, min: 1, max: 50, step: 1 },
+      { name: 'lookback_bars', type: 'number', default: 100, min: 10, max: 10000, step: 100 },
+      { name: 'zoom_to_recent', type: 'combo', default: false, options: [true, false] },
+      { name: 'y_axis_scale', type: 'combo', default: 'symlog', options: ['linear', 'symlog', 'log'] },
+      { name: 'show_current_price', type: 'combo', default: true, options: [true, false] },
+      { name: 'source', type: 'combo', default: 'hl2', options: ['close', 'hl2', 'open', 'high', 'low'] },
+      { name: 'bandwidth', type: 'number', default: 0.025, min: 0.001, max: 1.0, step: 0.001 },
+      { name: 'show_5_day', type: 'combo', default: true, options: [true, false] },
+      { name: 'show_10_day', type: 'combo', default: true, options: [true, false] },
+      { name: 'show_20_day', type: 'combo', default: true, options: [true, false] },
+      { name: 'show_40_day', type: 'combo', default: true, options: [true, false] },
+      { name: 'show_80_day', type: 'combo', default: true, options: [true, false] },
+      { name: 'show_20_week', type: 'combo', default: false, options: [true, false] },
+      { name: 'show_40_week', type: 'combo', default: false, options: [true, false] },
+      { name: 'show_18_month', type: 'combo', default: false, options: [true, false] },
+      { name: 'show_54_month', type: 'combo', default: false, options: [true, false] },
+      { name: 'show_9_year', type: 'combo', default: false, options: [true, false] },
+      { name: 'show_18_year', type: 'combo', default: false, options: [true, false] },
+      { name: 'show_composite', type: 'combo', default: true, options: [true, false] },
+      { name: 'show_mesa_stochastic', type: 'combo', default: false, options: [true, false] },
+      { name: 'mesa_length1', type: 'number', default: 50, min: 2, max: 200, step: 1 },
+      { name: 'mesa_length2', type: 'number', default: 21, min: 2, max: 200, step: 1 },
+      { name: 'mesa_length3', type: 'number', default: 14, min: 2, max: 200, step: 1 },
+      { name: 'mesa_length4', type: 'number', default: 9, min: 2, max: 200, step: 1 },
+      { name: 'mesa_trigger_length', type: 'number', default: 2, min: 1, max: 20, step: 1 },
+      { name: 'show_cco', type: 'combo', default: false, options: [true, false] },
+      { name: 'cco_short_cycle_length', type: 'integer', default: 10, min: 2, max: 100, step: 1 },
+      { name: 'cco_medium_cycle_length', type: 'integer', default: 30, min: 2, max: 200, step: 1 },
+      { name: 'cco_short_cycle_multiplier', type: 'number', default: 1.0, min: 0.1, max: 10.0, step: 0.1 },
+      { name: 'cco_medium_cycle_multiplier', type: 'number', default: 3.0, min: 0.1, max: 10.0, step: 0.1 },
+    ],
   };
-
-  static defaultParams = {
-    max_symbols: 20,
-    lookback_bars: 100,
-    zoom_to_recent: false,
-    y_axis_scale: 'symlog',
-    show_current_price: true,
-    source: 'hl2',
-    bandwidth: 0.025,
-    show_5_day: true,
-    show_10_day: true,
-    show_20_day: true,
-    show_40_day: true,
-    show_80_day: true,
-    show_20_week: false,
-    show_40_week: false,
-    show_18_month: false,
-    show_54_month: false,
-    show_9_year: false,
-    show_18_year: false,
-    show_composite: true,
-    composite_5_day: true,
-    composite_10_day: true,
-    composite_20_day: true,
-    composite_40_day: true,
-    composite_80_day: true,
-    composite_20_week: true,
-    composite_40_week: true,
-    composite_18_month: true,
-    composite_54_month: true,
-    composite_9_year: true,
-    composite_18_year: true,
-    period_5_day: 4.3,
-    period_10_day: 8.5,
-    period_20_day: 17.0,
-    period_40_day: 34.1,
-    period_80_day: 68.2,
-    period_20_week: 136.4,
-    period_40_week: 272.8,
-    period_18_month: 545.6,
-    period_54_month: 1636.8,
-    period_9_year: 3273.6,
-    period_18_year: 6547.2,
-    show_mesa_stochastic: false,
-    mesa_length1: 50,
-    mesa_length2: 21,
-    mesa_length3: 14,
-    mesa_length4: 9,
-    mesa_trigger_length: 2,
-    show_cco: false,
-    cco_short_cycle_length: 10,
-    cco_medium_cycle_length: 30,
-    cco_short_cycle_multiplier: 1.0,
-    cco_medium_cycle_multiplier: 3.0,
-  };
-
-  static paramsMeta: ParamMeta[] = [
-    { name: 'max_symbols', type: 'integer', default: 20, min: 1, max: 50, step: 1 },
-    { name: 'lookback_bars', type: 'number', default: 100, min: 10, max: 10000, step: 100 },
-    { name: 'zoom_to_recent', type: 'combo', default: false, options: [true, false] },
-    { name: 'y_axis_scale', type: 'combo', default: 'symlog', options: ['linear', 'symlog', 'log'] },
-    { name: 'show_current_price', type: 'combo', default: true, options: [true, false] },
-    { name: 'source', type: 'combo', default: 'hl2', options: ['close', 'hl2', 'open', 'high', 'low'] },
-    { name: 'bandwidth', type: 'number', default: 0.025, min: 0.001, max: 1.0, step: 0.001 },
-    { name: 'show_5_day', type: 'combo', default: true, options: [true, false] },
-    { name: 'show_10_day', type: 'combo', default: true, options: [true, false] },
-    { name: 'show_20_day', type: 'combo', default: true, options: [true, false] },
-    { name: 'show_40_day', type: 'combo', default: true, options: [true, false] },
-    { name: 'show_80_day', type: 'combo', default: true, options: [true, false] },
-    { name: 'show_20_week', type: 'combo', default: false, options: [true, false] },
-    { name: 'show_40_week', type: 'combo', default: false, options: [true, false] },
-    { name: 'show_18_month', type: 'combo', default: false, options: [true, false] },
-    { name: 'show_54_month', type: 'combo', default: false, options: [true, false] },
-    { name: 'show_9_year', type: 'combo', default: false, options: [true, false] },
-    { name: 'show_18_year', type: 'combo', default: false, options: [true, false] },
-    { name: 'show_composite', type: 'combo', default: true, options: [true, false] },
-    { name: 'show_mesa_stochastic', type: 'combo', default: false, options: [true, false] },
-    { name: 'mesa_length1', type: 'number', default: 50, min: 2, max: 200, step: 1 },
-    { name: 'mesa_length2', type: 'number', default: 21, min: 2, max: 200, step: 1 },
-    { name: 'mesa_length3', type: 'number', default: 14, min: 2, max: 200, step: 1 },
-    { name: 'mesa_length4', type: 'number', default: 9, min: 2, max: 200, step: 1 },
-    { name: 'mesa_trigger_length', type: 'number', default: 2, min: 1, max: 20, step: 1 },
-    { name: 'show_cco', type: 'combo', default: false, options: [true, false] },
-    { name: 'cco_short_cycle_length', type: 'integer', default: 10, min: 2, max: 100, step: 1 },
-    { name: 'cco_medium_cycle_length', type: 'integer', default: 30, min: 2, max: 200, step: 1 },
-    { name: 'cco_short_cycle_multiplier', type: 'number', default: 1.0, min: 0.1, max: 10.0, step: 0.1 },
-    { name: 'cco_medium_cycle_multiplier', type: 'number', default: 3.0, min: 0.1, max: 10.0, step: 0.1 },
-  ];
 
   private parseParams(): Record<string, unknown> {
     const lookbackRaw = this.params.lookback_bars;
@@ -324,7 +309,7 @@ export class HurstPlot extends Base {
     return [ema10, ema30, ema100];
   }
 
-  protected async executeImpl(
+  protected async run(
     inputs: Record<string, unknown>
   ): Promise<Record<string, unknown>> {
     let bundle = inputs.ohlcv_bundle as Map<string, OHLCVBar[]> | undefined;

@@ -1,7 +1,7 @@
 // src/nodes/core/io/discord-output-node.ts
-// Translated from: nodes/core/io/discord_output_node.py
 
-import { Base, AssetClass, AssetSymbol, NodeCategory, ParamMeta, getType, type NodeUIConfig } from '@fig-node/core';
+import { Node, NodeCategory, port, type NodeDefinition } from '@fig-node/core';
+import { AssetClass, AssetSymbol } from '../market/types';
 
 /**
  * Sends a list of symbols to Discord via webhook.
@@ -16,43 +16,41 @@ import { Base, AssetClass, AssetSymbol, NodeCategory, ParamMeta, getType, type N
  * - message_template: string - Template for the Discord message
  * - max_symbols_display: number - Maximum symbols to show (default: 50)
  */
-export class DiscordOutput extends Base {
-  static inputs = { symbols: getType('AssetSymbolList') };
-  static outputs = { status: String };
-  static required_keys: string[] = []; // Optional key
+export class DiscordOutput extends Node {
+  static definition: NodeDefinition = {
+    inputs: { symbols: port('AssetSymbolList') },
+    outputs: { status: port('string') },
+    requiredCredentials: [], // Optional key
 
-  static uiConfig: NodeUIConfig = {
-    size: [280, 140],
-    displayResults: false,
-    resizable: true,
-  };
+    ui: {},
 
-  static defaultParams = {
-    message_template:
-      '📊 **Trading Symbols Update**\n\n{symbol_list}\n\n*Total: {count} symbols*',
-    max_symbols_display: 50,
-  };
-
-  static paramsMeta: ParamMeta[] = [
-    {
-      name: 'message_template',
-      type: 'text',
-      default:
+    defaults: {
+      message_template:
         '📊 **Trading Symbols Update**\n\n{symbol_list}\n\n*Total: {count} symbols*',
-      label: 'Message Template',
-      description:
-        'Discord message template. Use {symbol_list} and {count} placeholders.',
+      max_symbols_display: 50,
     },
-    {
-      name: 'max_symbols_display',
-      type: 'integer',
-      default: 50,
-      label: 'Max Symbols to Display',
-      description: 'Maximum number of symbols to display in Discord (default: 50)',
-    },
-  ];
 
-  static CATEGORY = NodeCategory.IO;
+    params: [
+      {
+        name: 'message_template',
+        type: 'text',
+        default:
+          '📊 **Trading Symbols Update**\n\n{symbol_list}\n\n*Total: {count} symbols*',
+        label: 'Message Template',
+        description:
+          'Discord message template. Use {symbol_list} and {count} placeholders.',
+      },
+      {
+        name: 'max_symbols_display',
+        type: 'integer',
+        default: 50,
+        label: 'Max Symbols to Display',
+        description: 'Maximum number of symbols to display in Discord (default: 50)',
+      },
+    ],
+
+    category: NodeCategory.IO,
+  };
 
   /**
    * Format symbols for Discord display.
@@ -115,7 +113,7 @@ export class DiscordOutput extends Base {
     return formattedParts.join('\n').trim();
   }
 
-  protected async executeImpl(
+  protected async run(
     inputs: Record<string, unknown>
   ): Promise<Record<string, unknown>> {
     const symbols = (inputs.symbols as AssetSymbol[]) || [];
@@ -126,7 +124,7 @@ export class DiscordOutput extends Base {
 
     if (symbols.length === 0) {
       console.log('DiscordOutput: No symbols provided, skipping Discord notification');
-      this.reportProgress(100.0, 'No symbols to send');
+      this.progress(100.0, 'No symbols to send');
       return { status: 'Skipped (no symbols)' };
     }
 
@@ -140,7 +138,7 @@ export class DiscordOutput extends Base {
       console.warn(
         'DiscordOutput: DISCORD_WEBHOOK_URL not set, skipping Discord notification'
       );
-      this.reportProgress(100.0, 'Webhook URL not configured');
+      this.progress(100.0, 'Webhook URL not configured');
       return { status: 'Skipped (no webhook URL configured)' };
     }
 
@@ -149,7 +147,7 @@ export class DiscordOutput extends Base {
     const messageTemplate =
       typeof messageTemplateRaw === 'string'
         ? messageTemplateRaw
-        : (DiscordOutput.defaultParams.message_template as string);
+        : (DiscordOutput.definition.defaults!.message_template as string);
 
     const maxDisplayRaw = this.params.max_symbols_display;
     const maxDisplay =

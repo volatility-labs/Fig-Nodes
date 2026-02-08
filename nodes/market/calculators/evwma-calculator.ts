@@ -1,7 +1,7 @@
 // src/services/indicator-calculators/evwma-calculator.ts
 // Translated from: services/indicator_calculators/evwma_calculator.py
 
-import type { OHLCVBar } from '@fig-node/core';
+import type { OHLCVBar } from '../types';
 
 export interface EvwmaResult {
   evwma: (number | null)[];

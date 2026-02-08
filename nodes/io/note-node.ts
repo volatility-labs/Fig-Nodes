@@ -1,8 +1,6 @@
 // src/nodes/core/io/note-node.ts
-// Translated from: nodes/core/io/note_node.py
 
-import { Base, NodeCategory } from '@fig-node/core';
-import type { NodeInputs, NodeOutputs, ParamMeta, DefaultParams, NodeUIConfig } from '@fig-node/core';
+import { Node, NodeCategory, type NodeDefinition } from '@fig-node/core';
 
 /**
  * A visual note/annotation node for organizing and labeling groups of nodes.
@@ -11,44 +9,43 @@ import type { NodeInputs, NodeOutputs, ParamMeta, DefaultParams, NodeUIConfig } 
  * colored rectangle with editable text content that can be used to visually
  * group and annotate other nodes on the canvas.
  */
-export class Note extends Base {
-  static override inputs: Record<string, unknown> = {};
-  static override outputs: Record<string, unknown> = {};
-  static override CATEGORY: NodeCategory = NodeCategory.IO;
+export class Note extends Node {
+  static definition: NodeDefinition = {
+    inputs: {},
+    outputs: {},
+    category: NodeCategory.IO,
 
-  static override paramsMeta: ParamMeta[] = [
-    {
-      name: 'text',
-      type: 'textarea',
-      default: 'Note',
+    params: [
+      {
+        name: 'text',
+        type: 'textarea',
+        default: 'Note',
+      },
+      {
+        name: 'color',
+        type: 'text',
+        default: '#334',
+      },
+    ],
+
+    defaults: {
+      text: 'Note',
+      color: '#334',
     },
-    {
-      name: 'color',
-      type: 'text',
-      default: '#334',
-    },
-  ];
 
-  static override defaultParams: DefaultParams = {
-    text: 'Note',
-    color: '#334',
-  };
-
-  static uiConfig: NodeUIConfig = {
-    size: [300, 200],
-    resizable: true,
-    displayResults: false,
-    outputDisplay: {
-      type: 'note-display',
-      options: {
-        uniformColor: '#334',
-        orderLocked: -10000,
-        titleEditable: true,
+    ui: {
+      outputDisplay: {
+        type: 'note-display',
+        options: {
+          uniformColor: '#334',
+          orderLocked: -10000,
+          titleEditable: true,
+        },
       },
     },
   };
 
-  protected override async executeImpl(_inputs: NodeInputs): Promise<NodeOutputs> {
+  protected async run(_inputs: Record<string, unknown>): Promise<Record<string, unknown>> {
     // Note node provides no execution - it's purely visual.
     return {};
   }

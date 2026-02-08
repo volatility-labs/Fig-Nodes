@@ -1,3 +1,3 @@
 // Types re-exports
-export * from './job';
-export * from './messages';
+export * from './job.js';
+export * from './messages.js';

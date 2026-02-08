@@ -1,8 +1,7 @@
 // src/services/indicator-calculators/orb-calculator.ts
 // Translated from: services/indicator_calculators/orb_calculator.py
 
-import type { AssetSymbol, OHLCVBar } from '@fig-node/core';
-import { AssetClass } from '@fig-node/core';
+import { AssetClass, type AssetSymbol, type OHLCVBar } from '../types';
 
 export interface OrbResult {
   rel_vol: number | null;

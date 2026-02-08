@@ -1,75 +1,56 @@
 // src/nodes/core/market/filters/orb-filter-node.ts
-// Translated from: nodes/core/market/filters/orb_filter_node.py
 
 import { BaseIndicatorFilter } from './base/base-indicator-filter-node';
-import {
-  IndicatorType,
-  createIndicatorResult,
-  createIndicatorValue,
-  AssetSymbol,
-} from '@fig-node/core';
-import type {
-  ParamMeta,
-  DefaultParams,
-  OHLCVBar,
-  IndicatorResult,
-  NodeInputs,
-  NodeOutputs,
-  OHLCVBundle,
-  NodeUIConfig,
-} from '@fig-node/core';
+import type { NodeDefinition } from '@fig-node/core';
+import { IndicatorType, createIndicatorResult, createIndicatorValue, AssetSymbol, type OHLCVBar, type IndicatorResult, type OHLCVBundle } from '../types';
 import { calculateOrb } from '../calculators/orb-calculator';
 import { fetchBars } from '../services/polygon-service';
-import { RateLimiter } from '@fig-node/core';
+import { RateLimiter } from '../rate-limiter';
 
 /**
  * Filters assets based on Opening Range Breakout (ORB) criteria including relative volume and direction.
  */
 export class OrbFilter extends BaseIndicatorFilter {
-  static required_keys = ['POLYGON_API_KEY'];
+  static override definition: NodeDefinition = {
+    ...BaseIndicatorFilter.definition,
+    requiredCredentials: ['POLYGON_API_KEY'],
+    defaults: {
+      or_minutes: 5,
+      rel_vol_threshold: 100.0,
+      direction: 'both',
+      avg_period: 14,
+      filter_above_orh: 'false',
+      filter_below_orl: 'false',
+      max_concurrent: 10,
+      rate_limit_per_second: 95,
+    },
+    params: [
+      { name: 'or_minutes', type: 'number', default: 5, min: 1, step: 1 },
+      { name: 'rel_vol_threshold', type: 'number', default: 100.0, min: 0.0, step: 1.0 },
+      {
+        name: 'direction',
+        type: 'combo',
+        default: 'both',
+        options: ['bullish', 'bearish', 'both'],
+      },
+      { name: 'avg_period', type: 'number', default: 14, min: 1, step: 1 },
+      {
+        name: 'filter_above_orh',
+        type: 'combo',
+        default: 'false',
+        options: ['true', 'false'],
+      },
+      {
+        name: 'filter_below_orl',
+        type: 'combo',
+        default: 'false',
+        options: ['true', 'false'],
+      },
+    ],
+  };
+
   private apiKey: string | undefined;
   private maxSafeConcurrency = 5;
-
-  static override defaultParams: DefaultParams = {
-    or_minutes: 5,
-    rel_vol_threshold: 100.0,
-    direction: 'both',
-    avg_period: 14,
-    filter_above_orh: 'false',
-    filter_below_orl: 'false',
-    max_concurrent: 10,
-    rate_limit_per_second: 95,
-  };
-
-  static override paramsMeta: ParamMeta[] = [
-    { name: 'or_minutes', type: 'number', default: 5, min: 1, step: 1 },
-    { name: 'rel_vol_threshold', type: 'number', default: 100.0, min: 0.0, step: 1.0 },
-    {
-      name: 'direction',
-      type: 'combo',
-      default: 'both',
-      options: ['bullish', 'bearish', 'both'],
-    },
-    { name: 'avg_period', type: 'number', default: 14, min: 1, step: 1 },
-    {
-      name: 'filter_above_orh',
-      type: 'combo',
-      default: 'false',
-      options: ['true', 'false'],
-    },
-    {
-      name: 'filter_below_orl',
-      type: 'combo',
-      default: 'false',
-      options: ['true', 'false'],
-    },
-  ];
-
-  static uiConfig: NodeUIConfig = {
-    size: [220, 100],
-    displayResults: false,
-    resizable: false,
-  };
 
   protected override validateIndicatorParams(): void {
     const orMinutes = this.params.or_minutes;
@@ -179,7 +160,7 @@ export class OrbFilter extends BaseIndicatorFilter {
   }
 
   protected calculateIndicator(_ohlcvData: OHLCVBar[]): IndicatorResult {
-    // Not used directly - we override executeImpl for async API calls
+    // Not used directly - we override run for async API calls
     throw new Error('Use async calculateOrbIndicator instead');
   }
 
@@ -253,7 +234,7 @@ export class OrbFilter extends BaseIndicatorFilter {
     return true;
   }
 
-  protected override async executeImpl(inputs: NodeInputs): Promise<NodeOutputs> {
+  protected override async run(inputs: Record<string, unknown>): Promise<Record<string, unknown>> {
     this.apiKey = this.credentials.get('POLYGON_API_KEY');
     if (!this.apiKey || !this.apiKey.trim()) {
       throw new Error('Polygon API key not found in vault');
@@ -297,8 +278,8 @@ export class OrbFilter extends BaseIndicatorFilter {
         }
 
         completedCount++;
-        const progress = (completedCount / totalSymbols) * 100;
-        this.reportProgress(progress, `${completedCount}/${totalSymbols}`);
+        const pct = (completedCount / totalSymbols) * 100;
+        this.progress(pct, `${completedCount}/${totalSymbols}`);
       } catch (error) {
         console.error(`Error calculating ORB for ${symbol.ticker}:`, error);
       }

@@ -1,2 +1,2 @@
 // Plugins re-exports
-export { lifecycle, type LifecyclePluginOptions } from './lifecycle';
+export { lifecycle, type LifecyclePluginOptions } from './lifecycle.js';

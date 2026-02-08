@@ -1,16 +1,7 @@
 // src/nodes/custom/polygon/polygon-crypto-universe-node.ts
-// Translated from: nodes/custom/polygon/polygon_crypto_universe_node.py
 
-import { Base } from '@fig-node/core';
-import {
-  AssetClass,
-  AssetSymbol,
-  InstrumentType,
-  NodeCategory,
-  NodeUIConfig,
-  ParamMeta,
-  getType,
-} from '@fig-node/core';
+import { Node, NodeCategory, port, type NodeDefinition } from '@fig-node/core';
+import { AssetClass, AssetSymbol, InstrumentType } from '../types';
 import {
   massiveBuildSnapshotTickers,
   massiveFetchSnapshot,
@@ -42,75 +33,72 @@ interface TickerData {
  *
  * Crypto markets operate 24/7, always using current intraday data from the 'day' bar.
  */
-export class PolygonCryptoUniverse extends Base {
-  static inputs = { filter_symbols: getType('AssetSymbolList') };
-  static outputs = { symbols: getType('AssetSymbolList') };
-  static required_keys = ['POLYGON_API_KEY'];
-  static uiConfig: NodeUIConfig = {
-    size: [280, 140],
-    displayResults: false,
-    resizable: true,
+export class PolygonCryptoUniverse extends Node {
+  static definition: NodeDefinition = {
+    inputs: { filter_symbols: port('AssetSymbolList') },
+    outputs: { symbols: port('AssetSymbolList') },
+    ui: {},
+    category: NodeCategory.MARKET,
+    requiredCredentials: ['POLYGON_API_KEY'],
+
+    defaults: {},
+
+    params: [
+      {
+        name: 'min_change_perc',
+        type: 'number',
+        default: undefined,
+        label: 'Min Change',
+        unit: '%',
+        description: 'Minimum daily percentage change (e.g., 5 for 5%)',
+        step: 0.01,
+      },
+      {
+        name: 'max_change_perc',
+        type: 'number',
+        default: undefined,
+        label: 'Max Change',
+        unit: '%',
+        description: 'Maximum daily percentage change (e.g., 10 for 10%)',
+        step: 0.01,
+      },
+      {
+        name: 'min_volume',
+        type: 'number',
+        default: undefined,
+        label: 'Min Volume',
+        unit: 'shares/contracts',
+        description: 'Minimum daily trading volume',
+      },
+      {
+        name: 'min_price',
+        type: 'number',
+        default: undefined,
+        label: 'Min Price',
+        unit: 'USD',
+        description: 'Minimum closing price in USD',
+      },
+      {
+        name: 'max_price',
+        type: 'number',
+        default: 1000000,
+        label: 'Max Price',
+        unit: 'USD',
+        description: 'Maximum closing price in USD',
+      },
+      {
+        name: 'max_snapshot_delay_minutes',
+        type: 'combo',
+        default: '5min',
+        label: 'Max Snapshot Delay',
+        description:
+          "Maximum allowed delay in snapshot 'updated' timestamp; None = no filter",
+        options: ['None (no filter)', '5min', '15min', '120min'],
+      },
+    ],
   };
 
-  static paramsMeta: ParamMeta[] = [
-    {
-      name: 'min_change_perc',
-      type: 'number',
-      default: undefined,
-      label: 'Min Change',
-      unit: '%',
-      description: 'Minimum daily percentage change (e.g., 5 for 5%)',
-      step: 0.01,
-    },
-    {
-      name: 'max_change_perc',
-      type: 'number',
-      default: undefined,
-      label: 'Max Change',
-      unit: '%',
-      description: 'Maximum daily percentage change (e.g., 10 for 10%)',
-      step: 0.01,
-    },
-    {
-      name: 'min_volume',
-      type: 'number',
-      default: undefined,
-      label: 'Min Volume',
-      unit: 'shares/contracts',
-      description: 'Minimum daily trading volume',
-    },
-    {
-      name: 'min_price',
-      type: 'number',
-      default: undefined,
-      label: 'Min Price',
-      unit: 'USD',
-      description: 'Minimum closing price in USD',
-    },
-    {
-      name: 'max_price',
-      type: 'number',
-      default: 1000000,
-      label: 'Max Price',
-      unit: 'USD',
-      description: 'Maximum closing price in USD',
-    },
-    {
-      name: 'max_snapshot_delay_minutes',
-      type: 'combo',
-      default: '5min',
-      label: 'Max Snapshot Delay',
-      description:
-        "Maximum allowed delay in snapshot 'updated' timestamp; None = no filter",
-      options: ['None (no filter)', '5min', '15min', '120min'],
-    },
-  ];
-
-  static defaultParams = {};
-
-  static CATEGORY = NodeCategory.MARKET;
-
-  protected async executeImpl(
+  protected async run(
     inputs: Record<string, unknown>
   ): Promise<Record<string, unknown>> {
     try {
@@ -120,7 +108,7 @@ export class PolygonCryptoUniverse extends Base {
       return { symbols };
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
-      console.error(`PolygonCryptoUniverse node ${this.figNodeId} failed: ${errorMsg}`);
+      console.error(`PolygonCryptoUniverse node ${this.nodeId} failed: ${errorMsg}`);
       throw error;
     }
   }
@@ -260,7 +248,7 @@ export class PolygonCryptoUniverse extends Base {
 
     // Update progress with stale filter info if applied
     const staleMsg = filteredStale > 0 ? `; filtered ${filteredStale} stale snapshots` : '';
-    this.reportProgress(
+    this.progress(
       95.0,
       `Completed: ${symbols.length} symbols from ${totalTickers} tickers${staleMsg}`
     );

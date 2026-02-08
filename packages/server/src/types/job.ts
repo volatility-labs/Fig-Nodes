@@ -1,6 +1,6 @@
 // Job and queue types for graph execution
 import type { WebSocket } from '@fastify/websocket';
-import type { GraphDocument } from '@fig-node/core';
+import type { Graph } from '@fig-node/core';
 
 /**
  * Job execution state.
@@ -44,7 +44,7 @@ export interface ExecutionJob {
   websocket: WebSocket;
 
   /** Graph document to execute */
-  graphData: GraphDocument;
+  graphData: Graph;
 
   /** AbortController for cancellation signaling (replaces asyncio.Event) */
   cancelController: AbortController;
@@ -65,7 +65,7 @@ export interface ExecutionJob {
 export function createExecutionJob(
   id: number,
   websocket: WebSocket,
-  graphData: GraphDocument
+  graphData: Graph
 ): ExecutionJob {
   return {
     id,

@@ -1,23 +1,8 @@
 // src/nodes/core/market/indicators/atrx-indicator-node.ts
-// Translated from: nodes/core/market/indicators/atrx_indicator_node.py
 
 import { BaseIndicator } from './base/base-indicator-node';
-import {
-  IndicatorType,
-  createIndicatorResult,
-  createIndicatorValue,
-  getType,
-} from '@fig-node/core';
-import type {
-  ParamMeta,
-  DefaultParams,
-  NodeInputs,
-  NodeOutputs,
-  IndicatorValue,
-  OHLCVBar,
-  OHLCVBundle,
-  NodeUIConfig,
-} from '@fig-node/core';
+import type { NodeDefinition } from '@fig-node/core';
+import { IndicatorType, createIndicatorResult, createIndicatorValue, type IndicatorValue, type OHLCVBar, type OHLCVBundle } from '../types';
 import { calculateAtrx } from '../calculators/atrx-calculator';
 
 /**
@@ -30,44 +15,32 @@ import { calculateAtrx } from '../calculators/atrx-calculator';
  *     https://www.tradingview.com/script/oimVgV7e-ATR-multiple-from-50-MA/
  */
 export class AtrXIndicator extends BaseIndicator {
-  static uiConfig: NodeUIConfig = {
-    size: [220, 100],
-    displayResults: false,
-    resizable: false,
-  };
-
-  static override inputs: Record<string, unknown> = {
-    ohlcv: getType('OHLCVBundle'),
-  };
-
-  static override outputs: Record<string, unknown> = {
-    results: Array, // list[IndicatorResult]
-  };
-
-  static override defaultParams: DefaultParams = {
-    length: 14, // ATR period
-    ma_length: 50, // SMA period for trend calculation
-  };
-
-  static override paramsMeta: ParamMeta[] = [
-    { name: 'length', type: 'integer', default: 14, description: 'ATR period' },
-    {
-      name: 'ma_length',
-      type: 'integer',
-      default: 50,
-      description: 'SMA period for trend calculation',
+  static override definition: NodeDefinition = {
+    ...BaseIndicator.definition,
+    defaults: {
+      length: 14, // ATR period
+      ma_length: 50, // SMA period for trend calculation
     },
-  ];
+    params: [
+      { name: 'length', type: 'integer', default: 14, description: 'ATR period' },
+      {
+        name: 'ma_length',
+        type: 'integer',
+        default: 50,
+        description: 'SMA period for trend calculation',
+      },
+    ],
+  };
 
   protected mapToIndicatorValue(
     _indType: IndicatorType,
     _raw: Record<string, unknown>
   ): IndicatorValue {
-    // ATRX node uses its own _executeImpl path and does not rely on base mapping.
+    // ATRX node uses its own run path and does not rely on base mapping.
     return createIndicatorValue({ single: NaN });
   }
 
-  protected override async executeImpl(inputs: NodeInputs): Promise<NodeOutputs> {
+  protected async run(inputs: Record<string, unknown>): Promise<Record<string, unknown>> {
     const ohlcvBundle = inputs.ohlcv as OHLCVBundle | undefined;
     if (!ohlcvBundle || ohlcvBundle.size === 0) {
       console.warn('Empty OHLCV bundle provided to ATRX indicator');

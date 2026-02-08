@@ -1,15 +1,8 @@
 // src/nodes/core/market/filters/lod-filter-node.ts
-// Translated from: nodes/core/market/filters/lod_filter_node.py
 
 import { BaseIndicatorFilter } from './base/base-indicator-filter-node';
-import { IndicatorType, createIndicatorResult, createIndicatorValue } from '@fig-node/core';
-import type {
-  ParamMeta,
-  DefaultParams,
-  OHLCVBar,
-  IndicatorResult,
-  NodeUIConfig,
-} from '@fig-node/core';
+import type { NodeDefinition } from '@fig-node/core';
+import { IndicatorType, createIndicatorResult, createIndicatorValue, type OHLCVBar, type IndicatorResult } from '../types';
 import { calculateLod } from '../calculators/lod-calculator';
 
 /**
@@ -34,47 +27,43 @@ import { calculateLod } from '../calculators/lod-calculator';
  * https://www.tradingview.com/script/uloAa2EI-Swing-Data-ADR-RVol-PVol-Float-Avg-Vol/
  */
 export class LodFilter extends BaseIndicatorFilter {
-  static override defaultParams: DefaultParams = {
-    lod_distance_threshold: 3.16,
-    atr_window: 14,
-    filter_mode: 'min',
-  };
-
-  static override paramsMeta: ParamMeta[] = [
-    {
-      name: 'lod_distance_threshold',
-      type: 'number',
-      default: 3.16,
-      min: 0.0,
-      step: 0.1,
-      precision: 2,
-      label: 'LoD Distance Threshold %',
-      unit: '%',
-      description: 'LoD distance threshold as percentage of ATR (e.g., 3.16 = 3.16% of ATR)',
+  static override definition: NodeDefinition = {
+    ...BaseIndicatorFilter.definition,
+    defaults: {
+      lod_distance_threshold: 3.16,
+      atr_window: 14,
+      filter_mode: 'min',
     },
-    {
-      name: 'atr_window',
-      type: 'number',
-      default: 14,
-      min: 1,
-      step: 1,
-      label: 'ATR Window',
-      description: 'Period for ATR calculation',
-    },
-    {
-      name: 'filter_mode',
-      type: 'combo',
-      default: 'min',
-      options: ['min', 'max'],
-      label: 'Filter Mode',
-      description: 'Filter for assets above threshold (min) or below threshold (max)',
-    },
-  ];
-
-  static uiConfig: NodeUIConfig = {
-    size: [220, 100],
-    displayResults: false,
-    resizable: false,
+    params: [
+      {
+        name: 'lod_distance_threshold',
+        type: 'number',
+        default: 3.16,
+        min: 0.0,
+        step: 0.1,
+        precision: 2,
+        label: 'LoD Distance Threshold %',
+        unit: '%',
+        description: 'LoD distance threshold as percentage of ATR (e.g., 3.16 = 3.16% of ATR)',
+      },
+      {
+        name: 'atr_window',
+        type: 'number',
+        default: 14,
+        min: 1,
+        step: 1,
+        label: 'ATR Window',
+        description: 'Period for ATR calculation',
+      },
+      {
+        name: 'filter_mode',
+        type: 'combo',
+        default: 'min',
+        options: ['min', 'max'],
+        label: 'Filter Mode',
+        description: 'Filter for assets above threshold (min) or below threshold (max)',
+      },
+    ],
   };
 
   protected override validateIndicatorParams(): void {

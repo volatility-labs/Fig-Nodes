@@ -1,16 +1,9 @@
 // src/nodes/core/market/utils/price-data-fetching-node.ts
-// Translated from: nodes/core/market/utils/price_data_fetching_node.py
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { Base } from '@fig-node/core';
-import {
-  NodeCategory,
-  OHLCVBar,
-  ParamMeta,
-  getType,
-} from '@fig-node/core';
-import type { NodeUIConfig } from '@fig-node/core';
+import { Node, NodeCategory, port, type NodeDefinition } from '@fig-node/core';
+import type { OHLCVBar } from '../types';
 
 /**
  * Extracts the most recent closing prices from an OHLCV bundle and saves to CSV.
@@ -20,48 +13,41 @@ import type { NodeUIConfig } from '@fig-node/core';
  *
  * Perfect for logging current prices and easy viewing in Excel/Cursor.
  */
-export class PriceDataFetching extends Base {
-  static CATEGORY = NodeCategory.MARKET;
-
-  static inputs = { ohlcv_bundle: getType('OHLCVBundle') };
-
-  static outputs = {
-    formatted_output: String, // Formatted string display
-    csv_file: String, // Path to saved CSV file
-  };
-
-  static uiConfig: NodeUIConfig = {
-    size: [240, 100],
-    displayResults: false,
-    resizable: false,
-  };
-
-  static defaultParams = {
-    scan_name: 'default_scan',
-    save_to_csv: true,
-  };
-
-  static paramsMeta: ParamMeta[] = [
-    {
-      name: 'scan_name',
-      type: 'text',
-      default: 'default_scan',
-      label: 'Scanner Name',
-      description:
-        "Name for this scanner (e.g., 'momentum_scanner', 'breakout_scanner'). Used to organize CSV files.",
+export class PriceDataFetching extends Node {
+  static definition: NodeDefinition = {
+    inputs: { ohlcv_bundle: port('OHLCVBundle') },
+    outputs: {
+      formatted_output: port('string'),
+      csv_file: port('string'),
     },
-    {
-      name: 'save_to_csv',
-      type: 'combo',
-      default: true,
-      options: [true, false],
-      label: 'Save to CSV',
-      description:
-        'Whether to save results to CSV file. Files are saved to results/ folder and easy to open in Excel or Cursor.',
+    category: NodeCategory.MARKET,
+    ui: {},
+    defaults: {
+      scan_name: 'default_scan',
+      save_to_csv: true,
     },
-  ];
+    params: [
+      {
+        name: 'scan_name',
+        type: 'text',
+        default: 'default_scan',
+        label: 'Scanner Name',
+        description:
+          "Name for this scanner (e.g., 'momentum_scanner', 'breakout_scanner'). Used to organize CSV files.",
+      },
+      {
+        name: 'save_to_csv',
+        type: 'combo',
+        default: true,
+        options: [true, false],
+        label: 'Save to CSV',
+        description:
+          'Whether to save results to CSV file. Files are saved to results/ folder and easy to open in Excel or Cursor.',
+      },
+    ],
+  };
 
-  protected async executeImpl(
+  protected async run(
     inputs: Record<string, unknown>
   ): Promise<Record<string, unknown>> {
     const ohlcvBundle =

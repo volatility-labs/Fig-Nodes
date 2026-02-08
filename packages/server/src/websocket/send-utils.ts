@@ -1,6 +1,6 @@
 // WebSocket send utilities
 import type { WebSocket } from '@fastify/websocket';
-import type { ServerMessage } from '../types/messages';
+import type { ServerMessage } from '../types/messages.js';
 
 // WebSocket ready states
 const WS_OPEN = 1;

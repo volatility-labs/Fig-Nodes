@@ -1,16 +1,13 @@
 // src/nodes/core/market/filters/base/base-filter-node.ts
-// Translated from: nodes/core/market/filters/base/base_filter_node.py
 
-import { Base } from '@fig-node/core';
-import { getType } from '@fig-node/core';
+import { Node, port } from '@fig-node/core';
 import type {
+  NodeDefinition,
   NodeInputs,
   NodeOutputs,
   NodeUIConfig,
-  OHLCVBar,
-  OHLCVBundle,
 } from '@fig-node/core';
-import { AssetSymbol } from '@fig-node/core';
+import { AssetSymbol, type OHLCVBar, type OHLCVBundle } from '../../types';
 
 /**
  * Base class for general filter nodes that filter OHLCV bundles based on arbitrary conditions.
@@ -19,19 +16,17 @@ import { AssetSymbol } from '@fig-node/core';
  * Input: OHLCV bundle (Map<AssetSymbol, OHLCVBar[]>)
  * Output: Filtered OHLCV bundle (Map<AssetSymbol, OHLCVBar[]>)
  */
-export abstract class BaseFilter extends Base {
-  static override inputs: Record<string, unknown> = {
-    ohlcv_bundle: getType('OHLCVBundle'),
-  };
-  static override outputs: Record<string, unknown> = {
-    filtered_ohlcv_bundle: getType('OHLCVBundle'),
-  };
-
-  // Default UI config for all filter nodes
-  static override uiConfig: NodeUIConfig = {
-    size: [360, 140],
-    displayResults: false,
-    resultDisplay: 'none',
+export abstract class BaseFilter extends Node {
+  static override definition: NodeDefinition = {
+    inputs: {
+      ohlcv_bundle: port('OHLCVBundle'),
+    },
+    outputs: {
+      filtered_ohlcv_bundle: port('OHLCVBundle'),
+    },
+    ui: {
+      resultDisplay: 'none',
+    },
   };
 
   /**
@@ -61,7 +56,7 @@ export abstract class BaseFilter extends Base {
     return this.filterCondition(symbol, ohlcvData);
   }
 
-  protected override async executeImpl(inputs: NodeInputs): Promise<NodeOutputs> {
+  protected async run(inputs: Record<string, unknown>): Promise<Record<string, unknown>> {
     const ohlcvBundle = (inputs.ohlcv_bundle as OHLCVBundle) ?? new Map();
 
     if (ohlcvBundle.size === 0) {

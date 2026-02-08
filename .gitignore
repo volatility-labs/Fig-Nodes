@@ -97,3 +97,4 @@ calculations/
 custom_nodes/
 !custom_nodes/.gitkeep
 nodes/dist/
+packages/*/dist/

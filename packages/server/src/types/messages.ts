@@ -1,15 +1,8 @@
 // WebSocket message schemas using Zod
 import { z } from 'zod';
+import { ExecutionState } from '@fig-node/core';
 
-// ============ Execution State Enum ============
-
-export enum ExecutionState {
-  QUEUED = 'queued',
-  RUNNING = 'running',
-  FINISHED = 'finished',
-  ERROR = 'error',
-  CANCELLED = 'cancelled',
-}
+export { ExecutionState };
 
 // ============ Client → Server Messages ============
 
@@ -28,7 +21,7 @@ export type ClientConnectMessage = z.infer<typeof ClientConnectMessageSchema>;
  */
 export const ClientGraphMessageSchema = z.object({
   type: z.literal('graph'),
-  graph_data: z.record(z.unknown()), // GraphDocument - validated separately
+  graph_data: z.record(z.unknown()), // Graph - validated separately
 });
 
 export type ClientGraphMessage = z.infer<typeof ClientGraphMessageSchema>;

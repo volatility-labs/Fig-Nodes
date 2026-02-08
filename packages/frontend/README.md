@@ -1,11 +1,14 @@
 ## Overview
-This directory contains the frontend code for Fig node. 
 
-## Adding a New Node UI
-1. Create `nodes/{category}/{BackendClassName}NodeUI.ts` extending BaseCustomNode.ts.
-   - Example: For backend class `MyNode`, create `nodes/io/MyNodeNodeUI.ts`
-   - The UI class must be named `{BackendClassName}NodeUI`
-2. The UI module will be automatically discovered based on the naming convention.
+This directory contains the frontend code for Fig Nodes — a Vite + React application that provides a visual graph editor built on [Rete.js v2](https://retejs.org/).
 
-## Litegraph
-We forked a copy of the litegraph.js from ComfyOrg's currently deprecated repo [here](https://github.com/Comfy-Org/litegraph.js). The forked litegraph repo is part of the frontend code and we maintain it as part of the overall fig node repo. 
+## Architecture
+
+- **Rete Editor** (`components/editor/`) — the graph editor is the single source of truth for graph structure at runtime. The `ReteAdapter` manages node/edge CRUD and serializes the graph on demand for execution or saving.
+- **Stores** (`stores/graphStore.ts`) — Zustand store for execution-related reactive state (node status, progress, notifications). Graph structure itself lives in Rete, not the store.
+- **Services** (`services/`) — WebSocket client for execution, file manager for save/load, execution status tracking.
+- **Displays** (`components/displays/`) — pluggable display components rendered inside nodes based on execution output type (text, images, charts, notes).
+
+## Node UI
+
+Node appearance and widgets are entirely driven by backend-defined metadata (`paramsMeta`, `uiConfig`). The frontend dynamically creates editor nodes with typed sockets based on the metadata fetched from `GET /api/v1/nodes` at startup. No per-node UI code is needed in the frontend.

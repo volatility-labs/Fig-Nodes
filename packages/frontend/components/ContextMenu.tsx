@@ -2,9 +2,9 @@
 // Right-click context menu for the graph canvas and nodes
 
 import { useCallback, useEffect, useRef } from 'react';
-import type { NodeMetadataMap } from '../types/node-metadata';
-import type { GraphNode } from '@fig-node/core';
-import { useGraphStore } from '../stores/graph-store';
+import type { NodeMetadataMap } from '../types/nodes';
+import { getEditorAdapter } from './editor/editor-ref';
+import { addNodeToEditor } from './editor/add-node';
 
 interface ContextMenuProps {
   x: number;
@@ -26,8 +26,6 @@ export function ContextMenu({
   onClose,
 }: ContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
-  const addNode = useGraphStore((s) => s.addNode);
-  const removeNode = useGraphStore((s) => s.removeNode);
 
   // Close on click outside or Escape
   useEffect(() => {
@@ -49,25 +47,24 @@ export function ContextMenu({
 
   const handleAddNode = useCallback(
     (type: string) => {
-      const meta = nodeMetadata[type];
-      const id = `${type.toLowerCase()}_${Date.now()}`;
-      const node: GraphNode = {
-        type,
-        params: meta?.defaultParams ? { ...meta.defaultParams } : {},
-        position: [canvasPosition.x, canvasPosition.y],
-      };
-      addNode(id, node);
+      const adapter = getEditorAdapter();
+      if (!adapter) return;
+
+      addNodeToEditor(adapter, type, [canvasPosition.x, canvasPosition.y], nodeMetadata);
       onClose();
     },
-    [canvasPosition, nodeMetadata, addNode, onClose],
+    [canvasPosition, nodeMetadata, onClose],
   );
 
   const handleDeleteNode = useCallback(() => {
     if (nodeId) {
-      removeNode(nodeId);
+      const adapter = getEditorAdapter();
+      if (adapter) {
+        adapter.removeNode(nodeId);
+      }
       onClose();
     }
-  }, [nodeId, removeNode, onClose]);
+  }, [nodeId, onClose]);
 
   // Group node types by category
   const categorized = new Map<string, string[]>();

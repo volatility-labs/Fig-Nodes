@@ -1,20 +1,11 @@
 // src/nodes/core/market/utils/ohlcv-plot-enhanced-node.ts
-// Translated from: nodes/core/market/utils/ohlcv_plot_enhanced_node.py
 //
 // NOTE: This TypeScript version computes chart data but does NOT render images.
 // The Python version used matplotlib for server-side rendering.
 // In this architecture, we return computed data for frontend rendering.
 
-import { Base } from '@fig-node/core';
-import {
-  AssetSymbol,
-  AssetClass,
-  NodeCategory,
-  OHLCVBar,
-  ParamMeta,
-  getType,
-  type NodeUIConfig,
-} from '@fig-node/core';
+import { Node, NodeCategory, port, type NodeDefinition } from '@fig-node/core';
+import { AssetSymbol, AssetClass, type OHLCVBar } from '../types';
 import { calculateEma } from '../calculators/ema-calculator';
 import { calculateSma } from '../calculators/sma-calculator';
 import { calculateVbp } from '../calculators/vbp-calculator';
@@ -187,66 +178,58 @@ function calculateOverlay(
  * - Optional: overlay1, overlay2 (automatically calculated SMA/EMA from OHLCV data)
  * - Output: 'chart_data' -> structured data for frontend charting
  */
-export class OHLCVPlotEnhanced extends Base {
-  static required_keys = ['POLYGON_API_KEY'];
-  static inputs = {
-    ohlcv_bundle: getType('OHLCVBundle'),
-  };
-
-  static optional_inputs = ['ohlcv_bundle', 'ohlcv'];
-
-  static outputs = {
-    chart_data: getType('ConfigDict'),
-  };
-
-  static CATEGORY = NodeCategory.MARKET;
-
-  static uiConfig: NodeUIConfig = {
-    size: [280, 200],
-    resizable: true,
-    displayResults: false,
-    outputDisplay: {
-      type: 'chart-preview',
-      bind: 'chart_data',
-      options: {
-        chartType: 'candlestick',
-        modalEnabled: true,
-        symbolSelector: true,
+export class OHLCVPlotEnhanced extends Node {
+  static definition: NodeDefinition = {
+    inputs: {
+      ohlcv_bundle: port('OHLCVBundle', { optional: true }),
+    },
+    outputs: {
+      chart_data: port('ConfigDict'),
+    },
+    category: NodeCategory.MARKET,
+    requiredCredentials: ['POLYGON_API_KEY'],
+    ui: {
+      outputDisplay: {
+        type: 'chart-preview',
+        bind: 'chart_data',
+        options: {
+          chartType: 'candlestick',
+          modalEnabled: true,
+          symbolSelector: true,
+        },
       },
     },
+    defaults: {
+      max_symbols: 12,
+      lookback_bars: 60,
+      overlay1_period: 20,
+      overlay1_type: 'SMA',
+      overlay2_period: 50,
+      overlay2_type: 'SMA',
+      show_vbp_levels: true,
+      vbp_bins: 50,
+      vbp_num_levels: 5,
+      vbp_lookback_years: 2,
+      vbp_use_dollar_weighted: false,
+      vbp_use_close_only: false,
+      vbp_style: 'dashed',
+    },
+    params: [
+      { name: 'max_symbols', type: 'integer', default: 12, min: 1, max: 64, step: 4 },
+      { name: 'lookback_bars', type: 'number', default: 60, min: 10, max: 5000, step: 10 },
+      { name: 'overlay1_type', type: 'combo', default: 'SMA', options: ['SMA', 'EMA'] },
+      { name: 'overlay1_period', type: 'number', default: 20, min: 2, max: 200, step: 1 },
+      { name: 'overlay2_type', type: 'combo', default: 'SMA', options: ['SMA', 'EMA'] },
+      { name: 'overlay2_period', type: 'number', default: 50, min: 2, max: 200, step: 1 },
+      { name: 'show_vbp_levels', type: 'combo', default: true, options: [true, false] },
+      { name: 'vbp_bins', type: 'number', default: 50, min: 10, max: 200, step: 5 },
+      { name: 'vbp_num_levels', type: 'number', default: 5, min: 1, max: 20, step: 1 },
+      { name: 'vbp_lookback_years', type: 'number', default: 2, min: 1, max: 10, step: 1 },
+      { name: 'vbp_use_dollar_weighted', type: 'combo', default: false, options: [true, false] },
+      { name: 'vbp_use_close_only', type: 'combo', default: false, options: [true, false] },
+      { name: 'vbp_style', type: 'combo', default: 'dashed', options: ['solid', 'dashed', 'dotted'] },
+    ],
   };
-
-  static defaultParams = {
-    max_symbols: 12,
-    lookback_bars: 60,
-    overlay1_period: 20,
-    overlay1_type: 'SMA',
-    overlay2_period: 50,
-    overlay2_type: 'SMA',
-    show_vbp_levels: true,
-    vbp_bins: 50,
-    vbp_num_levels: 5,
-    vbp_lookback_years: 2,
-    vbp_use_dollar_weighted: false,
-    vbp_use_close_only: false,
-    vbp_style: 'dashed',
-  };
-
-  static paramsMeta: ParamMeta[] = [
-    { name: 'max_symbols', type: 'integer', default: 12, min: 1, max: 64, step: 4 },
-    { name: 'lookback_bars', type: 'number', default: 60, min: 10, max: 5000, step: 10 },
-    { name: 'overlay1_type', type: 'combo', default: 'SMA', options: ['SMA', 'EMA'] },
-    { name: 'overlay1_period', type: 'number', default: 20, min: 2, max: 200, step: 1 },
-    { name: 'overlay2_type', type: 'combo', default: 'SMA', options: ['SMA', 'EMA'] },
-    { name: 'overlay2_period', type: 'number', default: 50, min: 2, max: 200, step: 1 },
-    { name: 'show_vbp_levels', type: 'combo', default: true, options: [true, false] },
-    { name: 'vbp_bins', type: 'number', default: 50, min: 10, max: 200, step: 5 },
-    { name: 'vbp_num_levels', type: 'number', default: 5, min: 1, max: 20, step: 1 },
-    { name: 'vbp_lookback_years', type: 'number', default: 2, min: 1, max: 10, step: 1 },
-    { name: 'vbp_use_dollar_weighted', type: 'combo', default: false, options: [true, false] },
-    { name: 'vbp_use_close_only', type: 'combo', default: false, options: [true, false] },
-    { name: 'vbp_style', type: 'combo', default: 'dashed', options: ['solid', 'dashed', 'dotted'] },
-  ];
 
   private getIntParam(key: string, defaultValue: number): number {
     const raw = this.params[key];
@@ -261,7 +244,7 @@ export class OHLCVPlotEnhanced extends Base {
     return raw !== undefined ? Boolean(raw) : defaultValue;
   }
 
-  protected async executeImpl(
+  protected async run(
     inputs: Record<string, unknown>
   ): Promise<Record<string, unknown>> {
     let bundle = inputs.ohlcv_bundle as Map<string, OHLCVBar[]> | undefined;
@@ -308,7 +291,7 @@ export class OHLCVPlotEnhanced extends Base {
     // Get API key for fetching weekly bars
     let apiKey: string | undefined;
     if (showVbp) {
-      apiKey = this.hasCredentialProvider ? this.credentials.get('POLYGON_API_KEY') : undefined;
+      apiKey = this.credentials.get('POLYGON_API_KEY') ?? undefined;
       if (!apiKey) {
         showVbp = false;
       }

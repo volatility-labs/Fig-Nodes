@@ -3,4 +3,4 @@ export {
   ConnectionRegistry,
   establishSession,
   closeOldConnectionIfExists,
-} from './connection-registry';
+} from './connection-registry.js';

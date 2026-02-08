@@ -1,1 +1,1 @@
-export { EnvCredentialStore, getCredentialStore } from './env-credential-store';
+export { EnvCredentialStore, getCredentialStore } from './env-credential-store.js';

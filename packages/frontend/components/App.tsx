@@ -2,12 +2,13 @@
 // Root application component — fetches node metadata, initializes services, renders editor
 
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { ReteEditor } from '../rete/ReteEditor';
-import type { NodeMetadataMap } from '../types/node-metadata';
-import { useGraphStore } from '../stores/graph-store';
+import { ReteEditor } from './editor/ReteEditor';
+import type { NodeMetadataMap } from '../types/nodes';
+import { useGraphStore } from '../stores/graphStore';
 import { setupWebSocket, stopExecution } from '../services/WebSocketClient';
 import { saveGraph, loadGraphFromFile, restoreFromAutosave, startAutosave } from '../services/FileManager';
 import { ExecutionStatusService } from '../services/ExecutionStatusService';
+import { Toast } from './Toast';
 import './editor.css';
 
 export function App() {
@@ -16,6 +17,12 @@ export function App() {
   const [error, setError] = useState<string | null>(null);
   const statusServiceRef = useRef<ExecutionStatusService | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Reactive store subscriptions
+  const docName = useGraphStore((s) => s.docName);
+  const isExecuting = useGraphStore((s) => s.isExecuting);
+  const metaStatus = useGraphStore((s) => s.metaStatus);
+  const executionUI = useGraphStore((s) => s.executionUI);
 
   // Fetch node metadata from backend
   useEffect(() => {
@@ -46,11 +53,7 @@ export function App() {
 
   // Toolbar handlers
   const handleExecute = useCallback(() => {
-    const executeBtn = document.getElementById('execute');
-    const stopBtn = document.getElementById('stop');
-    if (executeBtn) executeBtn.style.display = 'none';
-    if (stopBtn) stopBtn.style.display = 'inline-block';
-
+    useGraphStore.getState().setIsExecuting(true);
     const event = new CustomEvent('fig:execute');
     window.dispatchEvent(event);
   }, []);
@@ -92,41 +95,59 @@ export function App() {
     );
   }
 
+  // Progress bar visibility
+  const showProgress = !(executionUI.progress === 0 && executionUI.determinate);
+  const progressBarClass = executionUI.determinate
+    ? 'fig-top-progress-bar'
+    : 'fig-top-progress-bar indeterminate';
+  const progressBarWidth = executionUI.determinate
+    ? `${(executionUI.progress ?? 0).toFixed(1)}%`
+    : '100%';
+
   return (
     <div className="fig-app">
       {/* Toolbar */}
       <div className="fig-toolbar">
         <div className="fig-toolbar-left">
           <span className="fig-logo">fig-node</span>
-          <span id="graph-name" className="fig-graph-name">
-            {useGraphStore.getState().doc.name}
-          </span>
+          <span className="fig-graph-name">{docName}</span>
         </div>
         <div className="fig-toolbar-center">
-          <div id="top-progress" className="fig-top-progress" style={{ display: 'none' }}>
-            <div id="top-progress-bar" className="fig-top-progress-bar" />
-            <span id="top-progress-text" className="fig-top-progress-text" />
-          </div>
+          {showProgress && (
+            <div className="fig-top-progress" style={{ display: 'block' }}>
+              <div
+                className={progressBarClass}
+                style={{ width: progressBarWidth }}
+              />
+              <span className="fig-top-progress-text">{executionUI.message}</span>
+            </div>
+          )}
         </div>
         <div className="fig-toolbar-right">
-          <div id="status-indicator" className="status-indicator connected" title="Ready" />
-          <div id="polygon-status" className="polygon-status na">N/A</div>
-          <button id="execute" className="fig-btn fig-btn-execute" onClick={handleExecute}>
-            Execute
-          </button>
-          <button
-            id="stop"
-            className="fig-btn fig-btn-stop"
-            onClick={handleStop}
-            style={{ display: 'none' }}
-          >
-            Stop
-          </button>
-          <button id="save" className="fig-btn" onClick={handleSave}>Save</button>
-          <button id="load" className="fig-btn" onClick={handleLoad}>Load</button>
+          <div
+            className={`status-indicator ${executionUI.status}`}
+            title={executionUI.message}
+            aria-label={executionUI.message}
+          />
+          {Object.entries(metaStatus).map(([key, value]) => (
+            <span key={key} className="meta-status" title={`${key}: ${value}`}>
+              {value}
+            </span>
+          ))}
+          {!isExecuting && (
+            <button className="fig-btn fig-btn-execute" onClick={handleExecute}>
+              Execute
+            </button>
+          )}
+          {isExecuting && (
+            <button className="fig-btn fig-btn-stop" onClick={handleStop}>
+              Stop
+            </button>
+          )}
+          <button className="fig-btn" onClick={handleSave}>Save</button>
+          <button className="fig-btn" onClick={handleLoad}>Load</button>
           <input
             ref={fileInputRef}
-            id="graph-file"
             type="file"
             accept=".json"
             style={{ display: 'none' }}
@@ -139,6 +160,9 @@ export function App() {
       <div className="fig-editor-wrapper">
         <ReteEditor nodeMetadata={nodeMetadata} />
       </div>
+
+      {/* Notifications */}
+      <Toast />
     </div>
   );
 }

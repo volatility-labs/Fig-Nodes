@@ -1,52 +1,49 @@
 // src/nodes/core/io/asset-symbol-input-node.ts
-// Translated from: nodes/core/io/asset_symbol_input_node.py
 
-import { Base, AssetClass, AssetSymbol, InstrumentType, getType } from '@fig-node/core';
-import type { NodeInputs, NodeOutputs, ParamMeta, DefaultParams, NodeUIConfig } from '@fig-node/core';
+import { Node, port, type NodeDefinition } from '@fig-node/core';
+import { AssetClass, AssetSymbol, InstrumentType } from '../market/types';
 
 /**
  * Node to create a single AssetSymbol from user parameters.
  */
-export class AssetSymbolInput extends Base {
-  static override inputs: Record<string, unknown> = {};
-  static override outputs: Record<string, unknown> = { symbol: getType('AssetSymbol') };
+export class AssetSymbolInput extends Node {
+  static definition: NodeDefinition = {
+    inputs: {},
+    outputs: { symbol: port('AssetSymbol') },
 
-  static uiConfig: NodeUIConfig = {
-    size: [240, 140],
-    displayResults: false,
-    resizable: false,
+    ui: {},
+
+    defaults: {
+      ticker: '',
+      asset_class: AssetClass.CRYPTO,
+      quote_currency: 'USDT',
+      instrument_type: InstrumentType.PERPETUAL,
+    },
+
+    params: [
+      { name: 'ticker', type: 'text', default: '' },
+      {
+        name: 'asset_class',
+        type: 'combo',
+        default: AssetClass.CRYPTO,
+        options: Object.values(AssetClass),
+      },
+      {
+        name: 'quote_currency',
+        type: 'combo',
+        default: 'USD',
+        options: ['USD', 'USDC', 'USDT'],
+      },
+      {
+        name: 'instrument_type',
+        type: 'combo',
+        default: InstrumentType.PERPETUAL,
+        options: Object.values(InstrumentType),
+      },
+    ],
   };
 
-  static override defaultParams: DefaultParams = {
-    ticker: '',
-    asset_class: AssetClass.CRYPTO,
-    quote_currency: 'USDT',
-    instrument_type: InstrumentType.PERPETUAL,
-  };
-
-  static override paramsMeta: ParamMeta[] = [
-    { name: 'ticker', type: 'text', default: '' },
-    {
-      name: 'asset_class',
-      type: 'combo',
-      default: AssetClass.CRYPTO,
-      options: Object.values(AssetClass),
-    },
-    {
-      name: 'quote_currency',
-      type: 'combo',
-      default: 'USD',
-      options: ['USD', 'USDC', 'USDT'],
-    },
-    {
-      name: 'instrument_type',
-      type: 'combo',
-      default: InstrumentType.PERPETUAL,
-      options: Object.values(InstrumentType),
-    },
-  ];
-
-  protected override async executeImpl(_inputs: NodeInputs): Promise<NodeOutputs> {
+  protected async run(_inputs: Record<string, unknown>): Promise<Record<string, unknown>> {
     // Coerce params to enums and normalized cases
     const tickerValue = String(this.params.ticker ?? '').toUpperCase();
     const assetClassParam = this.params.asset_class ?? AssetClass.CRYPTO;

@@ -1,18 +1,8 @@
 // src/nodes/core/market/filters/moving-average-filter-node.ts
-// Translated from: nodes/core/market/filters/moving_average_filter_node.py
 
 import { BaseIndicatorFilter } from './base/base-indicator-filter-node';
-import { IndicatorType, createIndicatorResult, createIndicatorValue } from '@fig-node/core';
-import type {
-  ParamMeta,
-  DefaultParams,
-  OHLCVBar,
-  IndicatorResult,
-  NodeInputs,
-  NodeOutputs,
-  OHLCVBundle,
-  NodeUIConfig,
-} from '@fig-node/core';
+import type { NodeDefinition } from '@fig-node/core';
+import { IndicatorType, createIndicatorResult, createIndicatorValue, type OHLCVBar, type IndicatorResult, type OHLCVBundle } from '../types';
 import { calculateSma } from '../calculators/sma-calculator';
 import { calculateEma } from '../calculators/ema-calculator';
 
@@ -20,44 +10,40 @@ import { calculateEma } from '../calculators/ema-calculator';
  * Moving Average Filter - filters assets based on price relative to moving average and MA slope.
  */
 export class MovingAverageFilter extends BaseIndicatorFilter {
+  static override definition: NodeDefinition = {
+    ...BaseIndicatorFilter.definition,
+    defaults: {
+      period: 200,
+      prior_bars: 1,
+      ma_type: 'SMA',
+      require_price_above_ma: 'true',
+    },
+    params: [
+      { name: 'period', type: 'number', default: 200, min: 2, step: 1 },
+      {
+        name: 'prior_bars',
+        type: 'number',
+        default: 1,
+        min: 0,
+        step: 1,
+        description: 'Number of bars to look back for slope calculation (works with any interval: 15min, 1hr, daily, etc.)',
+      },
+      { name: 'ma_type', type: 'combo', default: 'SMA', options: ['SMA', 'EMA'] },
+      {
+        name: 'require_price_above_ma',
+        type: 'combo',
+        default: 'true',
+        options: ['true', 'false'],
+        description: 'If true, requires price > MA. If false, only checks for rising MA slope.',
+      },
+    ],
+  };
+
   private period: number = 200;
   private priorBars: number = 1;
   private maType: 'SMA' | 'EMA' = 'SMA';
   private requirePriceAboveMa: boolean = true;
   private currentSymbol: string = 'UNKNOWN';
-
-  static override defaultParams: DefaultParams = {
-    period: 200,
-    prior_bars: 1,
-    ma_type: 'SMA',
-    require_price_above_ma: 'true',
-  };
-
-  static override paramsMeta: ParamMeta[] = [
-    { name: 'period', type: 'number', default: 200, min: 2, step: 1 },
-    {
-      name: 'prior_bars',
-      type: 'number',
-      default: 1,
-      min: 0,
-      step: 1,
-      description: 'Number of bars to look back for slope calculation (works with any interval: 15min, 1hr, daily, etc.)',
-    },
-    { name: 'ma_type', type: 'combo', default: 'SMA', options: ['SMA', 'EMA'] },
-    {
-      name: 'require_price_above_ma',
-      type: 'combo',
-      default: 'true',
-      options: ['true', 'false'],
-      description: 'If true, requires price > MA. If false, only checks for rising MA slope.',
-    },
-  ];
-
-  static uiConfig: NodeUIConfig = {
-    size: [220, 100],
-    displayResults: false,
-    resizable: false,
-  };
 
   protected override validateIndicatorParams(): void {
     const periodParam = this.params.period ?? 200;
@@ -314,7 +300,7 @@ export class MovingAverageFilter extends BaseIndicatorFilter {
     return slopePositive;
   }
 
-  protected override async executeImpl(inputs: NodeInputs): Promise<NodeOutputs> {
+  protected override async run(inputs: Record<string, unknown>): Promise<Record<string, unknown>> {
     const ohlcvBundle = (inputs.ohlcv_bundle as OHLCVBundle) ?? new Map();
 
     if (ohlcvBundle.size === 0) {
@@ -327,7 +313,7 @@ export class MovingAverageFilter extends BaseIndicatorFilter {
 
     // Initial progress signal
     try {
-      this.reportProgress(0.0, `0/${totalSymbols}`);
+      this.progress(0.0, `0/${totalSymbols}`);
     } catch {
       // Ignore progress reporting errors
     }
@@ -339,8 +325,8 @@ export class MovingAverageFilter extends BaseIndicatorFilter {
       if (!ohlcvData || ohlcvData.length === 0) {
         processedSymbols++;
         try {
-          const progress = (processedSymbols / Math.max(1, totalSymbols)) * 100.0;
-          this.reportProgress(progress, `${processedSymbols}/${totalSymbols}`);
+          const pct = (processedSymbols / Math.max(1, totalSymbols)) * 100.0;
+          this.progress(pct, `${processedSymbols}/${totalSymbols}`);
         } catch {
           // Ignore progress reporting errors
         }
@@ -357,8 +343,8 @@ export class MovingAverageFilter extends BaseIndicatorFilter {
         console.warn(`Failed to process indicator for ${symbolKey}: ${e}`);
         processedSymbols++;
         try {
-          const progress = (processedSymbols / Math.max(1, totalSymbols)) * 100.0;
-          this.reportProgress(progress, `${processedSymbols}/${totalSymbols}`);
+          const pct = (processedSymbols / Math.max(1, totalSymbols)) * 100.0;
+          this.progress(pct, `${processedSymbols}/${totalSymbols}`);
         } catch {
           // Ignore progress reporting errors
         }
@@ -368,8 +354,8 @@ export class MovingAverageFilter extends BaseIndicatorFilter {
       // Advance progress after successful processing
       processedSymbols++;
       try {
-        const progress = (processedSymbols / Math.max(1, totalSymbols)) * 100.0;
-        this.reportProgress(progress, `${processedSymbols}/${totalSymbols}`);
+        const pct = (processedSymbols / Math.max(1, totalSymbols)) * 100.0;
+        this.progress(pct, `${processedSymbols}/${totalSymbols}`);
       } catch {
         // Ignore progress reporting errors
       }

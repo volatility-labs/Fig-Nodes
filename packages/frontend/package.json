@@ -10,14 +10,14 @@
     "dev": "vite",
     "build": "vite build",
     "serve": "vite preview",
-    "generate-types": "openapi-typescript http://localhost:8000/openapi.json -o types/api.ts"
+    "typecheck": "tsc --noEmit"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "module",
   "dependencies": {
-    "lightweight-charts": "^4.1.0",
+    "@fig-node/core": "*",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "rete": "^2.0.3",
@@ -26,11 +26,9 @@
     "rete-minimap-plugin": "^2.0.1",
     "rete-react-plugin": "^2.0.5",
     "rete-render-utils": "^2.0.2",
-    "styled-components": "^6.1.8",
     "zustand": "^5.0.11"
   },
   "devDependencies": {
-    "@fig-node/core": "link:../core",
     "@types/jsdom": "^27.0.0",
     "@types/node": "^20.12.12",
     "@types/react": "^19.2.13",
@@ -42,7 +40,6 @@
     "eslint": "^8.57.0",
     "http-proxy-middleware": "^3.0.0",
     "jsdom": "^26.1.0",
-    "openapi-typescript": "^6.0.0",
     "prettier": "^3.3.3",
     "typescript": "^5.8.3",
     "vite": "^5.0.0",

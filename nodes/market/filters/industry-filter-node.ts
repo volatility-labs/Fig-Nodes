@@ -1,17 +1,8 @@
 // src/nodes/core/market/filters/industry-filter-node.ts
-// Translated from: nodes/core/market/filters/industry_filter_node.py
 
 import { BaseFilter } from './base/base-filter-node';
-import { AssetSymbol } from '@fig-node/core';
-import type {
-  ParamMeta,
-  DefaultParams,
-  OHLCVBar,
-  NodeInputs,
-  NodeOutputs,
-  OHLCVBundle,
-  NodeUIConfig,
-} from '@fig-node/core';
+import type { NodeDefinition } from '@fig-node/core';
+import { AssetSymbol, type OHLCVBar, type OHLCVBundle } from '../types';
 
 /**
  * Filters OHLCV bundles based on company industry from Polygon API Ticker Overview API.
@@ -20,42 +11,38 @@ import type {
  * Requires Polygon API key (POLYGON_API_KEY) from vault.
  */
 export class IndustryFilter extends BaseFilter {
-  static required_keys = ['POLYGON_API_KEY'];
+  static override definition: NodeDefinition = {
+    ...BaseFilter.definition,
+    requiredCredentials: ['POLYGON_API_KEY'],
+    defaults: {
+      allowed_industries: [],
+      date: null,
+    },
+    params: [
+      {
+        name: 'allowed_industries',
+        type: 'combo',
+        default: [],
+        options: [],
+        description: 'List of industry sic_description strings to match (exact, case-insensitive)',
+      },
+      {
+        name: 'date',
+        type: 'text',
+        default: null,
+        description: 'Optional date for historical overview (YYYY-MM-DD)',
+      },
+    ],
+  };
+
   private allowedIndustries: string[] = [];
 
-  static override defaultParams: DefaultParams = {
-    allowed_industries: [],
-    date: null,
-  };
-
-  static override paramsMeta: ParamMeta[] = [
-    {
-      name: 'allowed_industries',
-      type: 'combo',
-      default: [],
-      options: [],
-      description: 'List of industry sic_description strings to match (exact, case-insensitive)',
-    },
-    {
-      name: 'date',
-      type: 'text',
-      default: null,
-      description: 'Optional date for historical overview (YYYY-MM-DD)',
-    },
-  ];
-
-  static uiConfig: NodeUIConfig = {
-    size: [220, 100],
-    displayResults: false,
-    resizable: false,
-  };
-
   constructor(
-    figNodeId: string,
+    nodeId: string,
     params: Record<string, unknown> = {},
     graphContext?: Record<string, unknown>
   ) {
-    super(figNodeId, params, graphContext ?? {});
+    super(nodeId, params, graphContext ?? {});
     const allowedIndustriesParam = this.params.allowed_industries ?? [];
     if (Array.isArray(allowedIndustriesParam)) {
       this.allowedIndustries = allowedIndustriesParam.map((ind) =>
@@ -104,7 +91,7 @@ export class IndustryFilter extends BaseFilter {
     return this.allowedIndustries.includes(industry);
   }
 
-  protected override async executeImpl(inputs: NodeInputs): Promise<NodeOutputs> {
+  protected override async run(inputs: Record<string, unknown>): Promise<Record<string, unknown>> {
     const ohlcvBundle = (inputs.ohlcv_bundle as OHLCVBundle) ?? new Map();
 
     if (ohlcvBundle.size === 0) {

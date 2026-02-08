@@ -1,3 +1,3 @@
 // WebSocket module re-exports
-export { websocketHandler } from './handler';
-export { wsSendAsync, wsSendSync, isWsConnected, wsSendRaw } from './send-utils';
+export { websocketHandler } from './handler.js';
+export { wsSendAsync, wsSendSync, isWsConnected, wsSendRaw } from './send-utils.js';

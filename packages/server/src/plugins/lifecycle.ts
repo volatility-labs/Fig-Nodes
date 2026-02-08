@@ -2,9 +2,9 @@
 import type { FastifyPluginAsync } from 'fastify';
 import fp from 'fastify-plugin';
 import type { NodeRegistry } from '@fig-node/core';
-import { ExecutionQueue } from '../queue/execution-queue';
-import { executionWorker } from '../queue/worker';
-import { ConnectionRegistry } from '../session/connection-registry';
+import { ExecutionQueue } from '../queue/execution-queue.js';
+import { executionWorker } from '../queue/worker.js';
+import { ConnectionRegistry } from '../session/connection-registry.js';
 
 declare module 'fastify' {
   interface FastifyInstance {
