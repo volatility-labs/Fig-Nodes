@@ -15,7 +15,11 @@ export {
   isRegisteredType,
   getRegisteredTypes,
   port,
+  execPort,
 } from './type-registry.js';
+
+// Port helpers
+export { EXEC_SOCKET_TYPE, isExecPort } from './ports.js';
 
 // Graph types
 export {

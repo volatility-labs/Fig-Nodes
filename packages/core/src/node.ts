@@ -101,7 +101,7 @@ export abstract class Node extends ClassicPreset.Node {
     for (const [k, v] of Object.entries(flat)) {
       merged[k] = v;
     }
-    return this.execute(merged);
+    return this._processInputs(merged);
   }
 
   get category(): NodeCategory {
@@ -203,7 +203,11 @@ export abstract class Node extends ClassicPreset.Node {
     return this._isStopped;
   }
 
-  async execute(inputs: Record<string, unknown>): Promise<Record<string, unknown>> {
+  /**
+   * Internal data-processing pipeline called by `data()`.
+   * Validates inputs, emits progress, delegates to `run()`.
+   */
+  private async _processInputs(inputs: Record<string, unknown>): Promise<Record<string, unknown>> {
     this.validateInputs(inputs);
     this.emitProgress(ProgressState.START, 0.0, '');
 
@@ -220,6 +224,32 @@ export abstract class Node extends ClassicPreset.Node {
       );
       throw new NodeExecutionError(this.nodeId, 'Execution failed', error);
     }
+  }
+
+  /**
+   * ControlFlowEngine-compatible entry point.
+   * Pure dataflow nodes don't participate in control flow.
+   * Override in subclass to handle exec-port triggers.
+   */
+  execute(_input: string, _forward: (output: string) => void): void {
+    // No-op default — subclasses with exec ports should override.
+  }
+
+  /**
+   * Utility for control-flow nodes that need upstream dataflow values.
+   * Retrieves the DataflowEngine from graphContext and fetches the
+   * requested input values for this node.
+   */
+  protected async fetchInput(key: string): Promise<unknown> {
+    const dfEngine = this.graphContext.__dataflowEngine__ as
+      | { fetchInputs: (id: string) => Promise<Record<string, unknown[]>> }
+      | undefined;
+    if (!dfEngine) {
+      throw new Error('No DataflowEngine available in graphContext');
+    }
+    const inputs = await dfEngine.fetchInputs(this.id);
+    const vals = inputs[key];
+    return Array.isArray(vals) && vals.length === 1 ? vals[0] : vals;
   }
 
   protected abstract run(inputs: Record<string, unknown>): Promise<Record<string, unknown>>;

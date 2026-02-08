@@ -25,5 +25,11 @@ export interface PortSpec {
   optional?: boolean;
 }
 
+export const EXEC_SOCKET_TYPE = 'exec';
+
+export function isExecPort(spec: PortSpec): boolean {
+  return spec.type === EXEC_SOCKET_TYPE;
+}
+
 export type NodeInputs = Record<string, PortSpec>;
 export type NodeOutputs = Record<string, PortSpec>;

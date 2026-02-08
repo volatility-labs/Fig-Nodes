@@ -18,14 +18,19 @@
   "type": "module",
   "dependencies": {
     "@fig-node/core": "*",
+    "elkjs": "^0.11.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "rete": "^2.0.3",
     "rete-area-plugin": "^2.0.3",
+    "rete-auto-arrange-plugin": "^2.0.2",
     "rete-connection-plugin": "^2.0.2",
+    "rete-context-menu-plugin": "^2.0.6",
+    "rete-history-plugin": "^2.1.1",
     "rete-minimap-plugin": "^2.0.1",
     "rete-react-plugin": "^2.0.5",
     "rete-render-utils": "^2.0.2",
+    "styled-components": "^6.3.9",
     "zustand": "^5.0.11"
   },
   "devDependencies": {

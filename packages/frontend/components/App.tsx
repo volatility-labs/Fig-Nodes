@@ -3,6 +3,7 @@
 
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { ReteEditor } from './editor/ReteEditor';
+import { undo, redo, autoArrange } from './editor/editor-actions';
 import type { NodeMetadataMap } from '../types/nodes';
 import { useGraphStore } from '../stores/graphStore';
 import { setupWebSocket, stopExecution } from '../services/WebSocketClient';
@@ -133,6 +134,9 @@ export function App() {
               {value}
             </span>
           ))}
+          <button className="fig-btn" onClick={undo} title="Undo (Ctrl+Z)">Undo</button>
+          <button className="fig-btn" onClick={redo} title="Redo (Ctrl+Shift+Z)">Redo</button>
+          <button className="fig-btn" onClick={autoArrange} title="Auto-layout nodes">Layout</button>
           {!isExecuting && (
             <button className="fig-btn fig-btn-execute" onClick={handleExecute}>
               Execute

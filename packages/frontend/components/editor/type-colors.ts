@@ -6,6 +6,7 @@ import type { PortSpec } from '@fig-node/core';
 
 const overrides: Record<string, string> = {
   assetsymbol: '#FF6D00',
+  exec: '#FFFFFF',
 };
 
 function hashString(str: string): number {

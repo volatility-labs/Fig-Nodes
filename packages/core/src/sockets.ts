@@ -27,6 +27,7 @@ export function getSocketKey(portOrStr: PortSpec | string): string {
  * Socket-level compatibility rule.
  */
 export function areSocketKeysCompatible(sourceKey: string, targetKey: string): boolean {
+  if (sourceKey === 'exec' || targetKey === 'exec') return sourceKey === targetKey;
   return sourceKey === 'any' || targetKey === 'any' || sourceKey === targetKey;
 }
 

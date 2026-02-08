@@ -20,8 +20,6 @@ import type { NodeMetadataMap } from '../../types/nodes';
 export class FigReteNode extends ClassicPreset.Node {
   nodeType: string;
   params: Record<string, unknown>;
-  width = 200;
-  height = 150;
 
   constructor(id: string, nodeType: string, label: string, params: Record<string, unknown> = {}) {
     super(label);

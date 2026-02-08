@@ -9,7 +9,7 @@ import { useGraphStore } from '../../stores/graphStore';
 import type { NodeMetadataMap } from '../../types/nodes';
 import { BodyWidget } from '../widgets/BodyWidget';
 import { NodeDisplay } from '../displays/NodeDisplay';
-import { markDirty } from './ReteEditor';
+import { markDirty } from './editor-actions';
 
 // Shared metadata reference — set by the editor on init
 let _nodeMetadata: NodeMetadataMap = {};
@@ -122,8 +122,9 @@ export function ReteNodeComponent({ data: node, emit }: ReteNodeProps) {
       <div className="fig-node-inputs">
         {inputPorts.map((input) => {
           const socket = node.inputs[input.name];
+          const isExec = getSocketKey(input.spec) === 'exec';
           return (
-            <div key={input.name} className="fig-node-port fig-node-input-port">
+            <div key={input.name} className={`fig-node-port fig-node-input-port${isExec ? ' fig-exec-port' : ''}`}>
               {socket && (
                 <Presets.classic.RefSocket
                   name="input-socket"
@@ -136,9 +137,11 @@ export function ReteNodeComponent({ data: node, emit }: ReteNodeProps) {
                 />
               )}
               <span className="fig-node-port-label">{formatPortLabel(input.name)}</span>
-              <span className="fig-node-port-type" title={`Socket: ${getSocketKey(input.spec)}`}>
-                {getSocketKey(input.spec)}
-              </span>
+              {!isExec && (
+                <span className="fig-node-port-type" title={`Socket: ${getSocketKey(input.spec)}`}>
+                  {getSocketKey(input.spec)}
+                </span>
+              )}
             </div>
           );
         })}
@@ -162,11 +165,14 @@ export function ReteNodeComponent({ data: node, emit }: ReteNodeProps) {
       <div className="fig-node-outputs">
         {outputPorts.map((output) => {
           const socket = node.outputs[output.name];
+          const isExec = getSocketKey(output.spec) === 'exec';
           return (
-            <div key={output.name} className="fig-node-port fig-node-output-port">
-              <span className="fig-node-port-type" title={`Socket: ${getSocketKey(output.spec)}`}>
-                {getSocketKey(output.spec)}
-              </span>
+            <div key={output.name} className={`fig-node-port fig-node-output-port${isExec ? ' fig-exec-port' : ''}`}>
+              {!isExec && (
+                <span className="fig-node-port-type" title={`Socket: ${getSocketKey(output.spec)}`}>
+                  {getSocketKey(output.spec)}
+                </span>
+              )}
               <span className="fig-node-port-label">{formatPortLabel(output.name)}</span>
               {socket && (
                 <Presets.classic.RefSocket

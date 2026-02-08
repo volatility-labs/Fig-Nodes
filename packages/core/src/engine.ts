@@ -1,8 +1,8 @@
 // src/engine.ts
-// Rete-based graph execution engine using NodeEditor + DataflowEngine
+// Rete-based graph execution engine using NodeEditor + DataflowEngine + ControlFlowEngine
 
 import { NodeEditor, ClassicPreset } from 'rete';
-import { DataflowEngine } from 'rete-engine';
+import { DataflowEngine, ControlFlowEngine } from 'rete-engine';
 
 import {
   NodeCategory,
@@ -16,6 +16,7 @@ import {
 import { type Graph, parseEdgeEndpoint } from './graph.js';
 import { Node, type NodeDefinition } from './node.js';
 import { getSocketKey, areSocketKeysCompatible } from './sockets.js';
+import { isExecPort } from './ports.js';
 
 // ============ Rete Scheme Types ============
 
@@ -32,19 +33,49 @@ type StringExecutionResults = Record<string, Record<string, unknown>>;
 // ============ Graph Executor ============
 
 /**
- * Executor that uses Rete's NodeEditor (headless) + DataflowEngine.
+ * Executor that uses Rete's NodeEditor (headless) + DataflowEngine + ControlFlowEngine.
+ * Pure-dataflow graphs (no exec connections) execute via the existing sink-node logic.
+ * Hybrid graphs (exec connections present) use ControlFlowEngine for sequencing,
+ * with DataflowEngine for data resolution.
  */
 export class GraphExecutor {
   private editor: NodeEditor<Schemes>;
-  private engine: DataflowEngine<Schemes>;
+  private dataflowEngine: DataflowEngine<Schemes>;
+  private controlFlowEngine: ControlFlowEngine<Schemes>;
   private nodes: Map<string, Node> = new Map();
   private _resultCallback: ResultCallback | null = null;
   private _stopped = false;
+  private _hasExecConnections = false;
 
   constructor(doc: Graph, nodeRegistry: NodeRegistry, credentials?: CredentialProvider) {
     this.editor = new NodeEditor<Schemes>();
-    this.engine = new DataflowEngine<Schemes>();
-    this.editor.use(this.engine);
+
+    // DataflowEngine: filter out exec ports so they don't participate in data routing
+    this.dataflowEngine = new DataflowEngine<Schemes>((node) => {
+      const def = (node.constructor as typeof Node).definition as NodeDefinition;
+      const inputs = Object.entries(def.inputs ?? {})
+        .filter(([, spec]) => !isExecPort(spec))
+        .map(([name]) => name);
+      const outputs = Object.entries(def.outputs ?? {})
+        .filter(([, spec]) => !isExecPort(spec))
+        .map(([name]) => name);
+      return { inputs: () => inputs, outputs: () => outputs };
+    });
+
+    // ControlFlowEngine: only consider exec ports
+    this.controlFlowEngine = new ControlFlowEngine<Schemes>((node) => {
+      const def = (node.constructor as typeof Node).definition as NodeDefinition;
+      const inputs = Object.entries(def.inputs ?? {})
+        .filter(([, spec]) => isExecPort(spec))
+        .map(([name]) => name);
+      const outputs = Object.entries(def.outputs ?? {})
+        .filter(([, spec]) => isExecPort(spec))
+        .map(([name]) => name);
+      return { inputs: () => inputs, outputs: () => outputs };
+    });
+
+    this.editor.use(this.dataflowEngine);
+    this.editor.use(this.controlFlowEngine);
 
     this.buildFromDocument(doc, nodeRegistry, credentials);
     this.validateCredentials(credentials);
@@ -60,6 +91,7 @@ export class GraphExecutor {
         graph_id: doc.id,
         document: doc,
         current_node_id: nodeId,
+        __dataflowEngine__: this.dataflowEngine,
       };
       if (credentials) {
         ctx[CREDENTIAL_PROVIDER_KEY] = credentials;
@@ -123,6 +155,11 @@ export class GraphExecutor {
         continue;
       }
 
+      // Track whether the graph has any exec connections
+      if (sourceKey === 'exec') {
+        this._hasExecConnections = true;
+      }
+
       const conn = new ClassicPreset.Connection(sourceNode, from.portName, targetNode, to.portName) as Connection;
       this.editor.addConnection(conn);
     }
@@ -164,6 +201,17 @@ export class GraphExecutor {
     const results: StringExecutionResults = {};
     this._stopped = false;
 
+    if (this._hasExecConnections) {
+      return this.executeHybrid(results);
+    }
+
+    return this.executeDataflow(results);
+  }
+
+  /**
+   * Pure dataflow execution — existing sink-node logic, unchanged behavior.
+   */
+  private async executeDataflow(results: StringExecutionResults): Promise<StringExecutionResults> {
     // Find sink nodes (no outgoing connections)
     const connections = this.editor.getConnections();
     const nodesWithOutgoing = new Set<string>();
@@ -187,7 +235,7 @@ export class GraphExecutor {
 
       const docId = node.nodeId;
       try {
-        const output = await this.engine.fetch(node.id);
+        const output = await this.dataflowEngine.fetch(node.id);
         results[docId] = output;
 
         // Fire result callback for IO-category nodes
@@ -210,7 +258,7 @@ export class GraphExecutor {
     for (const [docId, node] of this.nodes) {
       if (!(docId in results)) {
         try {
-          const cached = await this.engine.fetch(node.id);
+          const cached = await this.dataflowEngine.fetch(node.id);
           results[docId] = cached;
 
           if (node.category === NodeCategory.IO && this._resultCallback) {
@@ -219,6 +267,60 @@ export class GraphExecutor {
         } catch {
           // Node may not have been reached — skip
         }
+      }
+    }
+
+    return results;
+  }
+
+  /**
+   * Hybrid execution — find start nodes (exec outputs, no incoming exec),
+   * kick off ControlFlowEngine, then collect DataflowEngine results.
+   */
+  private async executeHybrid(results: StringExecutionResults): Promise<StringExecutionResults> {
+    const connections = this.editor.getConnections();
+
+    // Nodes that receive incoming exec connections
+    const nodesWithIncomingExec = new Set<string>();
+    for (const conn of connections) {
+      const sourceNode = this.nodes.get(conn.source);
+      if (sourceNode) {
+        const def = (sourceNode.constructor as typeof Node).definition as NodeDefinition;
+        const outputSpec = def.outputs?.[conn.sourceOutput as string];
+        if (outputSpec && isExecPort(outputSpec)) {
+          nodesWithIncomingExec.add(conn.target);
+        }
+      }
+    }
+
+    // Start nodes: have exec outputs but no incoming exec connections
+    const startNodes: Node[] = [];
+    for (const node of this.nodes.values()) {
+      const def = (node.constructor as typeof Node).definition as NodeDefinition;
+      const hasExecOutput = Object.values(def.outputs ?? {}).some(isExecPort);
+      if (hasExecOutput && !nodesWithIncomingExec.has(node.id)) {
+        startNodes.push(node);
+      }
+    }
+
+    // Execute control flow from each start node
+    for (const node of startNodes) {
+      if (this._stopped) break;
+      this.controlFlowEngine.execute(node.id);
+    }
+
+    // Collect dataflow results from all nodes
+    for (const [docId, node] of this.nodes) {
+      if (this._stopped) break;
+      try {
+        const output = await this.dataflowEngine.fetch(node.id);
+        results[docId] = output;
+
+        if (node.category === NodeCategory.IO && this._resultCallback) {
+          this._resultCallback(docId, output);
+        }
+      } catch {
+        // Node may not have been reached — skip
       }
     }
 
@@ -234,7 +336,7 @@ export class GraphExecutor {
       node.forceStop();
     }
 
-    this.engine.reset();
+    this.dataflowEngine.reset();
   }
 
   // ============ Callbacks ============

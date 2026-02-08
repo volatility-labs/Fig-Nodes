@@ -1,31 +1,37 @@
 // components/editor/ReteEditor.tsx
 // Main Rete.js v2 editor component — Rete is the single source of truth for graph structure.
+// Non-component exports (undo, redo, autoArrange, dirty flag) live in editor-actions.ts
+// to keep this file Fast Refresh–compatible.
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ClassicPreset, NodeEditor } from 'rete';
 import { AreaPlugin, AreaExtensions } from 'rete-area-plugin';
 import { ConnectionPlugin, Presets as ConnectionPresets } from 'rete-connection-plugin';
 import { ReactPlugin, Presets as ReactPresets } from 'rete-react-plugin';
 import { MinimapPlugin } from 'rete-minimap-plugin';
+import { HistoryPlugin, Presets as HistoryPresets } from 'rete-history-plugin';
+import { AutoArrangePlugin, Presets as ArrangePresets } from 'rete-auto-arrange-plugin';
+import { ContextMenuPlugin, Presets as ContextMenuPresets } from 'rete-context-menu-plugin';
 import { getDOMSocketPosition } from 'rete-render-utils';
-import { getSocketKey, areSocketKeysCompatible } from '@fig-node/core';
+import { getSocketKey, areSocketKeysCompatible, getOrCreateSocket } from '@fig-node/core';
 
 import type { NodeMetadataMap } from '../../types/nodes';
 import { typeColor } from './type-colors';
 import {
   ReteAdapter,
+  FigReteNode,
   type FrontendSchemes,
   type AreaExtra,
 } from './rete-adapter';
 import { setEditorAdapter } from './editor-ref';
+import { editorRefs, markDirty, undo, redo } from './editor-actions';
 import { restoreFromAutosave } from '../../services/FileManager';
 import { ReteNodeComponent, setNodeMetadata } from './ReteNode';
-import { ContextMenu } from '../ContextMenu';
 import { NodePalette } from '../NodePalette';
 import { addNodeToEditor } from './add-node';
 
-// ============ Module-level refs for render components ============
+// ============ Module-level refs for render components (connection coloring) ============
 
 let _editorRef: NodeEditor<FrontendSchemes> | null = null;
 let _metaRef: NodeMetadataMap = {};
@@ -50,6 +56,9 @@ function FigConnection(props: { data: any; styles?: () => any }) {
   if (!path) return null;
 
   let color = '#555';
+  let strokeWidth = 2;
+  let dashArray: string | undefined;
+
   if (_editorRef && props.data.sourceOutput) {
     try {
       const sourceNode = _editorRef.getNode(props.data.source);
@@ -58,7 +67,14 @@ function FigConnection(props: { data: any; styles?: () => any }) {
           if (meta) {
             const outputSpec = meta.outputs[props.data.sourceOutput];
             if (outputSpec) {
-              color = typeColor(outputSpec);
+              const key = getSocketKey(outputSpec);
+              if (key === 'exec') {
+                color = '#FFFFFF';
+                strokeWidth = 3;
+                dashArray = '8 4';
+              } else {
+                color = typeColor(outputSpec);
+              }
             }
           }
         }
@@ -80,27 +96,12 @@ function FigConnection(props: { data: any; styles?: () => any }) {
         d={path}
         fill="none"
         stroke={color}
-        strokeWidth={2}
+        strokeWidth={strokeWidth}
+        strokeDasharray={dashArray}
         style={{ pointerEvents: 'auto' }}
       />
     </svg>
   );
-}
-
-// ============ Dirty flag for autosave ============
-
-let _dirty = false;
-
-export function isDirty(): boolean {
-  return _dirty;
-}
-
-export function clearDirty(): void {
-  _dirty = false;
-}
-
-export function markDirty(): void {
-  _dirty = true;
 }
 
 // ============ Editor Props ============
@@ -113,14 +114,6 @@ export function ReteEditor({ nodeMetadata }: ReteEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const adapterRef = useRef<ReteAdapter | null>(null);
   const areaRef = useRef<AreaPlugin<FrontendSchemes, AreaExtra> | null>(null);
-
-  // Context menu state
-  const [contextMenu, setContextMenu] = useState<{
-    x: number;
-    y: number;
-    nodeId?: string;
-    canvasPosition: { x: number; y: number };
-  } | null>(null);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -135,12 +128,20 @@ export function ReteEditor({ nodeMetadata }: ReteEditorProps) {
     const connection = new ConnectionPlugin<FrontendSchemes, AreaExtra>();
     const reactPlugin = new ReactPlugin<FrontendSchemes, AreaExtra>({ createRoot } as any);
     const minimap = new MinimapPlugin<FrontendSchemes>();
+    const history = new HistoryPlugin<FrontendSchemes>();
+    const arrange = new AutoArrangePlugin<FrontendSchemes>();
 
     areaRef.current = area;
 
-    // Set module-level refs for render components
+    // Set module-level refs for render components (connection coloring)
     _editorRef = editor;
     _metaRef = nodeMetadata;
+
+    // Set shared refs for editor-actions (undo/redo/arrange/dirty)
+    editorRefs.editor = editor;
+    editorRefs.area = area;
+    editorRefs.history = history;
+    editorRefs.arrange = arrange;
 
     // Custom socket position watcher — disable the default 12px horizontal
     // offset so connection endpoints land at the socket centre (our CSS
@@ -165,8 +166,46 @@ export function ReteEditor({ nodeMetadata }: ReteEditorProps) {
       },
     }) as any);
 
+    // Context menu rendering
+    reactPlugin.addPreset(ReactPresets.contextMenu.setup() as any);
+
     // Connection preset
     connection.addPreset(ConnectionPresets.classic.setup() as any);
+
+    // History preset
+    history.addPreset(HistoryPresets.classic.setup());
+
+    // Auto-arrange preset
+    arrange.addPreset(ArrangePresets.classic.setup());
+
+    // Context menu plugin — build node factories from metadata
+    const nodeFactories: [string, () => FigReteNode][] = Object.entries(nodeMetadata).map(
+      ([typeName, meta]) => [
+        typeName,
+        () => {
+          const id = `${typeName.toLowerCase()}_${Date.now()}`;
+          const node = new FigReteNode(
+            id,
+            typeName,
+            typeName,
+            meta.defaultParams ? { ...meta.defaultParams } : {},
+          );
+          // Wire sockets from metadata
+          for (const [name, spec] of Object.entries(meta.inputs)) {
+            const socket = getOrCreateSocket(spec);
+            node.addInput(name, new ClassicPreset.Input(socket, name, (spec as any).multi ?? false));
+          }
+          for (const [name, spec] of Object.entries(meta.outputs)) {
+            const socket = getOrCreateSocket(spec);
+            node.addOutput(name, new ClassicPreset.Output(socket, name));
+          }
+          return node;
+        },
+      ],
+    );
+    const contextMenu = new ContextMenuPlugin<FrontendSchemes>({
+      items: ContextMenuPresets.classic.setup(nodeFactories),
+    });
 
     // Create adapter
     const adapter = new ReteAdapter(editor, nodeMetadata);
@@ -229,6 +268,9 @@ export function ReteEditor({ nodeMetadata }: ReteEditorProps) {
     area.use(connection as any);
     area.use(reactPlugin as any);
     area.use(minimap as any);
+    area.use(history as any);
+    area.use(arrange as any);
+    area.use(contextMenu as any);
 
     // Select + ordering extensions
     AreaExtensions.selectableNodes(area as any, AreaExtensions.selector(), {
@@ -242,35 +284,14 @@ export function ReteEditor({ nodeMetadata }: ReteEditorProps) {
     // ============ Cleanup ============
     return () => {
       _editorRef = null;
+      editorRefs.editor = null;
+      editorRefs.area = null;
+      editorRefs.history = null;
+      editorRefs.arrange = null;
       setEditorAdapter(null as any);
       area.destroy();
     };
   }, [nodeMetadata]);
-
-  // ============ Context menu handler ============
-  const handleContextMenu = useCallback(
-    (event: React.MouseEvent) => {
-      event.preventDefault();
-
-      const area = areaRef.current;
-      if (!area) return;
-
-      // Convert screen coordinates to canvas coordinates
-      const transform = area.area.transform;
-      const rect = containerRef.current?.getBoundingClientRect();
-      if (!rect) return;
-
-      const canvasX = (event.clientX - rect.left - transform.x) / transform.k;
-      const canvasY = (event.clientY - rect.top - transform.y) / transform.k;
-
-      setContextMenu({
-        x: event.clientX,
-        y: event.clientY,
-        canvasPosition: { x: canvasX, y: canvasY },
-      });
-    },
-    [],
-  );
 
   // ============ Drag-and-drop from palette ============
   const handleDragOver = useCallback((event: React.DragEvent) => {
@@ -301,17 +322,31 @@ export function ReteEditor({ nodeMetadata }: ReteEditorProps) {
     [nodeMetadata],
   );
 
-  // ============ Keyboard delete ============
+  // ============ Keyboard shortcuts ============
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Delete' || e.key === 'Backspace') {
-        // Don't interfere with inputs
-        if ((e.target as HTMLElement).tagName === 'INPUT' ||
-            (e.target as HTMLElement).tagName === 'TEXTAREA' ||
-            (e.target as HTMLElement).tagName === 'SELECT') {
-          return;
-        }
+      // Don't interfere with inputs
+      if ((e.target as HTMLElement).tagName === 'INPUT' ||
+          (e.target as HTMLElement).tagName === 'TEXTAREA' ||
+          (e.target as HTMLElement).tagName === 'SELECT') {
+        return;
+      }
 
+      // Undo: Ctrl+Z (without Shift)
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        undo();
+        return;
+      }
+
+      // Redo: Ctrl+Shift+Z or Ctrl+Y
+      if ((e.ctrlKey || e.metaKey) && ((e.key === 'z' && e.shiftKey) || e.key === 'y')) {
+        e.preventDefault();
+        redo();
+        return;
+      }
+
+      if (e.key === 'Delete' || e.key === 'Backspace') {
         const adapter = adapterRef.current;
         const editor = adapter?.editor;
         if (!editor) return;
@@ -335,21 +370,9 @@ export function ReteEditor({ nodeMetadata }: ReteEditorProps) {
       <div
         className="fig-flow-container"
         ref={containerRef}
-        onContextMenu={handleContextMenu}
         onDragOver={handleDragOver}
         onDrop={handleDrop}
       />
-
-      {contextMenu && (
-        <ContextMenu
-          x={contextMenu.x}
-          y={contextMenu.y}
-          nodeId={contextMenu.nodeId}
-          canvasPosition={contextMenu.canvasPosition}
-          nodeMetadata={nodeMetadata}
-          onClose={() => setContextMenu(null)}
-        />
-      )}
     </div>
   );
 }

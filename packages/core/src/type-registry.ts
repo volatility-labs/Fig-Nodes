@@ -4,7 +4,7 @@ import type { PortSpec } from './ports.js';
 // ============ Type Registry ============
 
 const _registry = new Set<string>([
-  'any', 'string', 'number', 'boolean', 'object', 'array',
+  'any', 'string', 'number', 'boolean', 'object', 'array', 'exec',
   // Generic aliases (no domain deps)
   'Exchange', 'Timestamp', 'Score',
 ]);
@@ -44,4 +44,9 @@ export function port(type: string, opts?: { multi?: boolean; optional?: boolean 
   if (opts?.multi) spec.multi = true;
   if (opts?.optional) spec.optional = true;
   return spec;
+}
+
+/** Shorthand factory for exec (control-flow) ports. */
+export function execPort(): PortSpec {
+  return { type: 'exec' };
 }

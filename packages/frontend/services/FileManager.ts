@@ -13,7 +13,7 @@ import { validateGraph } from '@fig-node/core';
 import type { Graph } from '@fig-node/core';
 import { useGraphStore } from '../stores/graphStore';
 import { getEditorAdapter } from '../components/editor/editor-ref';
-import { isDirty, clearDirty } from '../components/editor/ReteEditor';
+import { isDirty, clearDirty } from '../components/editor/editor-actions';
 import type { NodeMetadataMap } from '../types/nodes';
 
 let lastSavedJson = '';
