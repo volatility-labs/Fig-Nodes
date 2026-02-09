@@ -4,6 +4,7 @@
 
 import { NodeEditor, ClassicPreset } from 'rete';
 import { AreaPlugin } from 'rete-area-plugin';
+import type { MinimapExtra } from 'rete-minimap-plugin';
 import type { Graph, GraphEdge, GraphNode } from '@sosa/core';
 import { parseEdgeEndpoint, getOrCreateSocket } from '@sosa/core';
 import type { NodeMetadataMap } from '../../types/nodes';
@@ -20,12 +21,16 @@ import type { NodeMetadataMap } from '../../types/nodes';
 export class FigReteNode extends ClassicPreset.Node {
   nodeType: string;
   params: Record<string, unknown>;
+  declare width: number;
+  declare height: number;
 
   constructor(id: string, nodeType: string, label: string, params: Record<string, unknown> = {}) {
     super(label);
     this.id = id;          // Override Rete's auto-UUID with the document ID
     this.nodeType = nodeType;
     this.params = params;
+    this.width = 180;
+    this.height = 100;
   }
 }
 
@@ -38,7 +43,7 @@ export type FrontendSchemes = {
   Connection: Conn;
 };
 
-export type AreaExtra = never;
+export type AreaExtra = MinimapExtra;
 
 // ============ ReteAdapter ============
 

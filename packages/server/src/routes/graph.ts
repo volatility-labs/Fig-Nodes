@@ -38,7 +38,7 @@ export const graphRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     try {
-      const executor = new GraphExecutor(doc, fastify.registry, getCredentialStore());
+      const executor = await GraphExecutor.create(doc, fastify.registry, getCredentialStore());
       const result = await executor.execute();
       return result;
     } catch (error) {

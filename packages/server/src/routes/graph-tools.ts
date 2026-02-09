@@ -219,7 +219,7 @@ export const graphToolRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     try {
-      const executor = new GraphExecutor(
+      const executor = await GraphExecutor.create(
         currentDocument,
         fastify.registry as NodeRegistry,
         getCredentialStore(),

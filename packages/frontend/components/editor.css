@@ -261,6 +261,9 @@ body {
 .fig-flow-container {
   flex: 1;
   position: relative;
+  background-color: #0f1419;
+  background-image: radial-gradient(circle, #2a3040 1px, transparent 1px);
+  background-size: 24px 24px;
 }
 
 /* ============ Node ============ */
@@ -699,10 +702,7 @@ body {
 
 /* ============ Rete.js Overrides ============ */
 
-/* Rete area background */
-.rete-area {
-  background: #0f1419 !important;
-}
+/* Rete area background (styles merged into .fig-flow-container above) */
 
 /* Custom socket visual */
 .fig-socket {
@@ -751,23 +751,23 @@ body {
   fill: none;
 }
 
-/* Rete minimap */
-.rete-minimap {
-  position: absolute;
-  bottom: 12px;
-  right: 12px;
-  background: #1a1a1a;
-  border: 1px solid #333;
-  border-radius: 4px;
-  overflow: hidden;
+/* Rete minimap (styled-components — must use data-testid + !important) */
+[data-testid="minimap"] {
+  background: #1a1e26 !important;
+  border: 1px solid #2a3040 !important;
+  border-radius: 6px !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4) !important;
 }
 
-.rete-minimap-viewport {
-  border: 1px solid #4a9eff;
+[data-testid="minimap-viewport"] {
+  border: 1px solid #4a9eff !important;
+  background: rgba(74, 158, 255, 0.1) !important;
 }
 
-.rete-minimap-node {
-  background: #333;
+[data-testid="minimap-node"] {
+  background: #3a4050 !important;
+  border: 1px solid #4a5568 !important;
+  border-radius: 2px !important;
 }
 
 /* ============ Rete Context Menu (dark theme) ============ */

@@ -9,6 +9,7 @@ import { ClassicPreset, NodeEditor } from 'rete';
 import { AreaPlugin, AreaExtensions } from 'rete-area-plugin';
 import { ConnectionPlugin, Presets as ConnectionPresets } from 'rete-connection-plugin';
 import { ReactPlugin, Presets as ReactPresets } from 'rete-react-plugin';
+import styled from 'styled-components';
 import { MinimapPlugin } from 'rete-minimap-plugin';
 import { HistoryPlugin, Presets as HistoryPresets } from 'rete-history-plugin';
 import { AutoArrangePlugin, Presets as ArrangePresets } from 'rete-auto-arrange-plugin';
@@ -35,6 +36,32 @@ import { addNodeToEditor } from './add-node';
 
 let _editorRef: NodeEditor<FrontendSchemes> | null = null;
 let _metaRef: NodeMetadataMap = {};
+
+// ============ Context Menu Item (filters non-standard DOM props from rete-react-plugin) ============
+
+const ContextMenuItem = styled.div.withConfig({
+  shouldForwardProp: (prop) => prop !== 'hasSubitems',
+})`
+  color: #fff;
+  padding: 4px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+  background-color: rgba(110, 136, 255, 0.8);
+  cursor: pointer;
+  width: 100%;
+  position: relative;
+  &:first-child { border-top-left-radius: 5px; border-top-right-radius: 5px; }
+  &:last-child { border-bottom-left-radius: 5px; border-bottom-right-radius: 5px; }
+  &:hover { background-color: rgba(130, 153, 255, 0.8); }
+  ${(props: any) => props.hasSubitems && `
+    &:after {
+      content: '\u25BA';
+      position: absolute;
+      opacity: 0.6;
+      right: 5px;
+      top: 5px;
+    }
+  `}
+`;
 
 // ============ Custom Socket Visual ============
 
@@ -127,7 +154,7 @@ export function ReteEditor({ nodeMetadata }: ReteEditorProps) {
     const area = new AreaPlugin<FrontendSchemes, AreaExtra>(containerRef.current);
     const connection = new ConnectionPlugin<FrontendSchemes, AreaExtra>();
     const reactPlugin = new ReactPlugin<FrontendSchemes, AreaExtra>({ createRoot } as any);
-    const minimap = new MinimapPlugin<FrontendSchemes>();
+    const minimap = new MinimapPlugin<FrontendSchemes>({ minDistance: 800 });
     const history = new HistoryPlugin<FrontendSchemes>();
     const arrange = new AutoArrangePlugin<FrontendSchemes>();
 
@@ -166,8 +193,15 @@ export function ReteEditor({ nodeMetadata }: ReteEditorProps) {
       },
     }) as any);
 
-    // Context menu rendering
-    reactPlugin.addPreset(ReactPresets.contextMenu.setup() as any);
+    // Minimap rendering
+    reactPlugin.addPreset(ReactPresets.minimap.setup({ size: 200 }) as any);
+
+    // Context menu rendering (custom item filters non-standard DOM props)
+    reactPlugin.addPreset(ReactPresets.contextMenu.setup({
+      customize: {
+        item() { return ContextMenuItem as any; },
+      },
+    }) as any);
 
     // Connection preset
     connection.addPreset(ConnectionPresets.classic.setup() as any);
@@ -259,6 +293,30 @@ export function ReteEditor({ nodeMetadata }: ReteEditorProps) {
       if (adapter.loading) return ctx;
       if (ctx.type === 'nodetranslated') {
         markDirty();
+      }
+      return ctx;
+    });
+
+    // ============ Sync node dimensions for minimap ============
+    area.addPipe((ctx) => {
+      if (ctx.type === 'render' && ctx.data.type === 'node') {
+        // After a node renders, sync its actual DOM size to node.width/height
+        // so the minimap reflects real dimensions.
+        // clientWidth is already the unscaled layout width (CSS transforms
+        // on the parent content holder don't affect it).
+        const nodeId = ctx.data.payload.id;
+        requestAnimationFrame(() => {
+          const view = area.nodeViews.get(nodeId);
+          const node = editor.getNode(nodeId);
+          if (view?.element && node) {
+            const w = view.element.clientWidth;
+            const h = view.element.clientHeight;
+            if (w > 0 && h > 0) {
+              node.width = w;
+              node.height = h;
+            }
+          }
+        });
       }
       return ctx;
     });

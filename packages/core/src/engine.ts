@@ -47,7 +47,7 @@ export class GraphExecutor {
   private _stopped = false;
   private _hasExecConnections = false;
 
-  constructor(doc: Graph, nodeRegistry: NodeRegistry, credentials?: CredentialProvider) {
+  private constructor() {
     this.editor = new NodeEditor<Schemes>();
 
     // DataflowEngine: filter out exec ports so they don't participate in data routing
@@ -76,16 +76,20 @@ export class GraphExecutor {
 
     this.editor.use(this.dataflowEngine);
     this.editor.use(this.controlFlowEngine);
-
-    this.buildFromDocument(doc, nodeRegistry, credentials);
-    this.validateCredentials(credentials);
   }
 
-  private buildFromDocument(
+  static async create(doc: Graph, nodeRegistry: NodeRegistry, credentials?: CredentialProvider): Promise<GraphExecutor> {
+    const executor = new GraphExecutor();
+    await executor.buildFromDocument(doc, nodeRegistry, credentials);
+    executor.validateCredentials(credentials);
+    return executor;
+  }
+
+  private async buildFromDocument(
     doc: Graph,
     nodeRegistry: NodeRegistry,
     credentials?: CredentialProvider,
-  ): void {
+  ): Promise<void> {
     const graphContext = (nodeId: string): Record<string, unknown> => {
       const ctx: Record<string, unknown> = {
         graph_id: doc.id,
@@ -114,7 +118,7 @@ export class GraphExecutor {
       ) => Node;
 
       const node = new NodeClass(nodeId, nodeData.params ?? {}, graphContext(nodeId));
-      this.editor.addNode(node);
+      await this.editor.addNode(node);
       this.nodes.set(nodeId, node);
     }
 
@@ -161,7 +165,7 @@ export class GraphExecutor {
       }
 
       const conn = new ClassicPreset.Connection(sourceNode, from.portName, targetNode, to.portName) as Connection;
-      this.editor.addConnection(conn);
+      await this.editor.addConnection(conn);
     }
   }
 

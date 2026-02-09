@@ -158,7 +158,7 @@ export async function executionWorker(
       const emittedNodeIds = new Set<string>();
 
       // Create executor from Graph directly
-      const executor = new GraphExecutor(job.graphData, nodeRegistry, getCredentialStore());
+      const executor = await GraphExecutor.create(job.graphData, nodeRegistry, getCredentialStore());
 
       // Set up callbacks
       executor.setProgressCallback(createProgressCallback(job));
