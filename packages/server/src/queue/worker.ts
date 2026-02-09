@@ -9,7 +9,6 @@ import {
 } from '@sosa/core';
 import type { ExecutionQueue } from './execution-queue.js';
 import type { ExecutionJob } from '../types/job.js';
-import { JobState } from '../types/job.js';
 import {
   ExecutionState,
   buildStatusMessage,
@@ -20,20 +19,20 @@ import {
 } from '../types/messages.js';
 import { wsSendAsync, wsSendSync, isWsConnected } from '../websocket/send-utils.js';
 import { getCredentialStore } from '../credentials/env-credential-store.js';
+import { ExecutionLogger } from '../logs/execution-logger.js';
 
-const DISCONNECT_POLL_INTERVAL_MS = 500;
 const EXECUTION_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 
 /**
- * Monitor for cancellation or disconnection.
- * Returns the reason: 'user' (cancel), 'disconnect', or 'completed'.
+ * Monitor for cancellation.
+ * Returns the reason: 'user' (cancel) or 'completed'.
  */
 type StringExecutionResults = Record<string, Record<string, unknown>>;
 
 async function monitorCancel(
   job: ExecutionJob,
   executionPromise: Promise<StringExecutionResults>
-): Promise<{ reason: 'user' | 'disconnect' | 'completed'; results?: StringExecutionResults }> {
+): Promise<{ reason: 'user' | 'completed'; results?: StringExecutionResults }> {
   // Create abort promise
   const cancelPromise = new Promise<{ reason: 'user' }>((resolve) => {
     job.cancelController.signal.addEventListener('abort', () => resolve({ reason: 'user' }), {
@@ -41,25 +40,13 @@ async function monitorCancel(
     });
   });
 
-  // Create disconnect polling promise
-  const disconnectPromise = new Promise<{ reason: 'disconnect' }>((resolve) => {
-    const checkDisconnect = () => {
-      if (!isWsConnected(job.websocket)) {
-        resolve({ reason: 'disconnect' });
-      } else if (job.state === JobState.RUNNING) {
-        setTimeout(checkDisconnect, DISCONNECT_POLL_INTERVAL_MS);
-      }
-    };
-    checkDisconnect();
-  });
-
   // Create completion promise
   const completionPromise = executionPromise.then(
     (results) => ({ reason: 'completed' as const, results })
   );
 
-  // Race all three
-  return Promise.race([cancelPromise, disconnectPromise, completionPromise]);
+  // Race cancel and completion
+  return Promise.race([cancelPromise, completionPromise]);
 }
 
 /**
@@ -129,6 +116,7 @@ export async function executionWorker(
 
   while (!queue.isShuttingDown()) {
     let job: ExecutionJob | null = null;
+    let execLogger: ExecutionLogger | null = null;
 
     try {
       // Wait for next job
@@ -140,6 +128,7 @@ export async function executionWorker(
       }
 
       logger.info({ jobId: job.id }, 'Starting job execution');
+      execLogger = new ExecutionLogger(job.id);
 
       // Check if client is still connected
       if (!isWsConnected(job.websocket)) {
@@ -153,6 +142,8 @@ export async function executionWorker(
         job.websocket,
         buildStatusMessage(ExecutionState.RUNNING, 'Execution started', job.id)
       );
+      execLogger.addStatus('RUNNING', 'Execution started', job.id);
+      const activeJob = job;
 
       // Track which nodes have already emitted results (IO nodes)
       const emittedNodeIds = new Set<string>();
@@ -160,9 +151,17 @@ export async function executionWorker(
       // Create executor from Graph directly
       const executor = await GraphExecutor.create(job.graphData, nodeRegistry, getCredentialStore());
 
-      // Set up callbacks
-      executor.setProgressCallback(createProgressCallback(job));
-      executor.setResultCallback(createResultCallback(job, nodeRegistry, emittedNodeIds));
+      // Set up callbacks (also log to execution logger)
+      const progressCb = createProgressCallback(activeJob);
+      executor.setProgressCallback((event: ProgressEvent) => {
+        progressCb(event);
+        execLogger?.addProgress(event, activeJob.id);
+      });
+      const resultCb = createResultCallback(activeJob, nodeRegistry, emittedNodeIds);
+      executor.setResultCallback((nodeId: string, output: Record<string, unknown>) => {
+        resultCb(nodeId, output);
+        execLogger?.addResult(nodeId, output, activeJob.id);
+      });
 
       // Start execution with timeout
       const executionPromise = executor.execute();
@@ -177,6 +176,7 @@ export async function executionWorker(
       if (outcome.reason === 'user') {
         logger.info({ jobId: job.id }, 'Job cancelled by user');
         executor.forceStop('user');
+        execLogger.addStopped('Cancelled by user', job.id);
 
         if (isWsConnected(job.websocket)) {
           await wsSendSync(
@@ -184,10 +184,6 @@ export async function executionWorker(
             buildStoppedMessage('Execution cancelled by user', job.id)
           );
         }
-      } else if (outcome.reason === 'disconnect') {
-        logger.info({ jobId: job.id }, 'Job cancelled due to disconnect');
-        executor.forceStop('disconnect');
-        // No message to send - client is gone
       } else {
         // Execution completed - get results
         const results = outcome.results!;
@@ -216,10 +212,12 @@ export async function executionWorker(
           job.websocket,
           buildStatusMessage(ExecutionState.FINISHED, 'Execution completed', job.id)
         );
+        execLogger.addStatus('FINISHED', 'Execution completed', job.id);
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       logger.error({ jobId: job?.id, error: errorMessage }, 'Job execution error');
+      execLogger?.addError(errorMessage, 'EXECUTION_ERROR', job?.id);
 
       if (job && isWsConnected(job.websocket)) {
         try {
@@ -237,6 +235,7 @@ export async function executionWorker(
       }
     } finally {
       if (job) {
+        execLogger?.flush();
         queue.markDone(job);
         logger.info({ jobId: job.id }, 'Job completed');
       }

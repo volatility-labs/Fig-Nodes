@@ -3,9 +3,15 @@ import { registerWidget, type WidgetProps } from './widget-registry';
 function NumberWidget({ widget, value, onChange }: WidgetProps) {
   const type = widget.type;
   const isInteger = type === 'integer' || type === 'int';
+  const unit = widget.options?.unit as string | undefined;
+  const label = widget.label
+    ? unit
+      ? `${widget.label} (${unit})`
+      : widget.label
+    : undefined;
   return (
     <div className="fig-widget">
-      {widget.label && <label className="fig-widget-label">{widget.label}</label>}
+      {label && <label className="fig-widget-label">{label}</label>}
       <input
         className="fig-widget-number"
         type="number"

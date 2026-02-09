@@ -1,7 +1,7 @@
 // components/editor/ReteNode.tsx
 // Custom React component for Rete node rendering
 
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Presets } from 'rete-react-plugin';
 import { getSocketKey } from '@sosa/core';
 import type { FigReteNode } from './rete-adapter';
@@ -28,6 +28,9 @@ export function ReteNodeComponent({ data: node, emit }: ReteNodeProps) {
   const nodeId = node.id;
   const nodeType = node.nodeType;
   const meta = _nodeMetadata[nodeType];
+  const nodeRef = useRef<HTMLDivElement>(null);
+
+  const [collapsed, setCollapsed] = useState(false);
 
   // Params live on the FigReteNode — use local state for reactivity
   const [params, setParams] = useState<Record<string, unknown>>(node.params);
@@ -39,6 +42,24 @@ export function ReteNodeComponent({ data: node, emit }: ReteNodeProps) {
   const executing = status?.executing ?? false;
   const progress = status?.progress;
   const error = status?.error;
+
+  const handleHeaderDoubleClick = useCallback(() => {
+    setCollapsed((prev) => !prev);
+  }, []);
+
+  // Sync node dimensions after collapse toggle so minimap stays accurate
+  useEffect(() => {
+    requestAnimationFrame(() => {
+      if (nodeRef.current) {
+        const w = nodeRef.current.clientWidth;
+        const h = nodeRef.current.clientHeight;
+        if (w > 0 && h > 0) {
+          node.width = w;
+          node.height = h;
+        }
+      }
+    });
+  }, [collapsed, node]);
 
   const handleParamChange = useCallback(
     (key: string, value: unknown) => {
@@ -78,6 +99,7 @@ export function ReteNodeComponent({ data: node, emit }: ReteNodeProps) {
             min: p.min,
             max: p.max,
             step: p.step,
+            unit: p.unit,
             placeholder: p.description,
           },
         };
@@ -97,29 +119,33 @@ export function ReteNodeComponent({ data: node, emit }: ReteNodeProps) {
 
   return (
     <div
-      className={`sosa ${node.selected ? 'selected' : ''} ${executing ? 'executing' : ''} ${error ? 'error' : ''}`}
+      ref={nodeRef}
+      className={`sosa ${node.selected ? 'selected' : ''} ${executing ? 'executing' : ''} ${error ? 'error' : ''} ${collapsed ? 'collapsed' : ''}`}
       style={{
         '--node-color': meta?.uiConfig?.color ?? '#2a2a2a',
         '--node-bgcolor': meta?.uiConfig?.bgcolor ?? '#1a1a1a',
       } as React.CSSProperties}
     >
       {/* Header */}
-      <div className="sosa-header">
+      <div className="sosa-header" onDoubleClick={handleHeaderDoubleClick}>
         <span className="sosa-title">{node.label}</span>
-        {executing && (
-          <span className="sosa-progress">
-            {progress !== undefined ? `${Math.round(progress)}%` : '...'}
-          </span>
-        )}
+        <span className="sosa-header-right">
+          {executing && (
+            <span className="sosa-progress">
+              {progress !== undefined ? `${Math.round(progress)}%` : '...'}
+            </span>
+          )}
+          <span className="sosa-collapse-toggle">{collapsed ? '\u25B8' : '\u25BE'}</span>
+        </span>
       </div>
 
       {/* Error banner */}
-      {error && (
+      {!collapsed && error && (
         <div className="sosa-error">{error}</div>
       )}
 
       {/* Input ports */}
-      <div className="sosa-inputs">
+      <div className={`sosa-inputs ${collapsed ? 'sosa-ports-collapsed' : ''}`}>
         {inputPorts.map((input) => {
           const socket = node.inputs[input.name];
           const isExec = getSocketKey(input.spec) === 'exec';
@@ -136,11 +162,15 @@ export function ReteNodeComponent({ data: node, emit }: ReteNodeProps) {
                   data-testid="input-socket"
                 />
               )}
-              <span className="sosa-port-label">{formatPortLabel(input.name)}</span>
-              {!isExec && (
-                <span className="sosa-port-type" title={`Socket: ${getSocketKey(input.spec)}`}>
-                  {getSocketKey(input.spec)}
-                </span>
+              {!collapsed && (
+                <>
+                  <span className="sosa-port-label">{formatPortLabel(input.name)}</span>
+                  {!isExec && (
+                    <span className="sosa-port-type" title={`Socket: ${getSocketKey(input.spec)}`}>
+                      {getSocketKey(input.spec)}
+                    </span>
+                  )}
+                </>
               )}
             </div>
           );
@@ -148,7 +178,7 @@ export function ReteNodeComponent({ data: node, emit }: ReteNodeProps) {
       </div>
 
       {/* Body widgets */}
-      {effectiveWidgets.length > 0 && (
+      {!collapsed && effectiveWidgets.length > 0 && (
         <div className="sosa-body">
           {effectiveWidgets.map((widget) => (
             <BodyWidget
@@ -162,18 +192,20 @@ export function ReteNodeComponent({ data: node, emit }: ReteNodeProps) {
       )}
 
       {/* Output ports */}
-      <div className="sosa-outputs">
+      <div className={`sosa-outputs ${collapsed ? 'sosa-ports-collapsed' : ''}`}>
         {outputPorts.map((output) => {
           const socket = node.outputs[output.name];
           const isExec = getSocketKey(output.spec) === 'exec';
           return (
             <div key={output.name} className={`sosa-port sosa-output-port${isExec ? ' fig-exec-port' : ''}`}>
-              {!isExec && (
+              {!collapsed && !isExec && (
                 <span className="sosa-port-type" title={`Socket: ${getSocketKey(output.spec)}`}>
                   {getSocketKey(output.spec)}
                 </span>
               )}
-              <span className="sosa-port-label">{formatPortLabel(output.name)}</span>
+              {!collapsed && (
+                <span className="sosa-port-label">{formatPortLabel(output.name)}</span>
+              )}
               {socket && (
                 <Presets.classic.RefSocket
                   name="output-socket"
@@ -191,7 +223,7 @@ export function ReteNodeComponent({ data: node, emit }: ReteNodeProps) {
       </div>
 
       {/* Display area */}
-      {displayResult && outputDisplay && (
+      {!collapsed && displayResult && outputDisplay && (
         <div className="sosa-display">
           <NodeDisplay
             type={outputDisplay.type}

@@ -120,17 +120,77 @@ export interface CredentialProvider {
  */
 export const CREDENTIAL_PROVIDER_KEY = '__credentialProvider__';
 
-// ============ Re-exports from sibling modules ============
+// ============ Port and Param Types ============
 
-export type {
-  PortSpec,
-  ParamScalar,
-  ParamValue,
-  ParamType,
-  ParamMeta,
-  NodeInputs,
-  NodeOutputs,
-} from './ports.js';
+export type ParamScalar = string | number | boolean;
+export type ParamValue = ParamScalar | null | ParamScalar[] | Record<string, unknown>;
+export type ParamType =
+  | 'text'
+  | 'textarea'
+  | 'number'
+  | 'integer'
+  | 'int'
+  | 'float'
+  | 'combo'
+  | 'boolean'
+  | 'fileupload';
+
+export interface ParamMeta {
+  name: string;
+  type?: ParamType;
+  default?: ParamValue;
+  options?: ParamScalar[] | Record<string, unknown>;
+  min?: number;
+  max?: number;
+  step?: number;
+  precision?: number;
+  label?: string;
+  unit?: string;
+  description?: string;
+}
+
+export interface PortSpec {
+  type: string;
+  multi?: boolean;
+  optional?: boolean;
+}
+
+export const EXEC_SOCKET_TYPE = 'exec';
+
+export function isExecPort(spec: PortSpec): boolean {
+  return spec.type === EXEC_SOCKET_TYPE;
+}
+
+export type NodeInputs = Record<string, PortSpec>;
+export type NodeOutputs = Record<string, PortSpec>;
+
+// ============ Node Error Types ============
+
+export class NodeError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'NodeError';
+  }
+}
+
+export class NodeValidationError extends NodeError {
+  constructor(nodeId: string, message: string) {
+    super(`Node ${nodeId}: ${message}`);
+    this.name = 'NodeValidationError';
+  }
+}
+
+export class NodeExecutionError extends NodeError {
+  originalError?: Error;
+
+  constructor(nodeId: string, message: string, originalError?: Error) {
+    super(`Node ${nodeId}: ${message}`);
+    this.name = 'NodeExecutionError';
+    this.originalError = originalError;
+  }
+}
+
+// ============ Re-exports from sibling modules ============
 
 export type {
   OutputDisplayType,
@@ -147,9 +207,3 @@ export type {
   SlotConfig,
   NodeUIConfig,
 } from './node-ui.js';
-
-export {
-  NodeError,
-  NodeValidationError,
-  NodeExecutionError,
-} from './errors.js';

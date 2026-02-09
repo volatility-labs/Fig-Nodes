@@ -9,6 +9,7 @@ import type { NodeRegistry } from '@sosa/core';
 import { getNodeRegistry, validateNodeDefinitions } from '@sosa/core/node-runtime';
 import { graphRoutes } from './routes/graph.js';
 import { graphToolRoutes } from './routes/graph-tools.js';
+import { logRoutes } from './routes/logs.js';
 import { websocketHandler } from './websocket/handler.js';
 import { lifecycle } from './plugins/lifecycle.js';
 
@@ -65,6 +66,7 @@ async function createServer() {
   // Register REST routes
   await app.register(graphRoutes, { prefix: '/api' });
   await app.register(graphToolRoutes, { prefix: '/api/v1/graph' });
+  await app.register(logRoutes, { prefix: '/api/v1' });
 
   // Register WebSocket handler (now at /execute to match legacy)
   await app.register(websocketHandler);

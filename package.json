@@ -5,12 +5,13 @@
     "packages/*"
   ],
   "scripts": {
-    "postinstall": "yarn workspace @sosa/core build",
-    "build": "yarn workspace @sosa/core build && tsc -p nodes/tsconfig.json && yarn workspace @sosa/server build",
+    "postinstall": "yarn workspace @sosa/core build && yarn workspace @sosa/agent build",
+    "build": "yarn workspace @sosa/core build && yarn workspace @sosa/agent build && tsc -p nodes/tsconfig.json && yarn workspace @sosa/server build",
     "build:nodes": "tsc -p nodes/tsconfig.json",
     "predev": "lsof -ti:8000 | xargs kill -9 2>/dev/null || true",
-    "dev": "yarn workspace @sosa/core build && concurrently -k -n core,server,frontend -c blue,green,magenta \"yarn dev:core\" \"yarn dev:server\" \"yarn dev:frontend\"",
+    "dev": "yarn workspace @sosa/core build && yarn workspace @sosa/agent build && concurrently -k -n core,agent,server,frontend -c blue,yellow,green,magenta \"yarn dev:core\" \"yarn dev:agent\" \"yarn dev:server\" \"yarn dev:frontend\"",
     "dev:core": "yarn workspace @sosa/core dev",
+    "dev:agent": "yarn workspace @sosa/agent dev",
     "dev:server": "yarn workspace @sosa/server dev",
     "dev:frontend": "yarn workspace @sosa/frontend dev",
     "test": "yarn workspaces run test",

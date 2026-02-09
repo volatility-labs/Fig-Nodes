@@ -37,7 +37,6 @@ export class ConnectionRegistry {
     const currentWs = this.sessions.get(sessionId);
     if (currentWs === websocket) {
       this.sessions.delete(sessionId);
-      this.sessionToJob.delete(sessionId);
     }
   }
 
@@ -45,7 +44,7 @@ export class ConnectionRegistry {
    * Check if a session exists.
    */
   hasSession(sessionId: string): boolean {
-    return this.sessions.has(sessionId);
+    return this.sessions.has(sessionId) || this.sessionToJob.has(sessionId);
   }
 
   /**
@@ -139,6 +138,12 @@ export async function establishSession(
 
   // Register the new connection
   registry.register(sessionId, websocket);
+
+  // Rebind active job to the new WebSocket for resumed progress/results delivery.
+  const activeJob = registry.getJob(sessionId);
+  if (activeJob) {
+    activeJob.websocket = websocket;
+  }
 
   // Send session confirmation
   const sessionMessage: ServerSessionMessage = buildSessionMessage(sessionId);

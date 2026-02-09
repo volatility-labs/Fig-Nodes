@@ -1,5 +1,5 @@
 // src/type-registry.ts
-import type { PortSpec } from './ports.js';
+import type { PortSpec } from './types.js';
 
 // ============ Type Registry ============
 

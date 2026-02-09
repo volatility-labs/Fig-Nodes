@@ -1,4 +1,4 @@
-// Execution queue for managing graph execution jobs
+// Single-flight execution controller for graph execution jobs
 import type { WebSocket } from '@fastify/websocket';
 import type { Graph } from '@sosa/core';
 import {
@@ -8,19 +8,14 @@ import {
   createDeferred,
   type Deferred,
 } from '../types/job.js';
-import { buildQueuePositionMessage } from '../types/messages.js';
-import { wsSendAsync, isWsConnected } from '../websocket/send-utils.js';
-
-const POSITION_UPDATE_INTERVAL_MS = 1000;
 
 /**
- * ExecutionQueue manages a FIFO queue of graph execution jobs.
- * Only one job runs at a time (sequential execution).
- *
- * TypeScript equivalent of the Python ExecutionQueue class.
+ * ExecutionQueue manages single-flight graph execution.
+ * Exactly one job may be active (pending/running) at a time.
+ * Additional enqueue attempts are rejected.
  */
 export class ExecutionQueue {
-  private pending: ExecutionJob[] = [];
+  private next: ExecutionJob | null = null;
   private running: ExecutionJob | null = null;
   private jobIdCounter = 0;
   private shuttingDown = false;
@@ -30,15 +25,15 @@ export class ExecutionQueue {
 
   /**
    * Enqueue a new job for execution.
-   * Starts sending queue position updates to the client.
+   * Returns null when an execution is already active.
    */
-  enqueue(websocket: WebSocket, graphData: Graph): ExecutionJob {
+  enqueue(websocket: WebSocket, graphData: Graph): ExecutionJob | null {
+    if (this.shuttingDown || this.next || this.running) {
+      return null;
+    }
+
     const job = createExecutionJob(++this.jobIdCounter, websocket, graphData);
-
-    this.pending.push(job);
-
-    // Start position update interval
-    this.startPositionUpdates(job);
+    this.next = job;
 
     // Wake up the worker if it's waiting (atomic swap: create new deferred before resolving old)
     const prev = this.wakeup;
@@ -54,12 +49,9 @@ export class ExecutionQueue {
    */
   async getNext(): Promise<ExecutionJob | null> {
     while (!this.shuttingDown) {
-      if (this.pending.length > 0) {
-        const job = this.pending.shift()!;
-
-        // Stop position updates and clear interval
-        this.stopPositionUpdates(job);
-
+      if (this.next) {
+        const job = this.next;
+        this.next = null;
         // Mark as running
         job.state = JobState.RUNNING;
         this.running = job;
@@ -86,9 +78,6 @@ export class ExecutionQueue {
       this.running = null;
     }
 
-    // Stop any remaining position updates
-    this.stopPositionUpdates(job);
-
     // Signal completion
     job.done.resolve();
   }
@@ -103,36 +92,16 @@ export class ExecutionQueue {
 
     job.state = JobState.CANCELLED;
 
-    // Stop position updates
-    this.stopPositionUpdates(job);
-
-    // Remove from pending queue if present
-    const pendingIndex = this.pending.indexOf(job);
-    if (pendingIndex !== -1) {
-      this.pending.splice(pendingIndex, 1);
-      // If it was pending, we can resolve done immediately
+    // Cancel queued-but-not-started job immediately.
+    if (this.next === job) {
+      this.next = null;
       job.done.resolve();
+    } else if (this.running === job) {
+      this.running = null;
     }
 
     // Signal cancellation to the executor via AbortController
     job.cancelController.abort();
-  }
-
-  /**
-   * Get the queue position of a job.
-   * Returns 0 if running, 1+ if pending, -1 if not found.
-   */
-  getPosition(job: ExecutionJob): number {
-    if (this.running === job) {
-      return 0;
-    }
-
-    const index = this.pending.indexOf(job);
-    if (index !== -1) {
-      return index + 1; // 1-indexed for display
-    }
-
-    return -1;
   }
 
   /**
@@ -141,9 +110,9 @@ export class ExecutionQueue {
   shutdown(): void {
     this.shuttingDown = true;
 
-    // Cancel all pending jobs
-    for (const job of this.pending) {
-      this.cancelJob(job);
+    // Cancel queued job
+    if (this.next) {
+      this.cancelJob(this.next);
     }
 
     // Cancel running job if any
@@ -163,44 +132,16 @@ export class ExecutionQueue {
   }
 
   /**
+   * Get the current queued-but-not-yet-running job.
+   */
+  getNextQueued(): ExecutionJob | null {
+    return this.next;
+  }
+
+  /**
    * Check if queue is shutting down.
    */
   isShuttingDown(): boolean {
     return this.shuttingDown;
-  }
-
-  // ============ Private Methods ============
-
-  private startPositionUpdates(job: ExecutionJob): void {
-    // Send initial position
-    this.sendPositionUpdate(job);
-
-    // Set up interval for periodic updates
-    job.positionUpdateInterval = setInterval(() => {
-      if (job.state === JobState.PENDING) {
-        this.sendPositionUpdate(job);
-      } else {
-        this.stopPositionUpdates(job);
-      }
-    }, POSITION_UPDATE_INTERVAL_MS);
-  }
-
-  private stopPositionUpdates(job: ExecutionJob): void {
-    if (job.positionUpdateInterval) {
-      clearInterval(job.positionUpdateInterval);
-      job.positionUpdateInterval = undefined;
-    }
-  }
-
-  private sendPositionUpdate(job: ExecutionJob): void {
-    if (!isWsConnected(job.websocket)) {
-      return;
-    }
-
-    const position = this.getPosition(job);
-    if (position >= 0) {
-      const message = buildQueuePositionMessage(position, job.id);
-      wsSendAsync(job.websocket, message);
-    }
   }
 }

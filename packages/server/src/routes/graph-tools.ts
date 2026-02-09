@@ -7,7 +7,6 @@ import {
   type Graph,
   type NodeRegistry,
   validateGraph,
-  GRAPH_TOOLS,
   applyAddNode,
   applyRemoveNode,
   applyConnect,
@@ -17,6 +16,7 @@ import {
   hasCycles,
   GraphExecutor,
 } from '@sosa/core';
+import { GRAPH_TOOLS } from '@sosa/agent';
 import { getCredentialStore } from '../credentials/env-credential-store.js';
 import { getNodeMetadata } from './node-metadata-helper.js';
 

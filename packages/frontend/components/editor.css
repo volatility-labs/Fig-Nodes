@@ -293,6 +293,25 @@ body {
   border-color: #ef5350;
 }
 
+.sosa.collapsed {
+  min-width: 120px;
+}
+
+.sosa.collapsed .sosa-header {
+  border-radius: 5px;
+}
+
+/* Collapsed ports: compact single row with just socket dots */
+.sosa-ports-collapsed {
+  display: flex;
+  padding: 2px 8px;
+}
+
+.sosa-ports-collapsed .sosa-port {
+  padding: 1px 4px;
+  min-height: 14px;
+}
+
 .sosa-header {
   background: var(--node-color, #2a2a2a);
   padding: 6px 10px;
@@ -304,6 +323,23 @@ body {
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
+  cursor: default;
+}
+
+.sosa-header-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.sosa-collapse-toggle {
+  font-size: 10px;
+  opacity: 0.5;
+  transition: opacity 0.15s;
+}
+
+.sosa-header:hover .sosa-collapse-toggle {
+  opacity: 1;
 }
 
 .sosa-title {
@@ -829,4 +865,157 @@ body {
   box-shadow: 0 0 6px rgba(255, 255, 255, 0.5);
   filter: brightness(1.3);
   transform: rotate(45deg) scale(1.3);
+}
+
+/* ============ Toolbar Active Button ============ */
+
+.fig-btn.fig-btn-active {
+  background: #30363d;
+  border-color: #58a6ff;
+  color: #58a6ff;
+}
+
+/* ============ Log Panel ============ */
+
+.sosa-log-panel {
+  width: 320px;
+  background: #161616;
+  border-left: 1px solid #333;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.sosa-log-header {
+  display: flex;
+  border-bottom: 1px solid #333;
+  flex-shrink: 0;
+}
+
+.sosa-log-tab {
+  flex: 1;
+  padding: 6px 0;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: #8b949e;
+  font-size: 11px;
+  cursor: pointer;
+  text-align: center;
+}
+
+.sosa-log-tab:hover {
+  color: #c9d1d9;
+}
+
+.sosa-log-tab.active {
+  color: #58a6ff;
+  border-bottom-color: #58a6ff;
+}
+
+.sosa-log-entries {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+
+.sosa-log-entry {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 2px 8px;
+  font-size: 10px;
+  line-height: 1.5;
+  font-family: 'Fira Code', 'Cascadia Code', monospace;
+}
+
+.sosa-log-entry:hover {
+  background: #1e1e1e;
+}
+
+.sosa-log-time {
+  color: #484f58;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.sosa-log-badge {
+  display: inline-block;
+  padding: 0 4px;
+  border-radius: 3px;
+  color: #000;
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.sosa-log-detail {
+  color: #c9d1d9;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sosa-log-empty {
+  padding: 16px;
+  text-align: center;
+  color: #484f58;
+  font-size: 11px;
+}
+
+.sosa-log-file-list {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.sosa-log-file-item {
+  padding: 6px 10px;
+  font-size: 11px;
+  color: #c9d1d9;
+  cursor: pointer;
+  font-family: 'Fira Code', 'Cascadia Code', monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sosa-log-file-item:hover {
+  background: #252525;
+  color: #58a6ff;
+}
+
+.sosa-log-history-viewer {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+}
+
+.sosa-log-back {
+  padding: 4px 8px;
+  background: none;
+  border: none;
+  border-bottom: 1px solid #333;
+  color: #58a6ff;
+  font-size: 11px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.sosa-log-back:hover {
+  background: #1e1e1e;
+}
+
+.sosa-log-filename {
+  padding: 4px 8px;
+  font-size: 10px;
+  color: #484f58;
+  border-bottom: 1px solid #333;
+  font-family: 'Fira Code', 'Cascadia Code', monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

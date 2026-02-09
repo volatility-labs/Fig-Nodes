@@ -3,7 +3,7 @@
 
 import { ClassicPreset } from 'rete';
 import { TYPE_ALIASES } from './type-registry.js';
-import type { PortSpec } from './ports.js';
+import type { PortSpec } from './types.js';
 
 // ============ Socket Key Helpers ============
 

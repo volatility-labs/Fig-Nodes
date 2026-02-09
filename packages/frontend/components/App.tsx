@@ -6,6 +6,7 @@ import { ReteEditor } from './editor/ReteEditor';
 import { undo, redo, autoArrange } from './editor/editor-actions';
 import type { NodeMetadataMap } from '../types/nodes';
 import { useGraphStore } from '../stores/graphStore';
+import { useLogStore } from '../stores/logStore';
 import { setupWebSocket, stopExecution } from '../services/WebSocketClient';
 import { saveGraph, loadGraphFromFile, startAutosave } from '../services/FileManager';
 import { ExecutionStatusService } from '../services/ExecutionStatusService';
@@ -24,6 +25,8 @@ export function App() {
   const isExecuting = useGraphStore((s) => s.isExecuting);
   const metaStatus = useGraphStore((s) => s.metaStatus);
   const executionUI = useGraphStore((s) => s.executionUI);
+  const logPanelOpen = useLogStore((s) => s.isOpen);
+  const toggleLogPanel = useLogStore((s) => s.togglePanel);
 
   // Fetch node metadata from backend
   useEffect(() => {
@@ -137,6 +140,7 @@ export function App() {
           <button className="fig-btn" onClick={undo} title="Undo (Ctrl+Z)">Undo</button>
           <button className="fig-btn" onClick={redo} title="Redo (Ctrl+Shift+Z)">Redo</button>
           <button className="fig-btn" onClick={autoArrange} title="Auto-layout nodes">Layout</button>
+          <button className={`fig-btn ${logPanelOpen ? 'fig-btn-active' : ''}`} onClick={toggleLogPanel} title="Execution log">Log</button>
           {!isExecuting && (
             <button className="fig-btn fig-btn-execute" onClick={handleExecute}>
               Execute

@@ -54,9 +54,6 @@ export interface ExecutionJob {
 
   /** Deferred promise that resolves when job is done (replaces asyncio.Event) */
   done: Deferred<void>;
-
-  /** Interval ID for queue position updates (cleared on job start/cancel) */
-  positionUpdateInterval?: ReturnType<typeof setInterval>;
 }
 
 /**

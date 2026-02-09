@@ -100,6 +100,20 @@ async function handleGraphMessage(
 
   // Enqueue the job
   const job = fastify.executionQueue.enqueue(websocket, graphData);
+  if (!job) {
+    const activeJob = fastify.executionQueue.getRunning() ?? fastify.executionQueue.getNextQueued();
+    const activeJobId = activeJob?.id;
+    await wsSendSync(
+      websocket,
+      buildErrorMessage(
+        'Execution already in progress. Stop or wait for the current run before starting a new run.',
+        'EXECUTION_ERROR',
+        undefined,
+        activeJobId
+      )
+    );
+    return null;
+  }
 
   // Track job in registry
   fastify.connectionRegistry.setJob(sessionId, job);
@@ -268,13 +282,7 @@ export const websocketHandler: FastifyPluginAsync = async (fastify) => {
         fastify.log.info({ sessionId }, 'WebSocket client disconnected');
 
         if (sessionId) {
-          // Cancel any running job
-          const job = fastify.connectionRegistry.getJob(sessionId);
-          if (job && job.state !== JobState.DONE && job.state !== JobState.CANCELLED) {
-            fastify.executionQueue.cancelJob(job);
-          }
-
-          // Unregister session
+          // Unregister this WebSocket; active execution may continue for session persistence.
           fastify.connectionRegistry.unregister(sessionId, socket);
         }
       });

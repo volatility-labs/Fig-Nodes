@@ -18,9 +18,6 @@ export {
   execPort,
 } from './type-registry.js';
 
-// Port helpers
-export { EXEC_SOCKET_TYPE, isExecPort } from './ports.js';
-
 // Graph types
 export {
   type Graph,
@@ -36,7 +33,7 @@ export {
 // Engine
 export { GraphExecutor } from './engine.js';
 
-// Tools (graph mutation, validator, LLM tool types)
+// Validation
 export {
   validateGraph,
   validateEdgeTypes,
@@ -44,8 +41,9 @@ export {
   type ValidationError,
   type ValidationResult,
 } from './validator.js';
+
+// Graph mutations (pure functions)
 export {
-  GRAPH_TOOLS,
   applyAddNode,
   applyRemoveNode,
   applyConnect,
@@ -56,9 +54,7 @@ export {
   type ConnectInput,
   type DisconnectInput,
   type SetParamInput,
-  type LoadGraphInput,
-  type ToolDefinition,
-} from './graph-tools.js';
+} from './graph-ops.js';
 
 // Sockets
 export {

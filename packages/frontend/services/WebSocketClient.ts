@@ -6,6 +6,7 @@
  */
 
 import { useGraphStore } from '../stores/graphStore';
+import { useLogStore } from '../stores/logStore';
 import { getEditorAdapter } from '../components/editor/editor-ref';
 import {
   ProgressState,
@@ -182,6 +183,7 @@ function getWsUrl(): string {
 }
 
 function dispatchMessage(data: ServerMessage) {
+  useLogStore.getState().addLiveEntry(data as unknown as Record<string, unknown>);
   if (isErrorMessage(data)) handleErrorMessage(data);
   else if (isStatusMessage(data)) handleStatusMessage(data);
   else if (isStoppedMessage(data)) handleStoppedMessage(data);
@@ -276,6 +278,7 @@ export function setupWebSocket(service: ExecutionStatusService) {
     const { docName, docId } = useGraphStore.getState();
     const doc = adapter.serializeGraph(docName, docId);
 
+    useLogStore.getState().clearLiveEntries();
     useGraphStore.getState().clearNodeStatus();
     useGraphStore.getState().clearDisplayResults();
     useGraphStore.getState().setIsExecuting(true);

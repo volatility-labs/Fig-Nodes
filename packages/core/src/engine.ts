@@ -16,7 +16,7 @@ import {
 import { type Graph, parseEdgeEndpoint } from './graph.js';
 import { Node, type NodeDefinition } from './node.js';
 import { getSocketKey, areSocketKeysCompatible } from './sockets.js';
-import { isExecPort } from './ports.js';
+import { isExecPort } from './types.js';
 
 // ============ Rete Scheme Types ============
 

@@ -8,7 +8,7 @@ import type { NodeRegistry, NodeConstructor } from './types.js';
 import { Node } from './node.js';
 import type { Graph } from './graph.js';
 import { isRegisteredType } from './type-registry.js';
-import type { PortSpec } from './ports.js';
+import type { PortSpec } from './types.js';
 
 // ESM equivalent of __dirname
 const __filename = fileURLToPath(import.meta.url);

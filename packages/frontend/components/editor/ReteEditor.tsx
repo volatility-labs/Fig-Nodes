@@ -30,6 +30,7 @@ import { editorRefs, markDirty, undo, redo } from './editor-actions';
 import { restoreFromAutosave } from '../../services/FileManager';
 import { ReteNodeComponent, setNodeMetadata } from './ReteNode';
 import { NodePalette } from '../NodePalette';
+import { LogPanel } from '../LogPanel';
 import { addNodeToEditor } from './add-node';
 
 // ============ Module-level refs for render components (connection coloring) ============
@@ -431,6 +432,7 @@ export function ReteEditor({ nodeMetadata }: ReteEditorProps) {
         onDragOver={handleDragOver}
         onDrop={handleDrop}
       />
+      <LogPanel />
     </div>
   );
 }
