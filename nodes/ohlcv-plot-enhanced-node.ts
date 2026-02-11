@@ -4,7 +4,7 @@
 // The Python version used matplotlib for server-side rendering.
 // In this architecture, we return computed data for frontend rendering.
 
-import { Node, NodeCategory, PortType, ParamType, OutputDisplayType, port, type NodeDefinition } from '@sosa/core';
+import { Node, NodeCategory, PortType, ParamType, OutputDisplayType, ChartType, port, type NodeDefinition } from '@sosa/core';
 import { AssetSymbol, AssetClass, type OHLCVBar } from './types';
 import { calculateEma } from './ema-calculator';
 import { calculateSma } from './sma-calculator';
@@ -318,7 +318,7 @@ export class OHLCVPlotEnhanced extends Node {
         type: OutputDisplayType.CHART_PREVIEW,
         bind: 'chart_data',
         options: {
-          chartType: 'candlestick',
+          chartType: ChartType.CANDLESTICK,
           modalEnabled: true,
           symbolSelector: true,
         },

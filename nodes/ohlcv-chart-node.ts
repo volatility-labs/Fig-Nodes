@@ -2,7 +2,7 @@
 // Instead of generating images server-side, it outputs structured chart data
 // that the frontend can render with Lightweight Charts or similar.
 
-import { Node, NodeCategory, PortType, ParamType, OutputDisplayType, port, type NodeDefinition } from '@sosa/core';
+import { Node, NodeCategory, PortType, ParamType, OutputDisplayType, ChartType, port, type NodeDefinition } from '@sosa/core';
 import type { OHLCVBar } from './types';
 import { calculateSma } from './sma-calculator';
 import { calculateEma } from './ema-calculator';
@@ -171,7 +171,7 @@ export class OHLCVChart extends Node {
         type: OutputDisplayType.CHART_PREVIEW,
         bind: 'charts',
         options: {
-          chartType: 'candlestick',
+          chartType: ChartType.CANDLESTICK,
           modalEnabled: true,
           symbolSelector: true,
         },

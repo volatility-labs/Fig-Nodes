@@ -9,6 +9,7 @@ import {
   ParamType,
   port,
   type NodeDefinition,
+  type GraphContext,
 } from '@sosa/core';
 import type { LLMChatMessage, LLMThinkingHistory } from './types';
 import type { ConfigDict } from './types';
@@ -113,7 +114,7 @@ export class OpenRouterVisionChat extends Node {
   constructor(
     nodeId: string,
     params: Record<string, unknown>,
-    graphContext: Record<string, unknown> = {}
+    graphContext: GraphContext = {} as GraphContext
   ) {
     super(nodeId, params, graphContext);
   }

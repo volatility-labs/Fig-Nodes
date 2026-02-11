@@ -5,6 +5,7 @@ import {
   type NodeRegistry,
   type ProgressEvent,
   NodeCategory,
+  ErrorCode,
   serializeForApi,
 } from '@sosa/core';
 import type { ExecutionQueue } from './execution-queue.js';
@@ -217,13 +218,13 @@ export async function executionWorker(
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       logger.error({ jobId: job?.id, error: errorMessage }, 'Job execution error');
-      execLogger?.addError(errorMessage, 'EXECUTION_ERROR', job?.id);
+      execLogger?.addError(errorMessage, ErrorCode.EXECUTION_ERROR, job?.id);
 
       if (job && isWsConnected(job.websocket)) {
         try {
           await wsSendSync(
             job.websocket,
-            buildErrorMessage(errorMessage, 'EXECUTION_ERROR', undefined, job.id)
+            buildErrorMessage(errorMessage, ErrorCode.EXECUTION_ERROR, undefined, job.id)
           );
           await wsSendSync(
             job.websocket,

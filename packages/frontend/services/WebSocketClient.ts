@@ -10,6 +10,7 @@ import { useLogStore } from '../stores/logStore';
 import { getEditorAdapter } from '../components/editor/editor-ref';
 import {
   ProgressState,
+  ErrorCode,
   isErrorMessage,
   isStatusMessage,
   isStoppedMessage,
@@ -84,7 +85,7 @@ function handleErrorMessage(data: ServerErrorMessage) {
   console.error('Execution error:', data.message);
   statusService?.error(null, data.message);
 
-  if (data.code === 'MISSING_API_KEYS') {
+  if (data.code === ErrorCode.MISSING_API_KEYS) {
     useGraphStore.getState().setNotification({ message: data.message || 'Missing API keys. Check your .env file.', type: 'error' });
   } else {
     useGraphStore.getState().setNotification({ message: 'Error: ' + data.message, type: 'error' });
@@ -137,7 +138,7 @@ function handleProgressMessage(data: {
   progress?: number;
   text?: string;
   state?: ProgressState;
-  meta?: Record<string, unknown>;
+  meta?: Record<string, string>;
 }) {
   const nodeId = data.node_id;
   const store = useGraphStore.getState();
@@ -154,13 +155,11 @@ function handleProgressMessage(data: {
     store.setNodeError(nodeId, data.text ?? 'Error');
   }
 
-  // Forward string metadata entries to the store
+  // Forward metadata entries to the store
   if (data.meta) {
     const store = useGraphStore.getState();
     for (const [key, val] of Object.entries(data.meta)) {
-      if (typeof val === 'string') {
-        store.setMetaStatus(key, val);
-      }
+      store.setMetaStatus(key, val);
     }
   }
 }

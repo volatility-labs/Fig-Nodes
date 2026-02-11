@@ -1,4 +1,4 @@
-import { Node, port, NodeCategory, PortType, ResultDisplayMode, type NodeDefinition } from '@sosa/core';
+import { Node, port, NodeCategory, PortType, ResultDisplayMode, type NodeDefinition, type GraphContext } from '@sosa/core';
 import { AssetSymbol, type OHLCVBar, type OHLCVBundle, type IndicatorResult, type SerializedOHLCVBundle, deserializeOHLCVBundle } from './types';
 
 export abstract class BaseIndicatorFilter extends Node {
@@ -14,9 +14,9 @@ export abstract class BaseIndicatorFilter extends Node {
   constructor(
     nodeId: string,
     params: Record<string, unknown> = {},
-    graphContext?: Record<string, unknown>
+    graphContext?: GraphContext
   ) {
-    super(nodeId, params, graphContext ?? {});
+    super(nodeId, params, graphContext ?? {} as GraphContext);
     this.validateIndicatorParams();
   }
 

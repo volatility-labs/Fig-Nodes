@@ -1,7 +1,7 @@
 // src/nodes/core/market/filters/industry-filter-node.ts
 
 import { Node, port, PortType, ParamType, ResultDisplayMode } from '@sosa/core';
-import type { NodeDefinition } from '@sosa/core';
+import type { NodeDefinition, GraphContext } from '@sosa/core';
 import { AssetSymbol, type OHLCVBar, type OHLCVBundle } from './types';
 
 /**
@@ -40,9 +40,9 @@ export class IndustryFilter extends Node {
   constructor(
     nodeId: string,
     params: Record<string, unknown> = {},
-    graphContext?: Record<string, unknown>
+    graphContext?: GraphContext
   ) {
-    super(nodeId, params, graphContext ?? {});
+    super(nodeId, params, graphContext ?? {} as GraphContext);
     const allowedIndustriesParam = this.params.allowed_industries ?? [];
     if (Array.isArray(allowedIndustriesParam)) {
       this.allowedIndustries = allowedIndustriesParam.map((ind) =>

@@ -11,6 +11,7 @@ import {
   type ProgressCallback,
   type ResultCallback,
   type CredentialProvider,
+  type GraphContext,
   CREDENTIAL_PROVIDER_KEY,
 } from './types.js';
 import { type Graph, parseEdgeEndpoint } from './graph.js';
@@ -82,8 +83,8 @@ export class GraphExecutor {
     nodeRegistry: NodeRegistry,
     credentials?: CredentialProvider,
   ): Promise<void> {
-    const graphContext = (nodeId: string): Record<string, unknown> => {
-      const ctx: Record<string, unknown> = {
+    const graphContext = (nodeId: string): GraphContext => {
+      const ctx: GraphContext = {
         graph_id: doc.id,
         document: doc,
         current_node_id: nodeId,
@@ -106,7 +107,7 @@ export class GraphExecutor {
       const NodeClass = nodeRegistry[nodeType] as new (
         nodeId: string,
         params: Record<string, unknown>,
-        graphContext?: Record<string, unknown>,
+        graphContext?: GraphContext,
       ) => Node;
 
       const node = new NodeClass(nodeId, nodeData.params ?? {}, graphContext(nodeId));

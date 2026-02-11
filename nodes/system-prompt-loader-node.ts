@@ -14,7 +14,7 @@ export class SystemPromptLoader extends Node {
     outputs: [port('system', PortType.STRING)],
     params: [
       { name: 'content', type: ParamType.TEXTAREA, default: '' },
-      { name: 'file', type: ParamType.FILEUPLOAD, default: '', options: { accept: '.txt,.md' } },
+      { name: 'file', type: ParamType.FILEUPLOAD, default: '', fileAccept: '.txt,.md' },
     ],
 
     // Keep visible in IO category

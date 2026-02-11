@@ -16,6 +16,7 @@ import {
   type ProgressEvent,
   ProgressState,
   type CredentialProvider,
+  type GraphContext,
   CREDENTIAL_PROVIDER_KEY,
 } from './types.js';
 
@@ -43,7 +44,7 @@ export abstract class Node extends ClassicPreset.Node {
   params: Record<string, unknown>;
   nodeInputs: Record<string, PortSpec>;
   nodeOutputs: Record<string, PortSpec>;
-  graphContext: Record<string, unknown>;
+  graphContext: GraphContext;
 
   protected _progressCallback: ProgressCallback | null = null;
   protected _isStopped = false;
@@ -51,7 +52,7 @@ export abstract class Node extends ClassicPreset.Node {
   constructor(
     nodeId: string,
     params: Record<string, unknown>,
-    graphContext: Record<string, unknown> = {}
+    graphContext: GraphContext = {} as GraphContext
   ) {
     super((new.target as typeof Node).name);
 
@@ -163,7 +164,7 @@ export abstract class Node extends ClassicPreset.Node {
     state: ProgressState,
     progress?: number,
     text = '',
-    meta?: Record<string, unknown>
+    meta?: Record<string, string>
   ): void {
     if (!this._progressCallback) {
       return;

@@ -25,6 +25,7 @@ import {
   buildPongMessage,
   ExecutionState,
 } from '../types/messages.js';
+import { ErrorCode } from '@sosa/core';
 import { wsSendSync, wsSendAsync, isWsConnected } from './send-utils.js';
 
 declare module 'fastify' {
@@ -62,7 +63,7 @@ async function handleGraphMessage(
 
     await wsSendSync(
       websocket,
-      buildErrorMessage(`Graph validation failed: ${details}`, 'VALIDATION_ERROR')
+      buildErrorMessage(`Graph validation failed: ${details}`, ErrorCode.VALIDATION_ERROR)
     );
     return null;
   }
@@ -70,7 +71,7 @@ async function handleGraphMessage(
   if (hasCycles(graphData)) {
     await wsSendSync(
       websocket,
-      buildErrorMessage('Graph validation failed: graph contains cycles', 'VALIDATION_ERROR')
+      buildErrorMessage('Graph validation failed: graph contains cycles', ErrorCode.VALIDATION_ERROR)
     );
     return null;
   }
@@ -91,7 +92,7 @@ async function handleGraphMessage(
       websocket,
       buildErrorMessage(
         `Missing required API keys: ${missingKeys.join(', ')}`,
-        'MISSING_API_KEYS',
+        ErrorCode.MISSING_API_KEYS,
         missingKeys
       )
     );
@@ -107,7 +108,7 @@ async function handleGraphMessage(
       websocket,
       buildErrorMessage(
         'Execution already in progress. Stop or wait for the current run before starting a new run.',
-        'EXECUTION_ERROR',
+        ErrorCode.EXECUTION_ERROR,
         undefined,
         activeJobId
       )
@@ -204,11 +205,11 @@ export const websocketHandler: FastifyPluginAsync = async (fastify) => {
               // First message must be connect
               wsSendAsync(
                 socket,
-                buildErrorMessage('First message must be a connect message', 'VALIDATION_ERROR')
+                buildErrorMessage('First message must be a connect message', ErrorCode.VALIDATION_ERROR)
               );
             }
           } catch {
-            wsSendAsync(socket, buildErrorMessage('Invalid JSON', 'VALIDATION_ERROR'));
+            wsSendAsync(socket, buildErrorMessage('Invalid JSON', ErrorCode.VALIDATION_ERROR));
           }
         };
 
@@ -228,14 +229,14 @@ export const websocketHandler: FastifyPluginAsync = async (fastify) => {
           const message = parseClientMessageOrdered(data);
 
           if (!message) {
-            wsSendAsync(socket, buildErrorMessage('Invalid message format', 'VALIDATION_ERROR'));
+            wsSendAsync(socket, buildErrorMessage('Invalid message format', ErrorCode.VALIDATION_ERROR));
             return;
           }
 
           switch (message.type) {
             case 'connect':
               // Re-connect message (session refresh)
-              wsSendAsync(socket, buildErrorMessage('Already connected', 'VALIDATION_ERROR'));
+              wsSendAsync(socket, buildErrorMessage('Already connected', ErrorCode.VALIDATION_ERROR));
               break;
 
             case 'graph':
@@ -262,7 +263,7 @@ export const websocketHandler: FastifyPluginAsync = async (fastify) => {
             default:
               wsSendAsync(
                 socket,
-                buildErrorMessage(`Unknown message type: ${(message as { type: string }).type}`, 'VALIDATION_ERROR')
+                buildErrorMessage(`Unknown message type: ${(message as { type: string }).type}`, ErrorCode.VALIDATION_ERROR)
               );
           }
         } catch (error) {
@@ -271,7 +272,7 @@ export const websocketHandler: FastifyPluginAsync = async (fastify) => {
             socket,
             buildErrorMessage(
               error instanceof Error ? error.message : 'Unknown error',
-              'EXECUTION_ERROR'
+              ErrorCode.EXECUTION_ERROR
             )
           );
         }
@@ -299,7 +300,7 @@ export const websocketHandler: FastifyPluginAsync = async (fastify) => {
           socket,
           buildErrorMessage(
             error instanceof Error ? error.message : 'Connection error',
-            'EXECUTION_ERROR'
+            ErrorCode.EXECUTION_ERROR
           )
         );
       }

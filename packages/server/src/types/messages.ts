@@ -147,7 +147,7 @@ export function buildProgressMessage(
   options?: {
     progress?: number;
     text?: string;
-    meta?: Record<string, unknown>;
+    meta?: Record<string, string>;
   }
 ): ServerProgressMessage {
   return {

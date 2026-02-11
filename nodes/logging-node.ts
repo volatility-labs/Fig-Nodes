@@ -1,4 +1,4 @@
-import { Node, NodeCategory, PortType, OutputDisplayType, port, type NodeDefinition } from '@sosa/core';
+import { Node, NodeCategory, PortType, OutputDisplayType, DisplayFormat, port, type NodeDefinition, type GraphContext } from '@sosa/core';
 
 const MAX_DISPLAY_CHARS = 10_000;
 
@@ -22,7 +22,7 @@ export class Logging extends Node {
           placeholder: 'Logs appear here...',
           scrollable: true,
           streaming: true,
-          formats: ['auto', 'json', 'plain', 'markdown'],
+          formats: [DisplayFormat.AUTO, DisplayFormat.JSON, DisplayFormat.PLAIN, DisplayFormat.MARKDOWN],
         },
       },
     },
@@ -31,7 +31,7 @@ export class Logging extends Node {
   constructor(
     nodeId: string,
     params: Record<string, unknown>,
-    graphContext: Record<string, unknown> = {}
+    graphContext: GraphContext = {} as GraphContext
   ) {
     super(nodeId, params, graphContext);
   }

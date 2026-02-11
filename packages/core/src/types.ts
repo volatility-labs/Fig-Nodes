@@ -21,27 +21,12 @@ export enum ExecutionState {
   CANCELLED = 'cancelled',
 }
 
-export enum ExecutionOutcome {
-  SUCCESS = 'success',
-  CANCELLED = 'cancelled',
-  ERROR = 'error',
-}
-
 export enum NodeCategory {
   IO = 'io',
   LLM = 'llm',
   MARKET = 'market',
   BASE = 'base',
   CORE = 'core',
-}
-
-// ============ Execution Result ============
-
-export interface ExecutionResult {
-  outcome: ExecutionOutcome;
-  results: Record<string, Record<string, unknown>> | null;
-  error: string | null;
-  cancelledBy: string | null;
 }
 
 // ============ Progress Types ============
@@ -51,7 +36,7 @@ export interface ProgressEvent {
   state: ProgressState;
   progress?: number;
   text?: string;
-  meta?: Record<string, unknown>;
+  meta?: Record<string, string>;
 }
 
 export type ProgressCallback = (event: ProgressEvent) => void;
@@ -62,7 +47,7 @@ export type ResultCallback = (nodeId: string, output: Record<string, unknown>) =
 export type NodeConstructor = new (
   nodeId: string,
   params: Record<string, unknown>,
-  graphContext?: Record<string, unknown>
+  graphContext?: GraphContext
 ) => unknown;
 
 export type NodeRegistry = Record<string, NodeConstructor>;
@@ -122,6 +107,16 @@ export interface CredentialProvider {
  */
 export const CREDENTIAL_PROVIDER_KEY = '__credentialProvider__';
 
+/** Well-known keys carried by every graph execution context. */
+export interface GraphContext {
+  graph_id: string;
+  document: Graph;
+  current_node_id: string;
+  /** DataflowEngine instance — opaque to nodes, used internally by fetchInput(). */
+  __dataflowEngine__?: unknown;
+  [CREDENTIAL_PROVIDER_KEY]?: CredentialProvider;
+}
+
 // ============ Port and Param Types ============
 
 export type ParamScalar = string | number | boolean;
@@ -142,7 +137,7 @@ export interface ParamMeta {
   name: string;
   type?: ParamType;
   default?: ParamValue;
-  options?: ParamScalar[] | Record<string, unknown>;
+  options?: ParamScalar[];
   min?: number;
   max?: number;
   step?: number;
@@ -150,6 +145,8 @@ export interface ParamMeta {
   label?: string;
   unit?: string;
   description?: string;
+  /** Accepted file extensions for FILEUPLOAD params (e.g. '.txt,.md'). */
+  fileAccept?: string;
 }
 
 export interface PortSpec {
@@ -190,11 +187,8 @@ export enum PortType {
   LLM_THINKING_HISTORY_ITEM = 'LLMThinkingHistoryItem',
 }
 
-/** Runtime array of all port types (derived from enum). */
-export const PORT_TYPES: readonly PortType[] = Object.values(PortType);
-
 /** Runtime set for O(1) validation lookups. */
-const _validTypes: ReadonlySet<string> = new Set<string>(PORT_TYPES);
+const _validTypes: ReadonlySet<string> = new Set<string>(Object.values(PortType));
 
 /** Shorthand aliases resolved to canonical PortType names. */
 export const TYPE_ALIASES: Readonly<Record<string, PortType>> = {
@@ -225,12 +219,7 @@ export function port(name: string, type: PortType, opts?: { multi?: boolean; opt
   return spec;
 }
 
-/** Shorthand factory for exec (control-flow) ports. */
-export function execPort(name: string): PortDef {
-  return { name, type: PortType.EXEC };
-}
-
-export const EXEC_SOCKET_TYPE = PortType.EXEC;
+const EXEC_SOCKET_TYPE = PortType.EXEC;
 
 export function isExecPort(spec: PortSpec): boolean {
   return spec.type === EXEC_SOCKET_TYPE;
@@ -277,6 +266,18 @@ export enum OutputDisplayType {
   NONE = 'none',
 }
 
+export enum DisplayFormat {
+  AUTO = 'auto',
+  JSON = 'json',
+  PLAIN = 'plain',
+  MARKDOWN = 'markdown',
+}
+
+export enum ChartType {
+  CANDLESTICK = 'candlestick',
+  LINE = 'line',
+}
+
 export interface OutputDisplayConfig {
   type: OutputDisplayType;
   bind?: string;
@@ -290,14 +291,15 @@ export interface OutputDisplayOptions {
   // text-display
   scrollable?: boolean;
   copyButton?: boolean;
-  formats?: ('auto' | 'json' | 'plain' | 'markdown')[];
-  defaultFormat?: 'auto' | 'json' | 'plain' | 'markdown';
+  formats?: DisplayFormat[];
+  defaultFormat?: DisplayFormat;
   streaming?: boolean;
 
   // image-gallery
   autoResize?: boolean;
   preserveAspectRatio?: boolean;
-  gridLayout?: 'auto' | { cols: number; rows: number };
+  gridCols?: number;
+  gridRows?: number;
   emptyText?: string;
 
   // image-viewer
@@ -308,7 +310,7 @@ export interface OutputDisplayOptions {
   maxZoom?: number;
 
   // chart-preview
-  chartType?: 'candlestick' | 'line';
+  chartType?: ChartType;
   modalEnabled?: boolean;
   symbolSelector?: boolean;
 
@@ -365,7 +367,7 @@ export interface DataSource {
   transform?: string;
   targetParam?: string;
   valueField?: string;
-  fallback?: unknown[];
+  fallback?: ParamScalar[];
 }
 
 interface BodyWidgetBase {
@@ -477,6 +479,12 @@ export type ClientMessage =
   | ClientConnectMessage
   | ClientPingMessage;
 
+export enum ErrorCode {
+  MISSING_API_KEYS = 'MISSING_API_KEYS',
+  VALIDATION_ERROR = 'VALIDATION_ERROR',
+  EXECUTION_ERROR = 'EXECUTION_ERROR',
+}
+
 // ---- Server → Client Messages ----
 
 export interface ServerStatusMessage {
@@ -489,7 +497,7 @@ export interface ServerStatusMessage {
 export interface ServerErrorMessage {
   type: 'error';
   message: string;
-  code?: 'MISSING_API_KEYS' | 'VALIDATION_ERROR' | 'EXECUTION_ERROR' | null;
+  code?: ErrorCode | null;
   missing_keys?: string[];
   job_id?: number;
 }
@@ -512,7 +520,7 @@ export interface ServerProgressMessage {
   progress?: number;
   text?: string;
   state: ProgressState;
-  meta?: Record<string, unknown>;
+  meta?: Record<string, string>;
   job_id: number;
 }
 

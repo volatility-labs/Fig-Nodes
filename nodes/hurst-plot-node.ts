@@ -4,7 +4,7 @@
 // The Python version used matplotlib for server-side rendering.
 // In this architecture, we return computed data for frontend rendering.
 
-import { Node, NodeCategory, PortType, ParamType, OutputDisplayType, port, type NodeDefinition } from '@sosa/core';
+import { Node, NodeCategory, PortType, ParamType, OutputDisplayType, ChartType, port, type NodeDefinition } from '@sosa/core';
 import type { OHLCVBar } from './types';
 import { calculateHurstOscillator } from './hurst-calculator';
 import { calculateEma } from './ema-calculator';
@@ -98,7 +98,7 @@ export class HurstPlot extends Node {
         type: OutputDisplayType.CHART_PREVIEW,
         bind: 'chart_data',
         options: {
-          chartType: 'candlestick',
+          chartType: ChartType.CANDLESTICK,
           modalEnabled: true,
           symbolSelector: true,
         },
