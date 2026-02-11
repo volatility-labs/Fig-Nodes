@@ -1,6 +1,6 @@
 // src/nodes/core/market/indicators/orb-indicator-node.ts
 
-import { Node, port } from '@sosa/core';
+import { Node, PortType, ParamType, port } from '@sosa/core';
 import type { NodeDefinition } from '@sosa/core';
 import { IndicatorType, createIndicatorResult, createIndicatorValue, AssetClass, AssetSymbol, type OHLCVBar } from './types';
 import { calculateOrb } from './orb-calculator';
@@ -176,11 +176,11 @@ async function fetchBars(
  */
 export class OrbIndicator extends Node {
   static override definition: NodeDefinition = {
-    inputs: [port('symbol', 'AssetSymbol')],
-    outputs: [port('results', 'IndicatorResultList')],
+    inputs: [port('symbol', PortType.ASSET_SYMBOL)],
+    outputs: [port('results', PortType.INDICATOR_RESULT_LIST)],
     params: [
-      { name: 'or_minutes', type: 'number', default: 5, min: 1, step: 1 },
-      { name: 'avg_period', type: 'number', default: 14, min: 1, step: 1 },
+      { name: 'or_minutes', type: ParamType.NUMBER, default: 5, min: 1, step: 1 },
+      { name: 'avg_period', type: ParamType.NUMBER, default: 14, min: 1, step: 1 },
     ],
     requiredCredentials: ['POLYGON_API_KEY'],
   };

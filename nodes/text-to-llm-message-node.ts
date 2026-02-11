@@ -1,6 +1,6 @@
 // src/nodes/core/llm/text-to-llm-message-node.ts
 
-import { Node, NodeCategory, port, type NodeDefinition } from '@sosa/core';
+import { Node, NodeCategory, PortType, ParamType, port, type NodeDefinition } from '@sosa/core';
 
 type RoleType = 'user' | 'assistant' | 'system' | 'tool';
 type FormatType = 'json' | 'readable' | 'compact';
@@ -23,18 +23,18 @@ type FormatType = 'json' | 'readable' | 'compact';
  */
 export class TextToLLMMessage extends Node {
   static definition: NodeDefinition = {
-    inputs: [port('data', 'any')],
-    outputs: [port('message', 'LLMChatMessage')],
+    inputs: [port('data', PortType.ANY)],
+    outputs: [port('message', PortType.LLM_CHAT_MESSAGE)],
     params: [
       {
         name: 'role',
-        type: 'combo',
+        type: ParamType.COMBO,
         default: 'user',
         options: ['user', 'assistant', 'system', 'tool'],
       },
       {
         name: 'format',
-        type: 'combo',
+        type: ParamType.COMBO,
         default: 'readable',
         options: ['json', 'readable', 'compact'],
       },

@@ -4,7 +4,7 @@
 // The Python version used matplotlib for server-side rendering.
 // In this architecture, we return computed data for frontend rendering.
 
-import { Node, NodeCategory, port, type NodeDefinition } from '@sosa/core';
+import { Node, NodeCategory, PortType, ParamType, OutputDisplayType, port, type NodeDefinition } from '@sosa/core';
 import type { OHLCVBar } from './types';
 import { calculateHurstOscillator } from './hurst-calculator';
 import { calculateEma } from './ema-calculator';
@@ -84,18 +84,18 @@ function normalizeBars(bars: OHLCVBar[]): NormalizedBar[] {
  */
 export class HurstPlot extends Node {
   static definition: NodeDefinition = {
-    inputs: [port('ohlcv_bundle', 'OHLCVBundle', { optional: true })],
+    inputs: [port('ohlcv_bundle', PortType.OHLCV_BUNDLE, { optional: true })],
     outputs: [
-      port('chart_data', 'ConfigDict'),
-      port('hurst_data', 'ConfigDict'),
-      port('ohlcv_bundle', 'OHLCVBundle'),
-      port('mesa_data', 'ConfigDict'),
-      port('cco_data', 'ConfigDict'),
+      port('chart_data', PortType.CONFIG_DICT),
+      port('hurst_data', PortType.CONFIG_DICT),
+      port('ohlcv_bundle', PortType.OHLCV_BUNDLE),
+      port('mesa_data', PortType.CONFIG_DICT),
+      port('cco_data', PortType.CONFIG_DICT),
     ],
     category: NodeCategory.MARKET,
     ui: {
       outputDisplay: {
-        type: 'chart-preview',
+        type: OutputDisplayType.CHART_PREVIEW,
         bind: 'chart_data',
         options: {
           chartType: 'candlestick',
@@ -105,36 +105,36 @@ export class HurstPlot extends Node {
       },
     },
     params: [
-      { name: 'max_symbols', type: 'integer', default: 20, min: 1, max: 50, step: 1 },
-      { name: 'lookback_bars', type: 'number', default: 100, min: 10, max: 10000, step: 100 },
-      { name: 'zoom_to_recent', type: 'combo', default: false, options: [true, false] },
-      { name: 'y_axis_scale', type: 'combo', default: 'symlog', options: ['linear', 'symlog', 'log'] },
-      { name: 'show_current_price', type: 'combo', default: true, options: [true, false] },
-      { name: 'source', type: 'combo', default: 'hl2', options: ['close', 'hl2', 'open', 'high', 'low'] },
-      { name: 'bandwidth', type: 'number', default: 0.025, min: 0.001, max: 1.0, step: 0.001 },
-      { name: 'show_5_day', type: 'combo', default: true, options: [true, false] },
-      { name: 'show_10_day', type: 'combo', default: true, options: [true, false] },
-      { name: 'show_20_day', type: 'combo', default: true, options: [true, false] },
-      { name: 'show_40_day', type: 'combo', default: true, options: [true, false] },
-      { name: 'show_80_day', type: 'combo', default: true, options: [true, false] },
-      { name: 'show_20_week', type: 'combo', default: false, options: [true, false] },
-      { name: 'show_40_week', type: 'combo', default: false, options: [true, false] },
-      { name: 'show_18_month', type: 'combo', default: false, options: [true, false] },
-      { name: 'show_54_month', type: 'combo', default: false, options: [true, false] },
-      { name: 'show_9_year', type: 'combo', default: false, options: [true, false] },
-      { name: 'show_18_year', type: 'combo', default: false, options: [true, false] },
-      { name: 'show_composite', type: 'combo', default: true, options: [true, false] },
-      { name: 'show_mesa_stochastic', type: 'combo', default: false, options: [true, false] },
-      { name: 'mesa_length1', type: 'number', default: 50, min: 2, max: 200, step: 1 },
-      { name: 'mesa_length2', type: 'number', default: 21, min: 2, max: 200, step: 1 },
-      { name: 'mesa_length3', type: 'number', default: 14, min: 2, max: 200, step: 1 },
-      { name: 'mesa_length4', type: 'number', default: 9, min: 2, max: 200, step: 1 },
-      { name: 'mesa_trigger_length', type: 'number', default: 2, min: 1, max: 20, step: 1 },
-      { name: 'show_cco', type: 'combo', default: false, options: [true, false] },
-      { name: 'cco_short_cycle_length', type: 'integer', default: 10, min: 2, max: 100, step: 1 },
-      { name: 'cco_medium_cycle_length', type: 'integer', default: 30, min: 2, max: 200, step: 1 },
-      { name: 'cco_short_cycle_multiplier', type: 'number', default: 1.0, min: 0.1, max: 10.0, step: 0.1 },
-      { name: 'cco_medium_cycle_multiplier', type: 'number', default: 3.0, min: 0.1, max: 10.0, step: 0.1 },
+      { name: 'max_symbols', type: ParamType.INTEGER, default: 20, min: 1, max: 50, step: 1 },
+      { name: 'lookback_bars', type: ParamType.NUMBER, default: 100, min: 10, max: 10000, step: 100 },
+      { name: 'zoom_to_recent', type: ParamType.COMBO, default: false, options: [true, false] },
+      { name: 'y_axis_scale', type: ParamType.COMBO, default: 'symlog', options: ['linear', 'symlog', 'log'] },
+      { name: 'show_current_price', type: ParamType.COMBO, default: true, options: [true, false] },
+      { name: 'source', type: ParamType.COMBO, default: 'hl2', options: ['close', 'hl2', 'open', 'high', 'low'] },
+      { name: 'bandwidth', type: ParamType.NUMBER, default: 0.025, min: 0.001, max: 1.0, step: 0.001 },
+      { name: 'show_5_day', type: ParamType.COMBO, default: true, options: [true, false] },
+      { name: 'show_10_day', type: ParamType.COMBO, default: true, options: [true, false] },
+      { name: 'show_20_day', type: ParamType.COMBO, default: true, options: [true, false] },
+      { name: 'show_40_day', type: ParamType.COMBO, default: true, options: [true, false] },
+      { name: 'show_80_day', type: ParamType.COMBO, default: true, options: [true, false] },
+      { name: 'show_20_week', type: ParamType.COMBO, default: false, options: [true, false] },
+      { name: 'show_40_week', type: ParamType.COMBO, default: false, options: [true, false] },
+      { name: 'show_18_month', type: ParamType.COMBO, default: false, options: [true, false] },
+      { name: 'show_54_month', type: ParamType.COMBO, default: false, options: [true, false] },
+      { name: 'show_9_year', type: ParamType.COMBO, default: false, options: [true, false] },
+      { name: 'show_18_year', type: ParamType.COMBO, default: false, options: [true, false] },
+      { name: 'show_composite', type: ParamType.COMBO, default: true, options: [true, false] },
+      { name: 'show_mesa_stochastic', type: ParamType.COMBO, default: false, options: [true, false] },
+      { name: 'mesa_length1', type: ParamType.NUMBER, default: 50, min: 2, max: 200, step: 1 },
+      { name: 'mesa_length2', type: ParamType.NUMBER, default: 21, min: 2, max: 200, step: 1 },
+      { name: 'mesa_length3', type: ParamType.NUMBER, default: 14, min: 2, max: 200, step: 1 },
+      { name: 'mesa_length4', type: ParamType.NUMBER, default: 9, min: 2, max: 200, step: 1 },
+      { name: 'mesa_trigger_length', type: ParamType.NUMBER, default: 2, min: 1, max: 20, step: 1 },
+      { name: 'show_cco', type: ParamType.COMBO, default: false, options: [true, false] },
+      { name: 'cco_short_cycle_length', type: ParamType.INTEGER, default: 10, min: 2, max: 100, step: 1 },
+      { name: 'cco_medium_cycle_length', type: ParamType.INTEGER, default: 30, min: 2, max: 200, step: 1 },
+      { name: 'cco_short_cycle_multiplier', type: ParamType.NUMBER, default: 1.0, min: 0.1, max: 10.0, step: 0.1 },
+      { name: 'cco_medium_cycle_multiplier', type: ParamType.NUMBER, default: 3.0, min: 0.1, max: 10.0, step: 0.1 },
     ],
   };
 

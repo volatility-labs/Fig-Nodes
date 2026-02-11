@@ -1,6 +1,6 @@
 // src/nodes/core/market/filters/sma-crossover-filter-node.ts
 
-import type { NodeDefinition } from '@sosa/core';
+import { ParamType, type NodeDefinition } from '@sosa/core';
 import { IndicatorType, createIndicatorResult, createIndicatorValue, type OHLCVBar, type IndicatorResult } from './types';
 import { BaseIndicatorFilter } from './base-indicator-filter';
 import { calculateSma } from './sma-calculator';
@@ -12,8 +12,8 @@ export class SMACrossoverFilter extends BaseIndicatorFilter {
   static override definition: NodeDefinition = {
     ...BaseIndicatorFilter.definition,
     params: [
-      { name: 'short_period', type: 'number', default: 20, min: 1, step: 1 },
-      { name: 'long_period', type: 'number', default: 50, min: 1, step: 1 },
+      { name: 'short_period', type: ParamType.NUMBER, default: 20, min: 1, step: 1 },
+      { name: 'long_period', type: ParamType.NUMBER, default: 50, min: 1, step: 1 },
     ],
   };
 

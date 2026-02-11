@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import type { BodyWidget } from '@sosa/core';
+import { BodyWidgetType, type BodyWidget } from '@sosa/core';
 import type { WidgetProps } from './widget-registry';
 
-type ComboBodyWidget = Extract<BodyWidget, { type: 'combo' }>;
+type ComboBodyWidget = Extract<BodyWidget, { type: BodyWidgetType.COMBO }>;
 type ComboWidgetProps = Omit<WidgetProps, 'widget'> & { widget: ComboBodyWidget };
 
 function ComboWidget({ widget, value, onChange }: ComboWidgetProps) {

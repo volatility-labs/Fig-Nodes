@@ -1,7 +1,7 @@
-import type { BodyWidget } from '@sosa/core';
+import { BodyWidgetType, type BodyWidget } from '@sosa/core';
 import type { WidgetProps } from './widget-registry';
 
-type StatusBodyWidget = Extract<BodyWidget, { type: 'status' }>;
+type StatusBodyWidget = Extract<BodyWidget, { type: BodyWidgetType.STATUS }>;
 type StatusWidgetProps = Omit<WidgetProps, 'widget'> & { widget: StatusBodyWidget };
 
 function StatusWidget({ value }: StatusWidgetProps) {

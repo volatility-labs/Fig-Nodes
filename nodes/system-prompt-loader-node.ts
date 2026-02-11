@@ -1,6 +1,6 @@
 // src/nodes/core/io/system-prompt-loader-node.ts
 
-import { Node, NodeCategory, port, type NodeDefinition } from '@sosa/core';
+import { Node, NodeCategory, PortType, ParamType, BodyWidgetType, port, type NodeDefinition } from '@sosa/core';
 
 /**
  * Loads a system prompt from UI-provided content (e.g., uploaded .md/.txt).
@@ -11,10 +11,10 @@ import { Node, NodeCategory, port, type NodeDefinition } from '@sosa/core';
 export class SystemPromptLoader extends Node {
   static definition: NodeDefinition = {
     inputs: [],
-    outputs: [port('system', 'string')],
+    outputs: [port('system', PortType.STRING)],
     params: [
-      { name: 'content', type: 'textarea', default: '' },
-      { name: 'file', type: 'fileupload', default: '', options: { accept: '.txt,.md' } },
+      { name: 'content', type: ParamType.TEXTAREA, default: '' },
+      { name: 'file', type: ParamType.FILEUPLOAD, default: '', options: { accept: '.txt,.md' } },
     ],
 
     // Keep visible in IO category
@@ -22,7 +22,7 @@ export class SystemPromptLoader extends Node {
 
     ui: {
       body: [{
-        type: 'textarea',
+        type: BodyWidgetType.TEXTAREA,
         id: 'content-display',
         bind: 'content',
         options: {

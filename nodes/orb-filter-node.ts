@@ -1,6 +1,6 @@
 // src/nodes/core/market/filters/orb-filter-node.ts
 
-import type { NodeDefinition } from '@sosa/core';
+import { ParamType, type NodeDefinition } from '@sosa/core';
 import {
   AssetClass,
   AssetSymbol,
@@ -221,24 +221,24 @@ export class OrbFilter extends BaseIndicatorFilter {
     ...BaseIndicatorFilter.definition,
     requiredCredentials: ['POLYGON_API_KEY'],
     params: [
-      { name: 'or_minutes', type: 'number', default: 5, min: 1, step: 1 },
-      { name: 'rel_vol_threshold', type: 'number', default: 100.0, min: 0.0, step: 1.0 },
+      { name: 'or_minutes', type: ParamType.NUMBER, default: 5, min: 1, step: 1 },
+      { name: 'rel_vol_threshold', type: ParamType.NUMBER, default: 100.0, min: 0.0, step: 1.0 },
       {
         name: 'direction',
-        type: 'combo',
+        type: ParamType.COMBO,
         default: 'both',
         options: ['bullish', 'bearish', 'both'],
       },
-      { name: 'avg_period', type: 'number', default: 14, min: 1, step: 1 },
+      { name: 'avg_period', type: ParamType.NUMBER, default: 14, min: 1, step: 1 },
       {
         name: 'filter_above_orh',
-        type: 'combo',
+        type: ParamType.COMBO,
         default: 'false',
         options: ['true', 'false'],
       },
       {
         name: 'filter_below_orl',
-        type: 'combo',
+        type: ParamType.COMBO,
         default: 'false',
         options: ['true', 'false'],
       },

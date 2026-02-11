@@ -1,7 +1,7 @@
-import type { BodyWidget } from '@sosa/core';
+import { BodyWidgetType, type BodyWidget } from '@sosa/core';
 import type { WidgetProps } from './widget-registry';
 
-type TextareaBodyWidget = Extract<BodyWidget, { type: 'textarea' | 'code' | 'json' }>;
+type TextareaBodyWidget = Extract<BodyWidget, { type: BodyWidgetType.TEXTAREA | BodyWidgetType.CODE | BodyWidgetType.JSON }>;
 type TextareaWidgetProps = Omit<WidgetProps, 'widget'> & { widget: TextareaBodyWidget };
 
 function TextareaWidget({ widget, value, onChange }: TextareaWidgetProps) {

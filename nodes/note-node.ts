@@ -1,6 +1,6 @@
 // src/nodes/core/io/note-node.ts
 
-import { Node, NodeCategory, type NodeDefinition } from '@sosa/core';
+import { Node, NodeCategory, ParamType, OutputDisplayType, type NodeDefinition } from '@sosa/core';
 
 /**
  * A visual note/annotation node for organizing and labeling groups of nodes.
@@ -18,19 +18,19 @@ export class Note extends Node {
     params: [
       {
         name: 'text',
-        type: 'textarea',
+        type: ParamType.TEXTAREA,
         default: 'Note',
       },
       {
         name: 'color',
-        type: 'text',
+        type: ParamType.TEXT,
         default: '#334',
       },
     ],
 
     ui: {
       outputDisplay: {
-        type: 'note-display',
+        type: OutputDisplayType.NOTE_DISPLAY,
         options: {
           uniformColor: '#334',
           orderLocked: -10000,

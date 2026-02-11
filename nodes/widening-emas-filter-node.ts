@@ -1,6 +1,6 @@
 // src/nodes/core/market/filters/widening-emas-filter-node.ts
 
-import type { NodeDefinition } from '@sosa/core';
+import { ParamType, type NodeDefinition } from '@sosa/core';
 import { IndicatorType, createIndicatorResult, createIndicatorValue, type OHLCVBar, type IndicatorResult } from './types';
 import { BaseIndicatorFilter } from './base-indicator-filter';
 import { calculateEma } from './ema-calculator';
@@ -24,7 +24,7 @@ export class WideningEMAsFilter extends BaseIndicatorFilter {
     params: [
       {
         name: 'fast_ema_period',
-        type: 'number',
+        type: ParamType.NUMBER,
         default: 10,
         min: 2,
         step: 1,
@@ -33,7 +33,7 @@ export class WideningEMAsFilter extends BaseIndicatorFilter {
       },
       {
         name: 'slow_ema_period',
-        type: 'number',
+        type: ParamType.NUMBER,
         default: 30,
         min: 2,
         step: 1,
@@ -42,7 +42,7 @@ export class WideningEMAsFilter extends BaseIndicatorFilter {
       },
       {
         name: 'widening',
-        type: 'text',
+        type: ParamType.TEXT,
         default: 'true',
         label: 'Check for Widening',
         description: 'true: filter for widening EMAs, false: filter for narrowing EMAs',

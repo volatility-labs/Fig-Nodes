@@ -1,6 +1,6 @@
 // src/nodes/custom/polygon/polygon-stock-universe-node.ts
 
-import { Node, NodeCategory, port, type NodeDefinition } from '@sosa/core';
+import { Node, NodeCategory, PortType, ParamType, port, type NodeDefinition } from '@sosa/core';
 import { AssetClass, AssetSymbol, InstrumentType } from './types';
 
 // ======================== Inlined from polygon-service.ts ========================
@@ -255,7 +255,7 @@ interface TickerData {
 export class PolygonStockUniverse extends Node {
   static definition: NodeDefinition = {
     inputs: [],
-    outputs: [port('symbols', 'AssetSymbolList')],
+    outputs: [port('symbols', PortType.ASSET_SYMBOL_LIST)],
     ui: {},
     category: NodeCategory.MARKET,
     requiredCredentials: ['POLYGON_API_KEY'],
@@ -263,7 +263,7 @@ export class PolygonStockUniverse extends Node {
     params: [
       {
         name: 'min_change_perc',
-        type: 'number',
+        type: ParamType.NUMBER,
         default: 0,
         label: 'Min Change',
         unit: '%',
@@ -272,7 +272,7 @@ export class PolygonStockUniverse extends Node {
       },
       {
         name: 'max_change_perc',
-        type: 'number',
+        type: ParamType.NUMBER,
         default: 999,
         label: 'Max Change',
         unit: '%',
@@ -281,7 +281,7 @@ export class PolygonStockUniverse extends Node {
       },
       {
         name: 'min_volume',
-        type: 'number',
+        type: ParamType.NUMBER,
         default: 0,
         label: 'Min Volume',
         unit: 'shares/contracts',
@@ -289,7 +289,7 @@ export class PolygonStockUniverse extends Node {
       },
       {
         name: 'min_price',
-        type: 'number',
+        type: ParamType.NUMBER,
         default: 0,
         label: 'Min Price',
         unit: 'USD',
@@ -297,7 +297,7 @@ export class PolygonStockUniverse extends Node {
       },
       {
         name: 'max_price',
-        type: 'number',
+        type: ParamType.NUMBER,
         default: 1000000,
         label: 'Max Price',
         unit: 'USD',
@@ -305,7 +305,7 @@ export class PolygonStockUniverse extends Node {
       },
       {
         name: 'include_otc',
-        type: 'combo',
+        type: ParamType.COMBO,
         default: false,
         options: [true, false],
         label: 'Include OTC',
@@ -313,7 +313,7 @@ export class PolygonStockUniverse extends Node {
       },
       {
         name: 'exclude_etfs',
-        type: 'combo',
+        type: ParamType.COMBO,
         default: true,
         options: [true, false],
         label: 'Exclude ETFs',
@@ -322,7 +322,7 @@ export class PolygonStockUniverse extends Node {
       },
       {
         name: 'data_day',
-        type: 'combo',
+        type: ParamType.COMBO,
         default: 'auto',
         options: ['auto', 'today', 'prev_day'],
         label: 'Data Day',

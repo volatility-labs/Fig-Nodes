@@ -4,6 +4,8 @@ import {
   Node,
   NodeCategory,
   ProgressState,
+  PortType,
+  ParamType,
   port,
   type NodeDefinition,
 } from '@sosa/core';
@@ -44,25 +46,25 @@ interface OpenRouterChatResponse {
 export class OpenRouterChat extends Node {
   static definition: NodeDefinition = {
     inputs: [
-      port('prompt', 'string', { optional: true }),
-      port('system_text', 'string', { optional: true }),
-      port('system_message', 'LLMChatMessage', { optional: true }),
-      port('message_0', 'LLMChatMessage', { optional: true }),
-      port('message_1', 'LLMChatMessage', { optional: true }),
-      port('message_2', 'LLMChatMessage', { optional: true }),
-      port('message_3', 'LLMChatMessage', { optional: true }),
-      port('message_4', 'LLMChatMessage', { optional: true }),
+      port('prompt', PortType.STRING, { optional: true }),
+      port('system_text', PortType.STRING, { optional: true }),
+      port('system_message', PortType.LLM_CHAT_MESSAGE, { optional: true }),
+      port('message_0', PortType.LLM_CHAT_MESSAGE, { optional: true }),
+      port('message_1', PortType.LLM_CHAT_MESSAGE, { optional: true }),
+      port('message_2', PortType.LLM_CHAT_MESSAGE, { optional: true }),
+      port('message_3', PortType.LLM_CHAT_MESSAGE, { optional: true }),
+      port('message_4', PortType.LLM_CHAT_MESSAGE, { optional: true }),
     ],
     outputs: [
-      port('response', 'LLMChatMessage'),
-      port('thinking_history', 'LLMThinkingHistory'),
+      port('response', PortType.LLM_CHAT_MESSAGE),
+      port('thinking_history', PortType.LLM_THINKING_HISTORY),
     ],
     category: NodeCategory.LLM,
     requiredCredentials: ['OPENROUTER_API_KEY'],
     params: [
       {
         name: 'model',
-        type: 'combo',
+        type: ParamType.COMBO,
         default: 'z-ai/glm-4.6',
         options: [
           'z-ai/glm-4.6',
@@ -74,7 +76,7 @@ export class OpenRouterChat extends Node {
       },
       {
         name: 'temperature',
-        type: 'number',
+        type: ParamType.NUMBER,
         default: 0.2,
         min: 0.0,
         max: 2.0,
@@ -82,16 +84,16 @@ export class OpenRouterChat extends Node {
       },
       {
         name: 'max_tokens',
-        type: 'number',
+        type: ParamType.NUMBER,
         default: 20000,
         min: 1,
         step: 1,
         precision: 0,
       },
-      { name: 'seed', type: 'number', default: 0, min: 0, step: 1, precision: 0 },
+      { name: 'seed', type: ParamType.NUMBER, default: 0, min: 0, step: 1, precision: 0 },
       {
         name: 'seed_mode',
-        type: 'combo',
+        type: ParamType.COMBO,
         default: 'fixed',
         options: ['fixed', 'random', 'increment'],
       },

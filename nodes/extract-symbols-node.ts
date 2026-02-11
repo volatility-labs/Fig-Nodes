@@ -1,6 +1,6 @@
 // src/nodes/core/market/utils/extract-symbols-node.ts
 
-import { Node, port } from '@sosa/core';
+import { Node, PortType, port } from '@sosa/core';
 import type { NodeDefinition } from '@sosa/core';
 import type { OHLCVBundle } from './types';
 
@@ -11,8 +11,8 @@ import type { OHLCVBundle } from './types';
  */
 export class ExtractSymbols extends Node {
   static definition: NodeDefinition = {
-    inputs: [port('ohlcv_bundle', 'OHLCVBundle')],
-    outputs: [port('symbols', 'AssetSymbolList')],
+    inputs: [port('ohlcv_bundle', PortType.OHLCV_BUNDLE)],
+    outputs: [port('symbols', PortType.ASSET_SYMBOL_LIST)],
     ui: {},
     params: [],
   };

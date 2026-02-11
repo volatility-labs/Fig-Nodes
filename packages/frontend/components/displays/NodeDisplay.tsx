@@ -1,7 +1,7 @@
 // components/displays/NodeDisplay.tsx
 // Routes display rendering to the appropriate component based on type
 
-import type { OutputDisplayType, OutputDisplayOptions } from '@sosa/core';
+import { OutputDisplayType, type OutputDisplayOptions } from '@sosa/core';
 import { ChartDisplay } from './ChartDisplay';
 import { ImageDisplay } from './ImageDisplay';
 import { TextDisplay } from './TextDisplay';
@@ -15,21 +15,21 @@ interface NodeDisplayProps {
 
 export function NodeDisplay({ type, value, options }: NodeDisplayProps) {
   switch (type) {
-    case 'chart-preview':
+    case OutputDisplayType.CHART_PREVIEW:
       return <ChartDisplay value={value} options={options} />;
 
-    case 'image-gallery':
-    case 'image-viewer':
+    case OutputDisplayType.IMAGE_GALLERY:
+    case OutputDisplayType.IMAGE_VIEWER:
       return <ImageDisplay value={value} options={options} />;
 
-    case 'text-display':
-    case 'text-display-dom':
+    case OutputDisplayType.TEXT_DISPLAY:
+    case OutputDisplayType.TEXT_DISPLAY_DOM:
       return <TextDisplay value={value} options={options} />;
 
-    case 'note-display':
+    case OutputDisplayType.NOTE_DISPLAY:
       return <NoteDisplay value={value} options={options} />;
 
-    case 'none':
+    case OutputDisplayType.NONE:
       return null;
 
     default:

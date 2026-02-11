@@ -1,6 +1,6 @@
 // src/nodes/core/market/indicators/atr-indicator-node.ts
 
-import { Node, port } from '@sosa/core';
+import { Node, PortType, ParamType, port } from '@sosa/core';
 import type { NodeDefinition } from '@sosa/core';
 import { IndicatorType, createIndicatorResult, createIndicatorValue, type OHLCVBar, type OHLCVBundle } from './types';
 import { calculateAtr } from './atr-calculator';
@@ -10,10 +10,10 @@ import { calculateAtr } from './atr-calculator';
  */
 export class ATRIndicator extends Node {
   static override definition: NodeDefinition = {
-    inputs: [port('ohlcv', 'OHLCVBundle')],
-    outputs: [port('results', 'IndicatorResultList')],
+    inputs: [port('ohlcv', PortType.OHLCV_BUNDLE)],
+    outputs: [port('results', PortType.INDICATOR_RESULT_LIST)],
     params: [
-      { name: 'window', type: 'integer', default: 14, min: 1, step: 1 },
+      { name: 'window', type: ParamType.INTEGER, default: 14, min: 1, step: 1 },
     ],
   };
 

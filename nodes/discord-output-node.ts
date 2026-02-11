@@ -1,6 +1,6 @@
 // src/nodes/core/io/discord-output-node.ts
 
-import { Node, NodeCategory, port, type NodeDefinition } from '@sosa/core';
+import { Node, NodeCategory, PortType, ParamType, port, type NodeDefinition } from '@sosa/core';
 import { AssetClass, AssetSymbol } from './types';
 
 /**
@@ -18,8 +18,8 @@ import { AssetClass, AssetSymbol } from './types';
  */
 export class DiscordOutput extends Node {
   static definition: NodeDefinition = {
-    inputs: [port('symbols', 'AssetSymbolList')],
-    outputs: [port('status', 'string')],
+    inputs: [port('symbols', PortType.ASSET_SYMBOL_LIST)],
+    outputs: [port('status', PortType.STRING)],
     requiredCredentials: [], // Optional key
 
     ui: {},
@@ -27,7 +27,7 @@ export class DiscordOutput extends Node {
     params: [
       {
         name: 'message_template',
-        type: 'text',
+        type: ParamType.TEXT,
         default:
           '📊 **Trading Symbols Update**\n\n{symbol_list}\n\n*Total: {count} symbols*',
         label: 'Message Template',
@@ -36,7 +36,7 @@ export class DiscordOutput extends Node {
       },
       {
         name: 'max_symbols_display',
-        type: 'integer',
+        type: ParamType.INTEGER,
         default: 50,
         label: 'Max Symbols to Display',
         description: 'Maximum number of symbols to display in Discord (default: 50)',

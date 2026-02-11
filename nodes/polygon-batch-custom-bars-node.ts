@@ -1,6 +1,6 @@
 // src/nodes/custom/polygon/polygon-batch-custom-bars-node.ts
 
-import { Node, NodeCategory, ProgressState, port, type NodeDefinition } from '@sosa/core';
+import { Node, NodeCategory, ProgressState, PortType, ParamType, port, type NodeDefinition } from '@sosa/core';
 import { AssetClass, AssetSymbol, type OHLCVBar } from './types';
 
 // ======================== Inlined from rate-limiter.ts ========================
@@ -178,23 +178,23 @@ async function fetchBars(
  */
 export class PolygonBatchCustomBars extends Node {
   static definition: NodeDefinition = {
-    inputs: [port('symbols', 'AssetSymbolList')],
-    outputs: [port('ohlcv_bundle', 'OHLCVBundle')],
+    inputs: [port('symbols', PortType.ASSET_SYMBOL_LIST)],
+    outputs: [port('ohlcv_bundle', PortType.OHLCV_BUNDLE)],
     ui: {},
     category: NodeCategory.MARKET,
     requiredCredentials: ['POLYGON_API_KEY'],
 
     params: [
-      { name: 'multiplier', type: 'number', default: 1, min: 1, step: 1 },
+      { name: 'multiplier', type: ParamType.NUMBER, default: 1, min: 1, step: 1 },
       {
         name: 'timespan',
-        type: 'combo',
+        type: ParamType.COMBO,
         default: 'day',
         options: ['minute', 'hour', 'day', 'week', 'month', 'quarter', 'year'],
       },
       {
         name: 'lookback_period',
-        type: 'combo',
+        type: ParamType.COMBO,
         default: '3 months',
         options: [
           '1 day',
@@ -215,9 +215,9 @@ export class PolygonBatchCustomBars extends Node {
           '10 years',
         ],
       },
-      { name: 'adjusted', type: 'combo', default: true, options: [true, false] },
-      { name: 'sort', type: 'combo', default: 'asc', options: ['asc', 'desc'] },
-      { name: 'limit', type: 'number', default: 5000, min: 1, max: 50000, step: 1 },
+      { name: 'adjusted', type: ParamType.COMBO, default: true, options: [true, false] },
+      { name: 'sort', type: ParamType.COMBO, default: 'asc', options: ['asc', 'desc'] },
+      { name: 'limit', type: ParamType.NUMBER, default: 5000, min: 1, max: 50000, step: 1 },
     ],
   };
 

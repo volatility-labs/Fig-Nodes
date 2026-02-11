@@ -1,13 +1,13 @@
-import { Node, port, NodeCategory, type NodeDefinition } from '@sosa/core';
+import { Node, port, NodeCategory, PortType, ResultDisplayMode, type NodeDefinition } from '@sosa/core';
 import { AssetSymbol, type OHLCVBar, type OHLCVBundle, type IndicatorResult, type SerializedOHLCVBundle, deserializeOHLCVBundle } from './types';
 
 export abstract class BaseIndicatorFilter extends Node {
   static override definition: NodeDefinition = {
-    inputs: [port('ohlcv_bundle', 'OHLCVBundle')],
-    outputs: [port('filtered_ohlcv_bundle', 'OHLCVBundle')],
+    inputs: [port('ohlcv_bundle', PortType.OHLCV_BUNDLE)],
+    outputs: [port('filtered_ohlcv_bundle', PortType.OHLCV_BUNDLE)],
     category: NodeCategory.MARKET,
     ui: {
-      resultDisplay: 'none',
+      resultDisplay: ResultDisplayMode.NONE,
     },
   };
 

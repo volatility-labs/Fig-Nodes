@@ -1,6 +1,6 @@
 // src/nodes/custom/polygon/polygon-crypto-universe-node.ts
 
-import { Node, NodeCategory, port, type NodeDefinition } from '@sosa/core';
+import { Node, NodeCategory, PortType, ParamType, port, type NodeDefinition } from '@sosa/core';
 import { AssetClass, AssetSymbol, InstrumentType } from './types';
 
 // ======================== Inlined from polygon-service.ts ========================
@@ -119,8 +119,8 @@ interface TickerData {
  */
 export class PolygonCryptoUniverse extends Node {
   static definition: NodeDefinition = {
-    inputs: [port('filter_symbols', 'AssetSymbolList')],
-    outputs: [port('symbols', 'AssetSymbolList')],
+    inputs: [port('filter_symbols', PortType.ASSET_SYMBOL_LIST)],
+    outputs: [port('symbols', PortType.ASSET_SYMBOL_LIST)],
     ui: {},
     category: NodeCategory.MARKET,
     requiredCredentials: ['POLYGON_API_KEY'],
@@ -128,7 +128,7 @@ export class PolygonCryptoUniverse extends Node {
     params: [
       {
         name: 'min_change_perc',
-        type: 'number',
+        type: ParamType.NUMBER,
         default: undefined,
         label: 'Min Change',
         unit: '%',
@@ -137,7 +137,7 @@ export class PolygonCryptoUniverse extends Node {
       },
       {
         name: 'max_change_perc',
-        type: 'number',
+        type: ParamType.NUMBER,
         default: undefined,
         label: 'Max Change',
         unit: '%',
@@ -146,7 +146,7 @@ export class PolygonCryptoUniverse extends Node {
       },
       {
         name: 'min_volume',
-        type: 'number',
+        type: ParamType.NUMBER,
         default: undefined,
         label: 'Min Volume',
         unit: 'shares/contracts',
@@ -154,7 +154,7 @@ export class PolygonCryptoUniverse extends Node {
       },
       {
         name: 'min_price',
-        type: 'number',
+        type: ParamType.NUMBER,
         default: undefined,
         label: 'Min Price',
         unit: 'USD',
@@ -162,7 +162,7 @@ export class PolygonCryptoUniverse extends Node {
       },
       {
         name: 'max_price',
-        type: 'number',
+        type: ParamType.NUMBER,
         default: 1000000,
         label: 'Max Price',
         unit: 'USD',
@@ -170,7 +170,7 @@ export class PolygonCryptoUniverse extends Node {
       },
       {
         name: 'max_snapshot_delay_minutes',
-        type: 'combo',
+        type: ParamType.COMBO,
         default: '5min',
         label: 'Max Snapshot Delay',
         description:

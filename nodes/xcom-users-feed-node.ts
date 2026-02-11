@@ -1,6 +1,6 @@
 // src/nodes/core/io/xcom-users-feed-node.ts
 
-import { Node, NodeCategory, port, type NodeDefinition } from '@sosa/core';
+import { Node, NodeCategory, PortType, ParamType, port, type NodeDefinition } from '@sosa/core';
 
 /**
  * Represents a post from X.com
@@ -32,8 +32,8 @@ export interface XPost {
  */
 export class XcomUsersFeed extends Node {
   static definition: NodeDefinition = {
-    inputs: [port('text', 'string')],
-    outputs: [port('posts', 'array'), port('feed_text', 'string'), port('post_count', 'number')],
+    inputs: [port('text', PortType.STRING)],
+    outputs: [port('posts', PortType.ARRAY), port('feed_text', PortType.STRING), port('post_count', PortType.NUMBER)],
     requiredCredentials: ['XCOM_BEARER_TOKEN'],
 
     ui: {},
@@ -41,7 +41,7 @@ export class XcomUsersFeed extends Node {
     params: [
       {
         name: 'tweets_per_user',
-        type: 'integer',
+        type: ParamType.INTEGER,
         default: 10,
         label: 'Posts Per User',
         description: 'Number of recent posts to fetch per user',
@@ -50,14 +50,14 @@ export class XcomUsersFeed extends Node {
       },
       {
         name: 'include_retweets',
-        type: 'combo',
+        type: ParamType.COMBO,
         default: false,
         options: [true, false],
         label: 'Include Retweets',
       },
       {
         name: 'include_replies',
-        type: 'combo',
+        type: ParamType.COMBO,
         default: false,
         options: [true, false],
         label: 'Include Replies',

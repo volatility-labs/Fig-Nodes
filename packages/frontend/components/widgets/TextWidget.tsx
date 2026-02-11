@@ -1,7 +1,7 @@
-import type { BodyWidget } from '@sosa/core';
+import { BodyWidgetType, type BodyWidget } from '@sosa/core';
 import type { WidgetProps } from './widget-registry';
 
-type TextBodyWidget = Extract<BodyWidget, { type: 'text' }>;
+type TextBodyWidget = Extract<BodyWidget, { type: BodyWidgetType.TEXT }>;
 type TextWidgetProps = Omit<WidgetProps, 'widget'> & { widget: TextBodyWidget };
 
 function TextWidget({ widget, value, onChange }: TextWidgetProps) {

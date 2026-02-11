@@ -2,7 +2,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { Node, NodeCategory, port, type NodeDefinition } from '@sosa/core';
+import { Node, NodeCategory, PortType, ParamType, port, type NodeDefinition } from '@sosa/core';
 import type { OHLCVBar } from './types';
 
 /**
@@ -15,17 +15,17 @@ import type { OHLCVBar } from './types';
  */
 export class PriceDataFetching extends Node {
   static definition: NodeDefinition = {
-    inputs: [port('ohlcv_bundle', 'OHLCVBundle')],
+    inputs: [port('ohlcv_bundle', PortType.OHLCV_BUNDLE)],
     outputs: [
-      port('formatted_output', 'string'),
-      port('csv_file', 'string'),
+      port('formatted_output', PortType.STRING),
+      port('csv_file', PortType.STRING),
     ],
     category: NodeCategory.MARKET,
     ui: {},
     params: [
       {
         name: 'scan_name',
-        type: 'text',
+        type: ParamType.TEXT,
         default: 'default_scan',
         label: 'Scanner Name',
         description:
@@ -33,7 +33,7 @@ export class PriceDataFetching extends Node {
       },
       {
         name: 'save_to_csv',
-        type: 'combo',
+        type: ParamType.COMBO,
         default: true,
         options: [true, false],
         label: 'Save to CSV',

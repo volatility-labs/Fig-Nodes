@@ -1,6 +1,6 @@
 // src/nodes/core/market/filters/adx-filter-node.ts
 
-import type { NodeDefinition } from '@sosa/core';
+import { ParamType, type NodeDefinition } from '@sosa/core';
 import { IndicatorType, createIndicatorResult, createIndicatorValue, type OHLCVBar, type IndicatorResult } from './types';
 import { BaseIndicatorFilter } from './base-indicator-filter';
 import { calculateAdx } from './adx-calculator';
@@ -14,13 +14,13 @@ export class ADXFilter extends BaseIndicatorFilter {
     params: [
       {
         name: 'min_adx',
-        type: 'number',
+        type: ParamType.NUMBER,
         default: 25.0,
         min: 0.0,
         max: 100.0,
         step: 0.1,
       },
-      { name: 'timeperiod', type: 'number', default: 14, min: 1, step: 1 },
+      { name: 'timeperiod', type: ParamType.NUMBER, default: 14, min: 1, step: 1 },
     ],
   };
 

@@ -2,7 +2,7 @@
 // Instead of generating images server-side, it outputs structured chart data
 // that the frontend can render with Lightweight Charts or similar.
 
-import { Node, NodeCategory, port, type NodeDefinition } from '@sosa/core';
+import { Node, NodeCategory, PortType, ParamType, OutputDisplayType, port, type NodeDefinition } from '@sosa/core';
 import type { OHLCVBar } from './types';
 import { calculateSma } from './sma-calculator';
 import { calculateEma } from './ema-calculator';
@@ -163,12 +163,12 @@ function calculateOverlay(
  */
 export class OHLCVChart extends Node {
   static definition: NodeDefinition = {
-    inputs: [port('ohlcv_bundle', 'OHLCVBundle')],
-    outputs: [port('charts', 'ConfigDict')],
+    inputs: [port('ohlcv_bundle', PortType.OHLCV_BUNDLE)],
+    outputs: [port('charts', PortType.CONFIG_DICT)],
     category: NodeCategory.MARKET,
     ui: {
       outputDisplay: {
-        type: 'chart-preview',
+        type: OutputDisplayType.CHART_PREVIEW,
         bind: 'charts',
         options: {
           chartType: 'candlestick',
@@ -180,7 +180,7 @@ export class OHLCVChart extends Node {
     params: [
       {
         name: 'max_symbols',
-        type: 'integer',
+        type: ParamType.INTEGER,
         default: 12,
         min: 1,
         max: 64,
@@ -189,7 +189,7 @@ export class OHLCVChart extends Node {
       },
       {
         name: 'lookback_bars',
-        type: 'number',
+        type: ParamType.NUMBER,
         default: 60,
         min: 10,
         max: 5000,
@@ -198,19 +198,19 @@ export class OHLCVChart extends Node {
       },
       {
         name: 'overlay1_enabled',
-        type: 'combo',
+        type: ParamType.COMBO,
         default: true,
         options: [true, false],
       },
       {
         name: 'overlay1_type',
-        type: 'combo',
+        type: ParamType.COMBO,
         default: 'SMA',
         options: ['SMA', 'EMA'],
       },
       {
         name: 'overlay1_period',
-        type: 'number',
+        type: ParamType.NUMBER,
         default: 20,
         min: 2,
         max: 200,
@@ -218,24 +218,24 @@ export class OHLCVChart extends Node {
       },
       {
         name: 'overlay1_color',
-        type: 'text',
+        type: ParamType.TEXT,
         default: '#2196F3',
       },
       {
         name: 'overlay2_enabled',
-        type: 'combo',
+        type: ParamType.COMBO,
         default: true,
         options: [true, false],
       },
       {
         name: 'overlay2_type',
-        type: 'combo',
+        type: ParamType.COMBO,
         default: 'SMA',
         options: ['SMA', 'EMA'],
       },
       {
         name: 'overlay2_period',
-        type: 'number',
+        type: ParamType.NUMBER,
         default: 50,
         min: 2,
         max: 200,
@@ -243,7 +243,7 @@ export class OHLCVChart extends Node {
       },
       {
         name: 'overlay2_color',
-        type: 'text',
+        type: ParamType.TEXT,
         default: '#FF9800',
       },
     ],

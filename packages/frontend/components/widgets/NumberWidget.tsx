@@ -1,12 +1,12 @@
-import type { BodyWidget } from '@sosa/core';
+import { BodyWidgetType, type BodyWidget } from '@sosa/core';
 import type { WidgetProps } from './widget-registry';
 
-type NumberBodyWidget = Extract<BodyWidget, { type: 'number' | 'integer' | 'int' | 'float' }>;
+type NumberBodyWidget = Extract<BodyWidget, { type: BodyWidgetType.NUMBER | BodyWidgetType.INTEGER | BodyWidgetType.INT | BodyWidgetType.FLOAT }>;
 type NumberWidgetProps = Omit<WidgetProps, 'widget'> & { widget: NumberBodyWidget };
 
 function NumberWidget({ widget, value, onChange }: NumberWidgetProps) {
   const type = widget.type;
-  const isInteger = type === 'integer' || type === 'int';
+  const isInteger = type === BodyWidgetType.INTEGER || type === BodyWidgetType.INT;
   const unit = widget.options?.unit;
   const label = widget.label
     ? unit

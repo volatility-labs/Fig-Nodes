@@ -1,6 +1,6 @@
 // src/nodes/core/market/indicators/atrx-indicator-node.ts
 
-import { Node, port } from '@sosa/core';
+import { Node, PortType, ParamType, port } from '@sosa/core';
 import type { NodeDefinition } from '@sosa/core';
 import { IndicatorType, createIndicatorResult, createIndicatorValue, type OHLCVBar, type OHLCVBundle } from './types';
 import { calculateAtrx } from './atrx-calculator';
@@ -16,13 +16,13 @@ import { calculateAtrx } from './atrx-calculator';
  */
 export class AtrXIndicator extends Node {
   static override definition: NodeDefinition = {
-    inputs: [port('ohlcv', 'OHLCVBundle')],
-    outputs: [port('results', 'IndicatorResultList')],
+    inputs: [port('ohlcv', PortType.OHLCV_BUNDLE)],
+    outputs: [port('results', PortType.INDICATOR_RESULT_LIST)],
     params: [
-      { name: 'length', type: 'integer', default: 14, description: 'ATR period' },
+      { name: 'length', type: ParamType.INTEGER, default: 14, description: 'ATR period' },
       {
         name: 'ma_length',
-        type: 'integer',
+        type: ParamType.INTEGER,
         default: 50,
         description: 'SMA period for trend calculation',
       },

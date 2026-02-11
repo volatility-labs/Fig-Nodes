@@ -126,16 +126,17 @@ export const CREDENTIAL_PROVIDER_KEY = '__credentialProvider__';
 
 export type ParamScalar = string | number | boolean;
 export type ParamValue = ParamScalar | null | ParamScalar[] | Record<string, unknown>;
-export type ParamType =
-  | 'text'
-  | 'textarea'
-  | 'number'
-  | 'integer'
-  | 'int'
-  | 'float'
-  | 'combo'
-  | 'boolean'
-  | 'fileupload';
+export enum ParamType {
+  TEXT = 'text',
+  TEXTAREA = 'textarea',
+  NUMBER = 'number',
+  INTEGER = 'integer',
+  INT = 'int',
+  FLOAT = 'float',
+  COMBO = 'combo',
+  BOOLEAN = 'boolean',
+  FILEUPLOAD = 'fileupload',
+}
 
 export interface ParamMeta {
   name: string;
@@ -158,55 +159,51 @@ export interface PortSpec {
 }
 
 /** All known port types. Single source of truth for port type validation and OpenAPI schemas. */
-export const PORT_TYPES = [
-  // Primitives
-  'any',
-  'string',
-  'number',
-  'boolean',
-  'object',
-  'array',
-  'exec',
-  // Generic
-  'Exchange',
-  'Timestamp',
-  'Score',
-  // Market domain
-  'AssetSymbol',
-  'AssetSymbolList',
-  'OHLCVBundle',
-  'IndicatorDict',
-  'IndicatorValue',
-  'IndicatorResult',
-  'IndicatorResultList',
-  'AnyList',
-  'ConfigDict',
-  // LLM domain
-  'LLMChatMessage',
-  'LLMChatMessageList',
-  'LLMToolSpec',
-  'LLMToolSpecList',
-  'LLMChatMetrics',
-  'LLMToolHistory',
-  'LLMThinkingHistory',
-  'LLMToolHistoryItem',
-  'LLMThinkingHistoryItem',
-] as const;
+export enum PortType {
+  ANY = 'any',
+  STRING = 'string',
+  NUMBER = 'number',
+  BOOLEAN = 'boolean',
+  OBJECT = 'object',
+  ARRAY = 'array',
+  EXEC = 'exec',
+  EXCHANGE = 'Exchange',
+  TIMESTAMP = 'Timestamp',
+  SCORE = 'Score',
+  ASSET_SYMBOL = 'AssetSymbol',
+  ASSET_SYMBOL_LIST = 'AssetSymbolList',
+  OHLCV_BUNDLE = 'OHLCVBundle',
+  INDICATOR_DICT = 'IndicatorDict',
+  INDICATOR_VALUE = 'IndicatorValue',
+  INDICATOR_RESULT = 'IndicatorResult',
+  INDICATOR_RESULT_LIST = 'IndicatorResultList',
+  ANY_LIST = 'AnyList',
+  CONFIG_DICT = 'ConfigDict',
+  LLM_CHAT_MESSAGE = 'LLMChatMessage',
+  LLM_CHAT_MESSAGE_LIST = 'LLMChatMessageList',
+  LLM_TOOL_SPEC = 'LLMToolSpec',
+  LLM_TOOL_SPEC_LIST = 'LLMToolSpecList',
+  LLM_CHAT_METRICS = 'LLMChatMetrics',
+  LLM_TOOL_HISTORY = 'LLMToolHistory',
+  LLM_THINKING_HISTORY = 'LLMThinkingHistory',
+  LLM_TOOL_HISTORY_ITEM = 'LLMToolHistoryItem',
+  LLM_THINKING_HISTORY_ITEM = 'LLMThinkingHistoryItem',
+}
 
-/** Union of all valid port type names. */
-export type PortType = (typeof PORT_TYPES)[number];
+/** Runtime array of all port types (derived from enum). */
+export const PORT_TYPES: readonly PortType[] = Object.values(PortType);
 
 /** Runtime set for O(1) validation lookups. */
 const _validTypes: ReadonlySet<string> = new Set<string>(PORT_TYPES);
 
 /** Shorthand aliases resolved to canonical PortType names. */
 export const TYPE_ALIASES: Readonly<Record<string, PortType>> = {
-  str: 'string',
-  int: 'number',
-  float: 'number',
-  bool: 'boolean',
-  list: 'array',
-  dict: 'object',
+  str: PortType.STRING,
+  int: PortType.NUMBER,
+  float: PortType.NUMBER,
+  bool: PortType.BOOLEAN,
+  list: PortType.ARRAY,
+  dict: PortType.OBJECT,
 };
 
 /** Check if a type name (or alias) is a valid port type. */
@@ -230,10 +227,10 @@ export function port(name: string, type: PortType, opts?: { multi?: boolean; opt
 
 /** Shorthand factory for exec (control-flow) ports. */
 export function execPort(name: string): PortDef {
-  return { name, type: 'exec' };
+  return { name, type: PortType.EXEC };
 }
 
-export const EXEC_SOCKET_TYPE = 'exec';
+export const EXEC_SOCKET_TYPE = PortType.EXEC;
 
 export function isExecPort(spec: PortSpec): boolean {
   return spec.type === EXEC_SOCKET_TYPE;
@@ -270,14 +267,15 @@ export class NodeExecutionError extends NodeError {
 
 // ============ Output Display Types ============
 
-export type OutputDisplayType =
-  | 'text-display'
-  | 'text-display-dom'
-  | 'image-gallery'
-  | 'image-viewer'
-  | 'chart-preview'
-  | 'note-display'
-  | 'none';
+export enum OutputDisplayType {
+  TEXT_DISPLAY = 'text-display',
+  TEXT_DISPLAY_DOM = 'text-display-dom',
+  IMAGE_GALLERY = 'image-gallery',
+  IMAGE_VIEWER = 'image-viewer',
+  CHART_PREVIEW = 'chart-preview',
+  NOTE_DISPLAY = 'note-display',
+  NONE = 'none',
+}
 
 export interface OutputDisplayConfig {
   type: OutputDisplayType;
@@ -322,7 +320,13 @@ export interface OutputDisplayOptions {
 
 // ============ Result Display Types ============
 
-export type ResultDisplayMode = 'none' | 'json' | 'text' | 'summary' | 'custom';
+export enum ResultDisplayMode {
+  NONE = 'none',
+  JSON = 'json',
+  TEXT = 'text',
+  SUMMARY = 'summary',
+  CUSTOM = 'custom',
+}
 
 export interface NodeAction {
   id: string;
@@ -333,23 +337,24 @@ export interface NodeAction {
 
 // ============ Body Widget Types ============
 
-export type BodyWidgetType =
-  | 'text'
-  | 'textarea'
-  | 'code'
-  | 'json'
-  | 'image'
-  | 'chart'
-  | 'table'
-  | 'progress'
-  | 'status'
-  | 'combo'
-  | 'number'
-  | 'integer'
-  | 'int'
-  | 'float'
-  | 'boolean'
-  | 'custom';
+export enum BodyWidgetType {
+  TEXT = 'text',
+  TEXTAREA = 'textarea',
+  CODE = 'code',
+  JSON = 'json',
+  IMAGE = 'image',
+  CHART = 'chart',
+  TABLE = 'table',
+  PROGRESS = 'progress',
+  STATUS = 'status',
+  COMBO = 'combo',
+  NUMBER = 'number',
+  INTEGER = 'integer',
+  INT = 'int',
+  FLOAT = 'float',
+  BOOLEAN = 'boolean',
+  CUSTOM = 'custom',
+}
 
 export interface DataSource {
   endpoint: string;
@@ -387,22 +392,22 @@ interface NumberWidgetOptions {
 }
 
 type BodyWidgetOptionsByType = {
-  text: TextWidgetOptions;
-  textarea: TextWidgetOptions;
-  code: TextWidgetOptions;
-  json: TextWidgetOptions;
-  combo: ComboWidgetOptions;
-  number: NumberWidgetOptions;
-  integer: NumberWidgetOptions;
-  int: NumberWidgetOptions;
-  float: NumberWidgetOptions;
-  boolean: Record<string, never>;
-  progress: Record<string, never>;
-  status: Record<string, never>;
-  image: Record<string, never>;
-  chart: Record<string, never>;
-  table: Record<string, never>;
-  custom: Record<string, unknown>;
+  [BodyWidgetType.TEXT]: TextWidgetOptions;
+  [BodyWidgetType.TEXTAREA]: TextWidgetOptions;
+  [BodyWidgetType.CODE]: TextWidgetOptions;
+  [BodyWidgetType.JSON]: TextWidgetOptions;
+  [BodyWidgetType.COMBO]: ComboWidgetOptions;
+  [BodyWidgetType.NUMBER]: NumberWidgetOptions;
+  [BodyWidgetType.INTEGER]: NumberWidgetOptions;
+  [BodyWidgetType.INT]: NumberWidgetOptions;
+  [BodyWidgetType.FLOAT]: NumberWidgetOptions;
+  [BodyWidgetType.BOOLEAN]: Record<string, never>;
+  [BodyWidgetType.PROGRESS]: Record<string, never>;
+  [BodyWidgetType.STATUS]: Record<string, never>;
+  [BodyWidgetType.IMAGE]: Record<string, never>;
+  [BodyWidgetType.CHART]: Record<string, never>;
+  [BodyWidgetType.TABLE]: Record<string, never>;
+  [BodyWidgetType.CUSTOM]: Record<string, unknown>;
 };
 
 type BodyWidgetOfType<T extends BodyWidgetType> = BodyWidgetBase & {

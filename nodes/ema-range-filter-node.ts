@@ -1,6 +1,6 @@
 // src/nodes/core/market/filters/ema-range-filter-node.ts
 
-import type { NodeDefinition } from '@sosa/core';
+import { ParamType, type NodeDefinition } from '@sosa/core';
 import { IndicatorType, createIndicatorResult, createIndicatorValue, type OHLCVBar, type IndicatorResult } from './types';
 import { BaseIndicatorFilter } from './base-indicator-filter';
 import { calculateEma } from './ema-calculator';
@@ -12,8 +12,8 @@ export class EmaRangeFilter extends BaseIndicatorFilter {
   static override definition: NodeDefinition = {
     ...BaseIndicatorFilter.definition,
     params: [
-      { name: 'timeperiod', type: 'number', default: 10, min: 1, step: 1 },
-      { name: 'divisor', type: 'number', default: 100.0, min: 1.0, step: 1.0 },
+      { name: 'timeperiod', type: ParamType.NUMBER, default: 10, min: 1, step: 1 },
+      { name: 'divisor', type: ParamType.NUMBER, default: 100.0, min: 1.0, step: 1.0 },
     ],
   };
 

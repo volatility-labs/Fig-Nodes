@@ -3,6 +3,7 @@
 import {
   Node,
   NodeCategory,
+  PortType,
   port,
   serializeForApi,
   type NodeDefinition,
@@ -20,8 +21,8 @@ import { validateLLMToolSpec, type LLMToolSpec } from './types';
  */
 export class ToolsBuilder extends Node {
   static definition: NodeDefinition = {
-    inputs: [port('tools_list', 'LLMToolSpecList', { optional: true })],
-    outputs: [port('tools', 'LLMToolSpecList')],
+    inputs: [port('tools_list', PortType.LLM_TOOL_SPEC_LIST, { optional: true })],
+    outputs: [port('tools', PortType.LLM_TOOL_SPEC_LIST)],
     category: NodeCategory.LLM,
     ui: {},
   };

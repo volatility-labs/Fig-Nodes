@@ -3,7 +3,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Presets } from 'rete-react-plugin';
-import { getSocketKey, type BodyWidget as BodyWidgetModel, type BodyWidgetType, type ParamMeta } from '@sosa/core';
+import { getSocketKey, BodyWidgetType, ParamType, type BodyWidget as BodyWidgetModel, type ParamMeta } from '@sosa/core';
 import type { FigReteNode } from './rete-adapter';
 import { useGraphStore } from '../../stores/graphStore';
 import type { NodeSchemaMap } from '../../types/nodes';
@@ -87,20 +87,20 @@ export function ReteNodeComponent({ data: node, emit }: ReteNodeProps) {
 
   const toBodyWidgetType = (type: ParamMeta['type']): BodyWidgetType => {
     switch (type) {
-      case 'text':
-      case 'textarea':
-      case 'number':
-      case 'integer':
-      case 'int':
-      case 'float':
-      case 'combo':
-      case 'boolean':
-        return type;
-      case 'fileupload':
+      case ParamType.TEXT:
+      case ParamType.TEXTAREA:
+      case ParamType.NUMBER:
+      case ParamType.INTEGER:
+      case ParamType.INT:
+      case ParamType.FLOAT:
+      case ParamType.COMBO:
+      case ParamType.BOOLEAN:
+        return type as unknown as BodyWidgetType;
+      case ParamType.FILEUPLOAD:
         // No dedicated body widget yet; fallback keeps params editable.
-        return 'text';
+        return BodyWidgetType.TEXT;
       default:
-        return 'text';
+        return BodyWidgetType.TEXT;
     }
   };
 
@@ -113,80 +113,80 @@ export function ReteNodeComponent({ data: node, emit }: ReteNodeProps) {
     };
 
     switch (toBodyWidgetType(param.type)) {
-      case 'text':
+      case BodyWidgetType.TEXT:
         return {
           ...base,
-          type: 'text',
+          type: BodyWidgetType.TEXT,
           options: { placeholder: param.description },
         };
-      case 'textarea':
+      case BodyWidgetType.TEXTAREA:
         return {
           ...base,
-          type: 'textarea',
+          type: BodyWidgetType.TEXTAREA,
           options: { placeholder: param.description },
         };
-      case 'combo':
+      case BodyWidgetType.COMBO:
         return {
           ...base,
-          type: 'combo',
+          type: BodyWidgetType.COMBO,
           options: {
             options: Array.isArray(param.options) ? param.options : undefined,
           },
         };
-      case 'number':
+      case BodyWidgetType.NUMBER:
         return {
           ...base,
-          type: 'number',
+          type: BodyWidgetType.NUMBER,
           options: { min: param.min, max: param.max, step: param.step, unit: param.unit },
         };
-      case 'integer':
+      case BodyWidgetType.INTEGER:
         return {
           ...base,
-          type: 'integer',
+          type: BodyWidgetType.INTEGER,
           options: { min: param.min, max: param.max, step: param.step, unit: param.unit },
         };
-      case 'int':
+      case BodyWidgetType.INT:
         return {
           ...base,
-          type: 'int',
+          type: BodyWidgetType.INT,
           options: { min: param.min, max: param.max, step: param.step, unit: param.unit },
         };
-      case 'float':
+      case BodyWidgetType.FLOAT:
         return {
           ...base,
-          type: 'float',
+          type: BodyWidgetType.FLOAT,
           options: { min: param.min, max: param.max, step: param.step, unit: param.unit },
         };
-      case 'boolean':
-        return { ...base, type: 'boolean' };
-      case 'progress':
-        return { ...base, type: 'progress' };
-      case 'status':
-        return { ...base, type: 'status' };
-      case 'image':
-        return { ...base, type: 'image' };
-      case 'chart':
-        return { ...base, type: 'chart' };
-      case 'table':
-        return { ...base, type: 'table' };
-      case 'custom':
-        return { ...base, type: 'custom' };
-      case 'code':
+      case BodyWidgetType.BOOLEAN:
+        return { ...base, type: BodyWidgetType.BOOLEAN };
+      case BodyWidgetType.PROGRESS:
+        return { ...base, type: BodyWidgetType.PROGRESS };
+      case BodyWidgetType.STATUS:
+        return { ...base, type: BodyWidgetType.STATUS };
+      case BodyWidgetType.IMAGE:
+        return { ...base, type: BodyWidgetType.IMAGE };
+      case BodyWidgetType.CHART:
+        return { ...base, type: BodyWidgetType.CHART };
+      case BodyWidgetType.TABLE:
+        return { ...base, type: BodyWidgetType.TABLE };
+      case BodyWidgetType.CUSTOM:
+        return { ...base, type: BodyWidgetType.CUSTOM };
+      case BodyWidgetType.CODE:
         return {
           ...base,
-          type: 'code',
+          type: BodyWidgetType.CODE,
           options: { placeholder: param.description },
         };
-      case 'json':
+      case BodyWidgetType.JSON:
         return {
           ...base,
-          type: 'json',
+          type: BodyWidgetType.JSON,
           options: { placeholder: param.description },
         };
       default:
         return {
           ...base,
-          type: 'text',
+          type: BodyWidgetType.TEXT,
           options: { placeholder: param.description },
         };
     }

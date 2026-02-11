@@ -1,6 +1,6 @@
 // src/nodes/core/market/filters/atrx-filter-node.ts
 
-import type { NodeDefinition } from '@sosa/core';
+import { ParamType, type NodeDefinition } from '@sosa/core';
 import { IndicatorType, createIndicatorResult, createIndicatorValue, type OHLCVBar, type IndicatorResult } from './types';
 import { BaseIndicatorFilter } from './base-indicator-filter';
 import { calculateAtrxLastValue } from './atrx-calculator';
@@ -12,15 +12,15 @@ export class AtrXFilter extends BaseIndicatorFilter {
   static override definition: NodeDefinition = {
     ...BaseIndicatorFilter.definition,
     params: [
-      { name: 'length', type: 'integer', default: 14 },
-      { name: 'smoothing', type: 'combo', default: 'RMA', options: ['RMA', 'EMA', 'SMA'] },
-      { name: 'price', type: 'text', default: 'Close' },
-      { name: 'ma_length', type: 'integer', default: 50 },
-      { name: 'upper_threshold', type: 'float', default: 6.0 },
-      { name: 'lower_threshold', type: 'float', default: -4.0 },
+      { name: 'length', type: ParamType.INTEGER, default: 14 },
+      { name: 'smoothing', type: ParamType.COMBO, default: 'RMA', options: ['RMA', 'EMA', 'SMA'] },
+      { name: 'price', type: ParamType.TEXT, default: 'Close' },
+      { name: 'ma_length', type: ParamType.INTEGER, default: 50 },
+      { name: 'upper_threshold', type: ParamType.FLOAT, default: 6.0 },
+      { name: 'lower_threshold', type: ParamType.FLOAT, default: -4.0 },
       {
         name: 'filter_condition',
-        type: 'combo',
+        type: ParamType.COMBO,
         default: 'outside',
         options: ['outside', 'inside'],
       },

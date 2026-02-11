@@ -1,7 +1,7 @@
-import type { BodyWidget } from '@sosa/core';
+import { BodyWidgetType, type BodyWidget } from '@sosa/core';
 import type { WidgetProps } from './widget-registry';
 
-type BooleanBodyWidget = Extract<BodyWidget, { type: 'boolean' }>;
+type BooleanBodyWidget = Extract<BodyWidget, { type: BodyWidgetType.BOOLEAN }>;
 type BooleanWidgetProps = Omit<WidgetProps, 'widget'> & { widget: BooleanBodyWidget };
 
 function BooleanWidget({ widget, value, onChange }: BooleanWidgetProps) {

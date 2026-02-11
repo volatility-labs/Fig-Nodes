@@ -1,6 +1,6 @@
 // src/nodes/core/market/filters/duplicate-symbol-filter-node.ts
 
-import { Node, port } from '@sosa/core';
+import { Node, port, PortType, ParamType, ResultDisplayMode } from '@sosa/core';
 import type { NodeDefinition } from '@sosa/core';
 import { AssetSymbol, type OHLCVBar, type OHLCVBundle } from './types';
 
@@ -13,18 +13,18 @@ import { AssetSymbol, type OHLCVBar, type OHLCVBundle } from './types';
 export class DuplicateSymbolFilter extends Node {
   static override definition: NodeDefinition = {
     inputs: [
-      port('ohlcv_bundle_1', 'OHLCVBundle'),
-      port('ohlcv_bundle_2', 'OHLCVBundle'),
-      port('ohlcv_bundle_3', 'OHLCVBundle'),
+      port('ohlcv_bundle_1', PortType.OHLCV_BUNDLE),
+      port('ohlcv_bundle_2', PortType.OHLCV_BUNDLE),
+      port('ohlcv_bundle_3', PortType.OHLCV_BUNDLE),
     ],
-    outputs: [port('filtered_ohlcv_bundle', 'OHLCVBundle')],
+    outputs: [port('filtered_ohlcv_bundle', PortType.OHLCV_BUNDLE)],
     ui: {
-      resultDisplay: 'none',
+      resultDisplay: ResultDisplayMode.NONE,
     },
     params: [
       {
         name: 'operation',
-        type: 'combo',
+        type: ParamType.COMBO,
         default: 'common',
         options: ['common', 'unique_to_1', 'unique_to_2', 'unique_to_3', 'all'],
         label: 'Operation',
@@ -33,7 +33,7 @@ export class DuplicateSymbolFilter extends Node {
       },
       {
         name: 'compare_by',
-        type: 'combo',
+        type: ParamType.COMBO,
         default: 'ticker',
         options: ['ticker', 'symbol_string'],
         label: 'Compare By',
@@ -41,7 +41,7 @@ export class DuplicateSymbolFilter extends Node {
       },
       {
         name: 'case_insensitive',
-        type: 'boolean',
+        type: ParamType.BOOLEAN,
         default: true,
         label: 'Case Insensitive',
         description: 'Compare symbols case-insensitively',

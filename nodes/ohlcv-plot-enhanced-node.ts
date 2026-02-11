@@ -4,7 +4,7 @@
 // The Python version used matplotlib for server-side rendering.
 // In this architecture, we return computed data for frontend rendering.
 
-import { Node, NodeCategory, port, type NodeDefinition } from '@sosa/core';
+import { Node, NodeCategory, PortType, ParamType, OutputDisplayType, port, type NodeDefinition } from '@sosa/core';
 import { AssetSymbol, AssetClass, type OHLCVBar } from './types';
 import { calculateEma } from './ema-calculator';
 import { calculateSma } from './sma-calculator';
@@ -309,13 +309,13 @@ function calculateOverlay(
  */
 export class OHLCVPlotEnhanced extends Node {
   static definition: NodeDefinition = {
-    inputs: [port('ohlcv_bundle', 'OHLCVBundle', { optional: true })],
-    outputs: [port('chart_data', 'ConfigDict')],
+    inputs: [port('ohlcv_bundle', PortType.OHLCV_BUNDLE, { optional: true })],
+    outputs: [port('chart_data', PortType.CONFIG_DICT)],
     category: NodeCategory.MARKET,
     requiredCredentials: ['POLYGON_API_KEY'],
     ui: {
       outputDisplay: {
-        type: 'chart-preview',
+        type: OutputDisplayType.CHART_PREVIEW,
         bind: 'chart_data',
         options: {
           chartType: 'candlestick',
@@ -325,19 +325,19 @@ export class OHLCVPlotEnhanced extends Node {
       },
     },
     params: [
-      { name: 'max_symbols', type: 'integer', default: 12, min: 1, max: 64, step: 4 },
-      { name: 'lookback_bars', type: 'number', default: 60, min: 10, max: 5000, step: 10 },
-      { name: 'overlay1_type', type: 'combo', default: 'SMA', options: ['SMA', 'EMA'] },
-      { name: 'overlay1_period', type: 'number', default: 20, min: 2, max: 200, step: 1 },
-      { name: 'overlay2_type', type: 'combo', default: 'SMA', options: ['SMA', 'EMA'] },
-      { name: 'overlay2_period', type: 'number', default: 50, min: 2, max: 200, step: 1 },
-      { name: 'show_vbp_levels', type: 'combo', default: true, options: [true, false] },
-      { name: 'vbp_bins', type: 'number', default: 50, min: 10, max: 200, step: 5 },
-      { name: 'vbp_num_levels', type: 'number', default: 5, min: 1, max: 20, step: 1 },
-      { name: 'vbp_lookback_years', type: 'number', default: 2, min: 1, max: 10, step: 1 },
-      { name: 'vbp_use_dollar_weighted', type: 'combo', default: false, options: [true, false] },
-      { name: 'vbp_use_close_only', type: 'combo', default: false, options: [true, false] },
-      { name: 'vbp_style', type: 'combo', default: 'dashed', options: ['solid', 'dashed', 'dotted'] },
+      { name: 'max_symbols', type: ParamType.INTEGER, default: 12, min: 1, max: 64, step: 4 },
+      { name: 'lookback_bars', type: ParamType.NUMBER, default: 60, min: 10, max: 5000, step: 10 },
+      { name: 'overlay1_type', type: ParamType.COMBO, default: 'SMA', options: ['SMA', 'EMA'] },
+      { name: 'overlay1_period', type: ParamType.NUMBER, default: 20, min: 2, max: 200, step: 1 },
+      { name: 'overlay2_type', type: ParamType.COMBO, default: 'SMA', options: ['SMA', 'EMA'] },
+      { name: 'overlay2_period', type: ParamType.NUMBER, default: 50, min: 2, max: 200, step: 1 },
+      { name: 'show_vbp_levels', type: ParamType.COMBO, default: true, options: [true, false] },
+      { name: 'vbp_bins', type: ParamType.NUMBER, default: 50, min: 10, max: 200, step: 5 },
+      { name: 'vbp_num_levels', type: ParamType.NUMBER, default: 5, min: 1, max: 20, step: 1 },
+      { name: 'vbp_lookback_years', type: ParamType.NUMBER, default: 2, min: 1, max: 10, step: 1 },
+      { name: 'vbp_use_dollar_weighted', type: ParamType.COMBO, default: false, options: [true, false] },
+      { name: 'vbp_use_close_only', type: ParamType.COMBO, default: false, options: [true, false] },
+      { name: 'vbp_style', type: ParamType.COMBO, default: 'dashed', options: ['solid', 'dashed', 'dotted'] },
     ],
   };
 

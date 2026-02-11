@@ -1,7 +1,7 @@
-import type { BodyWidget } from '@sosa/core';
+import { BodyWidgetType, type BodyWidget } from '@sosa/core';
 import type { WidgetProps } from './widget-registry';
 
-type ProgressBodyWidget = Extract<BodyWidget, { type: 'progress' }>;
+type ProgressBodyWidget = Extract<BodyWidget, { type: BodyWidgetType.PROGRESS }>;
 type ProgressWidgetProps = Omit<WidgetProps, 'widget'> & { widget: ProgressBodyWidget };
 
 function ProgressWidget({ widget, value }: ProgressWidgetProps) {

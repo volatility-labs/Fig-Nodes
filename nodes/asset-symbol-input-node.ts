@@ -1,6 +1,6 @@
 // src/nodes/core/io/asset-symbol-input-node.ts
 
-import { Node, port, type NodeDefinition } from '@sosa/core';
+import { Node, PortType, ParamType, port, type NodeDefinition } from '@sosa/core';
 import { AssetClass, AssetSymbol, InstrumentType } from './types';
 
 /**
@@ -9,27 +9,27 @@ import { AssetClass, AssetSymbol, InstrumentType } from './types';
 export class AssetSymbolInput extends Node {
   static definition: NodeDefinition = {
     inputs: [],
-    outputs: [port('symbol', 'AssetSymbol')],
+    outputs: [port('symbol', PortType.ASSET_SYMBOL)],
 
     ui: {},
 
     params: [
-      { name: 'ticker', type: 'text', default: '' },
+      { name: 'ticker', type: ParamType.TEXT, default: '' },
       {
         name: 'asset_class',
-        type: 'combo',
+        type: ParamType.COMBO,
         default: AssetClass.CRYPTO,
         options: Object.values(AssetClass),
       },
       {
         name: 'quote_currency',
-        type: 'combo',
+        type: ParamType.COMBO,
         default: 'USDT',
         options: ['USD', 'USDC', 'USDT'],
       },
       {
         name: 'instrument_type',
-        type: 'combo',
+        type: ParamType.COMBO,
         default: InstrumentType.PERPETUAL,
         options: Object.values(InstrumentType),
       },

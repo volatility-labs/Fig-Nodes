@@ -1,6 +1,6 @@
 // src/nodes/core/market/utils/image-display-node.ts
 
-import { Node, NodeCategory, port, type NodeDefinition } from '@sosa/core';
+import { Node, NodeCategory, PortType, OutputDisplayType, port, type NodeDefinition } from '@sosa/core';
 
 /**
  * Display node for images. Takes images as input and passes them through for display in the UI.
@@ -10,12 +10,12 @@ import { Node, NodeCategory, port, type NodeDefinition } from '@sosa/core';
  */
 export class ImageDisplay extends Node {
   static definition: NodeDefinition = {
-    inputs: [port('images', 'ConfigDict', { optional: true })],
-    outputs: [port('images', 'ConfigDict')],
+    inputs: [port('images', PortType.CONFIG_DICT, { optional: true })],
+    outputs: [port('images', PortType.CONFIG_DICT)],
     category: NodeCategory.MARKET,
     ui: {
       outputDisplay: {
-        type: 'image-viewer',
+        type: OutputDisplayType.IMAGE_VIEWER,
         bind: 'images',
         options: {
           zoomable: true,

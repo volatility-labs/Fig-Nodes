@@ -2,7 +2,7 @@
 // Static widget renderer map keyed by BodyWidgetType
 
 import type React from 'react';
-import type { BodyWidget, BodyWidgetType } from '@sosa/core';
+import { BodyWidgetType, type BodyWidget } from '@sosa/core';
 
 import TextWidget from './TextWidget';
 import TextareaWidget from './TextareaWidget';
@@ -26,18 +26,18 @@ export type WidgetRenderer<TWidget extends BodyWidget = BodyWidget> = React.FC<W
 
 /** All widget renderers, keyed by BodyWidgetType. */
 export const WIDGETS: Partial<Record<BodyWidgetType, WidgetRenderer>> = {
-  text: TextWidget as WidgetRenderer,
-  textarea: TextareaWidget as WidgetRenderer,
-  code: TextareaWidget as WidgetRenderer,
-  json: TextareaWidget as WidgetRenderer,
-  number: NumberWidget as WidgetRenderer,
-  integer: NumberWidget as WidgetRenderer,
-  int: NumberWidget as WidgetRenderer,
-  float: NumberWidget as WidgetRenderer,
-  combo: ComboWidget as WidgetRenderer,
-  boolean: BooleanWidget as WidgetRenderer,
-  progress: ProgressWidget as WidgetRenderer,
-  status: StatusWidget as WidgetRenderer,
+  [BodyWidgetType.TEXT]: TextWidget as WidgetRenderer,
+  [BodyWidgetType.TEXTAREA]: TextareaWidget as WidgetRenderer,
+  [BodyWidgetType.CODE]: TextareaWidget as WidgetRenderer,
+  [BodyWidgetType.JSON]: TextareaWidget as WidgetRenderer,
+  [BodyWidgetType.NUMBER]: NumberWidget as WidgetRenderer,
+  [BodyWidgetType.INTEGER]: NumberWidget as WidgetRenderer,
+  [BodyWidgetType.INT]: NumberWidget as WidgetRenderer,
+  [BodyWidgetType.FLOAT]: NumberWidget as WidgetRenderer,
+  [BodyWidgetType.COMBO]: ComboWidget as WidgetRenderer,
+  [BodyWidgetType.BOOLEAN]: BooleanWidget as WidgetRenderer,
+  [BodyWidgetType.PROGRESS]: ProgressWidget as WidgetRenderer,
+  [BodyWidgetType.STATUS]: StatusWidget as WidgetRenderer,
 };
 
 /** Look up a widget renderer by type. */

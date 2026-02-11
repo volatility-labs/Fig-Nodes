@@ -3,6 +3,8 @@
 import {
   Node,
   NodeCategory,
+  PortType,
+  ResultDisplayMode,
   serializeForApi,
   port,
   type NodeDefinition,
@@ -20,12 +22,12 @@ import { validateLLMChatMessage, type LLMChatMessage } from './types';
  */
 export class LLMMessagesBuilder extends Node {
   static definition: NodeDefinition = {
-    inputs: [port('messages', 'LLMChatMessage', { multi: true, optional: true })],
-    outputs: [port('messages', 'LLMChatMessageList')],
+    inputs: [port('messages', PortType.LLM_CHAT_MESSAGE, { multi: true, optional: true })],
+    outputs: [port('messages', PortType.LLM_CHAT_MESSAGE_LIST)],
     params: [],
     category: NodeCategory.LLM,
     ui: {
-      resultDisplay: 'json',  // Shows message list as JSON
+      resultDisplay: ResultDisplayMode.JSON,  // Shows message list as JSON
     },
   };
 

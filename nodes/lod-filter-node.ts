@@ -1,6 +1,6 @@
 // src/nodes/core/market/filters/lod-filter-node.ts
 
-import type { NodeDefinition } from '@sosa/core';
+import { ParamType, type NodeDefinition } from '@sosa/core';
 import { IndicatorType, createIndicatorResult, createIndicatorValue, type OHLCVBar, type IndicatorResult } from './types';
 import { BaseIndicatorFilter } from './base-indicator-filter';
 import { calculateLod } from './lod-calculator';
@@ -32,7 +32,7 @@ export class LodFilter extends BaseIndicatorFilter {
     params: [
       {
         name: 'lod_distance_threshold',
-        type: 'number',
+        type: ParamType.NUMBER,
         default: 3.16,
         min: 0.0,
         step: 0.1,
@@ -43,7 +43,7 @@ export class LodFilter extends BaseIndicatorFilter {
       },
       {
         name: 'atr_window',
-        type: 'number',
+        type: ParamType.NUMBER,
         default: 14,
         min: 1,
         step: 1,
@@ -52,7 +52,7 @@ export class LodFilter extends BaseIndicatorFilter {
       },
       {
         name: 'filter_mode',
-        type: 'combo',
+        type: ParamType.COMBO,
         default: 'min',
         options: ['min', 'max'],
         label: 'Filter Mode',

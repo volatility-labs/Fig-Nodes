@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { randomUUID } from 'crypto';
-import { Node, NodeCategory, port, type NodeDefinition } from '@sosa/core';
+import { Node, NodeCategory, PortType, ParamType, port, type NodeDefinition } from '@sosa/core';
 import { AssetSymbol, type OHLCVBar } from './types';
 
 // Type guards
@@ -84,17 +84,17 @@ interface SerializedValue {
  */
 export class SaveOutput extends Node {
   static definition: NodeDefinition = {
-    inputs: [port('data', 'any')],
-    outputs: [port('filepath', 'string')],
+    inputs: [port('data', PortType.ANY)],
+    outputs: [port('filepath', PortType.STRING)],
 
     ui: {},
 
     category: NodeCategory.IO,
 
     params: [
-      { name: 'filename', type: 'text', default: '' },
-      { name: 'format', type: 'combo', default: 'json', options: ['json', 'jsonl'] },
-      { name: 'overwrite', type: 'combo', default: false, options: [true, false] },
+      { name: 'filename', type: ParamType.TEXT, default: '' },
+      { name: 'format', type: ParamType.COMBO, default: 'json', options: ['json', 'jsonl'] },
+      { name: 'overwrite', type: ParamType.COMBO, default: false, options: [true, false] },
     ],
   };
 

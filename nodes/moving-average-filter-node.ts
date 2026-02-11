@@ -1,6 +1,6 @@
 // src/nodes/core/market/filters/moving-average-filter-node.ts
 
-import type { NodeDefinition } from '@sosa/core';
+import { ParamType, type NodeDefinition } from '@sosa/core';
 import { IndicatorType, createIndicatorResult, createIndicatorValue, type OHLCVBar, type OHLCVBundle, type IndicatorResult } from './types';
 import { BaseIndicatorFilter } from './base-indicator-filter';
 import { calculateSma } from './sma-calculator';
@@ -13,19 +13,19 @@ export class MovingAverageFilter extends BaseIndicatorFilter {
   static override definition: NodeDefinition = {
     ...BaseIndicatorFilter.definition,
     params: [
-      { name: 'period', type: 'number', default: 200, min: 2, step: 1 },
+      { name: 'period', type: ParamType.NUMBER, default: 200, min: 2, step: 1 },
       {
         name: 'prior_bars',
-        type: 'number',
+        type: ParamType.NUMBER,
         default: 1,
         min: 0,
         step: 1,
         description: 'Number of bars to look back for slope calculation (works with any interval: 15min, 1hr, daily, etc.)',
       },
-      { name: 'ma_type', type: 'combo', default: 'SMA', options: ['SMA', 'EMA'] },
+      { name: 'ma_type', type: ParamType.COMBO, default: 'SMA', options: ['SMA', 'EMA'] },
       {
         name: 'require_price_above_ma',
-        type: 'combo',
+        type: ParamType.COMBO,
         default: 'true',
         options: ['true', 'false'],
         description: 'If true, requires price > MA. If false, only checks for rising MA slope.',

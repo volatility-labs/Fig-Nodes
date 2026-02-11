@@ -1,6 +1,6 @@
 // src/nodes/core/market/filters/vbp-level-filter-node.ts
 
-import type { NodeDefinition } from '@sosa/core';
+import { ParamType, type NodeDefinition } from '@sosa/core';
 import {
   AssetClass,
   AssetSymbol,
@@ -230,7 +230,7 @@ export class VBPLevelFilter extends BaseIndicatorFilter {
     params: [
       {
         name: 'bins',
-        type: 'number',
+        type: ParamType.NUMBER,
         default: 50,
         min: 10,
         max: 200,
@@ -240,7 +240,7 @@ export class VBPLevelFilter extends BaseIndicatorFilter {
       },
       {
         name: 'lookback_years',
-        type: 'number',
+        type: ParamType.NUMBER,
         default: 2,
         min: 1,
         max: 10,
@@ -250,7 +250,7 @@ export class VBPLevelFilter extends BaseIndicatorFilter {
       },
       {
         name: 'num_levels',
-        type: 'number',
+        type: ParamType.NUMBER,
         default: 5,
         min: 1,
         max: 20,
@@ -260,7 +260,7 @@ export class VBPLevelFilter extends BaseIndicatorFilter {
       },
       {
         name: 'max_distance_to_support',
-        type: 'number',
+        type: ParamType.NUMBER,
         default: 5.0,
         min: 0.0,
         max: 50.0,
@@ -271,7 +271,7 @@ export class VBPLevelFilter extends BaseIndicatorFilter {
       },
       {
         name: 'min_distance_to_resistance',
-        type: 'number',
+        type: ParamType.NUMBER,
         default: 5.0,
         min: 0.0,
         max: 50.0,

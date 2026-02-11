@@ -1,6 +1,6 @@
 // src/nodes/core/market/filters/rsi-filter-node.ts
 
-import type { NodeDefinition } from '@sosa/core';
+import { ParamType, ResultDisplayMode, type NodeDefinition } from '@sosa/core';
 import { IndicatorType, createIndicatorResult, createIndicatorValue, type OHLCVBar, type IndicatorResult } from './types';
 import { BaseIndicatorFilter } from './base-indicator-filter';
 import { calculateRsi } from './rsi-calculator';
@@ -14,7 +14,7 @@ export class RSIFilter extends BaseIndicatorFilter {
     params: [
       {
         name: 'min_rsi',
-        type: 'number',
+        type: ParamType.NUMBER,
         default: 30.0,
         min: 0.0,
         max: 100.0,
@@ -22,16 +22,16 @@ export class RSIFilter extends BaseIndicatorFilter {
       },
       {
         name: 'max_rsi',
-        type: 'number',
+        type: ParamType.NUMBER,
         default: 70.0,
         min: 0.0,
         max: 100.0,
         step: 1.0,
       },
-      { name: 'timeperiod', type: 'number', default: 14, min: 1, step: 1 },
+      { name: 'timeperiod', type: ParamType.NUMBER, default: 14, min: 1, step: 1 },
     ],
     ui: {
-      resultDisplay: 'none',
+      resultDisplay: ResultDisplayMode.NONE,
     },
   };
 

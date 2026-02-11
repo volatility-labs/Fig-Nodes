@@ -1,6 +1,6 @@
 // src/nodes/core/market/filters/atr-filter-node.ts
 
-import type { NodeDefinition } from '@sosa/core';
+import { ParamType, ResultDisplayMode, type NodeDefinition } from '@sosa/core';
 import { IndicatorType, createIndicatorResult, createIndicatorValue, type OHLCVBar, type IndicatorResult } from './types';
 import { BaseIndicatorFilter } from './base-indicator-filter';
 import { calculateAtr } from './atr-calculator';
@@ -12,11 +12,11 @@ export class ATRFilter extends BaseIndicatorFilter {
   static override definition: NodeDefinition = {
     ...BaseIndicatorFilter.definition,
     params: [
-      { name: 'min_atr', type: 'number', default: 0.0, min: 0.0, step: 0.1 },
-      { name: 'window', type: 'number', default: 14, min: 1, step: 1 },
+      { name: 'min_atr', type: ParamType.NUMBER, default: 0.0, min: 0.0, step: 0.1 },
+      { name: 'window', type: ParamType.NUMBER, default: 14, min: 1, step: 1 },
     ],
     ui: {
-      resultDisplay: 'none',
+      resultDisplay: ResultDisplayMode.NONE,
       actions: [
         { id: 'previewFiltered', label: 'Preview Filtered', icon: '👁' },
         { id: 'copySummary', label: 'Copy Summary', icon: '📋' },

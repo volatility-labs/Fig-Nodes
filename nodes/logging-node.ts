@@ -1,4 +1,4 @@
-import { Node, NodeCategory, port, type NodeDefinition } from '@sosa/core';
+import { Node, NodeCategory, PortType, OutputDisplayType, port, type NodeDefinition } from '@sosa/core';
 
 const MAX_DISPLAY_CHARS = 10_000;
 
@@ -7,8 +7,8 @@ const MAX_DISPLAY_CHARS = 10_000;
  */
 export class Logging extends Node {
   static definition: NodeDefinition = {
-    inputs: [port('input', 'any')],
-    outputs: [port('output', 'string')],
+    inputs: [port('input', PortType.ANY)],
+    outputs: [port('output', PortType.STRING)],
 
     category: NodeCategory.IO,
 
@@ -16,7 +16,7 @@ export class Logging extends Node {
 
     ui: {
       outputDisplay: {
-        type: 'text-display-dom',
+        type: OutputDisplayType.TEXT_DISPLAY_DOM,
         bind: 'output',
         options: {
           placeholder: 'Logs appear here...',

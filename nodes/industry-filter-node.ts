@@ -1,6 +1,6 @@
 // src/nodes/core/market/filters/industry-filter-node.ts
 
-import { Node, port } from '@sosa/core';
+import { Node, port, PortType, ParamType, ResultDisplayMode } from '@sosa/core';
 import type { NodeDefinition } from '@sosa/core';
 import { AssetSymbol, type OHLCVBar, type OHLCVBundle } from './types';
 
@@ -12,23 +12,23 @@ import { AssetSymbol, type OHLCVBar, type OHLCVBundle } from './types';
  */
 export class IndustryFilter extends Node {
   static override definition: NodeDefinition = {
-    inputs: [port('ohlcv_bundle', 'OHLCVBundle')],
-    outputs: [port('filtered_ohlcv_bundle', 'OHLCVBundle')],
+    inputs: [port('ohlcv_bundle', PortType.OHLCV_BUNDLE)],
+    outputs: [port('filtered_ohlcv_bundle', PortType.OHLCV_BUNDLE)],
     ui: {
-      resultDisplay: 'none',
+      resultDisplay: ResultDisplayMode.NONE,
     },
     requiredCredentials: ['POLYGON_API_KEY'],
     params: [
       {
         name: 'allowed_industries',
-        type: 'combo',
+        type: ParamType.COMBO,
         default: [],
         options: [],
         description: 'List of industry sic_description strings to match (exact, case-insensitive)',
       },
       {
         name: 'date',
-        type: 'text',
+        type: ParamType.TEXT,
         default: null,
         description: 'Optional date for historical overview (YYYY-MM-DD)',
       },

@@ -1,6 +1,6 @@
 // src/nodes/core/market/filters/evwma-filter-node.ts
 
-import type { NodeDefinition } from '@sosa/core';
+import { ParamType, type NodeDefinition } from '@sosa/core';
 import {
   AssetClass,
   AssetSymbol,
@@ -229,7 +229,7 @@ export class EVWMAFilter extends BaseIndicatorFilter {
     params: [
       {
         name: 'evwma1_timeframe',
-        type: 'combo',
+        type: ParamType.COMBO,
         default: '1min',
         options: ['', '1min', '5min', '15min', '30min', '1hr', '4hr', '1day', 'weekly'],
         label: 'EVWMA 1 Timeframe',
@@ -237,7 +237,7 @@ export class EVWMAFilter extends BaseIndicatorFilter {
       },
       {
         name: 'evwma2_timeframe',
-        type: 'combo',
+        type: ParamType.COMBO,
         default: '5min',
         options: ['', '1min', '5min', '15min', '30min', '1hr', '4hr', '1day', 'weekly'],
         label: 'EVWMA 2 Timeframe',
@@ -245,7 +245,7 @@ export class EVWMAFilter extends BaseIndicatorFilter {
       },
       {
         name: 'evwma3_timeframe',
-        type: 'combo',
+        type: ParamType.COMBO,
         default: '15min',
         options: ['', '1min', '5min', '15min', '30min', '1hr', '4hr', '1day', 'weekly'],
         label: 'EVWMA 3 Timeframe',
@@ -253,7 +253,7 @@ export class EVWMAFilter extends BaseIndicatorFilter {
       },
       {
         name: 'length',
-        type: 'number',
+        type: ParamType.NUMBER,
         default: 325,
         min: 1,
         step: 1,
@@ -262,7 +262,7 @@ export class EVWMAFilter extends BaseIndicatorFilter {
       },
       {
         name: 'correlation_threshold',
-        type: 'number',
+        type: ParamType.NUMBER,
         default: 0.6,
         min: 0.0,
         max: 1.0,
