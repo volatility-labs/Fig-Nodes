@@ -1,9 +1,13 @@
-import { registerWidget, type WidgetProps } from './widget-registry';
+import type { BodyWidget } from '@sosa/core';
+import type { WidgetProps } from './widget-registry';
 
-function NumberWidget({ widget, value, onChange }: WidgetProps) {
+type NumberBodyWidget = Extract<BodyWidget, { type: 'number' | 'integer' | 'int' | 'float' }>;
+type NumberWidgetProps = Omit<WidgetProps, 'widget'> & { widget: NumberBodyWidget };
+
+function NumberWidget({ widget, value, onChange }: NumberWidgetProps) {
   const type = widget.type;
   const isInteger = type === 'integer' || type === 'int';
-  const unit = widget.options?.unit as string | undefined;
+  const unit = widget.options?.unit;
   const label = widget.label
     ? unit
       ? `${widget.label} (${unit})`
@@ -16,9 +20,9 @@ function NumberWidget({ widget, value, onChange }: WidgetProps) {
         className="fig-widget-number"
         type="number"
         value={value != null ? Number(value) : ''}
-        min={widget.options?.min as number | undefined}
-        max={widget.options?.max as number | undefined}
-        step={(widget.options?.step as number | undefined) ?? (isInteger ? 1 : undefined)}
+        min={widget.options?.min}
+        max={widget.options?.max}
+        step={widget.options?.step ?? (isInteger ? 1 : undefined)}
         onChange={(e) => onChange(e.target.value === '' ? '' : Number(e.target.value))}
         onPointerDown={(e) => e.stopPropagation()}
       />
@@ -26,8 +30,4 @@ function NumberWidget({ widget, value, onChange }: WidgetProps) {
   );
 }
 
-registerWidget('number', NumberWidget);
-registerWidget('integer', NumberWidget);
-registerWidget('int', NumberWidget);
-registerWidget('float', NumberWidget);
 export default NumberWidget;

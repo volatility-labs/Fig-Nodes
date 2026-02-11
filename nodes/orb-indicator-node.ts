@@ -2,38 +2,8 @@
 
 import { Node, port } from '@sosa/core';
 import type { NodeDefinition } from '@sosa/core';
-import { IndicatorType, createIndicatorResult, createIndicatorValue, AssetClass, AssetSymbol, type IndicatorValue, type OHLCVBar } from './types';
+import { IndicatorType, createIndicatorResult, createIndicatorValue, AssetClass, AssetSymbol, type OHLCVBar } from './types';
 import { calculateOrb } from './orb-calculator';
-
-abstract class BaseIndicator extends Node {
-  static definition: NodeDefinition = {
-    inputs: {
-      ohlcv: port('OHLCVBundle'),
-    },
-    outputs: {
-      results: port('IndicatorResultList'),
-    },
-    params: [
-      {
-        name: 'indicators',
-        type: 'combo',
-        default: [IndicatorType.MACD, IndicatorType.RSI, IndicatorType.ADX],
-        options: Object.values(IndicatorType),
-      },
-      {
-        name: 'timeframe',
-        type: 'combo',
-        default: '1d',
-        options: ['1m', '5m', '15m', '1h', '4h', '1d', '1w', '1M'],
-      },
-    ],
-  };
-
-  protected abstract mapToIndicatorValue(
-    indType: IndicatorType,
-    raw: Record<string, unknown>
-  ): IndicatorValue;
-}
 
 interface FetchBarsParams {
   multiplier: number;
@@ -204,29 +174,16 @@ async function fetchBars(
  * Computes the ORB (Opening Range Breakout) indicator for a single asset.
  * Outputs relative volume (RVOL) and direction (bullish/bearish/doji).
  */
-export class OrbIndicator extends BaseIndicator {
+export class OrbIndicator extends Node {
   static override definition: NodeDefinition = {
-    ...BaseIndicator.definition,
-    inputs: {
-      symbol: port('AssetSymbol'),
-    },
-    outputs: {
-      results: port('IndicatorResultList'),
-    },
+    inputs: [port('symbol', 'AssetSymbol')],
+    outputs: [port('results', 'IndicatorResultList')],
     params: [
       { name: 'or_minutes', type: 'number', default: 5, min: 1, step: 1 },
       { name: 'avg_period', type: 'number', default: 14, min: 1, step: 1 },
     ],
     requiredCredentials: ['POLYGON_API_KEY'],
   };
-
-  protected mapToIndicatorValue(
-    _indType: IndicatorType,
-    _raw: Record<string, unknown>
-  ): IndicatorValue {
-    // ORB node uses its own run path and does not rely on base mapping.
-    return createIndicatorValue({ single: NaN });
-  }
 
   protected async run(inputs: Record<string, unknown>): Promise<Record<string, unknown>> {
     console.log('='.repeat(80));

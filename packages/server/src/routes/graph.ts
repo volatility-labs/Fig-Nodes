@@ -3,6 +3,7 @@ import type { FastifyPluginAsync } from 'fastify';
 import {
   GraphExecutor,
   type NodeRegistry,
+  type NodeSchemaMap,
   type Graph,
   validateGraph,
   hasCycles,
@@ -51,7 +52,7 @@ export const graphRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   // Get all nodes with full metadata (cached since definitions are static)
-  let cachedNodes: Record<string, ReturnType<typeof getNodeMetadata>> | null = null;
+  let cachedNodes: NodeSchemaMap | null = null;
 
   fastify.get('/v1/nodes', async () => {
     if (!cachedNodes) {

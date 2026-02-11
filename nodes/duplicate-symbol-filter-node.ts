@@ -4,76 +4,22 @@ import { Node, port } from '@sosa/core';
 import type { NodeDefinition } from '@sosa/core';
 import { AssetSymbol, type OHLCVBar, type OHLCVBundle } from './types';
 
-abstract class BaseFilter extends Node {
-  static override definition: NodeDefinition = {
-    inputs: {
-      ohlcv_bundle: port('OHLCVBundle'),
-    },
-    outputs: {
-      filtered_ohlcv_bundle: port('OHLCVBundle'),
-    },
-    ui: {
-      resultDisplay: 'none',
-    },
-  };
-
-  protected filterCondition(_symbol: AssetSymbol, _ohlcvData: OHLCVBar[]): boolean {
-    throw new Error('Subclasses must implement filterCondition');
-  }
-
-  protected async filterConditionAsync(
-    symbol: AssetSymbol,
-    ohlcvData: OHLCVBar[]
-  ): Promise<boolean> {
-    return this.filterCondition(symbol, ohlcvData);
-  }
-
-  protected async run(inputs: Record<string, unknown>): Promise<Record<string, unknown>> {
-    const ohlcvBundle = (inputs.ohlcv_bundle as OHLCVBundle) ?? new Map();
-
-    if (ohlcvBundle.size === 0) {
-      return { filtered_ohlcv_bundle: new Map() };
-    }
-
-    const filteredBundle: OHLCVBundle = new Map();
-
-    for (const [symbol, ohlcvData] of ohlcvBundle) {
-      if (!ohlcvData || ohlcvData.length === 0) {
-        continue;
-      }
-
-      try {
-        if (await this.filterConditionAsync(symbol, ohlcvData)) {
-          filteredBundle.set(symbol, ohlcvData);
-        }
-      } catch (e) {
-        if (e instanceof Error && e.message.includes('must implement')) {
-          if (this.filterCondition(symbol, ohlcvData)) {
-            filteredBundle.set(symbol, ohlcvData);
-          }
-        } else {
-          throw e;
-        }
-      }
-    }
-
-    return { filtered_ohlcv_bundle: filteredBundle };
-  }
-}
-
 /**
  * Compare symbols across up to 3 inputs to find common or unique symbols.
  *
  * Accepts OHLCV bundles or symbol lists from ExtractSymbols.
  * Connect up to 3 inputs to compare symbols between them.
  */
-export class DuplicateSymbolFilter extends BaseFilter {
+export class DuplicateSymbolFilter extends Node {
   static override definition: NodeDefinition = {
-    ...BaseFilter.definition,
-    inputs: {
-      ohlcv_bundle_1: port('OHLCVBundle'),
-      ohlcv_bundle_2: port('OHLCVBundle'),
-      ohlcv_bundle_3: port('OHLCVBundle'),
+    inputs: [
+      port('ohlcv_bundle_1', 'OHLCVBundle'),
+      port('ohlcv_bundle_2', 'OHLCVBundle'),
+      port('ohlcv_bundle_3', 'OHLCVBundle'),
+    ],
+    outputs: [port('filtered_ohlcv_bundle', 'OHLCVBundle')],
+    ui: {
+      resultDisplay: 'none',
     },
     params: [
       {
@@ -172,7 +118,7 @@ export class DuplicateSymbolFilter extends BaseFilter {
     return key;
   }
 
-  protected override async run(inputs: Record<string, unknown>): Promise<Record<string, unknown>> {
+  protected async run(inputs: Record<string, unknown>): Promise<Record<string, unknown>> {
     // Normalize all inputs to OHLCV bundle format
     const ohlcvBundle1 = this.normalizeInput(inputs.ohlcv_bundle_1);
     const ohlcvBundle2 = this.normalizeInput(inputs.ohlcv_bundle_2);

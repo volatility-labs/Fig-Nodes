@@ -43,20 +43,20 @@ interface OpenRouterChatResponse {
  */
 export class OpenRouterChat extends Node {
   static definition: NodeDefinition = {
-    inputs: {
-      prompt: port('string', { optional: true }),
-      system_text: port('string', { optional: true }),
-      system_message: port('LLMChatMessage', { optional: true }),
-      message_0: port('LLMChatMessage', { optional: true }),
-      message_1: port('LLMChatMessage', { optional: true }),
-      message_2: port('LLMChatMessage', { optional: true }),
-      message_3: port('LLMChatMessage', { optional: true }),
-      message_4: port('LLMChatMessage', { optional: true }),
-    },
-    outputs: {
-      response: port('LLMChatMessage'),
-      thinking_history: port('LLMThinkingHistory'),
-    },
+    inputs: [
+      port('prompt', 'string', { optional: true }),
+      port('system_text', 'string', { optional: true }),
+      port('system_message', 'LLMChatMessage', { optional: true }),
+      port('message_0', 'LLMChatMessage', { optional: true }),
+      port('message_1', 'LLMChatMessage', { optional: true }),
+      port('message_2', 'LLMChatMessage', { optional: true }),
+      port('message_3', 'LLMChatMessage', { optional: true }),
+      port('message_4', 'LLMChatMessage', { optional: true }),
+    ],
+    outputs: [
+      port('response', 'LLMChatMessage'),
+      port('thinking_history', 'LLMThinkingHistory'),
+    ],
     category: NodeCategory.LLM,
     requiredCredentials: ['OPENROUTER_API_KEY'],
     params: [

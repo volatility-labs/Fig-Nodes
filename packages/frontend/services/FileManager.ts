@@ -14,7 +14,7 @@ import type { Graph } from '@sosa/core';
 import { useGraphStore } from '../stores/graphStore';
 import { getEditorAdapter } from '../components/editor/editor-ref';
 import { isDirty, clearDirty } from '../components/editor/editor-actions';
-import type { NodeMetadataMap } from '../types/nodes';
+import type { NodeSchemaMap } from '../types/nodes';
 
 let lastSavedJson = '';
 let autosaveInterval: ReturnType<typeof setInterval> | null = null;
@@ -50,7 +50,7 @@ export function saveGraph(): void {
 
 export async function loadGraphFromFile(
   file: File,
-  _nodeMetadata?: NodeMetadataMap,
+  _nodeMetadata?: NodeSchemaMap,
 ): Promise<void> {
   try {
     const content = await file.text();

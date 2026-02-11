@@ -8,8 +8,8 @@ import { AssetClass, AssetSymbol, InstrumentType } from './types';
  */
 export class AssetSymbolInput extends Node {
   static definition: NodeDefinition = {
-    inputs: {},
-    outputs: { symbol: port('AssetSymbol') },
+    inputs: [],
+    outputs: [port('symbol', 'AssetSymbol')],
 
     ui: {},
 

@@ -4,7 +4,7 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { ReteEditor } from './editor/ReteEditor';
 import { undo, redo, autoArrange } from './editor/editor-actions';
-import type { NodeMetadataMap } from '../types/nodes';
+import type { NodeSchemaMap } from '../types/nodes';
 import { useGraphStore } from '../stores/graphStore';
 import { useLogStore } from '../stores/logStore';
 import { setupWebSocket, stopExecution } from '../services/WebSocketClient';
@@ -14,7 +14,7 @@ import { Toast } from './Toast';
 import './editor.css';
 
 export function App() {
-  const [nodeMetadata, setNodeMetadata] = useState<NodeMetadataMap>({});
+  const [nodeMetadata, setNodeMetadata] = useState<NodeSchemaMap>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const statusServiceRef = useRef<ExecutionStatusService | null>(null);

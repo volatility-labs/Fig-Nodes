@@ -1,2 +1,2 @@
 export { BodyWidget, type WidgetProps, type BodyWidgetProps } from './BodyWidget';
-export { registerWidget, getWidget } from './widget-registry';
+export { WIDGETS, getWidget } from './widget-registry';

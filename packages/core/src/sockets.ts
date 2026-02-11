@@ -2,8 +2,7 @@
 // Socket registry and socket key helpers
 
 import { ClassicPreset } from 'rete';
-import { TYPE_ALIASES } from './type-registry.js';
-import type { PortSpec } from './types.js';
+import { TYPE_ALIASES, type PortSpec } from './types.js';
 
 // ============ Socket Key Helpers ============
 
@@ -58,4 +57,3 @@ export function getOrCreateSocket(portOrStr: PortSpec | string): ClassicPreset.S
   return socket;
 }
 
-export { anySocket };

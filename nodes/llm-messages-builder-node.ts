@@ -20,12 +20,8 @@ import { validateLLMChatMessage, type LLMChatMessage } from './types';
  */
 export class LLMMessagesBuilder extends Node {
   static definition: NodeDefinition = {
-    inputs: {
-      messages: port('LLMChatMessage', { multi: true, optional: true }),
-    },
-    outputs: {
-      messages: port('LLMChatMessageList'),
-    },
+    inputs: [port('messages', 'LLMChatMessage', { multi: true, optional: true })],
+    outputs: [port('messages', 'LLMChatMessageList')],
     params: [],
     category: NodeCategory.LLM,
     ui: {

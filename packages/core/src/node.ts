@@ -11,6 +11,7 @@ import {
   type NodeUIConfig,
   NodeValidationError,
   type ParamMeta,
+  type PortSpec,
   type ProgressCallback,
   type ProgressEvent,
   ProgressState,
@@ -40,8 +41,8 @@ export abstract class Node extends ClassicPreset.Node {
 
   readonly nodeId: string;
   params: Record<string, unknown>;
-  nodeInputs: NodeInputs;
-  nodeOutputs: NodeOutputs;
+  nodeInputs: Record<string, PortSpec>;
+  nodeOutputs: Record<string, PortSpec>;
   graphContext: Record<string, unknown>;
 
   protected _progressCallback: ProgressCallback | null = null;
@@ -66,9 +67,11 @@ export abstract class Node extends ClassicPreset.Node {
     }
     this.params = { ...defaults, ...(params ?? {}) };
 
-    // Copy definition inputs/outputs to instance
-    this.nodeInputs = { ...(def.inputs ?? {}) };
-    this.nodeOutputs = { ...(def.outputs ?? {}) };
+    // Convert definition arrays to keyed records for runtime O(1) lookup
+    this.nodeInputs = {};
+    for (const p of def.inputs ?? []) this.nodeInputs[p.name] = p;
+    this.nodeOutputs = {};
+    for (const p of def.outputs ?? []) this.nodeOutputs[p.name] = p;
 
     this.graphContext = graphContext;
 

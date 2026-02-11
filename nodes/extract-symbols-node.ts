@@ -11,12 +11,8 @@ import type { OHLCVBundle } from './types';
  */
 export class ExtractSymbols extends Node {
   static definition: NodeDefinition = {
-    inputs: {
-      ohlcv_bundle: port('OHLCVBundle'),
-    },
-    outputs: {
-      symbols: port('AssetSymbolList'),
-    },
+    inputs: [port('ohlcv_bundle', 'OHLCVBundle')],
+    outputs: [port('symbols', 'AssetSymbolList')],
     ui: {},
     params: [],
   };

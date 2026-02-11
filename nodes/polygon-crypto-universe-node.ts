@@ -119,8 +119,8 @@ interface TickerData {
  */
 export class PolygonCryptoUniverse extends Node {
   static definition: NodeDefinition = {
-    inputs: { filter_symbols: port('AssetSymbolList') },
-    outputs: { symbols: port('AssetSymbolList') },
+    inputs: [port('filter_symbols', 'AssetSymbolList')],
+    outputs: [port('symbols', 'AssetSymbolList')],
     ui: {},
     category: NodeCategory.MARKET,
     requiredCredentials: ['POLYGON_API_KEY'],

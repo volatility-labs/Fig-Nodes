@@ -1,23 +1,22 @@
 // routes/node-metadata-helper.ts
 // Shared helper to extract node metadata from a node class.
 
-export function getNodeMetadata(NodeClass: any) {
+import { NodeCategory, type NodeConstructor, type NodeSchema, type ParamMeta, type NodeDefinition } from '@sosa/core';
+
+interface NodeClassWithDefinition extends NodeConstructor {
+  definition?: NodeDefinition;
+  __doc?: string;
+}
+
+export function getNodeMetadata(NodeClass: NodeClassWithDefinition): NodeSchema {
   const def = NodeClass.definition ?? {};
-
-  const params = def.params?.length > 0 ? def.params : [];
-
-  // Derive defaultParams from params[].default (single source of truth)
-  const defaults: Record<string, unknown> = {};
-  for (const p of params) {
-    if (p.default !== undefined) defaults[p.name] = p.default;
-  }
+  const params: ParamMeta[] = def.params?.length ? def.params : [];
 
   return {
-    inputs: def.inputs ?? {},
-    outputs: def.outputs ?? {},
+    inputs: def.inputs ?? [],
+    outputs: def.outputs ?? [],
     params,
-    defaultParams: defaults,
-    category: def.category ?? 'base',
+    category: def.category ?? NodeCategory.BASE,
     requiredKeys: def.requiredCredentials ?? [],
     description: NodeClass.__doc ?? '',
     uiConfig: def.ui ?? {},

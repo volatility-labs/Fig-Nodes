@@ -32,8 +32,8 @@ export interface XPost {
  */
 export class XcomUsersFeed extends Node {
   static definition: NodeDefinition = {
-    inputs: { text: port('string') },
-    outputs: { posts: port('array'), feed_text: port('string'), post_count: port('number') },
+    inputs: [port('text', 'string')],
+    outputs: [port('posts', 'array'), port('feed_text', 'string'), port('post_count', 'number')],
     requiredCredentials: ['XCOM_BEARER_TOKEN'],
 
     ui: {},

@@ -4,72 +4,19 @@ import { Node, port } from '@sosa/core';
 import type { NodeDefinition } from '@sosa/core';
 import { AssetSymbol, type OHLCVBar, type OHLCVBundle } from './types';
 
-abstract class BaseFilter extends Node {
-  static override definition: NodeDefinition = {
-    inputs: {
-      ohlcv_bundle: port('OHLCVBundle'),
-    },
-    outputs: {
-      filtered_ohlcv_bundle: port('OHLCVBundle'),
-    },
-    ui: {
-      resultDisplay: 'none',
-    },
-  };
-
-  protected filterCondition(_symbol: AssetSymbol, _ohlcvData: OHLCVBar[]): boolean {
-    throw new Error('Subclasses must implement filterCondition');
-  }
-
-  protected async filterConditionAsync(
-    symbol: AssetSymbol,
-    ohlcvData: OHLCVBar[]
-  ): Promise<boolean> {
-    return this.filterCondition(symbol, ohlcvData);
-  }
-
-  protected async run(inputs: Record<string, unknown>): Promise<Record<string, unknown>> {
-    const ohlcvBundle = (inputs.ohlcv_bundle as OHLCVBundle) ?? new Map();
-
-    if (ohlcvBundle.size === 0) {
-      return { filtered_ohlcv_bundle: new Map() };
-    }
-
-    const filteredBundle: OHLCVBundle = new Map();
-
-    for (const [symbol, ohlcvData] of ohlcvBundle) {
-      if (!ohlcvData || ohlcvData.length === 0) {
-        continue;
-      }
-
-      try {
-        if (await this.filterConditionAsync(symbol, ohlcvData)) {
-          filteredBundle.set(symbol, ohlcvData);
-        }
-      } catch (e) {
-        if (e instanceof Error && e.message.includes('must implement')) {
-          if (this.filterCondition(symbol, ohlcvData)) {
-            filteredBundle.set(symbol, ohlcvData);
-          }
-        } else {
-          throw e;
-        }
-      }
-    }
-
-    return { filtered_ohlcv_bundle: filteredBundle };
-  }
-}
-
 /**
  * Filters OHLCV bundles based on company industry from Polygon API Ticker Overview API.
  * Uses sic_description for matching (e.g., 'Computer Programming Services').
  *
  * Requires Polygon API key (POLYGON_API_KEY) from vault.
  */
-export class IndustryFilter extends BaseFilter {
+export class IndustryFilter extends Node {
   static override definition: NodeDefinition = {
-    ...BaseFilter.definition,
+    inputs: [port('ohlcv_bundle', 'OHLCVBundle')],
+    outputs: [port('filtered_ohlcv_bundle', 'OHLCVBundle')],
+    ui: {
+      resultDisplay: 'none',
+    },
     requiredCredentials: ['POLYGON_API_KEY'],
     params: [
       {
@@ -131,7 +78,7 @@ export class IndustryFilter extends BaseFilter {
     }
   }
 
-  protected override async filterConditionAsync(
+  protected async filterConditionAsync(
     symbol: AssetSymbol,
     _ohlcvData: OHLCVBar[]
   ): Promise<boolean> {
@@ -144,7 +91,7 @@ export class IndustryFilter extends BaseFilter {
     return this.allowedIndustries.includes(industry);
   }
 
-  protected override async run(inputs: Record<string, unknown>): Promise<Record<string, unknown>> {
+  protected async run(inputs: Record<string, unknown>): Promise<Record<string, unknown>> {
     const ohlcvBundle = (inputs.ohlcv_bundle as OHLCVBundle) ?? new Map();
 
     if (ohlcvBundle.size === 0) {

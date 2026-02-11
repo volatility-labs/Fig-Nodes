@@ -309,12 +309,8 @@ function calculateOverlay(
  */
 export class OHLCVPlotEnhanced extends Node {
   static definition: NodeDefinition = {
-    inputs: {
-      ohlcv_bundle: port('OHLCVBundle', { optional: true }),
-    },
-    outputs: {
-      chart_data: port('ConfigDict'),
-    },
+    inputs: [port('ohlcv_bundle', 'OHLCVBundle', { optional: true })],
+    outputs: [port('chart_data', 'ConfigDict')],
     category: NodeCategory.MARKET,
     requiredCredentials: ['POLYGON_API_KEY'],
     ui: {

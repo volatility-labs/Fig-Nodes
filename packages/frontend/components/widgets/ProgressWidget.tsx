@@ -1,6 +1,10 @@
-import { registerWidget, type WidgetProps } from './widget-registry';
+import type { BodyWidget } from '@sosa/core';
+import type { WidgetProps } from './widget-registry';
 
-function ProgressWidget({ widget, value }: WidgetProps) {
+type ProgressBodyWidget = Extract<BodyWidget, { type: 'progress' }>;
+type ProgressWidgetProps = Omit<WidgetProps, 'widget'> & { widget: ProgressBodyWidget };
+
+function ProgressWidget({ widget, value }: ProgressWidgetProps) {
   return (
     <div className="fig-widget fig-widget-progress">
       {widget.label && <label className="fig-widget-label">{widget.label}</label>}
@@ -14,5 +18,4 @@ function ProgressWidget({ widget, value }: WidgetProps) {
   );
 }
 
-registerWidget('progress', ProgressWidget);
 export default ProgressWidget;

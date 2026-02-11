@@ -254,8 +254,8 @@ interface TickerData {
  */
 export class PolygonStockUniverse extends Node {
   static definition: NodeDefinition = {
-    inputs: {},
-    outputs: { symbols: port('AssetSymbolList') },
+    inputs: [],
+    outputs: [port('symbols', 'AssetSymbolList')],
     ui: {},
     category: NodeCategory.MARKET,
     requiredCredentials: ['POLYGON_API_KEY'],

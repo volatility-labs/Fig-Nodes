@@ -53,24 +53,16 @@ export class GraphExecutor {
     // DataflowEngine: filter out exec ports so they don't participate in data routing
     this.dataflowEngine = new DataflowEngine<Schemes>((node) => {
       const def = (node.constructor as typeof Node).definition as NodeDefinition;
-      const inputs = Object.entries(def.inputs ?? {})
-        .filter(([, spec]) => !isExecPort(spec))
-        .map(([name]) => name);
-      const outputs = Object.entries(def.outputs ?? {})
-        .filter(([, spec]) => !isExecPort(spec))
-        .map(([name]) => name);
+      const inputs = (def.inputs ?? []).filter((p) => !isExecPort(p)).map((p) => p.name);
+      const outputs = (def.outputs ?? []).filter((p) => !isExecPort(p)).map((p) => p.name);
       return { inputs: () => inputs, outputs: () => outputs };
     });
 
     // ControlFlowEngine: only consider exec ports
     this.controlFlowEngine = new ControlFlowEngine<Schemes>((node) => {
       const def = (node.constructor as typeof Node).definition as NodeDefinition;
-      const inputs = Object.entries(def.inputs ?? {})
-        .filter(([, spec]) => isExecPort(spec))
-        .map(([name]) => name);
-      const outputs = Object.entries(def.outputs ?? {})
-        .filter(([, spec]) => isExecPort(spec))
-        .map(([name]) => name);
+      const inputs = (def.inputs ?? []).filter((p) => isExecPort(p)).map((p) => p.name);
+      const outputs = (def.outputs ?? []).filter((p) => isExecPort(p)).map((p) => p.name);
       return { inputs: () => inputs, outputs: () => outputs };
     });
 
@@ -290,7 +282,7 @@ export class GraphExecutor {
       const sourceNode = this.nodes.get(conn.source);
       if (sourceNode) {
         const def = (sourceNode.constructor as typeof Node).definition as NodeDefinition;
-        const outputSpec = def.outputs?.[conn.sourceOutput as string];
+        const outputSpec = (def.outputs ?? []).find((p) => p.name === conn.sourceOutput);
         if (outputSpec && isExecPort(outputSpec)) {
           nodesWithIncomingExec.add(conn.target);
         }
@@ -301,7 +293,7 @@ export class GraphExecutor {
     const startNodes: Node[] = [];
     for (const node of this.nodes.values()) {
       const def = (node.constructor as typeof Node).definition as NodeDefinition;
-      const hasExecOutput = Object.values(def.outputs ?? {}).some(isExecPort);
+      const hasExecOutput = (def.outputs ?? []).some(isExecPort);
       if (hasExecOutput && !nodesWithIncomingExec.has(node.id)) {
         startNodes.push(node);
       }
@@ -354,4 +346,31 @@ export class GraphExecutor {
   setResultCallback(callback: ResultCallback): void {
     this._resultCallback = callback;
   }
+}
+
+// ============ Graph Credential Helpers ============
+
+/**
+ * Get all required API keys for a Graph by inspecting the
+ * `definition.requiredCredentials` on each node class used in the graph.
+ */
+export function getRequiredKeysForDocument(
+  doc: Graph,
+  nodeRegistry: NodeRegistry
+): string[] {
+  const requiredKeys = new Set<string>();
+
+  for (const node of Object.values(doc.nodes)) {
+    const NodeClass = nodeRegistry[node.type];
+    if (!NodeClass) continue;
+
+    const keys = (NodeClass as unknown as { definition?: { requiredCredentials?: string[] } }).definition?.requiredCredentials ?? [];
+    for (const key of keys) {
+      if (typeof key === 'string' && key) {
+        requiredKeys.add(key);
+      }
+    }
+  }
+
+  return Array.from(requiredKeys);
 }

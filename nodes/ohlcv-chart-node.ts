@@ -163,12 +163,8 @@ function calculateOverlay(
  */
 export class OHLCVChart extends Node {
   static definition: NodeDefinition = {
-    inputs: {
-      ohlcv_bundle: port('OHLCVBundle'),
-    },
-    outputs: {
-      charts: port('ConfigDict'),
-    },
+    inputs: [port('ohlcv_bundle', 'OHLCVBundle')],
+    outputs: [port('charts', 'ConfigDict')],
     category: NodeCategory.MARKET,
     ui: {
       outputDisplay: {

@@ -1,9 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { registerWidget, type WidgetProps } from './widget-registry';
+import type { BodyWidget } from '@sosa/core';
+import type { WidgetProps } from './widget-registry';
 
-function ComboWidget({ widget, value, onChange }: WidgetProps) {
+type ComboBodyWidget = Extract<BodyWidget, { type: 'combo' }>;
+type ComboWidgetProps = Omit<WidgetProps, 'widget'> & { widget: ComboBodyWidget };
+
+function ComboWidget({ widget, value, onChange }: ComboWidgetProps) {
   const strValue = value != null ? String(value) : '';
-  const staticOptions = (widget.options?.options as Array<string | number | boolean>) ?? [];
+  const staticOptions = widget.options?.options ?? [];
   const dataSource = widget.dataSource;
 
   // Plain static dropdown — no dataSource
@@ -32,10 +36,10 @@ function ComboWidget({ widget, value, onChange }: WidgetProps) {
 }
 
 // Separated component so hooks are always called unconditionally
-function SearchableCombo({ widget, value, onChange }: WidgetProps) {
+function SearchableCombo({ widget, value, onChange }: ComboWidgetProps) {
   const strValue = value != null ? String(value) : '';
   const dataSource = widget.dataSource!;
-  const staticOptions = (widget.options?.options as Array<string | number | boolean>) ?? [];
+  const staticOptions = widget.options?.options ?? [];
 
   const [fetchedOptions, setFetchedOptions] = useState<string[]>([]);
   const [filter, setFilter] = useState('');
@@ -152,5 +156,4 @@ function SearchableCombo({ widget, value, onChange }: WidgetProps) {
   );
 }
 
-registerWidget('combo', ComboWidget);
 export default ComboWidget;

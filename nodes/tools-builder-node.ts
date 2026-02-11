@@ -20,12 +20,8 @@ import { validateLLMToolSpec, type LLMToolSpec } from './types';
  */
 export class ToolsBuilder extends Node {
   static definition: NodeDefinition = {
-    inputs: {
-      tools_list: port('LLMToolSpecList', { optional: true }),
-    },
-    outputs: {
-      tools: port('LLMToolSpecList'),
-    },
+    inputs: [port('tools_list', 'LLMToolSpecList', { optional: true })],
+    outputs: [port('tools', 'LLMToolSpecList')],
     category: NodeCategory.LLM,
     ui: {},
   };

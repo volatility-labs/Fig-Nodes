@@ -2,19 +2,21 @@
 // Shared utility for adding a node to the Rete editor.
 
 import type { ReteAdapter } from './rete-adapter';
-import type { NodeMetadataMap } from '../../types/nodes';
+import type { NodeSchemaMap } from '../../types/nodes';
 
 export function addNodeToEditor(
   adapter: ReteAdapter,
   type: string,
   position: [number, number],
-  nodeMetadata: NodeMetadataMap,
+  nodeMetadata: NodeSchemaMap,
 ): void {
   const meta = nodeMetadata[type];
   const id = `${type.toLowerCase()}_${Date.now()}`;
   adapter.addNode(id, {
     type,
-    params: meta?.defaultParams ? { ...meta.defaultParams } : {},
+    params: meta?.params
+      ? Object.fromEntries(meta.params.filter(p => p.default !== undefined).map(p => [p.name, p.default]))
+      : {},
     position,
   });
 }

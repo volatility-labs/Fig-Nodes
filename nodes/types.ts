@@ -1,7 +1,6 @@
 // Consolidated node types: Market domain + LLM domain
 
 import { z } from 'zod';
-import { registerType } from '@sosa/core';
 
 // ============================================================
 // Market Types
@@ -222,18 +221,6 @@ export function deserializeOHLCVBundle(raw: SerializedOHLCVBundle): OHLCVBundle 
   return bundle;
 }
 
-// ============ Register market port types ============
-
-registerType('AssetSymbol');
-registerType('AssetSymbolList');
-registerType('OHLCVBundle');
-registerType('IndicatorDict');
-registerType('IndicatorValue');
-registerType('IndicatorResult');
-registerType('IndicatorResultList');
-registerType('AnyList');
-registerType('ConfigDict');
-
 // ============================================================
 // LLM Types
 // ============================================================
@@ -324,14 +311,3 @@ export function validateLLMChatMessage(obj: unknown): LLMChatMessage | null {
   return result.success ? result.data : null;
 }
 
-// ============ Register LLM port types ============
-
-registerType('LLMChatMessage');
-registerType('LLMChatMessageList');
-registerType('LLMToolSpec');
-registerType('LLMToolSpecList');
-registerType('LLMChatMetrics');
-registerType('LLMToolHistory');
-registerType('LLMThinkingHistory');
-registerType('LLMToolHistoryItem');
-registerType('LLMThinkingHistoryItem');

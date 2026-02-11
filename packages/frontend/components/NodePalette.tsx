@@ -2,12 +2,12 @@
 // Searchable sidebar listing available node types
 
 import React, { useState, useMemo, useCallback } from 'react';
-import type { NodeMetadataMap } from '../types/nodes';
+import type { NodeSchemaMap } from '../types/nodes';
 import { getEditorAdapter } from './editor/editor-ref';
 import { addNodeToEditor } from './editor/add-node';
 
 interface NodePaletteProps {
-  nodeMetadata: NodeMetadataMap;
+  nodeMetadata: NodeSchemaMap;
 }
 
 export function NodePalette({ nodeMetadata }: NodePaletteProps) {

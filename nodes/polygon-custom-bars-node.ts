@@ -144,8 +144,8 @@ async function fetchBars(
  */
 export class PolygonCustomBars extends Node {
   static definition: NodeDefinition = {
-    inputs: { symbol: port('AssetSymbol') },
-    outputs: { ohlcv: port('OHLCVBundle') },
+    inputs: [port('symbol', 'AssetSymbol')],
+    outputs: [port('ohlcv', 'OHLCVBundle')],
     ui: {},
     category: NodeCategory.MARKET,
     requiredCredentials: ['POLYGON_API_KEY'],

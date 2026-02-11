@@ -4,11 +4,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { pathToFileURL, fileURLToPath } from 'url';
-import type { NodeRegistry, NodeConstructor } from './types.js';
+import { isValidPortType, type NodeRegistry, type NodeConstructor, type PortSpec } from './types.js';
 import { Node } from './node.js';
-import type { Graph } from './graph.js';
-import { isRegisteredType } from './type-registry.js';
-import type { PortSpec } from './types.js';
 
 // ESM equivalent of __dirname
 const __filename = fileURLToPath(import.meta.url);
@@ -175,45 +172,19 @@ export function setNodeRegistry(registry: NodeRegistry): void {
 export function validateNodeDefinitions(registry: NodeRegistry): string[] {
   const errors: string[] = [];
   for (const [className, NodeClass] of Object.entries(registry)) {
-    const def = (NodeClass as unknown as { definition?: { inputs?: Record<string, PortSpec>; outputs?: Record<string, PortSpec> } }).definition;
+    const def = (NodeClass as unknown as { definition?: { inputs?: PortSpec[]; outputs?: PortSpec[] } }).definition;
     if (!def) continue;
-    for (const [portName, spec] of Object.entries(def.inputs ?? {})) {
-      if (!isRegisteredType(spec.type)) {
-        errors.push(`${className}: input '${portName}' uses unknown type '${spec.type}'`);
+    for (const spec of def.inputs ?? []) {
+      if (!isValidPortType(spec.type)) {
+        errors.push(`${className}: input uses unknown type '${spec.type}'`);
       }
     }
-    for (const [portName, spec] of Object.entries(def.outputs ?? {})) {
-      if (!isRegisteredType(spec.type)) {
-        errors.push(`${className}: output '${portName}' uses unknown type '${spec.type}'`);
+    for (const spec of def.outputs ?? []) {
+      if (!isValidPortType(spec.type)) {
+        errors.push(`${className}: output uses unknown type '${spec.type}'`);
       }
     }
   }
   return errors;
 }
 
-// ============ Graph Keys ============
-
-/**
- * Get all required API keys for a Graph by inspecting the
- * `definition.requiredCredentials` on each node class used in the graph.
- */
-export function getRequiredKeysForDocument(
-  doc: Graph,
-  nodeRegistry: NodeRegistry
-): string[] {
-  const requiredKeys = new Set<string>();
-
-  for (const node of Object.values(doc.nodes)) {
-    const NodeClass = nodeRegistry[node.type];
-    if (!NodeClass) continue;
-
-    const keys = (NodeClass as unknown as { definition?: { requiredCredentials?: string[] } }).definition?.requiredCredentials ?? [];
-    for (const key of keys) {
-      if (typeof key === 'string' && key) {
-        requiredKeys.add(key);
-      }
-    }
-  }
-
-  return Array.from(requiredKeys);
-}

@@ -8,8 +8,8 @@ import { Node, port, type NodeDefinition } from '@sosa/core';
  */
 export class TextInput extends Node {
   static definition: NodeDefinition = {
-    inputs: {},
-    outputs: { text: port('string') },
+    inputs: [],
+    outputs: [port('text', 'string')],
 
     // Default for body-bound textarea widget
     params: [
@@ -24,7 +24,6 @@ export class TextInput extends Node {
         bind: 'value',
         options: {
           placeholder: 'Enter text...',
-          hideOnZoom: true,
         }
       }]
     },

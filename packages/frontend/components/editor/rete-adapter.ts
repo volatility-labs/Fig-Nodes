@@ -7,7 +7,7 @@ import { AreaPlugin } from 'rete-area-plugin';
 import type { MinimapExtra } from 'rete-minimap-plugin';
 import type { Graph, GraphEdge, GraphNode } from '@sosa/core';
 import { parseEdgeEndpoint, getOrCreateSocket } from '@sosa/core';
-import type { NodeMetadataMap } from '../../types/nodes';
+import type { NodeSchemaMap } from '../../types/nodes';
 
 // ============ Lightweight wrapper for frontend-only nodes ============
 
@@ -50,12 +50,12 @@ export type AreaExtra = MinimapExtra;
 export class ReteAdapter {
   editor: NodeEditor<FrontendSchemes>;
   area: AreaPlugin<FrontendSchemes, AreaExtra> | null = null;
-  nodeMetadata: NodeMetadataMap;
+  nodeMetadata: NodeSchemaMap;
 
   /** True while loadDocument is running — pipe callbacks should ignore events. */
   loading = false;
 
-  constructor(editor: NodeEditor<FrontendSchemes>, nodeMetadata: NodeMetadataMap) {
+  constructor(editor: NodeEditor<FrontendSchemes>, nodeMetadata: NodeSchemaMap) {
     this.editor = editor;
     this.nodeMetadata = nodeMetadata;
   }
@@ -90,13 +90,13 @@ export class ReteAdapter {
 
         // Add inputs from metadata
         if (meta) {
-          for (const [name, spec] of Object.entries(meta.inputs)) {
-            const socket = getOrCreateSocket(spec);
-            node.addInput(name, new ClassicPreset.Input(socket, name, spec.multi ?? false));
+          for (const p of meta.inputs) {
+            const socket = getOrCreateSocket(p);
+            node.addInput(p.name, new ClassicPreset.Input(socket, p.name, p.multi ?? false));
           }
-          for (const [name, spec] of Object.entries(meta.outputs)) {
-            const socket = getOrCreateSocket(spec);
-            node.addOutput(name, new ClassicPreset.Output(socket, name));
+          for (const p of meta.outputs) {
+            const socket = getOrCreateSocket(p);
+            node.addOutput(p.name, new ClassicPreset.Output(socket, p.name));
           }
         }
 
@@ -142,13 +142,13 @@ export class ReteAdapter {
     );
 
     if (meta) {
-      for (const [name, spec] of Object.entries(meta.inputs)) {
-        const socket = getOrCreateSocket(spec);
-        node.addInput(name, new ClassicPreset.Input(socket, name, spec.multi ?? false));
+      for (const p of meta.inputs) {
+        const socket = getOrCreateSocket(p);
+        node.addInput(p.name, new ClassicPreset.Input(socket, p.name, p.multi ?? false));
       }
-      for (const [name, spec] of Object.entries(meta.outputs)) {
-        const socket = getOrCreateSocket(spec);
-        node.addOutput(name, new ClassicPreset.Output(socket, name));
+      for (const p of meta.outputs) {
+        const socket = getOrCreateSocket(p);
+        node.addOutput(p.name, new ClassicPreset.Output(socket, p.name));
       }
     }
 

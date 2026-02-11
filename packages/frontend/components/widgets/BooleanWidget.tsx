@@ -1,6 +1,10 @@
-import { registerWidget, type WidgetProps } from './widget-registry';
+import type { BodyWidget } from '@sosa/core';
+import type { WidgetProps } from './widget-registry';
 
-function BooleanWidget({ widget, value, onChange }: WidgetProps) {
+type BooleanBodyWidget = Extract<BodyWidget, { type: 'boolean' }>;
+type BooleanWidgetProps = Omit<WidgetProps, 'widget'> & { widget: BooleanBodyWidget };
+
+function BooleanWidget({ widget, value, onChange }: BooleanWidgetProps) {
   return (
     <div className="fig-widget">
       {widget.label && <label className="fig-widget-label">{widget.label}</label>}
@@ -17,5 +21,4 @@ function BooleanWidget({ widget, value, onChange }: WidgetProps) {
   );
 }
 
-registerWidget('boolean', BooleanWidget);
 export default BooleanWidget;

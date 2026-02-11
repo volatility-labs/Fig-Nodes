@@ -1,6 +1,10 @@
-import { registerWidget, type WidgetProps } from './widget-registry';
+import type { BodyWidget } from '@sosa/core';
+import type { WidgetProps } from './widget-registry';
 
-function TextWidget({ widget, value, onChange }: WidgetProps) {
+type TextBodyWidget = Extract<BodyWidget, { type: 'text' }>;
+type TextWidgetProps = Omit<WidgetProps, 'widget'> & { widget: TextBodyWidget };
+
+function TextWidget({ widget, value, onChange }: TextWidgetProps) {
   const strValue = value != null ? String(value) : '';
   return (
     <div className="fig-widget">
@@ -9,8 +13,7 @@ function TextWidget({ widget, value, onChange }: WidgetProps) {
         className="fig-widget-input"
         type="text"
         value={strValue}
-        placeholder={widget.options?.placeholder as string | undefined}
-        readOnly={widget.options?.readonly as boolean | undefined}
+        placeholder={widget.options?.placeholder}
         onChange={(e) => onChange(e.target.value)}
         onPointerDown={(e) => e.stopPropagation()}
       />
@@ -18,5 +21,4 @@ function TextWidget({ widget, value, onChange }: WidgetProps) {
   );
 }
 
-registerWidget('text', TextWidget);
 export default TextWidget;

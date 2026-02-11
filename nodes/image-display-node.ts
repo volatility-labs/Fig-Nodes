@@ -10,12 +10,8 @@ import { Node, NodeCategory, port, type NodeDefinition } from '@sosa/core';
  */
 export class ImageDisplay extends Node {
   static definition: NodeDefinition = {
-    inputs: {
-      images: port('ConfigDict', { optional: true }),
-    },
-    outputs: {
-      images: port('ConfigDict'),
-    },
+    inputs: [port('images', 'ConfigDict', { optional: true })],
+    outputs: [port('images', 'ConfigDict')],
     category: NodeCategory.MARKET,
     ui: {
       outputDisplay: {

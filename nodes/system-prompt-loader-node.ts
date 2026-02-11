@@ -10,8 +10,8 @@ import { Node, NodeCategory, port, type NodeDefinition } from '@sosa/core';
  */
 export class SystemPromptLoader extends Node {
   static definition: NodeDefinition = {
-    inputs: {},
-    outputs: { system: port('string') },
+    inputs: [],
+    outputs: [port('system', 'string')],
     params: [
       { name: 'content', type: 'textarea', default: '' },
       { name: 'file', type: 'fileupload', default: '', options: { accept: '.txt,.md' } },
@@ -27,7 +27,6 @@ export class SystemPromptLoader extends Node {
         bind: 'content',
         options: {
           placeholder: 'System prompt content...',
-          hideOnZoom: true,
         }
       }]
     },

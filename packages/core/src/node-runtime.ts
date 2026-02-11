@@ -9,6 +9,7 @@ export {
   getNodeRegistry,
   resetNodeRegistry,
   setNodeRegistry,
-  getRequiredKeysForDocument,
   validateNodeDefinitions,
 } from './registry.js';
+
+export { getRequiredKeysForDocument } from './engine.js';

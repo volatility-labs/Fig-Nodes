@@ -84,16 +84,14 @@ function normalizeBars(bars: OHLCVBar[]): NormalizedBar[] {
  */
 export class HurstPlot extends Node {
   static definition: NodeDefinition = {
-    inputs: {
-      ohlcv_bundle: port('OHLCVBundle', { optional: true }),
-    },
-    outputs: {
-      chart_data: port('ConfigDict'),
-      hurst_data: port('ConfigDict'),
-      ohlcv_bundle: port('OHLCVBundle'),
-      mesa_data: port('ConfigDict'),
-      cco_data: port('ConfigDict'),
-    },
+    inputs: [port('ohlcv_bundle', 'OHLCVBundle', { optional: true })],
+    outputs: [
+      port('chart_data', 'ConfigDict'),
+      port('hurst_data', 'ConfigDict'),
+      port('ohlcv_bundle', 'OHLCVBundle'),
+      port('mesa_data', 'ConfigDict'),
+      port('cco_data', 'ConfigDict'),
+    ],
     category: NodeCategory.MARKET,
     ui: {
       outputDisplay: {

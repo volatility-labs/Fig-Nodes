@@ -84,13 +84,8 @@ interface SerializedValue {
  */
 export class SaveOutput extends Node {
   static definition: NodeDefinition = {
-    inputs: {
-      data: port('any'),
-    },
-
-    outputs: {
-      filepath: port('string'),
-    },
+    inputs: [port('data', 'any')],
+    outputs: [port('filepath', 'string')],
 
     ui: {},
 

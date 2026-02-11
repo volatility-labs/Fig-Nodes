@@ -18,8 +18,8 @@ import { AssetClass, AssetSymbol } from './types';
  */
 export class DiscordOutput extends Node {
   static definition: NodeDefinition = {
-    inputs: { symbols: port('AssetSymbolList') },
-    outputs: { status: port('string') },
+    inputs: [port('symbols', 'AssetSymbolList')],
+    outputs: [port('status', 'string')],
     requiredCredentials: [], // Optional key
 
     ui: {},

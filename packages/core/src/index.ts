@@ -2,48 +2,16 @@
 // Main entry point for @sosa/core (browser-safe)
 // Node-only exports (node registry, dynamic discovery) live in ./node-runtime.ts
 
-// Types (execution, credentials, ports, node-ui, errors)
+// Types (execution, credentials, ports, port types, node-ui, messages, errors)
 export * from './types.js';
 
-// WebSocket message types (shared client ↔ server contract)
-export * from './messages.js';
-
-// Type registry
-export {
-  TYPE_ALIASES,
-  registerType,
-  isRegisteredType,
-  getRegisteredTypes,
-  port,
-  execPort,
-} from './type-registry.js';
-
-// Graph types
+// Graph types, mutations (pure functions), and validation
 export {
   type Graph,
   type GraphNode,
   type GraphEdge,
-  type GraphGroup,
-  type GraphLayout,
   createEmptyDocument,
   parseEdgeEndpoint,
-  makeEdgeEndpoint,
-} from './graph.js';
-
-// Engine
-export { GraphExecutor } from './engine.js';
-
-// Validation
-export {
-  validateGraph,
-  validateEdgeTypes,
-  hasCycles,
-  type ValidationError,
-  type ValidationResult,
-} from './validator.js';
-
-// Graph mutations (pure functions)
-export {
   applyAddNode,
   applyRemoveNode,
   applyConnect,
@@ -54,12 +22,18 @@ export {
   type ConnectInput,
   type DisconnectInput,
   type SetParamInput,
-} from './graph-ops.js';
+  validateGraph,
+  hasCycles,
+  type ValidationError,
+  type ValidationResult,
+} from './graph.js';
+
+// Engine
+export { GraphExecutor } from './engine.js';
 
 // Sockets
 export {
   getOrCreateSocket,
-  anySocket,
   getSocketKey,
   areSocketKeysCompatible,
   areSocketTypesCompatible,
@@ -67,6 +41,3 @@ export {
 
 // Node base class
 export { Node, type NodeDefinition } from './node.js';
-
-// Version info
-export const VERSION = '0.1.0';

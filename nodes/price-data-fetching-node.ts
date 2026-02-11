@@ -15,11 +15,11 @@ import type { OHLCVBar } from './types';
  */
 export class PriceDataFetching extends Node {
   static definition: NodeDefinition = {
-    inputs: { ohlcv_bundle: port('OHLCVBundle') },
-    outputs: {
-      formatted_output: port('string'),
-      csv_file: port('string'),
-    },
+    inputs: [port('ohlcv_bundle', 'OHLCVBundle')],
+    outputs: [
+      port('formatted_output', 'string'),
+      port('csv_file', 'string'),
+    ],
     category: NodeCategory.MARKET,
     ui: {},
     params: [

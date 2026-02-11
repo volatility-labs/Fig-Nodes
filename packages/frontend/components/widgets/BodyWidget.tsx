@@ -4,15 +4,6 @@
 import { memo } from 'react';
 import { getWidget, type WidgetProps } from './widget-registry';
 
-// Import all widgets so they self-register
-import './TextWidget';
-import './TextareaWidget';
-import './NumberWidget';
-import './ComboWidget';
-import './BooleanWidget';
-import './ProgressWidget';
-import './StatusWidget';
-
 // Re-export WidgetProps so existing consumers don't break
 export type { WidgetProps };
 export type BodyWidgetProps = WidgetProps;

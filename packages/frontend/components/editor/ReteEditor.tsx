@@ -3,25 +3,24 @@
 // Non-component exports (undo, redo, autoArrange, dirty flag) live in editor-actions.ts
 // to keep this file Fast Refresh–compatible.
 
-import React, { useCallback, useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ClassicPreset, NodeEditor } from 'rete';
-import { AreaPlugin, AreaExtensions } from 'rete-area-plugin';
+import { AreaPlugin, AreaExtensions, Zoom } from 'rete-area-plugin';
 import { ConnectionPlugin, Presets as ConnectionPresets } from 'rete-connection-plugin';
 import { ReactPlugin, Presets as ReactPresets } from 'rete-react-plugin';
-import styled from 'styled-components';
+
 import { MinimapPlugin } from 'rete-minimap-plugin';
 import { HistoryPlugin, Presets as HistoryPresets } from 'rete-history-plugin';
 import { AutoArrangePlugin, Presets as ArrangePresets } from 'rete-auto-arrange-plugin';
-import { ContextMenuPlugin, Presets as ContextMenuPresets } from 'rete-context-menu-plugin';
-import { getDOMSocketPosition } from 'rete-render-utils';
-import { getSocketKey, areSocketKeysCompatible, getOrCreateSocket } from '@sosa/core';
 
-import type { NodeMetadataMap } from '../../types/nodes';
+import { getDOMSocketPosition } from 'rete-render-utils';
+import { getSocketKey, areSocketKeysCompatible } from '@sosa/core';
+
+import type { NodeSchemaMap } from '../../types/nodes';
 import { typeColor } from './type-colors';
 import {
   ReteAdapter,
-  FigReteNode,
   type FrontendSchemes,
   type AreaExtra,
 } from './rete-adapter';
@@ -29,40 +28,19 @@ import { setEditorAdapter } from './editor-ref';
 import { editorRefs, markDirty, undo, redo } from './editor-actions';
 import { restoreFromAutosave } from '../../services/FileManager';
 import { ReteNodeComponent, setNodeMetadata } from './ReteNode';
-import { NodePalette } from '../NodePalette';
+import { FloatingPalette } from '../FloatingPalette';
 import { LogPanel } from '../LogPanel';
 import { addNodeToEditor } from './add-node';
 
 // ============ Module-level refs for render components (connection coloring) ============
 
 let _editorRef: NodeEditor<FrontendSchemes> | null = null;
-let _metaRef: NodeMetadataMap = {};
+let _metaRef: NodeSchemaMap = {};
 
-// ============ Context Menu Item (filters non-standard DOM props from rete-react-plugin) ============
-
-const ContextMenuItem = styled.div.withConfig({
-  shouldForwardProp: (prop) => prop !== 'hasSubitems',
-})`
-  color: #fff;
-  padding: 4px;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
-  background-color: rgba(110, 136, 255, 0.8);
-  cursor: pointer;
-  width: 100%;
-  position: relative;
-  &:first-child { border-top-left-radius: 5px; border-top-right-radius: 5px; }
-  &:last-child { border-bottom-left-radius: 5px; border-bottom-right-radius: 5px; }
-  &:hover { background-color: rgba(130, 153, 255, 0.8); }
-  ${(props: any) => props.hasSubitems && `
-    &:after {
-      content: '\u25BA';
-      position: absolute;
-      opacity: 0.6;
-      right: 5px;
-      top: 5px;
-    }
-  `}
-`;
+// Disable double-click zoom so we can use it for the floating palette
+class NoDblClickZoom extends Zoom {
+  protected dblclick = () => {};
+}
 
 // ============ Custom Socket Visual ============
 
@@ -93,7 +71,7 @@ function FigConnection(props: { data: any; styles?: () => any }) {
       if (sourceNode) {
           const meta = _metaRef[sourceNode.nodeType];
           if (meta) {
-            const outputSpec = meta.outputs[props.data.sourceOutput];
+            const outputSpec = meta.outputs.find((p) => p.name === props.data.sourceOutput);
             if (outputSpec) {
               const key = getSocketKey(outputSpec);
               if (key === 'exec') {
@@ -135,7 +113,7 @@ function FigConnection(props: { data: any; styles?: () => any }) {
 // ============ Editor Props ============
 
 interface ReteEditorProps {
-  nodeMetadata: NodeMetadataMap;
+  nodeMetadata: NodeSchemaMap;
 }
 
 export function ReteEditor({ nodeMetadata }: ReteEditorProps) {
@@ -197,13 +175,6 @@ export function ReteEditor({ nodeMetadata }: ReteEditorProps) {
     // Minimap rendering
     reactPlugin.addPreset(ReactPresets.minimap.setup({ size: 200 }) as any);
 
-    // Context menu rendering (custom item filters non-standard DOM props)
-    reactPlugin.addPreset(ReactPresets.contextMenu.setup({
-      customize: {
-        item() { return ContextMenuItem as any; },
-      },
-    }) as any);
-
     // Connection preset
     connection.addPreset(ConnectionPresets.classic.setup() as any);
 
@@ -212,35 +183,6 @@ export function ReteEditor({ nodeMetadata }: ReteEditorProps) {
 
     // Auto-arrange preset
     arrange.addPreset(ArrangePresets.classic.setup());
-
-    // Context menu plugin — build node factories from metadata
-    const nodeFactories: [string, () => FigReteNode][] = Object.entries(nodeMetadata).map(
-      ([typeName, meta]) => [
-        typeName,
-        () => {
-          const id = `${typeName.toLowerCase()}_${Date.now()}`;
-          const node = new FigReteNode(
-            id,
-            typeName,
-            typeName,
-            meta.defaultParams ? { ...meta.defaultParams } : {},
-          );
-          // Wire sockets from metadata
-          for (const [name, spec] of Object.entries(meta.inputs)) {
-            const socket = getOrCreateSocket(spec);
-            node.addInput(name, new ClassicPreset.Input(socket, name, (spec as any).multi ?? false));
-          }
-          for (const [name, spec] of Object.entries(meta.outputs)) {
-            const socket = getOrCreateSocket(spec);
-            node.addOutput(name, new ClassicPreset.Output(socket, name));
-          }
-          return node;
-        },
-      ],
-    );
-    const contextMenu = new ContextMenuPlugin<FrontendSchemes>({
-      items: ContextMenuPresets.classic.setup(nodeFactories),
-    });
 
     // Create adapter
     const adapter = new ReteAdapter(editor, nodeMetadata);
@@ -265,7 +207,7 @@ export function ReteEditor({ nodeMetadata }: ReteEditorProps) {
           }
 
           const targetMeta = nodeMetadata[targetNode.nodeType];
-          const inputSpec = targetMeta?.inputs?.[data.targetInput];
+          const inputSpec = targetMeta?.inputs?.find((p) => p.name === data.targetInput);
           const inputAllowsMultiple = inputSpec?.multi === true;
           if (!inputAllowsMultiple) {
             const hasExistingConnection = editor.getConnections().some((conn) =>
@@ -324,13 +266,12 @@ export function ReteEditor({ nodeMetadata }: ReteEditorProps) {
 
     // ============ Wire plugins ============
     editor.use(area);
+    area.area.setZoomHandler(new NoDblClickZoom(0.1));
     area.use(connection as any);
     area.use(reactPlugin as any);
     area.use(minimap as any);
     area.use(history as any);
     area.use(arrange as any);
-    area.use(contextMenu as any);
-
     // Select + ordering extensions
     AreaExtensions.selectableNodes(area as any, AreaExtensions.selector(), {
       accumulating: AreaExtensions.accumulateOnCtrl(),
@@ -352,22 +293,16 @@ export function ReteEditor({ nodeMetadata }: ReteEditorProps) {
     };
   }, [nodeMetadata]);
 
-  // ============ Drag-and-drop from palette ============
-  const handleDragOver = useCallback((event: React.DragEvent) => {
-    event.preventDefault();
-    event.dataTransfer.dropEffect = 'move';
-  }, []);
+  // ============ Floating palette state ============
+  const [palette, setPalette] = useState<{ x: number; y: number; canvasX: number; canvasY: number } | null>(null);
 
-  const handleDrop = useCallback(
-    (event: React.DragEvent) => {
-      event.preventDefault();
-
-      const type = event.dataTransfer.getData('application/sosa-type');
-      if (!type) return;
+  const handleDoubleClick = useCallback(
+    (event: React.MouseEvent) => {
+      // Only open on direct canvas double-click (not on nodes)
+      if ((event.target as HTMLElement) !== containerRef.current) return;
 
       const area = areaRef.current;
-      const adapter = adapterRef.current;
-      if (!area || !adapter) return;
+      if (!area) return;
 
       const transform = area.area.transform;
       const rect = containerRef.current?.getBoundingClientRect();
@@ -376,10 +311,22 @@ export function ReteEditor({ nodeMetadata }: ReteEditorProps) {
       const canvasX = (event.clientX - rect.left - transform.x) / transform.k;
       const canvasY = (event.clientY - rect.top - transform.y) / transform.k;
 
-      addNodeToEditor(adapter, type, [canvasX, canvasY], nodeMetadata);
+      setPalette({ x: event.clientX, y: event.clientY, canvasX, canvasY });
     },
-    [nodeMetadata],
+    [],
   );
+
+  const handlePaletteSelect = useCallback(
+    (type: string) => {
+      const adapter = adapterRef.current;
+      if (!adapter || !palette) return;
+      addNodeToEditor(adapter, type, [palette.canvasX, palette.canvasY], nodeMetadata);
+      setPalette(null);
+    },
+    [nodeMetadata, palette],
+  );
+
+  const handlePaletteClose = useCallback(() => setPalette(null), []);
 
   // ============ Keyboard shortcuts ============
   useEffect(() => {
@@ -425,13 +372,19 @@ export function ReteEditor({ nodeMetadata }: ReteEditorProps) {
 
   return (
     <div className="fig-editor-container">
-      <NodePalette nodeMetadata={nodeMetadata} />
       <div
         className="fig-flow-container"
         ref={containerRef}
-        onDragOver={handleDragOver}
-        onDrop={handleDrop}
+        onDoubleClick={handleDoubleClick}
       />
+      {palette && (
+        <FloatingPalette
+          nodeMetadata={nodeMetadata}
+          position={palette}
+          onSelect={handlePaletteSelect}
+          onClose={handlePaletteClose}
+        />
+      )}
       <LogPanel />
     </div>
   );

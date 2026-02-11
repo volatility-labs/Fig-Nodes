@@ -1,30 +1,46 @@
 // widget-registry.ts
-// Central registry for widget renderers — replaces the switch/case in BodyWidget
+// Static widget renderer map keyed by BodyWidgetType
 
 import type React from 'react';
-import type { DataSource } from '@sosa/core';
+import type { BodyWidget, BodyWidgetType } from '@sosa/core';
 
-export interface WidgetProps {
-  widget: {
-    type: string;
-    id: string;
-    label?: string;
-    bind?: string;
-    options?: Record<string, unknown>;
-    dataSource?: DataSource;
-  };
+import TextWidget from './TextWidget';
+import TextareaWidget from './TextareaWidget';
+import NumberWidget from './NumberWidget';
+import ComboWidget from './ComboWidget';
+import BooleanWidget from './BooleanWidget';
+import ProgressWidget from './ProgressWidget';
+import StatusWidget from './StatusWidget';
+
+// ============ Types ============
+
+export interface WidgetProps<TWidget extends BodyWidget = BodyWidget> {
+  widget: TWidget;
   value: unknown;
   onChange: (value: unknown) => void;
 }
 
-export type WidgetRenderer = React.FC<WidgetProps>;
+export type WidgetRenderer<TWidget extends BodyWidget = BodyWidget> = React.FC<WidgetProps<TWidget>>;
 
-const registry = new Map<string, WidgetRenderer>();
+// ============ Static Registry ============
 
-export function registerWidget(type: string, renderer: WidgetRenderer): void {
-  registry.set(type, renderer);
-}
+/** All widget renderers, keyed by BodyWidgetType. */
+export const WIDGETS: Partial<Record<BodyWidgetType, WidgetRenderer>> = {
+  text: TextWidget as WidgetRenderer,
+  textarea: TextareaWidget as WidgetRenderer,
+  code: TextareaWidget as WidgetRenderer,
+  json: TextareaWidget as WidgetRenderer,
+  number: NumberWidget as WidgetRenderer,
+  integer: NumberWidget as WidgetRenderer,
+  int: NumberWidget as WidgetRenderer,
+  float: NumberWidget as WidgetRenderer,
+  combo: ComboWidget as WidgetRenderer,
+  boolean: BooleanWidget as WidgetRenderer,
+  progress: ProgressWidget as WidgetRenderer,
+  status: StatusWidget as WidgetRenderer,
+};
 
+/** Look up a widget renderer by type. */
 export function getWidget(type: string): WidgetRenderer | undefined {
-  return registry.get(type);
+  return WIDGETS[type as BodyWidgetType];
 }

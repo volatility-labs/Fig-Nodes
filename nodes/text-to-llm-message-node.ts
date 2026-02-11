@@ -23,12 +23,8 @@ type FormatType = 'json' | 'readable' | 'compact';
  */
 export class TextToLLMMessage extends Node {
   static definition: NodeDefinition = {
-    inputs: {
-      data: port('any'),
-    },
-    outputs: {
-      message: port('LLMChatMessage'),
-    },
+    inputs: [port('data', 'any')],
+    outputs: [port('message', 'LLMChatMessage')],
     params: [
       {
         name: 'role',

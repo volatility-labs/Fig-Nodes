@@ -11,8 +11,8 @@ import { Node, NodeCategory, type NodeDefinition } from '@sosa/core';
  */
 export class Note extends Node {
   static definition: NodeDefinition = {
-    inputs: {},
-    outputs: {},
+    inputs: [],
+    outputs: [],
     category: NodeCategory.IO,
 
     params: [
